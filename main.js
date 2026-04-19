@@ -199,7 +199,7 @@ function checkForUpdates() {
     private: true,
     token: ghToken
   });
-  autoUpdater.autoDownload = true;
+  autoUpdater.autoDownload = false;
   autoUpdater.logger = require('electron-log');
   autoUpdater.logger.transports.file.level = 'info';
 
@@ -213,8 +213,10 @@ function checkForUpdates() {
     dialog.showMessageBox(mainWindow, {
       type: 'info',
       title: 'Actualización disponible',
-      message: 'Hay una nueva versión de Jisunu 5M (' + info.version + '). Se descargará en segundo plano.',
-      buttons: ['OK'],
+      message: 'Hay una nueva versión (' + info.version + '). ¿Descargar e instalar ahora?',
+      buttons: ['Descargar', 'Más tarde'],
+    }).then(function(result) {
+      if (result.response === 0) autoUpdater.downloadUpdate();
     });
   });
   autoUpdater.on('update-not-available', (info) => {
