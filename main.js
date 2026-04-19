@@ -186,7 +186,9 @@ function checkForUpdates() {
   }
 
   // Token para repo privado de GitHub
-  autoUpdater.requestHeaders = { 'Authorization': 'token 5vPUnndEawQejHCgIFq7lBe6YLjnMM2PzSBt' };
+  var ghToken = store.get('github_token', '');
+  if (!ghToken) { console.log('[Updater] No hay GitHub token'); return; }
+  autoUpdater.requestHeaders = { 'Authorization': 'token ' + ghToken };
   autoUpdater.autoDownload = true;
   autoUpdater.logger = require('electron-log');
   autoUpdater.logger.transports.file.level = 'info';
