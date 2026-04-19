@@ -219,14 +219,25 @@ function checkForUpdates() {
   });
   autoUpdater.on('update-downloaded', (info) => {
     console.log('[Updater] Descarga completa:', info.version);
-    dialog.showMessageBox(mainWindow, {
-      type: 'question',
-      title: 'Actualización lista',
-      message: 'La versión ' + info.version + ' está lista. ¿Reiniciar ahora para instalar?',
-      buttons: ['Reiniciar', 'Más tarde'],
-    }).then(result => {
-      if (result.response === 0) autoUpdater.quitAndInstall();
-    });
+    if (process.platform === 'darwin') {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Actualización disponible',
+        message: 'Nueva versión ' + info.version + ' disponible. Descarga e instala el DMG para actualizar.',
+        buttons: ['Descargar', 'Más tarde'],
+      }).then(result => {
+        if (result.response === 0) shell.openExternal('https://github.com/jasm91/estancia5m-electron/releases/latest');
+      });
+    } else {
+      dialog.showMessageBox(mainWindow, {
+        type: 'question',
+        title: 'Actualización lista',
+        message: 'La versión ' + info.version + ' está lista. ¿Reiniciar ahora para instalar?',
+        buttons: ['Reiniciar', 'Más tarde'],
+      }).then(result => {
+        if (result.response === 0) autoUpdater.quitAndInstall();
+      });
+    }
   });
 
   autoUpdater.checkForUpdates();
