@@ -213,10 +213,13 @@ function checkForUpdates() {
     dialog.showMessageBox(mainWindow, {
       type: 'info',
       title: 'Actualización disponible',
-      message: 'Hay una nueva versión (' + info.version + '). ¿Descargar e instalar ahora?',
-      buttons: ['Descargar', 'Más tarde'],
+      message: 'Hay una nueva versión (' + info.version + ') disponible. Se abrirá la página de descarga.',
+      buttons: ['Descargar ahora', 'Más tarde'],
     }).then(function(result) {
-      if (result.response === 0) autoUpdater.downloadUpdate();
+      if (result.response === 0) {
+        const { shell } = require('electron');
+        shell.openExternal('https://github.com/jasm91/estancia5m-electron/releases/latest');
+      }
     });
   });
   autoUpdater.on('update-not-available', (info) => {
