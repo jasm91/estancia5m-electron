@@ -185,8 +185,13 @@ function checkForUpdates() {
     return;
   }
 
-  // Token para repo privado de GitHub
-  autoUpdater.requestHeaders = { 'Authorization': 'token 5vPUnndEawQejHCgIFq7lBe6YLjnMM2PzSBt' };
+  // Token para repo privado de GitHub — se lee desde store
+  var ghToken = store.get('github_token', '');
+  if (!ghToken) {
+    console.log('[Updater] No hay GitHub token configurado — update omitido');
+    return;
+  }
+  autoUpdater.requestHeaders = { 'Authorization': 'token ' + ghToken };
   autoUpdater.autoDownload = true;
   autoUpdater.logger = require('electron-log');
   autoUpdater.logger.transports.file.level = 'info';
@@ -263,8 +268,9 @@ ipcMain.handle('app:version', () => app.getVersion());
 
 ipcMain.handle('app:set-gh-token', (_, token) => {
   if (token) {
+    store.set('github_token', token);
     autoUpdater.requestHeaders = { 'Authorization': 'token ' + token };
-    autoUpdater.checkForUpdatesAndNotify();
+    if (app.isPackaged) autoUpdater.checkForUpdatesAndNotify();
   }
   return true;
 });
