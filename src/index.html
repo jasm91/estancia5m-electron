@@ -7457,13 +7457,13 @@ function guardarGhToken() {
   var token = ((document.getElementById('cfg-gh-token')||{}).value||'').trim();
   if(!token){toast('Ingresa el token de GitHub','error');return;}
   if(window.estancia && window.estancia.settings) {
-    window.estancia.settings.set('gh_token', token).then(function(){
+    window.estancia.settings.set('github_token', token).then(function(){
       toast('Token guardado — la app buscará actualizaciones al reiniciar','success');
       // Notificar a main process para reconfigurar el updater
       if(window.estancia.setGhToken) window.estancia.setGhToken(token);
     });
   } else {
-    localStorage.setItem('gh_token', token);
+    localStorage.setItem('github_token', token);
     toast('Token guardado','success');
   }
 }
@@ -7504,7 +7504,7 @@ function renderConfig() {
   // Cargar GitHub token guardado
   var ghTokenEl = document.getElementById('cfg-gh-token');
   if (ghTokenEl && window.estancia && window.estancia.settings) {
-    window.estancia.settings.get('gh_token').then(function(t){ if(t) ghTokenEl.value = t; });
+    window.estancia.settings.get('github_token').then(function(t){ if(t) ghTokenEl.value = t; });
   }
   updateConfigStatus(_API_URL, _API_TOKEN);
   var lbl=document.getElementById('cfg-last-backup');
