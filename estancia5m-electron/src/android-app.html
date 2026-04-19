@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0D1117">
+<title>Estancia 5M — Campo</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{--bg:#0D1117;--sur:#161B22;--sur2:#1C2333;--bor:#30363D;--amber:#D4A017;--amber2:#F0C040;--green:#3FB950;--red:#F85149;--blue:#58A6FF;--text:#E6EDF3;--muted:#7D8590}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:'DM Mono',monospace;font-size:14px;-webkit-font-smoothing:antialiased;user-select:none}
+
+/* SAFE AREA (notch support) */
+.app{display:flex;flex-direction:column;height:100vh;height:calc(var(--vh,1vh)*100);padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+
+/* TOP BAR */
+.topbar{background:var(--sur);border-bottom:1px solid var(--bor);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.logo{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--amber)}
+.logo small{font-family:'DM Mono',monospace;font-size:10px;font-weight:400;color:var(--muted);display:block;margin-top:-2px}
+.sync-dot{width:10px;height:10px;border-radius:50%;background:var(--muted);flex-shrink:0}
+.sync-dot.online{background:var(--green);box-shadow:0 0 6px var(--green)}
+.sync-dot.syncing{background:var(--blue);animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* SCROLL CONTENT */
+.content{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:16px;padding-bottom:80px}
+
+/* BOTTOM NAV */
+.bottom-nav{background:var(--sur);border-top:1px solid var(--bor);display:flex;flex-shrink:0;padding-bottom:env(safe-area-inset-bottom)}
+.nav-tab{flex:1;display:flex;flex-direction:column;align-items:center;padding:10px 4px;gap:4px;cursor:pointer;color:var(--muted);border:none;background:none;transition:color .15s;position:relative}
+.nav-tab.active{color:var(--amber2)}
+.nav-tab-icon{font-size:22px}
+.nav-tab-label{font-size:9px;letter-spacing:.08em;text-transform:uppercase}
+.nav-tab-badge{position:absolute;top:6px;right:50%;transform:translateX(8px);background:var(--red);color:#fff;font-size:8px;font-weight:700;padding:1px 5px;border-radius:10px;min-width:16px;text-align:center}
+
+/* PAGE */
+.page{display:none}
+.page.active{display:block;animation:fadeUp .25s ease}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* SECTION HEADER */
+.sec-hd{margin-bottom:16px}
+.sec-title{font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:var(--text)}
+.sec-sub{font-size:10px;color:var(--muted);margin-top:2px;letter-spacing:.06em}
+
+/* STAT ROW */
+.stat-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+.stat-card{background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:14px;text-align:center}
+.stat-val{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--text);line-height:1}
+.stat-lbl{font-size:9px;color:var(--muted);margin-top:4px;letter-spacing:.1em;text-transform:uppercase}
+
+/* BIG ACTION BUTTON */
+.big-btn{width:100%;background:var(--amber);color:#0D1117;border:none;border-radius:14px;padding:16px;font-family:'Syne',sans-serif;font-size:16px;font-weight:700;cursor:pointer;margin-bottom:10px;transition:transform .1s,opacity .15s;display:flex;align-items:center;justify-content:center;gap:8px;letter-spacing:.02em}
+.big-btn:active{transform:scale(.97);opacity:.9}
+.big-btn.secondary{background:var(--sur2);color:var(--text);border:1px solid var(--bor)}
+.big-btn.danger{background:rgba(248,81,73,.12);color:var(--red);border:1px solid rgba(248,81,73,.25)}
+
+/* CARD */
+.card{background:var(--sur);border:1px solid var(--bor);border-radius:12px;margin-bottom:10px;overflow:hidden}
+.card-hd{padding:12px 14px;border-bottom:1px solid var(--bor);display:flex;align-items:center;justify-content:space-between}
+.card-title{font-size:13px;font-weight:500;color:var(--text)}
+.card-body{padding:14px}
+
+/* LIST ITEM */
+.list-item{padding:12px 14px;border-bottom:1px solid rgba(48,54,61,.5);display:flex;align-items:center;gap:10px;cursor:pointer;transition:background .1s}
+.list-item:last-child{border-bottom:none}
+.list-item:active{background:rgba(255,255,255,.03)}
+.li-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.li-icon-amber{background:rgba(212,160,23,.12)}
+.li-icon-green{background:rgba(63,185,80,.12)}
+.li-icon-red{background:rgba(248,81,73,.12)}
+.li-icon-blue{background:rgba(88,166,255,.12)}
+.li-main{flex:1;min-width:0}
+.li-title{font-size:13px;color:var(--text);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.li-sub{font-size:10px;color:var(--muted);margin-top:2px}
+.li-right{flex-shrink:0;text-align:right}
+.li-val{font-size:13px;font-weight:500;color:var(--amber2)}
+.li-date{font-size:10px;color:var(--muted);margin-top:2px}
+
+/* BADGE */
+.bdg{display:inline-block;padding:2px 8px;border-radius:20px;font-size:9px;font-weight:600;letter-spacing:.06em}
+.bdg-green{background:rgba(63,185,80,.12);color:var(--green)}
+.bdg-red{background:rgba(248,81,73,.12);color:var(--red)}
+.bdg-amber{background:rgba(212,160,23,.12);color:var(--amber2)}
+.bdg-blue{background:rgba(88,166,255,.12);color:var(--blue)}
+
+/* PROGRESS BAR */
+.prg{height:4px;background:var(--sur2);border-radius:2px;overflow:hidden;margin-top:6px}
+.prg-fill{height:100%;border-radius:2px;transition:width .6s ease}
+.pf-green{background:var(--green)}.pf-amber{background:var(--amber)}.pf-red{background:var(--red)}
+
+/* MODAL / SHEET */
+.sheet-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;align-items:flex-end}
+.sheet-overlay.open{display:flex}
+.sheet{background:var(--sur);border-radius:20px 20px 0 0;width:100%;padding:20px;max-height:88vh;overflow-y:auto}
+.sheet-handle{width:36px;height:4px;background:var(--bor);border-radius:2px;margin:0 auto 18px}
+.sheet h2{font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:var(--text);margin-bottom:18px}
+
+/* FORM */
+.form-group{margin-bottom:14px}
+.form-label{display:block;font-size:9px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;margin-bottom:6px}
+.form-input,.form-select{width:100%;background:var(--sur2);border:1px solid var(--bor);border-radius:10px;padding:12px 14px;font-family:'DM Mono',monospace;font-size:14px;color:var(--text);outline:none;-webkit-appearance:none;appearance:none;transition:border-color .2s}
+.form-input:focus,.form-select:focus{border-color:var(--amber)}
+.form-select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 5 5-5' stroke='%237D8590' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:30px}
+.form-hint{font-size:10px;color:var(--muted);margin-top:4px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* ALERT ITEM */
+.alert-item{padding:12px;border-radius:10px;margin-bottom:8px;border:1px solid}
+.ai-red{background:rgba(248,81,73,.06);border-color:rgba(248,81,73,.2)}
+.ai-amber{background:rgba(212,160,23,.06);border-color:rgba(212,160,23,.2)}
+.ai-title{font-size:11px;font-weight:500;margin-bottom:3px}
+.ai-red .ai-title{color:var(--red)}.ai-amber .ai-title{color:var(--amber2)}
+.ai-body{font-size:11px;color:var(--muted);line-height:1.5}
+.ai-actions{display:flex;justify-content:flex-end;margin-top:8px}
+
+/* TOAST */
+.toast-wrap{position:fixed;bottom:80px;left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none;z-index:500;padding:0 16px}
+.toast{background:var(--sur2);border:1px solid var(--bor);border-radius:30px;padding:10px 20px;font-size:12px;color:var(--text);pointer-events:none;animation:toastIn .25s ease;max-width:320px;text-align:center}
+.toast.success{background:rgba(63,185,80,.15);border-color:rgba(63,185,80,.3);color:var(--green)}
+.toast.error{background:rgba(248,81,73,.15);border-color:rgba(248,81,73,.3);color:var(--red)}
+.toast.warning{background:rgba(212,160,23,.15);border-color:rgba(212,160,23,.3);color:var(--amber2)}
+@keyframes toastIn{from{transform:translateY(10px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+/* EMPTY STATE */
+.empty{text-align:center;padding:32px 16px;color:var(--muted);font-size:12px}
+.empty-icon{font-size:36px;margin-bottom:8px}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="logo">🐄 ESTANCIA 5M<small id="userLabel">CAPATAZ · CAMPO</small></div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span id="pendingBadge" style="display:none;font-size:9px;color:var(--amber2)"></span>
+      <div class="sync-dot" id="syncDot" title="Estado de sincronización"></div>
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content" id="content">
+
+    <!-- ─── HOME ─── -->
+    <div id="page-home" class="page active">
+      <div class="sec-hd"><div class="sec-title">Inicio</div><div class="sec-sub" id="home-date"></div></div>
+
+      <div class="stat-row">
+        <div class="stat-card"><div class="stat-val" id="h-animals">—</div><div class="stat-lbl">Animales</div></div>
+        <div class="stat-card"><div class="stat-val" id="h-alerts" style="color:var(--red)">—</div><div class="stat-lbl">Alertas</div></div>
+      </div>
+
+      <!-- Quick actions -->
+      <button class="big-btn" onclick="openSheet('sheet-treatment')">💉 Registrar curación</button>
+      <button class="big-btn secondary" onclick="openSheet('sheet-activity')">📋 Anotar actividad</button>
+      <button class="big-btn secondary" onclick="openSheet('sheet-weight')">⚖️ Registrar pesaje</button>
+      <button class="big-btn secondary" onclick="openSheet('sheet-move')">🔄 Mover lote</button>
+
+      <!-- Alerts preview -->
+      <div class="card" style="margin-top:8px">
+        <div class="card-hd"><span class="card-title">🔔 Alertas pendientes</span></div>
+        <div id="home-alerts"></div>
+      </div>
+    </div>
+
+    <!-- ─── TRATAMIENTOS ─── -->
+    <div id="page-treatments" class="page">
+      <div class="sec-hd"><div class="sec-title">💉 Curaciones</div><div class="sec-sub">Historial de tratamientos</div></div>
+      <button class="big-btn" onclick="openSheet('sheet-treatment')">+ Nueva curación</button>
+      <div id="treatments-list"></div>
+    </div>
+
+    <!-- ─── LOTES ─── -->
+    <div id="page-lots" class="page">
+      <div class="sec-hd"><div class="sec-title">🐄 Lotes</div><div class="sec-sub" id="lots-sub">—</div></div>
+      <div id="lots-list"></div>
+    </div>
+
+    <!-- ─── STOCK ─── -->
+    <div id="page-stock" class="page">
+      <div class="sec-hd"><div class="sec-title">📦 Stock</div><div class="sec-sub">Medicamentos y productos</div></div>
+      <div id="stock-list"></div>
+    </div>
+
+    <!-- ─── ACTIVIDADES ─── -->
+    <div id="page-activities" class="page">
+      <div class="sec-hd"><div class="sec-title">📋 Actividades</div><div class="sec-sub">Registro de campo</div></div>
+      <button class="big-btn secondary" onclick="openSheet('sheet-activity')">+ Registrar actividad</button>
+      <div id="activities-list"></div>
+    </div>
+
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <div class="bottom-nav">
+    <button class="nav-tab active" onclick="showTab('home',this)">
+      <span class="nav-tab-icon">🏠</span>
+      <span class="nav-tab-label">Inicio</span>
+    </button>
+    <button class="nav-tab" onclick="showTab('treatments',this)">
+      <span class="nav-tab-icon">💉</span>
+      <span class="nav-tab-label">Curaciones</span>
+    </button>
+    <button class="nav-tab" onclick="showTab('lots',this)">
+      <span class="nav-tab-icon">🐄</span>
+      <span class="nav-tab-label">Lotes</span>
+    </button>
+    <button class="nav-tab" onclick="showTab('stock',this)">
+      <span class="nav-tab-icon">📦</span>
+      <span class="nav-tab-label">Stock</span>
+      <span class="nav-tab-badge" id="stock-badge" style="display:none"></span>
+    </button>
+    <button class="nav-tab" onclick="showTab('activities',this)">
+      <span class="nav-tab-icon">📋</span>
+      <span class="nav-tab-label">Campo</span>
+    </button>
+  </div>
+
+</div>
+
+<!-- ══════ SHEETS (Bottom modals) ══════ -->
+
+<!-- Curación -->
+<div class="sheet-overlay" id="sheet-treatment" onclick="if(event.target===this)closeSheet('sheet-treatment')">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2>💉 Registrar Curación</h2>
+    <div class="form-group"><label class="form-label">Producto</label><select class="form-select" id="tr-product" onchange="updateDoseHint()"><option value="">Seleccionar...</option></select></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Lote</label><select class="form-select" id="tr-lot"><option value="">Seleccionar...</option></select></div>
+      <div class="form-group"><label class="form-label">Animales</label><input class="form-input" type="number" id="tr-count" value="1" min="1" oninput="calcTotal()"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Dosis / animal</label><input class="form-input" type="number" id="tr-dose" step="0.1" oninput="calcTotal()"><div class="form-hint" id="tr-hint"></div></div>
+      <div class="form-group"><label class="form-label">Total uso</label><input class="form-input" id="tr-total" readonly style="background:var(--bg);color:var(--amber2)"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Fecha</label><input class="form-input" type="date" id="tr-date"></div>
+      <div class="form-group"><label class="form-label">Próxima</label><input class="form-input" type="date" id="tr-next"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Diagnóstico</label><input class="form-input" id="tr-diag" placeholder="Ej: Desparasitación rutinaria"></div>
+    <button class="big-btn" onclick="saveTreatment()">✓ Registrar curación</button>
+    <button class="big-btn secondary" onclick="closeSheet('sheet-treatment')">Cancelar</button>
+  </div>
+</div>
+
+<!-- Actividad -->
+<div class="sheet-overlay" id="sheet-activity" onclick="if(event.target===this)closeSheet('sheet-activity')">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2>📋 Anotar Actividad</h2>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Tipo</label><select class="form-select" id="act-type"><option value="curacion">Curación</option><option value="pesaje">Pesaje</option><option value="movimiento">Movimiento</option><option value="alimentacion">Alimentación</option><option value="otro">Otro</option></select></div>
+      <div class="form-group"><label class="form-label">Lote (opcional)</label><select class="form-select" id="act-lot"><option value="">—</option></select></div>
+    </div>
+    <div class="form-group"><label class="form-label">Descripción</label><input class="form-input" id="act-desc" placeholder="Describí la actividad..."></div>
+    <button class="big-btn" onclick="saveActivity()">✓ Guardar actividad</button>
+    <button class="big-btn secondary" onclick="closeSheet('sheet-activity')">Cancelar</button>
+  </div>
+</div>
+
+<!-- Pesaje -->
+<div class="sheet-overlay" id="sheet-weight" onclick="if(event.target===this)closeSheet('sheet-weight')">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2>⚖️ Registrar Pesaje</h2>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Lote</label><select class="form-select" id="wt-lot"><option value="">Seleccionar...</option></select></div>
+      <div class="form-group"><label class="form-label">Peso prom. (kg)</label><input class="form-input" type="number" id="wt-weight" placeholder="Ej: 385"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Notas</label><input class="form-input" id="wt-notes" placeholder="Observaciones..."></div>
+    <button class="big-btn" onclick="saveWeight()">✓ Guardar pesaje</button>
+    <button class="big-btn secondary" onclick="closeSheet('sheet-weight')">Cancelar</button>
+  </div>
+</div>
+
+<!-- Mover lote -->
+<div class="sheet-overlay" id="sheet-move" onclick="if(event.target===this)closeSheet('sheet-move')">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2>🔄 Mover Lote</h2>
+    <div class="form-group"><label class="form-label">Lote</label><select class="form-select" id="mv-lot"><option value="">Seleccionar...</option></select></div>
+    <div class="form-group"><label class="form-label">Potrero destino</label><input class="form-input" id="mv-paddock" placeholder="Ej: Potrero Norte"></div>
+    <div class="form-group"><label class="form-label">Motivo</label><input class="form-input" id="mv-reason" placeholder="Ej: Rotación programada"></div>
+    <button class="big-btn" onclick="saveLotMove()">✓ Confirmar movimiento</button>
+    <button class="big-btn secondary" onclick="closeSheet('sheet-move')">Cancelar</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+// ══════════════════════════════════════════════════
+// DATA — localStorage (replaced by Capacitor SQLite in prod)
+// ══════════════════════════════════════════════════
+const DB_KEY = 'estancia5m_mobile_v1';
+let db = JSON.parse(localStorage.getItem(DB_KEY) || 'null') || initData();
+
+function initData() {
+  const d = {
+    lots:[
+      {id:1,code:'A-07',category:'novillo',paddock:'Potrero Norte',animal_count:68,avg_weight:412,status:'active'},
+      {id:2,code:'B-12',category:'novillo',paddock:'Potrero Este',animal_count:47,avg_weight:389,status:'active'},
+      {id:3,code:'C-03',category:'ternero',paddock:'Potrero Sur',animal_count:28,avg_weight:187,status:'active'},
+      {id:4,code:'D-01',category:'novillo',paddock:'Potrero Oeste',animal_count:94,avg_weight:458,status:'active'},
+      {id:5,code:'E-09',category:'recria_mixta',paddock:'Potrero Central',animal_count:112,avg_weight:231,status:'active'},
+    ],
+    products:[
+      {id:1,name:'Ivermectina 1%',type:'antiparasitario',unit:'ml',stock_qty:2,stock_min:5,dose_per_50kg:1.0,unit_cost:12.5},
+      {id:2,name:'Closantel 5%',type:'antiparasitario',unit:'ml',stock_qty:4,stock_min:5,dose_per_50kg:2.5,unit_cost:18.0},
+      {id:3,name:'Sal Mineral',type:'vitamina',unit:'kg',stock_qty:320,stock_min:100,dose_per_50kg:null,unit_cost:2.8},
+      {id:4,name:'Vacuna Aftosa',type:'vacuna',unit:'dosis',stock_qty:180,stock_min:50,dose_per_50kg:1.0,unit_cost:3.5},
+      {id:5,name:'Pen-Estreptomicina',type:'antibiotico',unit:'amp',stock_qty:3,stock_min:10,dose_per_50kg:null,unit_cost:8.0},
+    ],
+    treatments:[
+      {id:1,product_name:'Ivermectina 1%',lot_code:'A-07',count:68,dose:1,total:68,applied_at:'2026-03-25',next_app:'2026-04-01',diagnosis:'Desparasitación rutinaria',synced:true},
+    ],
+    alerts:[
+      {id:1,severity:'critical',title:'Stock crítico: Ivermectina 1%',message:'Quedan 2ml. Mínimo: 5ml.',resolved:false},
+      {id:2,severity:'warning',title:'Vacuna Aftosa vence — Lote B-12',message:'47 animales. Vacunar antes del 30/03.',resolved:false},
+      {id:3,severity:'critical',title:'Stock crítico: Pen-Estreptomicina',message:'Quedan 3 ampollas. Mínimo: 10.',resolved:false},
+    ],
+    activities:[
+      {id:1,type:'curacion',lot:'A-07',desc:'Curación semanal. 32 animales con Closantel.',date:'2026-03-27 08:42',synced:true},
+    ],
+    pendingSync:[],
+    nextId:{treatments:2,activities:2}
+  };
+  save(d); return d;
+}
+
+function save(data) { localStorage.setItem(DB_KEY, JSON.stringify(data||db)); }
+
+// ══════════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════════
+function showTab(name, btn) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(b=>b.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  btn.classList.add('active');
+  document.getElementById('content').scrollTop=0;
+  renderPage(name);
+}
+
+function renderPage(name) {
+  const r={home:renderHome,treatments:renderTreatments,lots:renderLots,stock:renderStock,activities:renderActivities};
+  if(r[name]) r[name]();
+}
+
+// ══════════════════════════════════════════════════
+// RENDERS
+// ══════════════════════════════════════════════════
+function renderHome() {
+  const today=new Date();
+  document.getElementById('home-date').textContent=today.toLocaleDateString('es-BO',{weekday:'long',day:'numeric',month:'long'});
+  const totalAnimals=db.lots.filter(l=>l.status==='active').reduce((s,l)=>s+l.animal_count,0);
+  const activeAlerts=db.alerts.filter(a=>!a.resolved).length;
+  document.getElementById('h-animals').textContent=totalAnimals;
+  document.getElementById('h-alerts').textContent=activeAlerts;
+
+  // Stock badge
+  const lowStock=db.products.filter(p=>p.stock_qty<=p.stock_min).length;
+  const sb=document.getElementById('stock-badge');
+  sb.style.display=lowStock?'block':'none';
+  sb.textContent=lowStock;
+
+  // Alerts
+  const al=document.getElementById('home-alerts');
+  const alerts=db.alerts.filter(a=>!a.resolved).slice(0,3);
+  if(!alerts.length){al.innerHTML='<div class="empty"><div class="empty-icon">✅</div>Sin alertas activas</div>';return;}
+  al.innerHTML=alerts.map(a=>`
+    <div class="alert-item ai-${a.severity==='critical'?'red':'amber'}">
+      <div class="ai-title">${a.severity==='critical'?'🚨':'⚠️'} ${escH(a.title)}</div>
+      <div class="ai-body">${escH(a.message)}</div>
+      <div class="ai-actions"><button onclick="resolveAlert(${a.id})" style="background:none;border:1px solid var(--bor);color:var(--muted);padding:4px 12px;border-radius:6px;font-family:'DM Mono',monospace;font-size:10px;cursor:pointer">✓ Resolver</button></div>
+    </div>`).join('');
+}
+
+function renderTreatments() {
+  const el=document.getElementById('treatments-list');
+  if(!db.treatments.length){el.innerHTML='<div class="empty"><div class="empty-icon">💉</div>Sin tratamientos registrados</div>';return;}
+  el.innerHTML='<div class="card">'+db.treatments.slice().reverse().map(t=>`
+    <div class="list-item">
+      <div class="li-icon li-icon-amber">💉</div>
+      <div class="li-main">
+        <div class="li-title">${escH(t.product_name)}</div>
+        <div class="li-sub">${t.lot_code?'Lote '+t.lot_code:''} · ${t.count} animales · ${t.dose} ml/animal</div>
+        ${t.next_app?`<div class="li-sub" style="color:${t.next_app<=new Date().toISOString().split('T')[0]?'var(--red)':'var(--muted)'}">Próxima: ${t.next_app}</div>`:''}
+      </div>
+      <div class="li-right"><div class="li-date">${t.applied_at}</div><span class="bdg ${t.synced?'bdg-green':'bdg-amber'}">${t.synced?'✓ Sync':'Pendiente'}</span></div>
+    </div>`).join('')+'</div>';
+}
+
+function renderLots() {
+  const active=db.lots.filter(l=>l.status==='active');
+  document.getElementById('lots-sub').textContent=active.length+' activos · '+active.reduce((s,l)=>s+l.animal_count,0)+' animales';
+  document.getElementById('lots-list').innerHTML='<div class="card">'+db.lots.map(l=>`
+    <div class="list-item">
+      <div class="li-icon li-icon-amber">🐄</div>
+      <div class="li-main">
+        <div class="li-title" style="color:var(--amber2)">${escH(l.code)}</div>
+        <div class="li-sub">${cap(l.category)} · ${escH(l.paddock||'—')}</div>
+        <div class="li-sub">${l.animal_count} animales · ${l.avg_weight||'—'} kg prom.</div>
+      </div>
+      <div class="li-right"><span class="bdg bdg-green">Activo</span></div>
+    </div>`).join('')+'</div>';
+}
+
+function renderStock() {
+  const sorted=[...db.products].sort((a,b)=>(a.stock_qty/Math.max(a.stock_min,.1))-(b.stock_qty/Math.max(b.stock_min,.1)));
+  document.getElementById('stock-list').innerHTML='<div class="card">'+sorted.map(p=>{
+    const pct=Math.min(100,Math.round(p.stock_qty/Math.max(p.stock_min,.1)*100));
+    const low=p.stock_qty<=p.stock_min;
+    return`<div class="list-item">
+      <div class="li-icon ${low?'li-icon-red':'li-icon-green'}">${low?'⚠️':'💊'}</div>
+      <div class="li-main">
+        <div class="li-title">${escH(p.name)}</div>
+        <div class="li-sub">${p.type} · ${p.unit_cost?'$'+p.unit_cost+'/'+p.unit:''}</div>
+        <div class="prg"><div class="prg-fill ${low?'pf-red':pct<60?'pf-amber':'pf-green'}" style="width:${pct}%"></div></div>
+      </div>
+      <div class="li-right"><div class="li-val" style="color:${low?'var(--red)':'var(--text)'}">${p.stock_qty} ${p.unit}</div><div class="li-date">Mín: ${p.stock_min}</div></div>
+    </div>`;}).join('')+'</div>';
+}
+
+function renderActivities() {
+  const el=document.getElementById('activities-list');
+  if(!db.activities.length){el.innerHTML='<div class="empty"><div class="empty-icon">📋</div>Sin actividades registradas</div>';return;}
+  el.innerHTML='<div class="card">'+db.activities.slice().reverse().map(a=>`
+    <div class="list-item">
+      <div class="li-icon li-icon-blue">📋</div>
+      <div class="li-main">
+        <div class="li-title">${escH(a.desc)}</div>
+        <div class="li-sub">${cap(a.type)}${a.lot?' · Lote '+escH(a.lot):''}</div>
+      </div>
+      <div class="li-right"><div class="li-date">${a.date}</div><span class="bdg ${a.synced?'bdg-green':'bdg-amber'}">${a.synced?'✓':'Pendiente'}</span></div>
+    </div>`).join('')+'</div>';
+}
+
+// ══════════════════════════════════════════════════
+// ACTIONS
+// ══════════════════════════════════════════════════
+function saveTreatment() {
+  const product_id=parseInt(document.getElementById('tr-product').value);
+  const lot_code=document.getElementById('tr-lot').value;
+  const count=parseInt(document.getElementById('tr-count').value)||1;
+  const dose=parseFloat(document.getElementById('tr-dose').value);
+  const date=document.getElementById('tr-date').value;
+  if(!product_id||!lot_code||!dose||!date){toast('Completá producto, lote, dosis y fecha','error');return;}
+  const prod=db.products.find(p=>p.id===product_id);
+  const total=Math.round(dose*count*100)/100;
+  if(prod.stock_qty<total){toast(`Stock insuficiente: ${prod.stock_qty}${prod.unit} disponibles`,'error');return;}
+  prod.stock_qty=Math.round((prod.stock_qty-total)*100)/100;
+  const t={id:db.nextId.treatments++,product_id,product_name:prod.name,lot_code,count,dose,total,applied_at:date,next_app:document.getElementById('tr-next').value||null,diagnosis:document.getElementById('tr-diag').value,synced:false};
+  db.treatments.push(t);
+  db.pendingSync.push({table:'treatments',data:t});
+  // Check low stock alert
+  if(prod.stock_qty<=prod.stock_min){
+    db.alerts.push({id:Date.now(),severity:'critical',title:`Stock bajo: ${prod.name}`,message:`Quedan ${prod.stock_qty} ${prod.unit}.`,resolved:false});
+  }
+  addActivity('curacion',lot_code,`Curación: ${prod.name} × ${count} animales`);
+  save();closeSheet('sheet-treatment');
+  toast(`Curación registrada. ${prod.name}: ${prod.stock_qty}${prod.unit} restantes`,'success');
+  renderHome();
+}
+
+function saveActivity() {
+  const desc=document.getElementById('act-desc').value.trim();
+  if(!desc){toast('Describí la actividad','error');return;}
+  addActivity(document.getElementById('act-type').value,document.getElementById('act-lot').value,desc);
+  save();closeSheet('sheet-activity');
+  toast('Actividad registrada','success');
+  renderActivities();
+}
+
+function addActivity(type,lot,desc) {
+  db.activities.push({id:db.nextId.activities++,type,lot,desc,date:new Date().toLocaleString('es-BO').replace(',',''),synced:false});
+  db.pendingSync.push({table:'field_activities',data:{type,lot,desc}});
+}
+
+function saveWeight() {
+  const lot_code=document.getElementById('wt-lot').value;
+  const weight=parseFloat(document.getElementById('wt-weight').value);
+  if(!lot_code||!weight){toast('Seleccioná lote e ingresá peso','error');return;}
+  const lot=db.lots.find(l=>l.code===lot_code);
+  if(lot){lot.avg_weight=weight;}
+  addActivity('pesaje',lot_code,`Pesaje registrado: ${weight}kg promedio. ${document.getElementById('wt-notes').value}`);
+  save();closeSheet('sheet-weight');
+  toast(`Pesaje de ${lot_code} guardado: ${weight}kg`,'success');
+}
+
+function saveLotMove() {
+  const lot_code=document.getElementById('mv-lot').value;
+  const paddock=document.getElementById('mv-paddock').value.trim();
+  const reason=document.getElementById('mv-reason').value.trim();
+  if(!lot_code||!paddock){toast('Seleccioná lote e ingresá potrero','error');return;}
+  const lot=db.lots.find(l=>l.code===lot_code);
+  const old=lot.paddock;
+  if(lot){lot.paddock=paddock;}
+  addActivity('movimiento',lot_code,`Lote ${lot_code} movido de ${old} a ${paddock}${reason?'. '+reason:''}`);
+  save();closeSheet('sheet-move');
+  toast(`Lote ${lot_code} → ${paddock}`,'success');
+}
+
+function resolveAlert(id) {
+  const a=db.alerts.find(a=>a.id===id);
+  if(a) a.resolved=true;
+  save();renderHome();
+  toast('Alerta resuelta','success');
+}
+
+// ══════════════════════════════════════════════════
+// SHEETS
+// ══════════════════════════════════════════════════
+function openSheet(id) {
+  populateSelects();
+  const today=new Date().toISOString().split('T')[0];
+  document.querySelectorAll('#'+id+' input[type="date"]').forEach(el=>{if(!el.value)el.value=today});
+  document.getElementById(id).classList.add('open');
+}
+
+function closeSheet(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+function populateSelects() {
+  const prodOpts=db.products.map(p=>`<option value="${p.id}">${escH(p.name)} (${p.stock_qty} ${p.unit})</option>`).join('');
+  const trProd=document.getElementById('tr-product');
+  if(trProd&&!trProd.options.length) trProd.innerHTML='<option value="">Seleccionar...</option>'+prodOpts;
+
+  const lotOpts=db.lots.filter(l=>l.status==='active').map(l=>`<option value="${l.code}">${escH(l.code)} — ${l.animal_count} cab.</option>`).join('');
+  ['tr-lot','act-lot','wt-lot','mv-lot'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el&&el.options.length<=1) el.innerHTML='<option value="">—</option>'+lotOpts;
+  });
+}
+
+function updateDoseHint() {
+  const id=parseInt(document.getElementById('tr-product').value);
+  const prod=db.products.find(p=>p.id===id);
+  if(prod&&prod.dose_per_50kg){
+    document.getElementById('tr-hint').textContent=`Estándar: ${prod.dose_per_50kg} ${prod.unit}/50kg`;
+    document.getElementById('tr-dose').value=prod.dose_per_50kg;
+    calcTotal();
+  }
+}
+
+function calcTotal() {
+  const dose=parseFloat(document.getElementById('tr-dose').value)||0;
+  const count=parseInt(document.getElementById('tr-count').value)||0;
+  document.getElementById('tr-total').value=dose&&count?Math.round(dose*count*100)/100:'';
+}
+
+// ══════════════════════════════════════════════════
+// SYNC STATUS
+// ══════════════════════════════════════════════════
+function updateSyncUI() {
+  const pending=db.pendingSync.length;
+  const pb=document.getElementById('pendingBadge');
+  if(pending>0){pb.style.display='block';pb.textContent=pending+' pendiente'+(pending!==1?'s':'');}
+  else pb.style.display='none';
+
+  const dot=document.getElementById('syncDot');
+  const online=navigator.onLine;
+  dot.className='sync-dot'+(online?' online':'');
+}
+
+window.addEventListener('online',()=>{updateSyncUI();attemptSync();});
+window.addEventListener('offline',updateSyncUI);
+
+async function attemptSync() {
+  if(!db.pendingSync.length) return;
+  const apiUrl=localStorage.getItem('apiUrl')||'';
+  if(!apiUrl||!navigator.onLine) return;
+  document.getElementById('syncDot').className='sync-dot syncing';
+  try {
+    // In production this sends pendingSync[] to the API
+    // Here we simulate a successful sync
+    await new Promise(r=>setTimeout(r,1000));
+    db.treatments.forEach(t=>t.synced=true);
+    db.activities.forEach(a=>a.synced=true);
+    db.pendingSync=[];
+    save();
+    toast('Sincronizado con el servidor','success');
+  } catch(e) {
+    toast('Error de sincronización','error');
+  }
+  updateSyncUI();
+  document.getElementById('syncDot').className='sync-dot online';
+}
+
+// ══════════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════════
+function escH(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function cap(s){return s?s.charAt(0).toUpperCase()+s.slice(1).replace('_',' '):''}
+function toast(msg,type='success'){
+  const w=document.getElementById('toastWrap');
+  const el=document.createElement('div');
+  el.className='toast '+type;
+  el.textContent=msg;
+  w.appendChild(el);
+  setTimeout(()=>el.remove(),3000);
+}
+
+// ══════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════
+document.getElementById('home-date').textContent=new Date().toLocaleDateString('es-BO',{weekday:'long',day:'numeric',month:'long'});
+document.querySelectorAll('input[type="date"]').forEach(el=>el.value=new Date().toISOString().split('T')[0]);
+// Fix viewport height for mobile browsers
+function setVH(){document.documentElement.style.setProperty('--vh',window.innerHeight*.01+'px')}
+setVH();window.addEventListener('resize',setVH);
+updateSyncUI();
+renderHome();
+</script>
+</body>
+</html>

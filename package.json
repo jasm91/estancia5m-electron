@@ -1,0 +1,123 @@
+{
+  "name": "estancia5m",
+  "version": "1.1.3",
+  "description": "Sistema de Gesti\u00f3n Ganadera \u2014 Estancia 5M",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build:mac": "electron-builder --mac",
+    "build:mac-dmg": "electron-builder --mac dmg",
+    "build:win": "electron-builder --win --x64",
+    "pack": "electron-builder --dir",
+    "create-tenant": "node scripts/create-tenant.js",
+    "build:win8": "electron-builder --win --x64 --ia32",
+    "build:win8-x64": "electron-builder --win --x64",
+    "publish:mac": "electron-builder --mac --publish always",
+    "publish:win": "electron-builder --win --x64 --ia32 --publish always"
+  },
+  "build": {
+    "appId": "com.sgbolivia.estancia5m",
+    "productName": "Jisunu 5M",
+    "copyright": "SG Bolivia",
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.business",
+      "darkModeSupport": true
+    },
+    "dmg": {
+      "title": "Estancia 5M",
+      "icon": "assets/icon.icns",
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "assets/**/*"
+    ],
+    "directories": {
+      "buildResources": "assets",
+      "output": "dist"
+    },
+    "extraFiles": [
+      {
+        "from": "node_modules/sql.js/dist/sql-wasm.wasm",
+        "to": "sql-wasm.wasm"
+      }
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "jasm91",
+      "repo": "estancia5m-electron",
+      "releaseType": "release",
+      "private": true
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Jisunu 5M",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "deleteAppDataOnUninstall": false
+    }
+  },
+  "dependencies": {
+    "sql.js": "^1.11.0",
+    "electron-store": "^8.1.0",
+    "electron-updater": "5.3.0",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "electron": "22.3.27",
+    "electron-builder": "24.9.1"
+  },
+  "author": "SG Bolivia",
+  "license": "MIT"
+}
