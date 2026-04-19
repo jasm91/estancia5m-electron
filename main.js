@@ -199,7 +199,7 @@ function checkForUpdates() {
     private: true,
     token: ghToken
   });
-  autoUpdater.autoDownload = false;
+  autoUpdater.autoDownload = true;
   autoUpdater.logger = require('electron-log');
   autoUpdater.logger.transports.file.level = 'info';
 
