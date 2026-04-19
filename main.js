@@ -209,18 +209,7 @@ function checkForUpdates() {
     console.log('[Updater] Buscando actualización...');
   });
   autoUpdater.on('update-available', (info) => {
-    console.log('[Updater] Actualización disponible:', info.version);
-    dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'Actualización disponible',
-      message: 'Hay una nueva versión (' + info.version + ') disponible. Se abrirá la página de descarga.',
-      buttons: ['Descargar ahora', 'Más tarde'],
-    }).then(function(result) {
-      if (result.response === 0) {
-        const { shell } = require('electron');
-        shell.openExternal('https://github.com/jasm91/estancia5m-electron/releases/latest');
-      }
-    });
+    console.log('[Updater] Actualización disponible:', info.version, '— descargando en segundo plano...');
   });
   autoUpdater.on('update-not-available', (info) => {
     console.log('[Updater] Sin actualizaciones. Versión más reciente:', info.version);
