@@ -185,6 +185,9 @@ function checkForUpdates() {
     return;
   }
 
+  // Registrar listeners siempre (antes de verificar token)
+  autoUpdater.removeAllListeners();
+
   // Token para repo privado de GitHub
   var ghToken = store.get('github_token', '');
   if (!ghToken) { console.log('[Updater] No hay GitHub token'); return; }
@@ -265,8 +268,8 @@ ipcMain.handle('app:version', () => app.getVersion());
 
 ipcMain.handle('app:set-gh-token', (_, token) => {
   if (token) {
-    autoUpdater.requestHeaders = { 'Authorization': 'token ' + token };
-    autoUpdater.checkForUpdatesAndNotify();
+    store.set('github_token', token);
+    if (app.isPackaged) checkForUpdates();
   }
   return true;
 });
