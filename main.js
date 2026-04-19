@@ -192,6 +192,13 @@ function checkForUpdates() {
   var ghToken = store.get('github_token', '');
   if (!ghToken) { console.log('[Updater] No hay GitHub token'); return; }
   autoUpdater.requestHeaders = { 'Authorization': 'token ' + ghToken };
+  autoUpdater.setFeedURL({
+    provider: 'github',
+    owner: 'jasm91',
+    repo: 'estancia5m-electron',
+    private: true,
+    token: ghToken
+  });
   autoUpdater.autoDownload = true;
   autoUpdater.logger = require('electron-log');
   autoUpdater.logger.transports.file.level = 'info';
