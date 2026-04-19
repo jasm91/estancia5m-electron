@@ -1815,7 +1815,7 @@ function pullFromRailwayDesktop(thenPush) {
   <div class="card">
     <div class="card-hd"><div class="card-title">📱 Informacion</div></div>
     <div class="card-body" style="padding:0">
-      <div style="display:flex;justify-content:space-between;padding:10px 18px;border-bottom:1px solid rgba(48,54,61,.4);font-size:13px"><span style="color:var(--muted)">Version</span><span style="font-family:DM Mono,monospace" id="app-version">1.1.2</span></div>
+      <div style="display:flex;justify-content:space-between;padding:10px 18px;border-bottom:1px solid rgba(48,54,61,.4);font-size:13px"><span style="color:var(--muted)">Version</span><span style="font-family:DM Mono,monospace" id="app-version">1.1.3</span></div>
       <div style="display:flex;justify-content:space-between;padding:10px 18px;border-bottom:1px solid rgba(48,54,61,.4);font-size:13px"><span style="color:var(--muted)">Base de datos</span><span style="font-family:DM Mono,monospace;color:var(--green)">SQLite local ✓</span></div>
       <div style="display:flex;justify-content:space-between;padding:10px 18px;border-bottom:1px solid rgba(48,54,61,.4);font-size:13px"><span style="color:var(--muted)">App Android (PWA)</span><span style="font-family:DM Mono,monospace;color:var(--blue)" id="cfg-pwa-url">-</span></div>
       <div style="padding:10px 18px;border-bottom:1px solid rgba(48,54,61,.4)">
@@ -7498,8 +7498,8 @@ function renderConfig() {
   if (pwaEl)   pwaEl.textContent   = 'estancia5m-api-production.up.railway.app';
   // Versión dinámica desde Electron
   var versionEl = document.getElementById('app-version');
-  if (versionEl && window.estancia && window.estancia.version) {
-    window.estancia.version().then(function(v){ versionEl.textContent = v; });
+  if (versionEl && window.estancia && window.estancia.app && window.estancia.app.version) {
+    window.estancia.app.version().then(function(v){ versionEl.textContent = v; });
   }
   // Cargar GitHub token guardado
   var ghTokenEl = document.getElementById('cfg-gh-token');
