@@ -449,6 +449,63 @@ function pullFromRailwayDesktop(thenPush) {
   </div>
 </header>
 
+<!-- PANTALLA DE ACTIVACIÓN -->
+<div id="activation-screen" style="display:none;position:fixed;inset:0;background:#0A0C0F;z-index:99999;align-items:center;justify-content:center;flex-direction:column">
+  <div style="width:100%;max-width:420px;padding:32px">
+    <div style="text-align:center;margin-bottom:32px">
+      <div style="width:80px;height:80px;background:rgba(240,160,48,.1);border:2px solid rgba(240,160,48,.3);border-radius:20px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:36px">🐄</div>
+      <div style="font-size:22px;font-weight:800;color:#E4E6F0;letter-spacing:-.5px">EstanciaPro</div>
+      <div style="font-size:13px;color:#545870;margin-top:4px">Sistema de Gestión Ganadera</div>
+    </div>
+    <div style="background:#111318;border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:28px">
+      <div style="font-size:15px;font-weight:700;color:#E4E6F0;margin-bottom:6px">Activar sistema</div>
+      <div style="font-size:12px;color:#545870;margin-bottom:20px">Ingresa el token de activación que te proporcionó SG Bolivia</div>
+      <div style="margin-bottom:14px">
+        <label style="font-size:10px;font-weight:700;color:#545870;letter-spacing:1px;display:block;margin-bottom:6px">TOKEN DE ACCESO</label>
+        <input type="password" id="act-token" placeholder="jisunu-xxxxxxxxxxxxxxxx"
+          style="width:100%;background:#191C24;border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:11px 14px;color:#E4E6F0;font-family:monospace;font-size:13px;outline:none"
+          onkeydown="if(event.key==='Enter')validateToken()">
+      </div>
+      <div id="act-preview" style="display:none;background:rgba(46,204,113,.06);border:1px solid rgba(46,204,113,.2);border-radius:8px;padding:12px;margin-bottom:14px;font-size:12px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <div style="width:8px;height:8px;border-radius:50%;background:#2ECC71"></div>
+          <span style="font-weight:700;color:#E4E6F0" id="act-preview-name">—</span>
+        </div>
+        <div style="color:#545870" id="act-preview-plan">—</div>
+        <div style="color:#545870" id="act-preview-animals">—</div>
+      </div>
+      <div id="act-error" style="display:none;background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.2);border-radius:8px;padding:10px;margin-bottom:14px;font-size:12px;color:#E74C3C"></div>
+      <button id="act-btn" onclick="validateToken()"
+        style="width:100%;background:#F0A030;color:#000;border:none;border-radius:8px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+        Verificar token
+      </button>
+      <div id="act-verify-ok" style="display:none;margin-top:12px">
+        <button onclick="activateSystem()"
+          style="width:100%;background:#2ECC71;color:#000;border:none;border-radius:8px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+          ✓ Confirmar y activar
+        </button>
+      </div>
+      <div id="act-loading" style="display:none;text-align:center;margin-top:12px;color:#545870;font-size:12px">Verificando con el servidor...</div>
+    </div>
+  </div>
+</div>
+
+<!-- PANTALLA DE RESTAURACIÓN -->
+<div id="restore-screen" style="display:none;position:fixed;inset:0;background:#0A0C0F;z-index:99998;align-items:center;justify-content:center;flex-direction:column">
+  <div style="width:100%;max-width:400px;padding:32px;text-align:center">
+    <div style="font-size:48px;margin-bottom:16px">🔄</div>
+    <div style="font-size:20px;font-weight:800;color:#E4E6F0;margin-bottom:8px">Restaurando datos</div>
+    <div style="font-size:13px;color:#545870;margin-bottom:24px" id="restore-msg">Conectando con el servidor...</div>
+    <div style="background:#111318;border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:16px;margin-bottom:20px;text-align:left">
+      <div id="restore-backup-info" style="color:#545870;font-size:12px">Buscando último backup...</div>
+    </div>
+    <div style="background:#191C24;border-radius:8px;height:6px;overflow:hidden;margin-bottom:12px">
+      <div id="restore-bar" style="background:#F0A030;height:100%;width:0%;transition:width .5s ease;border-radius:8px"></div>
+    </div>
+    <div id="restore-status" style="font-size:11px;color:#545870">Iniciando...</div>
+  </div>
+</div>
+
 <!-- SIDEBAR -->
 <aside class="sidebar">
   <div class="nav-sec">
@@ -1713,6 +1770,29 @@ function pullFromRailwayDesktop(thenPush) {
 
   <!-- Server config card -->
   <div class="card" style="margin-bottom:20px">
+    <div class="card-hd"><div class="card-title">🎨 Personalización</div></div>
+    <div class="card-body">
+      <div class="form-group" style="margin-bottom:14px">
+        <label class="form-label">Nombre de la estancia</label>
+        <input type="text" class="form-input" id="brand-name" placeholder="Ej: Estancia San Pedro">
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">Se mostrará en el encabezado de la app</div>
+      </div>
+      <div class="form-group" style="margin-bottom:14px">
+        <label class="form-label">Logo de la estancia</label>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+          <div id="brand-logo-preview" style="width:56px;height:56px;border-radius:10px;border:1px solid var(--bor);background:var(--sur2);display:flex;align-items:center;justify-content:center;font-size:24px;overflow:hidden">🐄</div>
+          <div>
+            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('brand-logo-input').click()">📁 Seleccionar imagen</button>
+            <button class="btn btn-ghost btn-sm" style="margin-top:4px" onclick="removeLogo()">✕ Quitar logo</button>
+          </div>
+        </div>
+        <input type="file" id="brand-logo-input" accept="image/*" style="display:none" onchange="previewLogo(this)">
+        <div style="font-size:10px;color:var(--muted)">PNG o JPG recomendado. Se sincroniza con la PWA del capataz.</div>
+      </div>
+      <button class="btn btn-primary" onclick="saveBranding()" style="width:100%">💾 Guardar personalización</button>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:20px">
     <div class="card-hd"><div class="card-title">🌐 Servidor API</div></div>
     <div class="card-body">
       <div style="background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.2);border-radius:8px;padding:12px;margin-bottom:16px;font-family:DM Mono,monospace;font-size:11px;color:var(--blue);line-height:1.6">
@@ -1815,7 +1895,7 @@ function pullFromRailwayDesktop(thenPush) {
   <div class="card">
     <div class="card-hd"><div class="card-title">📱 Informacion</div></div>
     <div class="card-body" style="padding:0">
-      <div style="display:flex;justify-content:space-between;padding:10px 18px;border-bottom:1px solid rgba(48,54,61,.4);font-size:13px"><span style="color:var(--muted)">Version</span><span style="font-family:DM Mono,monospace" id="app-version">1.1.3</span></div>
+      <div style="display:flex;justify-content:space-between;padding:10px 18px;border-bottom:1px solid rgba(48,54,61,.4);font-size:13px"><span style="color:var(--muted)">Version</span><span style="font-family:DM Mono,monospace" id="app-version">1.1.2</span></div>
       <div style="display:flex;justify-content:space-between;padding:10px 18px;border-bottom:1px solid rgba(48,54,61,.4);font-size:13px"><span style="color:var(--muted)">Base de datos</span><span style="font-family:DM Mono,monospace;color:var(--green)">SQLite local ✓</span></div>
       <div style="display:flex;justify-content:space-between;padding:10px 18px;border-bottom:1px solid rgba(48,54,61,.4);font-size:13px"><span style="color:var(--muted)">App Android (PWA)</span><span style="font-family:DM Mono,monospace;color:var(--blue)" id="cfg-pwa-url">-</span></div>
       <div style="padding:10px 18px;border-bottom:1px solid rgba(48,54,61,.4)">
@@ -2863,6 +2943,12 @@ function pullFromRailwayDesktop(thenPush) {
       }
 
       localStorage.setItem(DB_KEY, JSON.stringify(db));
+
+      // Aplicar branding si viene en el pull
+      if (d.branding && d.branding.name) {
+        localStorage.setItem('e5m_branding', JSON.stringify(d.branding));
+        if (typeof applyBranding === 'function') applyBranding(d.branding);
+      }
 
       // Re-render todo
       if (typeof renderLotes === 'function') renderLotes();
@@ -4088,6 +4174,12 @@ function savePesaje() {
   renderPesajes();
   renderLotes();
   renderDashboard();
+// Verificar activación y cargar branding al iniciar
+(function(){
+  loadBranding();
+  if (!checkActivation()) return; // Si no está activado, detener aquí
+})();
+
 // Auto-sync on startup if online
 (function(){
   if (!navigator.onLine) return;
@@ -7320,6 +7412,270 @@ var _PING_URL  = 'https://estancia5m-api-production.up.railway.app/ping';
 localStorage.setItem('apiUrl',   _API_URL);
 localStorage.setItem('apiToken', _API_TOKEN);
 
+// ══════════════════════════════════════════════════
+// ACTIVACIÓN Y RESTAURACIÓN
+// ══════════════════════════════════════════════════
+
+function checkActivation() {
+  var token = localStorage.getItem('e5m_api_token');
+  var defaultToken = 'estancia5m-2026-secreto';
+  // Si no hay token o es el default hardcodeado sin datos locales
+  var hasToken = token && token !== defaultToken && token !== '';
+  var hasData  = (function(){
+    try { var db = JSON.parse(localStorage.getItem('estancia5m_v1')||'{}'); return (db.lots||[]).length > 0; } catch(e){ return false; }
+  })();
+
+  if (!hasToken) {
+    // Mostrar pantalla de activación
+    var el = document.getElementById('activation-screen');
+    if (el) { el.style.display = 'flex'; el.style.flexDirection = 'column'; }
+    return false;
+  }
+  if (hasToken && !hasData && navigator.onLine) {
+    // Tiene token pero sin datos — restaurar
+    startRestore();
+    return false;
+  }
+  return true;
+}
+
+var _validatedToken = null;
+var _validatedData  = null;
+
+function validateToken() {
+  var tokenEl = document.getElementById('act-token');
+  var token   = tokenEl ? tokenEl.value.trim() : '';
+  if (!token) return;
+  document.getElementById('act-loading').style.display = 'block';
+  document.getElementById('act-btn').style.display = 'none';
+  document.getElementById('act-error').style.display = 'none';
+  document.getElementById('act-preview').style.display = 'none';
+  document.getElementById('act-verify-ok').style.display = 'none';
+
+  var apiUrl = 'https://estancia5m-api-production.up.railway.app/api';
+  fetch(apiUrl + '/sync-pull', {
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    signal: (function(){ var c = new AbortController(); setTimeout(function(){ c.abort(); }, 8000); return c.signal; })()
+  }).then(function(r) {
+    if (!r.ok) throw new Error('Token inválido o servidor no disponible');
+    return r.json();
+  }).then(function(data) {
+    // Token válido — mostrar preview
+    _validatedToken = token;
+    _validatedData  = data;
+    var lots = (data.lots || []);
+    var animals = lots.reduce(function(s, l){ return s + (l.animal_count || 0); }, 0);
+    var planMap = {starter:'Starter', standard:'Standard', pro:'Pro', enterprise:'Enterprise'};
+    document.getElementById('act-loading').style.display = 'none';
+    document.getElementById('act-preview-name').textContent = (data.branding && data.branding.name) ? data.branding.name : 'Tenant verificado ✓';
+    document.getElementById('act-preview-plan').textContent = lots.length + ' lotes · ' + animals + ' animales';
+    document.getElementById('act-preview-animals').textContent = 'Último backup: ' + (data.timestamp ? data.timestamp.slice(0,10) : '—');
+    document.getElementById('act-preview').style.display = 'block';
+    document.getElementById('act-verify-ok').style.display = 'block';
+  }).catch(function(e) {
+    document.getElementById('act-loading').style.display = 'none';
+    document.getElementById('act-btn').style.display = 'block';
+    document.getElementById('act-error').textContent = e.message || 'No se pudo verificar el token. Verifica tu conexión.';
+    document.getElementById('act-error').style.display = 'block';
+    _validatedToken = null;
+  });
+}
+
+function activateSystem() {
+  if (!_validatedToken || !_validatedData) return;
+  var apiUrl = 'https://estancia5m-api-production.up.railway.app/api';
+  // Guardar token
+  localStorage.setItem('e5m_api_token', _validatedToken);
+  localStorage.setItem('apiToken',      _validatedToken);
+  localStorage.setItem('e5m_api_url',   apiUrl);
+  localStorage.setItem('apiUrl',        apiUrl);
+  // Ocultar pantalla de activación
+  document.getElementById('activation-screen').style.display = 'none';
+  // Restaurar datos desde Railway
+  startRestoreWithData(_validatedData);
+}
+
+function startRestore() {
+  var restoreEl = document.getElementById('restore-screen');
+  if (restoreEl) { restoreEl.style.display = 'flex'; restoreEl.style.flexDirection = 'column'; }
+  setRestoreMsg('Conectando con el servidor...', 0, 'Iniciando restauración...');
+
+  var token  = localStorage.getItem('e5m_api_token');
+  var apiUrl = localStorage.getItem('e5m_api_url') || 'https://estancia5m-api-production.up.railway.app/api';
+
+  // Buscar último backup
+  fetch(apiUrl + '/cloud-backup/list', {
+    headers: { 'Authorization': 'Bearer ' + token }
+  }).then(function(r){ return r.json(); })
+  .then(function(snapshots) {
+    var last = snapshots && snapshots.length ? snapshots[0] : null;
+    var backupEl = document.getElementById('restore-backup-info');
+    if (last && backupEl) {
+      var dt = new Date(last.created_at);
+      backupEl.innerHTML =
+        '<div style="margin-bottom:4px"><span style="color:#E4E6F0;font-weight:700">Último backup encontrado:</span></div>'+
+        '<div>📅 ' + dt.toLocaleDateString('es-BO') + ' ' + dt.toLocaleTimeString('es-BO',{hour:'2-digit',minute:'2-digit'}) + '</div>'+
+        '<div>💾 ' + last.size_kb + ' KB · ' + (last.triggered_by === 'auto-push' ? 'Auto' : 'Manual') + '</div>';
+    } else if (backupEl) {
+      backupEl.textContent = 'Sin backups previos — se cargará la última versión del servidor.';
+    }
+    setRestoreMsg('Descargando datos del servidor...', 30, 'Sincronizando...');
+    return fetch(apiUrl + '/sync-pull', { headers: { 'Authorization': 'Bearer ' + token } });
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){ startRestoreWithData(data); })
+  .catch(function(e){
+    setRestoreMsg('Error al restaurar: ' + e.message, 0, 'Error');
+    setTimeout(function(){ document.getElementById('restore-screen').style.display = 'none'; }, 3000);
+  });
+}
+
+function startRestoreWithData(data) {
+  var restoreEl = document.getElementById('restore-screen');
+  if (restoreEl) { restoreEl.style.display = 'flex'; restoreEl.style.flexDirection = 'column'; }
+  setRestoreMsg('Restaurando lotes y animales...', 50, 'Procesando datos...');
+
+  setTimeout(function() {
+    try {
+      // Reconstruir DB desde datos de Railway
+      var newDb = {
+        lots:      data.lots       || [],
+        products:  data.products   || [],
+        employees: data.employees  || [],
+        treatments:data.treatments || [],
+        sales:     data.sales      || [],
+        purchases: data.purchases  || [],
+        pesajes:   data.pesajes    || [],
+        advances:  data.advances   || [],
+        maintenance: data.maintenance || [],
+        agua:      data.agua       || [],
+        sal:       data.sal        || [],
+        conteo:    data.conteo     || [],
+        partos:    data.partos     || [],
+        alimento:  data.alimento   || [],
+        lluvias:   data.lluvias    || [],
+        diesel:    data.diesel     || [],
+        aceite:    data.aceite     || [],
+        cuentas:   data.cuentas    || [],
+        kardex:    data.kardex     || [],
+        historial_sueldos: data.historial_sueldos || [],
+        health_alerts: data.health_alerts || [],
+        activities: data.field_activities || [],
+        trace_records: [],
+        next_ids: { lot:1000, product:1000, treatment:1000, alert:1000, sale:1000, purchase:1000, employee:1000, activity:1000, trace:1000, pesaje:1000, maint:1000 }
+      };
+      localStorage.setItem('estancia5m_v1', JSON.stringify(newDb));
+      if (data.animals) localStorage.setItem('e5m_animals', JSON.stringify(data.animals));
+      if (data.tasks)   localStorage.setItem('e5m_tasks', JSON.stringify(data.tasks));
+
+      // Guardar branding si existe
+      if (data.branding && data.branding.name) {
+        localStorage.setItem('e5m_branding', JSON.stringify(data.branding));
+      }
+
+      setRestoreMsg('¡Datos restaurados exitosamente!', 100, 'Listo — iniciando app...');
+      setTimeout(function(){
+        document.getElementById('restore-screen').style.display = 'none';
+        location.reload();
+      }, 1500);
+    } catch(e) {
+      setRestoreMsg('Error al procesar datos: ' + e.message, 0, 'Error');
+    }
+  }, 800);
+}
+
+function setRestoreMsg(msg, pct, status) {
+  var msgEl    = document.getElementById('restore-msg');
+  var barEl    = document.getElementById('restore-bar');
+  var statusEl = document.getElementById('restore-status');
+  if (msgEl)    msgEl.textContent    = msg;
+  if (barEl)    barEl.style.width    = pct + '%';
+  if (statusEl) statusEl.textContent = status;
+}
+
+// ══════════════════════════════════════════════════
+// BRANDING (nombre y logo por tenant)
+// ══════════════════════════════════════════════════
+
+function loadBranding() {
+  try {
+    var b = JSON.parse(localStorage.getItem('e5m_branding') || '{}');
+    if (b.name) {
+      var nameEl = document.getElementById('brand-name');
+      if (nameEl) nameEl.value = b.name;
+      // Actualizar header
+      applyBranding(b);
+    }
+    if (b.logo) {
+      var preview = document.getElementById('brand-logo-preview');
+      if (preview) preview.innerHTML = '<img src="'+b.logo+'" style="width:100%;height:100%;object-fit:cover;border-radius:9px">';
+    }
+  } catch(e) {}
+}
+
+function applyBranding(b) {
+  if (!b) return;
+  // Actualizar nombre en el header si existe el elemento
+  var headerName = document.getElementById('header-estancia-name');
+  if (headerName && b.name) headerName.textContent = b.name;
+  // Actualizar logo en el header si existe
+  var headerLogo = document.getElementById('header-logo-img');
+  if (headerLogo) {
+    if (b.logo) { headerLogo.src = b.logo; headerLogo.style.display = 'block'; }
+    else        { headerLogo.style.display = 'none'; }
+  }
+}
+
+var _newLogoBase64 = null;
+
+function previewLogo(input) {
+  if (!input.files || !input.files[0]) return;
+  var file = input.files[0];
+  if (file.size > 500000) { toast('El logo debe ser menor a 500KB', 'error'); return; }
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    _newLogoBase64 = e.target.result;
+    var preview = document.getElementById('brand-logo-preview');
+    if (preview) preview.innerHTML = '<img src="'+_newLogoBase64+'" style="width:100%;height:100%;object-fit:cover;border-radius:9px">';
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeLogo() {
+  _newLogoBase64 = null;
+  var preview = document.getElementById('brand-logo-preview');
+  if (preview) preview.innerHTML = '🐄';
+  var input = document.getElementById('brand-logo-input');
+  if (input) input.value = '';
+}
+
+function saveBranding() {
+  var nameEl = document.getElementById('brand-name');
+  var name   = nameEl ? nameEl.value.trim() : '';
+  var current = {};
+  try { current = JSON.parse(localStorage.getItem('e5m_branding') || '{}'); } catch(e){}
+
+  var branding = {
+    name:  name || current.name || '',
+    logo:  _newLogoBase64 !== null ? _newLogoBase64 : (current.logo || null),
+    updated_at: new Date().toISOString()
+  };
+
+  localStorage.setItem('e5m_branding', JSON.stringify(branding));
+  applyBranding(branding);
+
+  // Sincronizar con Railway
+  var token  = localStorage.getItem('e5m_api_token') || 'estancia5m-2026-secreto';
+  var apiUrl = localStorage.getItem('e5m_api_url')   || 'https://estancia5m-api-production.up.railway.app/api';
+  fetch(apiUrl + '/tenant/branding', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: JSON.stringify(branding)
+  }).then(function(r){ return r.json(); })
+  .then(function(){ toast('Personalización guardada y sincronizada ✓', 'success'); })
+  .catch(function(){ toast('Guardado localmente — se sincronizará al próximo pull', 'success'); });
+}
+
 function saveServerConfig() {
   var urlEl    = document.getElementById('cfg-url');
   var tokenEl  = document.getElementById('cfg-token');
@@ -7457,13 +7813,13 @@ function guardarGhToken() {
   var token = ((document.getElementById('cfg-gh-token')||{}).value||'').trim();
   if(!token){toast('Ingresa el token de GitHub','error');return;}
   if(window.estancia && window.estancia.settings) {
-    window.estancia.settings.set('github_token', token).then(function(){
+    window.estancia.settings.set('gh_token', token).then(function(){
       toast('Token guardado — la app buscará actualizaciones al reiniciar','success');
       // Notificar a main process para reconfigurar el updater
       if(window.estancia.setGhToken) window.estancia.setGhToken(token);
     });
   } else {
-    localStorage.setItem('github_token', token);
+    localStorage.setItem('gh_token', token);
     toast('Token guardado','success');
   }
 }
@@ -7498,13 +7854,13 @@ function renderConfig() {
   if (pwaEl)   pwaEl.textContent   = 'estancia5m-api-production.up.railway.app';
   // Versión dinámica desde Electron
   var versionEl = document.getElementById('app-version');
-  if (versionEl && window.estancia && window.estancia.app && window.estancia.app.version) {
-    window.estancia.app.version().then(function(v){ versionEl.textContent = v; });
+  if (versionEl && window.estancia && window.estancia.version) {
+    window.estancia.version().then(function(v){ versionEl.textContent = v; });
   }
   // Cargar GitHub token guardado
   var ghTokenEl = document.getElementById('cfg-gh-token');
   if (ghTokenEl && window.estancia && window.estancia.settings) {
-    window.estancia.settings.get('github_token').then(function(t){ if(t) ghTokenEl.value = t; });
+    window.estancia.settings.get('gh_token').then(function(t){ if(t) ghTokenEl.value = t; });
   }
   updateConfigStatus(_API_URL, _API_TOKEN);
   var lbl=document.getElementById('cfg-last-backup');
