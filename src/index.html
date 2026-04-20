@@ -2845,7 +2845,7 @@ function pullFromRailwayDesktop(thenPush) {
   if (!navigator.onLine) return;
   var apiUrl = localStorage.getItem('e5m_api_url') || 'https://estancia5m-api-production.up.railway.app/api';
   var token  = localStorage.getItem('e5m_api_token') || 'estancia5m-2026-secreto';
-  var headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+  var headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token, 'X-App-Version': _APP_VERSION, 'X-App-Type': 'desktop' };
 
   fetch(apiUrl + '/sync-pull', { headers: headers, signal: (function(){ var c=new AbortController(); setTimeout(function(){c.abort();},8000); return c.signal; })() })
     .then(function(r){ return r.json(); })
@@ -4185,7 +4185,7 @@ function savePesaje() {
   if (!navigator.onLine) return;
   var apiUrl = localStorage.getItem('e5m_api_url') || 'https://estancia5m-api-production.up.railway.app/api';
   var token  = localStorage.getItem('e5m_api_token') || 'estancia5m-2026-secreto';
-  var headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+  var headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token, 'X-App-Version': _APP_VERSION, 'X-App-Type': 'desktop' };
   // Pull tasks from Railway
   fetch(apiUrl + '/tasks', { headers: headers })
     .then(function(r){ return r.json(); })
@@ -7408,6 +7408,11 @@ function fmtDT(str) {
 }
 var _API_TOKEN = 'estancia5m-2026-secreto';
 var _PING_URL  = 'https://estancia5m-api-production.up.railway.app/ping';
+var _APP_VERSION = '1.1.25'; // Se actualiza dinámicamente al inicio
+// Leer versión real desde Electron al cargar
+if (window.estancia && window.estancia.app && window.estancia.app.version) {
+  window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
+}
 
 localStorage.setItem('apiUrl',   _API_URL);
 localStorage.setItem('apiToken', _API_TOKEN);
