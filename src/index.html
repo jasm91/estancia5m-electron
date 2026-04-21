@@ -3014,7 +3014,7 @@ function pullFromRailwayDesktop(thenPush) {
       db.lots.forEach(function(lt) {
         var anims = _syncAnim[lt.code];
         if (anims && anims.length > 0) {
-          lt.animal_count = Math.max(lt.animal_count || 0, anims.length);
+          lt.animal_count = anims.length;
           var ws = anims.map(function(a){ return a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length-1].peso : 0; }).filter(function(w){ return w > 0; });
           if (ws.length) lt.avg_weight = Math.round(ws.reduce(function(s,w){return s+w;},0)/ws.length*10)/10;
         }
@@ -3256,7 +3256,7 @@ function ensureDB() {
   db.lots.forEach(function(lot) {
     var animals = animalsDB[lot.code];
     if (animals && animals.length > 0) {
-      lot.animal_count = Math.max(lot.animal_count || 0, animals.length);
+      lot.animal_count = animals.length;
       // Recalcular avg_weight desde el ultimo pesaje de cada animal
       var ws = animals.map(function(a){ return a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length-1].peso : 0; }).filter(function(w){ return w > 0; });
       if (ws.length) lot.avg_weight = Math.round(ws.reduce(function(s,w){return s+w;},0)/ws.length*10)/10;
@@ -3515,7 +3515,7 @@ function renderLotes() {
   db.lots.forEach(function(lt) {
     var anims = _animDB[lt.code];
     if (anims && anims.length > 0) {
-      lt.animal_count = Math.max(lt.animal_count || 0, anims.length);
+      lt.animal_count = anims.length;
       var ws = anims.map(function(a){ return a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length-1].peso : 0; }).filter(function(w){ return w > 0; });
       if (ws.length) lt.avg_weight = Math.round(ws.reduce(function(s,w){return s+w;},0)/ws.length*10)/10;
     }
@@ -7343,7 +7343,7 @@ function openModalCompraGanado() {
   var _cgAnimDB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
   (db.lots || []).forEach(function(l) {
     if (l.status === 'activo' || l.status === 'active' || !l.status) {
-      var realCount = Math.max(l.animal_count || 0, (_cgAnimDB[l.code] || []).length);
+      var tracked = (_cgAnimDB[l.code] || []).length; var realCount = tracked > 0 ? tracked : (l.animal_count || 0);
       sel.innerHTML += '<option value="' + l.code + '">' + l.code + ' - ' + l.category + ' (' + realCount + ' cab.)</option>';
     }
   });
