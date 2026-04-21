@@ -534,6 +534,7 @@ function pullFromRailwayDesktop(thenPush) {
     <button class="nav-btn" onclick="showPage('costos',this)"><span class="nav-icon">💰</span>Costos</button>
     <button class="nav-btn" onclick="showPage('trazabilidad',this)"><span class="nav-icon">🔖</span>Trazabilidad</button>
     <button class="nav-btn" onclick="showPage('reportes',this)"><span class="nav-icon">📊</span>Reportes Gerenciales</button>
+    <button class="nav-btn" onclick="showPage('reporte-crea',this)"><span class="nav-icon">🏆</span>Reporte CREA</button>
     <button class="nav-btn" onclick="showPage('params-reporte',this)"><span class="nav-icon">🎯</span>Params. Reporte</button>
   </div>
   <div class="nav-sec">
@@ -1754,6 +1755,34 @@ function pullFromRailwayDesktop(thenPush) {
     </div>
   </div>
 
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-hd"><div class="card-title">🏆 Parámetros Reporte CREA</div></div>
+    <div class="card-body">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Hectáreas ganaderas</label>
+          <input class="form-input" type="number" id="rp-hectareas" placeholder="400">
+          <div style="font-size:10px;color:var(--muted);margin-top:3px">Superficie destinada a ganadería (sin monte ni improductiva)</div></div>
+        <div class="form-group"><label class="form-label">Peso Equivalente Vaca - UA (kg)</label>
+          <input class="form-input" type="number" id="rp-peso-ua" placeholder="400">
+          <div style="font-size:10px;color:var(--muted);margin-top:3px">Estándar: 400 kg para calcular Unidad Animal</div></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Gastos administración / mes (Bs)</label>
+          <input class="form-input" type="number" id="rp-gasto-admin" placeholder="3500">
+          <div style="font-size:10px;color:var(--muted);margin-top:3px">Honorarios, gestión, viáticos administrativos</div></div>
+        <div class="form-group"><label class="form-label">Gastos estructura / mes (Bs)</label>
+          <input class="form-input" type="number" id="rp-gasto-estructura" placeholder="2000">
+          <div style="font-size:10px;color:var(--muted);margin-top:3px">Amortizaciones, seguros, impuestos</div></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Tasa mortandad esperada (%)</label>
+          <input class="form-input" type="number" step="0.1" id="rp-mortandad" placeholder="2.0"></div>
+        <div class="form-group"><label class="form-label">Precio venta referencia (Bs/kg)</label>
+          <input class="form-input" type="number" step="0.1" id="rp-precio-venta-ref" placeholder="25"></div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <!-- REPORTES GERENCIALES -->
@@ -1767,6 +1796,22 @@ function pullFromRailwayDesktop(thenPush) {
   <div id="reporte-preview-container" style="background:white;border-radius:12px;overflow:hidden;border:1px solid var(--bor)">
     <div id="reporte-preview-inner" style="padding:0"></div>
   </div>
+</div>
+
+<!-- REPORTE CREA -->
+<div id="page-reporte-crea" class="page">
+  <div class="ph">
+    <div><div class="pt">🏆 Reporte CREA</div><div class="ps">Indicadores productivos y económicos · Metodología AACREA</div></div>
+    <div style="display:flex;gap:8px">
+      <select class="form-select" id="crea-periodo" style="width:180px;padding:6px 10px;font-size:12px" onchange="renderReporteCREA()">
+        <option value="year">Último año</option>
+        <option value="semester">Último semestre</option>
+        <option value="quarter">Último trimestre</option>
+      </select>
+      <button class="btn btn-primary" onclick="exportCREAExcel()">⬇ Excel</button>
+    </div>
+  </div>
+  <div id="crea-content"></div>
 </div>
 
 <div id="page-config" class="page">
@@ -3041,40 +3086,40 @@ function pullFromRailwayDesktop(thenPush) {
         }
       });
 
-      // Tasks merge
-      if (remote.tasks && remote.tasks.length) {
+      // Products: sincronizar stock_qty desde Railway (bot/PWA pueden descontar)
+      if (remote.products && remote.products.length) {
+        remote.products.forEach(function(rp) {
+          var local = db.products.find(function(p) { return p.id == rp.id || p.name === rp.name; });
+          if (local) {
+            // Railway gana en stock si fue actualizado más recientemente
+            var remoteStockAt = rp.stock_updated_at || '';
+            var localStockAt = local.stock_updated_at || '';
+            if (remoteStockAt >= localStockAt) {
+              local.stock_qty = rp.stock_qty;
+              local.stock_updated_at = rp.stock_updated_at;
+            }
+          }
+        });
+      }
+
+      // Tasks: Railway gana, solo preservar tareas locales creadas offline
+      if (remote.tasks) {
         var localTasks = JSON.parse(localStorage.getItem('e5m_tasks') || '[]');
-        // Railway gana en status y comment (campo puede haberlos cambiado)
-        var mergedTasks = remote.tasks.map(function(rt) {
-          var local = localTasks.find(function(l){ return l.id === rt.id; });
-          if (!local) return rt;
-          var remoteUpdated = rt.updated_at || '';
-          var localUpdated = local.updated_at || '';
-          var remoteWins = remoteUpdated >= localUpdated;
-          return {
-            // Metadata del local (desktop es dueno de metadata)
-            id: rt.id,
-            title:    local.title    || rt.title,
-            desc:     local.desc     || rt.desc,
-            assignee: local.assignee || rt.assignee,
-            priority: local.priority || rt.priority,
-            due:      local.due      || rt.due,
-            lot:      local.lot      || rt.lot,
-            created_at: rt.created_at || local.created_at,
-            // Status y comment: gana el mas reciente
-            status:       remoteWins ? rt.status       : local.status,
-            completed_at: remoteWins ? rt.completed_at : local.completed_at,
-            updated_at:   remoteWins ? rt.updated_at   : local.updated_at,
-            comment:      remoteWins ? (rt.comment    || local.comment)    : (local.comment    || rt.comment),
-            comment_by:   remoteWins ? (rt.comment_by || local.comment_by) : (local.comment_by || rt.comment_by),
-            comment_at:   remoteWins ? (rt.comment_at || local.comment_at) : (local.comment_at || rt.comment_at),
-          };
+        var remoteTasks = remote.tasks || [];
+        var remoteIds = {};
+        remoteTasks.forEach(function(t) { remoteIds[t.id] = true; });
+        var deleted = getDeletedIds();
+        // Solo preservar tareas locales que no están en Railway Y no fueron borradas
+        var localOnly = localTasks.filter(function(t) {
+          if (remoteIds[t.id]) return false;
+          if (deleted[String(t.id)]) return false;
+          // Solo si fue creada recientemente (offline)
+          var age = Date.now() - (t.created_at ? new Date(t.created_at).getTime() : 0);
+          return age < 86400000; // menos de 24h
         });
-        // Agregar tareas locales que no estan en Railway todavia
-        localTasks.forEach(function(l){
-          if (!remote.tasks.find(function(r){ return r.id === l.id; })) mergedTasks.push(l);
-        });
-        localStorage.setItem('e5m_tasks', JSON.stringify(mergedTasks));
+        // Merge: Railway + locales offline, excluyendo borrados
+        var merged = remoteTasks.filter(function(t) { return !deleted[String(t.id)]; }).concat(localOnly);
+        localStorage.setItem('e5m_tasks', JSON.stringify(merged));
         if (typeof renderTareas === 'function') renderTareas();
       }
 
@@ -3370,6 +3415,7 @@ function renderPage(name) {
     tareas: renderTareas,
     mantenimiento: renderMantenimiento,
     reportes: renderReportesGerenciales,
+    'reporte-crea': renderReporteCREA,
     'params-reporte': renderParamsReporte,
     lluvias: renderLluviasDesktop,
     contabilidad: renderContabilidad,
@@ -7611,17 +7657,6 @@ function renderActividades() {
 // ══════════════════════════════════════════════════
 
 function renderTareas() {
-  // Seed if empty
-  if (!getTaskDB().length) {
-    setTaskDB([
-      {id:'t1', title:'Curacion semanal Lote A-07', desc:'Aplicar Ivermectina a los 68 novillos del Potrero Norte. Verificar stock antes.', assignee:'Juan Rios', priority:'alta', due: new Date(Date.now()+2*86400000).toISOString().split('T')[0], lot:'A-07', status:'pendiente', created_at: new Date().toISOString()},
-      {id:'t2', title:'Pesaje Lote A-07', desc:'Pesaje mensual pendiente. Coordinar con la balanza electronica.', assignee:'Juan Rios', priority:'alta', due: new Date(Date.now()-1*86400000).toISOString().split('T')[0], lot:'A-07', status:'pendiente', created_at: new Date().toISOString()},
-      {id:'t3', title:'Compra de Ivermectina', desc:'Stock critico: quedan 2ml. Comprar al menos 10L en Vetsuper.', assignee:'Pedro Mamani', priority:'alta', due: new Date(Date.now()+1*86400000).toISOString().split('T')[0], lot:'', status:'en_progreso', created_at: new Date().toISOString()},
-      {id:'t4', title:'Vacunacion Aftosa Lote B-12', desc:'47 animales. Coordinar con Dr. Vargas antes del 30/03.', assignee:'Juan Rios', priority:'media', due:'2026-03-30', lot:'B-12', status:'en_progreso', created_at: new Date().toISOString()},
-      {id:'t5', title:'Revision de potreros', desc:'Inspeccion de alambradas y bebederos en Potrero Sur y Central.', assignee:'Carlos Quispe', priority:'baja', due: new Date(Date.now()+5*86400000).toISOString().split('T')[0], lot:'', status:'revision', created_at: new Date().toISOString()},
-      {id:'t6', title:'Informe mensual de produccion', desc:'Resumen del mes para el dueno con datos de pesaje y tratamientos.', assignee:'Juan Rios', priority:'media', due:'2026-03-01', lot:'', status:'completada', created_at: new Date().toISOString()},
-    ]);
-  }
   renderTaskList();
 
   // Wire up filters
@@ -7769,6 +7804,7 @@ function renderTaskList() {
     delBtn.style.color = 'var(--muted)';
     delBtn.onclick = (function(id){ return function(){
       if (!confirm('Eliminar esta tarea?')) return;
+      trackDeletion(id);
       var remaining = getTaskDB().filter(function(t){ return t.id !== id; });
       setTaskDB(remaining);
       renderTaskList();
@@ -8217,6 +8253,7 @@ function saveServerConfig() {
         localStorage.removeItem('estancia5m_v1');
         localStorage.removeItem('e5m_animals');
         localStorage.removeItem('e5m_tasks');
+        localStorage.removeItem('e5m_deleted_ids');
         toast('Cambiando a nuevo tenant...', 'success');
         setTimeout(function(){ location.reload(); }, 1000);
       };
@@ -8230,6 +8267,7 @@ function saveServerConfig() {
       localStorage.removeItem('estancia5m_v1');
       localStorage.removeItem('e5m_animals');
       localStorage.removeItem('e5m_tasks');
+      localStorage.removeItem('e5m_deleted_ids');
       setTimeout(function(){ location.reload(); }, 500);
     });
   } else {
@@ -11100,6 +11138,12 @@ function renderParamsReporte() {
   sv('rp-fecha-inicio', rp.fecha_inicio);
   sv('rp-fecha-fin', rp.fecha_fin);
   sv('rp-notas', rp.notas);
+  sv('rp-hectareas', rp.hectareas);
+  sv('rp-peso-ua', rp.peso_ua);
+  sv('rp-gasto-admin', rp.gasto_admin);
+  sv('rp-gasto-estructura', rp.gasto_estructura);
+  sv('rp-mortandad', rp.mortandad);
+  sv('rp-precio-venta-ref', rp.precio_venta_ref);
   var sel=document.getElementById('rp-moneda'); if(sel) sel.value=rp.moneda||'BOB';
   var tbody=document.getElementById('rp-categorias-tbody');
   if(tbody) {
@@ -11129,6 +11173,12 @@ function saveReportParams() {
   rp.fecha_inicio      = gv('rp-fecha-inicio','');
   rp.fecha_fin         = gv('rp-fecha-fin','');
   rp.notas             = gv('rp-notas','');
+  rp.hectareas         = parseFloat(gv('rp-hectareas','0'))||0;
+  rp.peso_ua           = parseFloat(gv('rp-peso-ua','400'))||400;
+  rp.gasto_admin       = parseFloat(gv('rp-gasto-admin','0'))||0;
+  rp.gasto_estructura  = parseFloat(gv('rp-gasto-estructura','0'))||0;
+  rp.mortandad         = parseFloat(gv('rp-mortandad','2'))||2;
+  rp.precio_venta_ref  = parseFloat(gv('rp-precio-venta-ref','25'))||25;
   var cats=rp.categorias||RP_DEFAULTS.categorias;
   cats.forEach(function(c,i){
     var po=document.getElementById('rp-cat-peso-'+i);
@@ -11158,6 +11208,190 @@ function calcLotGmd(lot, animalesDB) {
     }
   });
   return gmds.length?Math.round(gmds.reduce(function(s,g){return s+g;},0)/gmds.length*1000)/1000:(lot.gmd||0);
+}
+
+function renderReporteCREA() {
+  var el = document.getElementById('crea-content'); if (!el) return;
+  var rp = getRp();
+  var ha = rp.hectareas || 0;
+  var pesoUA = rp.peso_ua || 400;
+  var gastoAdmin = (rp.gasto_admin || 0) * 12;
+  var gastoEstructura = (rp.gasto_estructura || 0) * 12;
+  var precioRef = rp.precio_venta_ref || 25;
+
+  if (!ha) {
+    el.innerHTML = '<div style="text-align:center;padding:60px;color:var(--muted)"><div style="font-size:48px;margin-bottom:16px">🏆</div><div style="font-size:14px;font-weight:600;margin-bottom:8px">Configurá las hectáreas ganaderas</div><div style="font-size:12px">Andá a <strong>Params. Reporte → Parámetros Reporte CREA</strong> e ingresá las hectáreas y demás datos.</div></div>';
+    return;
+  }
+
+  // Periodo
+  var periodo = (document.getElementById('crea-periodo') || {}).value || 'year';
+  var now = new Date(); var desde = new Date();
+  if (periodo === 'year') desde.setFullYear(desde.getFullYear() - 1);
+  else if (periodo === 'semester') desde.setMonth(desde.getMonth() - 6);
+  else desde.setMonth(desde.getMonth() - 3);
+  var desdeStr = desde.toISOString().slice(0, 10);
+  var hastaStr = now.toISOString().slice(0, 10);
+  var meses = Math.max(1, Math.round((now - desde) / (30.44 * 86400000)));
+
+  // Datos base
+  var activeLots = db.lots.filter(function(l) { return !l.status || l.status === 'activo' || l.status === 'active'; });
+  var totalCab = activeLots.reduce(function(s, l) { return s + (l.animal_count || 0); }, 0);
+  var animalesDB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
+
+  // Existencia media (promedio simple)
+  var existMedia = totalCab;
+
+  // Kg vendidos en periodo
+  var ventasPeriodo = (db.sales || []).filter(function(v) { return (v.date || '') >= desdeStr; });
+  var kgVendidos = ventasPeriodo.reduce(function(s, v) { return s + (v.total_kg || 0); }, 0);
+  var ingresoVentas = ventasPeriodo.reduce(function(s, v) { return s + (v.total || 0); }, 0);
+
+  // Gastos directos en periodo
+  var gastSanidad = (db.treatments || []).filter(function(t) { return (t.applied_at || '') >= desdeStr; }).reduce(function(s, t) { return s + (t.cost || 0); }, 0);
+  var gastPersonal = (db.employees || []).reduce(function(s, e) { return s + (e.salary || 0); }, 0) * meses;
+  var gastAdelantos = (db.advances || []).filter(function(a) { return (a.date || '') >= desdeStr; }).reduce(function(s, a) { return s + (a.amount || 0); }, 0);
+  var gastDiesel = (db.diesel || []).filter(function(d) { return (d.fecha || '') >= desdeStr; }).reduce(function(s, d) { return s + (d.total || d.litros * (d.precio || 0) || 0); }, 0);
+  var gastMaint = (db.maintenance || []).filter(function(m) { return (m.date || '') >= desdeStr; }).reduce(function(s, m) { return s + (m.cost || 0); }, 0);
+  var gastCompras = (db.purchases || []).filter(function(p) { return (p.date || '') >= desdeStr; }).reduce(function(s, p) { return s + (p.total || 0); }, 0);
+  var gastAlimento = (db.sal || []).filter(function(r) { return (r.fecha || '') >= desdeStr; }).reduce(function(s, r) { return s + (r.costo || 0); }, 0) + (db.alimento || []).filter(function(r) { return (r.fecha || '') >= desdeStr; }).reduce(function(s, r) { return s + (r.costo || 0); }, 0);
+  var gastDirectos = gastSanidad + gastPersonal + gastAdelantos + gastDiesel + gastMaint + gastCompras + gastAlimento;
+  var gastTotales = gastDirectos + gastoAdmin + gastoEstructura;
+
+  // INDICADORES PRODUCTIVOS
+  var prodCarne = ha > 0 ? Math.round(kgVendidos / ha * 10) / 10 : 0;
+  var cargaAnimal = ha > 0 ? Math.round(totalCab * (activeLots.length ? activeLots.reduce(function(s, l) { return s + (l.avg_weight || 350) * (l.animal_count || 0); }, 0) / totalCab : 350) / pesoUA / ha * 100) / 100 : 0;
+
+  // GDPV global
+  var allGmds = [];
+  activeLots.forEach(function(lot) {
+    var anims = animalesDB[lot.code] || [];
+    anims.forEach(function(a) {
+      if (a.pesajes && a.pesajes.length >= 2) {
+        var p0 = a.pesajes[0]; var p1 = a.pesajes[a.pesajes.length - 1];
+        var dias = Math.round((new Date(p1.fecha) - new Date(p0.fecha)) / 86400000);
+        if (dias > 0) allGmds.push((p1.peso - p0.peso) / dias);
+      }
+    });
+  });
+  var gdpv = allGmds.length ? Math.round(allGmds.reduce(function(s, g) { return s + g; }, 0) / allGmds.length * 1000) / 1000 : 0;
+  var eficStock = existMedia > 0 ? Math.round(kgVendidos / existMedia * 1000) / 10 : 0;
+  var prodCab = existMedia > 0 ? Math.round(kgVendidos / existMedia * 10) / 10 : 0;
+  var tasaExtraccion = existMedia > 0 ? Math.round(ventasPeriodo.reduce(function(s, v) { return s + (v.animal_count || 0); }, 0) / existMedia * 1000) / 10 : 0;
+
+  // INDICADORES ECONÓMICOS
+  var costoKg = kgVendidos > 0 ? Math.round(gastTotales / kgVendidos * 100) / 100 : 0;
+  var margenBruto = ha > 0 ? Math.round((ingresoVentas - gastDirectos) / ha * 100) / 100 : 0;
+  var resultOp = ha > 0 ? Math.round((ingresoVentas - gastTotales) / ha * 100) / 100 : 0;
+  var gastoCabMes = existMedia > 0 && meses > 0 ? Math.round(gastDirectos / existMedia / meses * 100) / 100 : 0;
+  var roi = gastTotales > 0 ? Math.round((ingresoVentas - gastTotales) / gastTotales * 1000) / 10 : 0;
+  var ingresoHa = ha > 0 ? Math.round(ingresoVentas / ha * 100) / 100 : 0;
+  var costoSanCab = existMedia > 0 ? Math.round(gastSanidad / existMedia * 100) / 100 : 0;
+
+  function kpi(label, value, unit, formula, color, trend) {
+    return '<div class="card" style="padding:14px 16px;position:relative;border-left:3px solid ' + (color || 'var(--amber)') + '"><div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px">' + label + '</div><div style="font-size:22px;font-weight:800;font-family:DM Mono,monospace">' + value + '</div><div style="font-size:11px;color:var(--muted);margin-top:3px">' + unit + '</div><div style="font-size:9px;color:var(--muted);margin-top:4px;font-family:DM Mono,monospace;opacity:.6">' + formula + '</div>' + (trend ? '<div style="position:absolute;top:14px;right:14px;font-size:11px;font-weight:700;color:' + (trend > 0 ? 'var(--green)' : 'var(--red)') + '">' + (trend > 0 ? '▲' : '▼') + ' ' + Math.abs(trend) + '%</div>' : '') + '</div>';
+  }
+
+  var html = '<div style="margin-bottom:10px;font-size:11px;color:var(--muted)">Periodo: <strong>' + desdeStr + '</strong> al <strong>' + hastaStr + '</strong> · ' + ha + ' hectáreas · ' + totalCab + ' cabezas</div>';
+
+  // PRODUCTIVOS
+  html += '<div style="font-size:14px;font-weight:700;color:var(--amber2);margin:16px 0 10px;border-bottom:1px solid var(--bor);padding-bottom:6px">🐄 Indicadores Productivos</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:16px">';
+  html += kpi('Producción de Carne', prodCarne, 'kg / ha / año', 'kg vendidos ÷ hectáreas', 'var(--green)');
+  html += kpi('Carga Animal', cargaAnimal, 'UA / ha', 'existencia (UA) ÷ hectáreas', 'var(--amber)');
+  html += kpi('GDPV', gdpv, 'kg / cab / día', 'ganancia peso ÷ días', 'var(--green)');
+  html += kpi('Eficiencia de Stock', eficStock, '%', 'producción ÷ exist. media × 100', 'var(--blue)');
+  html += kpi('Producción por Cabeza', prodCab, 'kg / cab / año', 'producción total ÷ exist. media', 'var(--amber)');
+  html += kpi('Tasa de Extracción', tasaExtraccion, '%', 'cab vendidas ÷ exist. media × 100', 'var(--blue)');
+  // Mortandad (placeholder - se puede calcular cuando se registren muertes)
+  var mortandad = rp.mortandad || 0;
+  html += kpi('Índice Mortandad', mortandad, '%', 'muertes ÷ exist. media × 100', mortandad > 3 ? 'var(--red)' : 'var(--green)');
+  html += '</div>';
+
+  // ECONÓMICOS
+  html += '<div style="font-size:14px;font-weight:700;color:var(--amber2);margin:16px 0 10px;border-bottom:1px solid var(--bor);padding-bottom:6px">💰 Indicadores Económicos</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:16px">';
+  html += '<div class="card" style="padding:16px;grid-column:span 2;border-left:3px solid var(--amber);position:relative"><div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px">Costo por Kg Vivo</div><div style="font-size:32px;font-weight:800;font-family:DM Mono,monospace">Bs. ' + costoKg + '</div><div style="font-size:11px;color:var(--muted)">Bs / kg producido — El indicador más consultado</div><div style="font-size:9px;color:var(--muted);margin-top:4px;font-family:DM Mono,monospace;opacity:.6">gastos totales ÷ producción total (kg)</div></div>';
+  html += kpi('Margen Bruto', 'Bs. ' + margenBruto.toLocaleString(), 'Bs / ha / año', 'ingreso neto − gastos directos', 'var(--green)');
+  html += kpi('Resultado Operativo', 'Bs. ' + resultOp.toLocaleString(), 'Bs / ha / año', 'margen bruto − admin − estructura', resultOp >= 0 ? 'var(--green)' : 'var(--red)');
+  html += kpi('Gasto por Cab/Mes', 'Bs. ' + gastoCabMes, 'Bs / cab / mes', 'gastos directos ÷ exist. media ÷ meses', 'var(--amber)');
+  html += kpi('ROI Ganadero', roi + '%', '', '(ingresos − gastos) ÷ gastos × 100', roi >= 0 ? 'var(--green)' : 'var(--red)');
+  html += kpi('Ingreso por Ha', 'Bs. ' + ingresoHa.toLocaleString(), 'Bs / ha / año', 'ingresos ventas ÷ hectáreas', 'var(--blue)');
+  html += kpi('Costo Sanidad / Cab', 'Bs. ' + costoSanCab, 'Bs / cab / año', 'gastos sanidad ÷ exist. media', 'var(--amber)');
+  html += '</div>';
+
+  // DETALLE POR LOTE
+  html += '<div style="font-size:14px;font-weight:700;color:var(--amber2);margin:16px 0 10px;border-bottom:1px solid var(--bor);padding-bottom:6px">📋 Detalle por Lote</div>';
+  html += '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Lote</th><th>Categoría</th><th>Cabezas</th><th>Peso Prom.</th><th>GDPV</th><th>Prod. kg/ha</th><th>Estado</th></tr></thead><tbody>';
+  activeLots.forEach(function(lot) {
+    var lotGmd = calcLotGmd(lot, animalesDB);
+    var lotProdHa = ha > 0 ? Math.round((lot.avg_weight || 0) * (lot.animal_count || 0) / ha * 10) / 10 : 0;
+    var estado = lotGmd >= 0.65 ? '<span style="color:var(--green)">✓ Óptimo</span>' : lotGmd >= 0.45 ? '<span style="color:var(--amber)">⚠ Revisar</span>' : '<span style="color:var(--red)">✕ Bajo</span>';
+    html += '<tr><td><span style="font-family:DM Mono,monospace;color:var(--amber2);font-weight:700">' + lot.code + '</span></td><td>' + (lot.category || '') + '</td><td style="font-family:DM Mono;font-weight:600">' + (lot.animal_count || 0) + '</td><td style="font-family:DM Mono">' + (lot.avg_weight || 0) + ' kg</td><td style="font-family:DM Mono;color:' + (lotGmd >= 0.65 ? 'var(--green)' : lotGmd >= 0.45 ? 'var(--amber)' : 'var(--red)') + '">' + lotGmd + ' kg/d</td><td style="font-family:DM Mono">' + lotProdHa + '</td><td>' + estado + '</td></tr>';
+  });
+  html += '</tbody></table></div>';
+
+  // COMPOSICIÓN DE GASTOS
+  html += '<div style="font-size:14px;font-weight:700;color:var(--amber2);margin:20px 0 10px;border-bottom:1px solid var(--bor);padding-bottom:6px">🧮 Composición de Gastos</div>';
+  var gastos = [
+    { rubro: '🏥 Sanidad', total: gastSanidad },
+    { rubro: '🍽️ Alimentación', total: gastAlimento },
+    { rubro: '👷 Personal', total: gastPersonal + gastAdelantos },
+    { rubro: '⛽ Combustible', total: gastDiesel },
+    { rubro: '🔧 Mantenimiento', total: gastMaint },
+    { rubro: '🛒 Compras insumos', total: gastCompras },
+    { rubro: '🏢 Administración', total: gastoAdmin },
+    { rubro: '🏗️ Estructura', total: gastoEstructura },
+  ];
+  html += '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Rubro</th><th>Total (Bs)</th><th>% Total</th><th>Por Ha</th><th>Por Cab</th></tr></thead><tbody>';
+  gastos.forEach(function(g) {
+    var pct = gastTotales > 0 ? Math.round(g.total / gastTotales * 1000) / 10 : 0;
+    html += '<tr><td>' + g.rubro + '</td><td style="font-family:DM Mono;font-weight:600">Bs. ' + Math.round(g.total).toLocaleString() + '</td><td style="font-family:DM Mono">' + pct + '%</td><td style="font-family:DM Mono">' + (ha > 0 ? Math.round(g.total / ha) : 0) + '</td><td style="font-family:DM Mono">' + (existMedia > 0 ? Math.round(g.total / existMedia) : 0) + '</td></tr>';
+  });
+  html += '<tr style="font-weight:700;border-top:2px solid var(--bor)"><td>TOTAL</td><td style="font-family:DM Mono;color:var(--amber2)">Bs. ' + Math.round(gastTotales).toLocaleString() + '</td><td>100%</td><td style="font-family:DM Mono;color:var(--amber2)">' + (ha > 0 ? Math.round(gastTotales / ha) : 0) + '</td><td style="font-family:DM Mono;color:var(--amber2)">' + (existMedia > 0 ? Math.round(gastTotales / existMedia) : 0) + '</td></tr>';
+  html += '</tbody></table></div>';
+
+  // BENCHMARK
+  html += '<div style="font-size:14px;font-weight:700;color:var(--amber2);margin:20px 0 10px;border-bottom:1px solid var(--bor);padding-bottom:6px">🏆 Benchmark — Tu Estancia vs Referencia Regional</div>';
+  html += '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Indicador</th><th>Tu Estancia</th><th>Promedio Bolivia</th><th>Top 25% CREA</th><th>Estado</th></tr></thead><tbody>';
+  function benchRow(ind, val, promMin, promMax, topMin, topMax, unit, lower) {
+    var numVal = parseFloat(val) || 0;
+    var estado, color;
+    if (lower) {
+      estado = numVal <= topMax ? '✓ Top 25%' : numVal <= promMax ? '→ Promedio' : '⚠ Revisar';
+      color = numVal <= topMax ? 'var(--green)' : numVal <= promMax ? 'var(--amber)' : 'var(--red)';
+    } else {
+      estado = numVal >= topMin ? '✓ Top 25%' : numVal >= promMin ? '→ Promedio' : '⚠ Revisar';
+      color = numVal >= topMin ? 'var(--green)' : numVal >= promMin ? 'var(--amber)' : 'var(--red)';
+    }
+    return '<tr><td>' + ind + '</td><td style="font-family:DM Mono;font-weight:700">' + val + ' ' + unit + '</td><td style="font-family:DM Mono;color:var(--muted)">' + promMin + '-' + promMax + '</td><td style="font-family:DM Mono;color:var(--blue)">' + topMin + '-' + topMax + '</td><td style="color:' + color + ';font-weight:600">' + estado + '</td></tr>';
+  }
+  html += benchRow('Producción kg/ha', prodCarne, 120, 150, 200, 250, 'kg/ha', false);
+  html += benchRow('GDPV', gdpv, 0.4, 0.55, 0.7, 0.9, 'kg/d', false);
+  html += benchRow('Carga UA/ha', cargaAnimal, 0.8, 1.2, 1.5, 2.0, 'UA/ha', false);
+  html += benchRow('Costo Bs/kg', costoKg, 15, 20, 8, 12, 'Bs/kg', true);
+  html += benchRow('Eficiencia Stock', eficStock, 25, 35, 40, 50, '%', false);
+  html += '</tbody></table></div>';
+
+  // NOTA METODOLÓGICA
+  html += '<div style="background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.15);border-radius:8px;padding:12px 16px;font-size:11px;color:var(--blue);margin-top:16px;line-height:1.5"><strong>ℹ️ Nota:</strong> Indicadores calculados según metodología AACREA. UA = ' + pesoUA + ' kg. Existencia media = ' + existMedia + ' cabezas. Gastos admin+estructura anualizados.</div>';
+
+  el.innerHTML = html;
+}
+
+function exportCREAExcel() {
+  var rp = getRp();
+  var ha = rp.hectareas || 0;
+  if (!ha) { toast('Configurá las hectáreas primero', 'error'); return; }
+  renderReporteCREA();
+  var tables = document.querySelectorAll('#crea-content table');
+  if (!tables.length) { toast('Sin datos para exportar', 'error'); return; }
+  var wb = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:spreadsheet" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"></head><body>';
+  tables.forEach(function(t, i) { wb += '<h3>' + ['Detalle por Lote', 'Composición de Gastos'][i] + '</h3>' + t.outerHTML; });
+  wb += '</body></html>';
+  var blob = new Blob([wb], { type: 'application/vnd.ms-excel' });
+  var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'ReporteCREA_' + new Date().toISOString().slice(0, 10) + '.xls'; a.click();
+  toast('Excel descargado', 'success');
 }
 
 function renderReportesGerenciales() {
