@@ -2916,6 +2916,20 @@ function trackDeletion(id) {
   localStorage.setItem('e5m_deleted_ids', JSON.stringify(deleted));
 }
 
+// Reemplazar una tabla específica en Railway (para que borrados se propaguen a PWA)
+function replaceTableInRailway(tableName, records) {
+  if (!navigator.onLine) return;
+  var apiUrl = localStorage.getItem('e5m_api_url') || 'https://estancia5m-api-production.up.railway.app/api';
+  var token = localStorage.getItem('e5m_api_token') || 'estancia5m-2026-secreto';
+  fetch(apiUrl + '/bulk-push', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: JSON.stringify({ table: tableName, records: records || [] })
+  }).then(function(r){ return r.json(); })
+  .then(function(d){ if(d.ok) console.log('Railway ' + tableName + ': ' + d.count + ' registros (reemplazado)'); })
+  .catch(function(e){ console.error('Railway push error:', e); });
+}
+
 function mergeArrays(local, remote, idField) {
   var localIds = {};
   var deleted = getDeletedIds();
@@ -2981,8 +2995,8 @@ function pullFromRailwayDesktop(thenPush) {
       }
 
       // ═══ DESKTOP ES LA FUENTE ÚNICA DE VERDAD ═══
-      // NO se importa NADA de Railway excepto paddock y stock
-      // Esto evita que registros borrados regresen
+      // Merge SOLO para tablas donde PWA/campo/bot agregan datos
+      // Los registros borrados en desktop NO regresan (trackDeletion los excluye)
 
       // Solo actualizar paddock desde el campo (PWA puede mover lotes)
       if (remote.lots && remote.lots.length) {
@@ -3002,6 +3016,27 @@ function pullFromRailwayDesktop(thenPush) {
           lt.animal_count = anims.length;
           var ws = anims.map(function(a){ return a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length-1].peso : 0; }).filter(function(w){ return w > 0; });
           if (ws.length) lt.avg_weight = Math.round(ws.reduce(function(s,w){return s+w;},0)/ws.length*10)/10;
+        }
+      });
+
+      // Merge tablas de campo — mergeArrays usa getDeletedIds() para excluir borrados
+      var fieldTables = [
+        { local: 'pesajes',    remote: remote.pesajes },
+        { local: 'activities', remote: remote.field_activities },
+        { local: 'advances',   remote: remote.advances },
+        { local: 'treatments', remote: remote.treatments },
+        { local: 'maintenance',remote: remote.maintenance },
+        { local: 'agua',       remote: remote.agua },
+        { local: 'sal',        remote: remote.sal },
+        { local: 'conteo',     remote: remote.conteo },
+        { local: 'partos',     remote: remote.partos },
+        { local: 'alimento',   remote: remote.alimento },
+        { local: 'lluvias',    remote: remote.lluvias },
+        { local: 'diesel',     remote: remote.diesel },
+      ];
+      fieldTables.forEach(function(t) {
+        if (t.remote && t.remote.length) {
+          db[t.local] = mergeArrays(db[t.local] || [], t.remote, 'id');
         }
       });
 
@@ -3045,9 +3080,9 @@ function pullFromRailwayDesktop(thenPush) {
       localStorage.setItem(DB_KEY, JSON.stringify(db));
 
       // Aplicar branding si viene en el pull
-      if (d.branding && d.branding.name) {
-        localStorage.setItem('e5m_branding', JSON.stringify(d.branding));
-        if (typeof applyBranding === 'function') applyBranding(d.branding);
+      if (remote.branding && remote.branding.name) {
+        localStorage.setItem('e5m_branding', JSON.stringify(remote.branding));
+        if (typeof applyBranding === 'function') applyBranding(remote.branding);
       }
 
       // Re-render todo
@@ -3549,6 +3584,7 @@ function deleteLot(id) {
   trackDeletion(id);
   db.lots = db.lots.filter(l=>l.id!==id);
   saveDB(true); renderLotes(); 
+  replaceTableInRailway('lots', db.lots || []);
 // ══════════════════════════════════════════════════
 // EXPORTAR A EXCEL (CSV)
 // ══════════════════════════════════════════════════
@@ -3977,6 +4013,7 @@ function deleteMaint(id) {
   trackDeletion(id);
   db.maintenance = db.maintenance.filter(function(m){ return m.id!==id; });
   saveDB(); renderMantenimiento();
+  replaceTableInRailway('maintenance', db.maintenance || []);
   // Push inmediato a Railway — sin pull posterior para no restaurar el borrado
   var apiUrl = localStorage.getItem('e5m_api_url') || 'https://estancia5m-api-production.up.railway.app/api';
   var token = localStorage.getItem('e5m_api_token') || 'estancia5m-2026-secreto';
@@ -4364,6 +4401,7 @@ function deletePesaje(id) {
   trackDeletion(id);
   db.pesajes = db.pesajes.filter(function(p){ return p.id!==id; });
   saveDB(); renderPesajes();
+  replaceTableInRailway('pesajes', db.pesajes || []);
   pushTableToRailway('pesajes', db.pesajes);
   toast('Pesaje eliminado', 'success');
 }
@@ -4818,6 +4856,7 @@ function deleteSubmodule(id, type) {
   trackDeletion(id);
   db[type] = (db[type]||[]).filter(function(r){return r.id!==id;});
   saveDB(); renderSubmodule(type);
+  replaceTableInRailway(type, db[type] || []);
   pushTableToRailway(type, db[type]);
   toast('Registro eliminado','success');
 }
@@ -5221,6 +5260,7 @@ function deleteTreatment(id) {
   trackDeletion(id);
   db.treatments = db.treatments.filter(function(t){ return t.id !== id; });
   saveDB();
+  replaceTableInRailway('treatments', db.treatments || []);
   renderSanidad();
   pushTableToRailway('treatments', db.treatments);
   toast('Curacion eliminada', 'success');
@@ -5354,6 +5394,7 @@ function deleteProduct(id) {
   trackDeletion(id);
   db.products = db.products.filter(function(p){ return p.id !== id; });
   saveDB();
+  replaceTableInRailway('vet_products', db.products || []);
   // Pushear tabla completa a Railway para que la PWA refleje el cambio
   if(typeof pushTableToRailway === 'function') {
     pushTableToRailway('vet_products', db.products);
@@ -5492,6 +5533,7 @@ function deleteSale(id) {
   trackDeletion(id);
   db.sales = db.sales.filter(function(s){ return s.id!==id; });
   saveDB(); renderVentas(); renderDashboard();
+  replaceTableInRailway('sales', db.sales || []);
   toast('Venta eliminada', 'success');
 }
 
@@ -5885,6 +5927,7 @@ function deletePurchase(id) {
   deleted.push({id: id, deleted_at: new Date().toISOString()});
   localStorage.setItem('e5m_deleted_purchases', JSON.stringify(deleted));
   saveDB(); renderCompras();
+  replaceTableInRailway('purchases', db.purchases || []);
   // Pushear eliminacion a Railway inmediatamente
   if (navigator.onLine) {
     var apiUrl = localStorage.getItem('e5m_api_url') || 'https://estancia5m-api-production.up.railway.app/api';
@@ -6516,6 +6559,7 @@ function deleteAdvance(id) {
   trackDeletion(id);
   db.advances = db.advances.filter(function(a){ return a.id!==id; });
   saveDB();
+  replaceTableInRailway('advances', db.advances || []);
   renderAdvances();
   toast('Adelanto eliminado', 'success');
 }
@@ -6527,6 +6571,7 @@ function deleteEmployee(id) {
   trackDeletion(id);
   db.employees = db.employees.filter(function(e){ return e.id!==id; });
   saveDB();
+  replaceTableInRailway('employees', db.employees || []);
   renderPersonal();
   toast(emp.name + ' eliminado', 'success');
 }
@@ -6536,6 +6581,7 @@ function deleteActivity(id) {
   trackDeletion(id);
   db.activities = db.activities.filter(function(a){ return a.id!==id; });
   saveDB(); renderPersonal(); renderDashboard();
+  replaceTableInRailway('field_activities', db.activities || []);
   toast('Actividad eliminada', 'success');
 }
 
@@ -7520,6 +7566,7 @@ function deleteCompraGanado(id) {
   trackDeletion(id);
   db.compras_ganado = (db.compras_ganado || []).filter(function(c) { return c.id !== id; });
   saveDB(true);
+  replaceTableInRailway('compras_ganado', db.compras_ganado || []);
   renderComprasGanado();
 }
 
@@ -8889,6 +8936,7 @@ function deleteCuenta(id) {
   trackDeletion(id);
   db.cuentas=db.cuentas.filter(function(r){return r.id!==id;});
   saveDB();renderContabilidad();toast('Eliminado','success');
+  replaceTableInRailway('cuentas', db.cuentas || []);
 }
 
 function exportCuentas() {
@@ -9093,6 +9141,7 @@ function deleteKardex(id){
   trackDeletion(id);
   db.kardex=db.kardex.filter(function(r){return r.id!==id;});
   saveDB();renderKardex();toast('Eliminado','success');
+  replaceTableInRailway('kardex', db.kardex || []);
 }
 
 // Editar ID de animal desde la lista del lote (para asignar IDs pendientes)
@@ -9235,6 +9284,7 @@ function deletePagoSueldo(id) {
   trackDeletion(id);
   db.historial_sueldos=db.historial_sueldos.filter(function(r){return r.id!==id;});
   saveDB();renderHistorialSueldos();toast('Eliminado','success');
+  replaceTableInRailway('historial_sueldos', db.historial_sueldos || []);
 }
 
 // DIESEL Y ACEITE
