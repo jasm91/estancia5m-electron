@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Jisunu 5M - Sistema de Gestion</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet"></noscript>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -3008,12 +3009,12 @@ function pullFromRailwayDesktop(thenPush) {
         });
       }
 
-      // Re-sincronizar animal_count desde e5m_animals (fuente de verdad local)
+      // Re-sincronizar animal_count: usar MAX para no reducir lotes parcialmente tracked
       var _syncAnim = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
       db.lots.forEach(function(lt) {
         var anims = _syncAnim[lt.code];
         if (anims && anims.length > 0) {
-          lt.animal_count = anims.length;
+          lt.animal_count = Math.max(lt.animal_count || 0, anims.length);
           var ws = anims.map(function(a){ return a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length-1].peso : 0; }).filter(function(w){ return w > 0; });
           if (ws.length) lt.avg_weight = Math.round(ws.reduce(function(s,w){return s+w;},0)/ws.length*10)/10;
         }
@@ -3250,12 +3251,12 @@ function ensureDB() {
   if (!localStorage.getItem('e5m_animals')) {
     initAnimales();
   }
-  // Sincronizar animal_count de los lotes con los animales reales
+  // Sincronizar animal_count: usar MAX para no reducir lotes parcialmente tracked
   var animalsDB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
   db.lots.forEach(function(lot) {
     var animals = animalsDB[lot.code];
     if (animals && animals.length > 0) {
-      lot.animal_count = animals.length;
+      lot.animal_count = Math.max(lot.animal_count || 0, animals.length);
       // Recalcular avg_weight desde el ultimo pesaje de cada animal
       var ws = animals.map(function(a){ return a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length-1].peso : 0; }).filter(function(w){ return w > 0; });
       if (ws.length) lot.avg_weight = Math.round(ws.reduce(function(s,w){return s+w;},0)/ws.length*10)/10;
@@ -3508,12 +3509,13 @@ function renderDashboard() {
 function renderLotes() {
   renderParams();
 
-  // SIEMPRE recalcular animal_count desde getAnimalesDB (fuente de verdad)
+  // Recalcular animal_count: usar MAX entre conteo actual y e5m_animals
+  // (para lotes que no tienen TODOS los animales registrados individualmente)
   var _animDB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
   db.lots.forEach(function(lt) {
     var anims = _animDB[lt.code];
     if (anims && anims.length > 0) {
-      lt.animal_count = anims.length;
+      lt.animal_count = Math.max(lt.animal_count || 0, anims.length);
       var ws = anims.map(function(a){ return a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length-1].peso : 0; }).filter(function(w){ return w > 0; });
       if (ws.length) lt.avg_weight = Math.round(ws.reduce(function(s,w){return s+w;},0)/ws.length*10)/10;
     }
@@ -7335,12 +7337,14 @@ function openModalCompraGanado() {
   document.getElementById('cg-precio-kg').value = '';
   document.getElementById('cg-total').value = '';
   document.getElementById('cg-notas').value = '';
-  // Poblar lotes
+  // Poblar lotes con conteo real
   var sel = document.getElementById('cg-lote');
   sel.innerHTML = '<option value="">Seleccionar lote...</option>';
+  var _cgAnimDB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
   (db.lots || []).forEach(function(l) {
-    if (l.status === 'activo' || l.status === 'active') {
-      sel.innerHTML += '<option value="' + l.code + '">' + l.code + ' - ' + l.category + ' (' + l.animal_count + ' cab.)</option>';
+    if (l.status === 'activo' || l.status === 'active' || !l.status) {
+      var realCount = Math.max(l.animal_count || 0, (_cgAnimDB[l.code] || []).length);
+      sel.innerHTML += '<option value="' + l.code + '">' + l.code + ' - ' + l.category + ' (' + realCount + ' cab.)</option>';
     }
   });
   // Poblar razas desde params
@@ -7466,10 +7470,10 @@ function saveCompraGanado() {
   });
   saveAnimalesDB(animals);
 
-  // Actualizar conteo del lote DESDE la DB de animales (fuente de verdad)
+  // Actualizar conteo del lote: INCREMENTAR (no reemplazar)
   var lotObj = db.lots.find(function(l) { return l.code === lote; });
   if (lotObj) {
-    lotObj.animal_count = animals[lote].length;
+    lotObj.animal_count = (lotObj.animal_count || 0) + _cgAnimals.length;
     var allPesos = animals[lote].map(function(a) {
       var ps = a.pesajes || [];
       return ps.length ? ps[ps.length-1].peso : 0;
