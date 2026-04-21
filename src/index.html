@@ -11244,8 +11244,51 @@ function renderReporteCREA() {
 
   // Kg vendidos en periodo
   var ventasPeriodo = (db.sales || []).filter(function(v) { return (v.date || '') >= desdeStr; });
-  var kgVendidos = ventasPeriodo.reduce(function(s, v) { return s + (v.total_kg || 0); }, 0);
+  var kgVendidos = ventasPeriodo.reduce(function(s, v) { return s + (v.kg || v.total_kg || 0); }, 0);
+  var cabVendidas = ventasPeriodo.reduce(function(s, v) { return s + (v.animals || v.animal_count || 0); }, 0);
   var ingresoVentas = ventasPeriodo.reduce(function(s, v) { return s + (v.total || 0); }, 0);
+
+  // Kg comprados en periodo (compras de ganado)
+  var comprasGanadoPeriodo = (db.compras_ganado || []).filter(function(c) { return (c.fecha || '') >= desdeStr; });
+  var kgComprados = comprasGanadoPeriodo.reduce(function(s, c) { return s + (c.total_kg || 0); }, 0);
+  var cabCompradas = comprasGanadoPeriodo.reduce(function(s, c) { return s + (c.animal_count || 0); }, 0);
+  var inversionCompras = comprasGanadoPeriodo.reduce(function(s, c) { return s + (c.total || 0); }, 0);
+
+  // Stock actual en kg (desde e5m_animals - último pesaje de cada animal)
+  var stockFinalKg = 0;
+  activeLots.forEach(function(lot) {
+    var anims = animalesDB[lot.code] || [];
+    anims.forEach(function(a) {
+      if (a.pesajes && a.pesajes.length) stockFinalKg += a.pesajes[a.pesajes.length - 1].peso || 0;
+      else stockFinalKg += lot.avg_weight || 350;
+    });
+  });
+
+  // Stock inicial estimado (stock actual - ganancia + vendidos - comprados)
+  // Simplificado: stock inicial ≈ stock final - ganancia neta del período
+  var stockInicialKg = stockFinalKg + kgVendidos - kgComprados;
+  // Si hay pesajes históricos, usar el primer pesaje del período
+  var allFirstPesos = 0;
+  activeLots.forEach(function(lot) {
+    var anims = animalesDB[lot.code] || [];
+    anims.forEach(function(a) {
+      if (a.pesajes && a.pesajes.length) allFirstPesos += a.pesajes[0].peso || 0;
+      else allFirstPesos += 300;
+    });
+  });
+  if (allFirstPesos > 0) stockInicialKg = allFirstPesos;
+
+  // PRODUCCIÓN CREA = kg vendidos + (stock final - stock inicial) - kg comprados
+  var produccionCREA = kgVendidos + (stockFinalKg - stockInicialKg);
+  // No restar comprados aquí porque ya se refleja en el stock final
+
+  // Datos operativos adicionales del período
+  var partosPeriodo = (db.partos || []).filter(function(p) { return (p.fecha || '') >= desdeStr; }).length;
+  var lluviaPeriodo = (db.lluvias || []).filter(function(l) { return (l.fecha || '') >= desdeStr; }).reduce(function(s, l) { return s + (parseFloat(l.mm) || 0); }, 0);
+  var dieselLitros = (db.diesel || []).filter(function(d) { return (d.fecha || '') >= desdeStr; }).reduce(function(s, d) { return s + (parseFloat(d.litros) || 0); }, 0);
+  var salKg = (db.sal || []).filter(function(r) { return (r.fecha || '') >= desdeStr; }).reduce(function(s, r) { return s + (parseFloat(r.kg) || 0); }, 0);
+  var tratamientosPeriodo = (db.treatments || []).filter(function(t) { return (t.applied_at || '') >= desdeStr; }).length;
+  var conteosPeriodo = (db.conteo || []).filter(function(c) { return (c.fecha || '') >= desdeStr; }).length;
 
   // Gastos directos en periodo
   var gastSanidad = (db.treatments || []).filter(function(t) { return (t.applied_at || '') >= desdeStr; }).reduce(function(s, t) { return s + (t.cost || 0); }, 0);
@@ -11255,12 +11298,13 @@ function renderReporteCREA() {
   var gastMaint = (db.maintenance || []).filter(function(m) { return (m.date || '') >= desdeStr; }).reduce(function(s, m) { return s + (m.cost || 0); }, 0);
   var gastCompras = (db.purchases || []).filter(function(p) { return (p.date || '') >= desdeStr; }).reduce(function(s, p) { return s + (p.total || 0); }, 0);
   var gastAlimento = (db.sal || []).filter(function(r) { return (r.fecha || '') >= desdeStr; }).reduce(function(s, r) { return s + (r.costo || 0); }, 0) + (db.alimento || []).filter(function(r) { return (r.fecha || '') >= desdeStr; }).reduce(function(s, r) { return s + (r.costo || 0); }, 0);
-  var gastDirectos = gastSanidad + gastPersonal + gastAdelantos + gastDiesel + gastMaint + gastCompras + gastAlimento;
-  var gastTotales = gastDirectos + gastoAdmin + gastoEstructura;
+  var gastAceite = (db.aceite || []).filter(function(r) { return (r.fecha || '') >= desdeStr; }).reduce(function(s, r) { return s + (r.total || r.costo || 0); }, 0);
+  var gastDirectos = gastSanidad + gastPersonal + gastAdelantos + gastDiesel + gastAceite + gastMaint + gastCompras + gastAlimento;
+  var gastTotales = gastDirectos + gastoAdmin + gastoEstructura + inversionCompras;
 
   // INDICADORES PRODUCTIVOS
-  var prodCarne = ha > 0 ? Math.round(kgVendidos / ha * 10) / 10 : 0;
-  var cargaAnimal = ha > 0 ? Math.round(totalCab * (activeLots.length ? activeLots.reduce(function(s, l) { return s + (l.avg_weight || 350) * (l.animal_count || 0); }, 0) / totalCab : 350) / pesoUA / ha * 100) / 100 : 0;
+  var prodCarne = ha > 0 ? Math.round(produccionCREA / ha * 10) / 10 : 0;
+  var cargaAnimal = ha > 0 ? Math.round(stockFinalKg / pesoUA / ha * 100) / 100 : 0;
 
   // GDPV global
   var allGmds = [];
@@ -11275,12 +11319,13 @@ function renderReporteCREA() {
     });
   });
   var gdpv = allGmds.length ? Math.round(allGmds.reduce(function(s, g) { return s + g; }, 0) / allGmds.length * 1000) / 1000 : 0;
-  var eficStock = existMedia > 0 ? Math.round(kgVendidos / existMedia * 1000) / 10 : 0;
-  var prodCab = existMedia > 0 ? Math.round(kgVendidos / existMedia * 10) / 10 : 0;
-  var tasaExtraccion = existMedia > 0 ? Math.round(ventasPeriodo.reduce(function(s, v) { return s + (v.animal_count || 0); }, 0) / existMedia * 1000) / 10 : 0;
+  var eficStock = existMedia > 0 ? Math.round(produccionCREA / existMedia * 1000) / 10 : 0;
+  var prodCab = existMedia > 0 ? Math.round(produccionCREA / existMedia * 10) / 10 : 0;
+  var tasaExtraccion = existMedia > 0 ? Math.round(cabVendidas / existMedia * 1000) / 10 : 0;
+  var salPorCab = existMedia > 0 ? Math.round(salKg / existMedia * 10) / 10 : 0;
 
   // INDICADORES ECONÓMICOS
-  var costoKg = kgVendidos > 0 ? Math.round(gastTotales / kgVendidos * 100) / 100 : 0;
+  var costoKg = produccionCREA > 0 ? Math.round(gastTotales / produccionCREA * 100) / 100 : 0;
   var margenBruto = ha > 0 ? Math.round((ingresoVentas - gastDirectos) / ha * 100) / 100 : 0;
   var resultOp = ha > 0 ? Math.round((ingresoVentas - gastTotales) / ha * 100) / 100 : 0;
   var gastoCabMes = existMedia > 0 && meses > 0 ? Math.round(gastDirectos / existMedia / meses * 100) / 100 : 0;
@@ -11292,7 +11337,16 @@ function renderReporteCREA() {
     return '<div class="card" style="padding:14px 16px;position:relative;border-left:3px solid ' + (color || 'var(--amber)') + '"><div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px">' + label + '</div><div style="font-size:22px;font-weight:800;font-family:DM Mono,monospace">' + value + '</div><div style="font-size:11px;color:var(--muted);margin-top:3px">' + unit + '</div><div style="font-size:9px;color:var(--muted);margin-top:4px;font-family:DM Mono,monospace;opacity:.6">' + formula + '</div>' + (trend ? '<div style="position:absolute;top:14px;right:14px;font-size:11px;font-weight:700;color:' + (trend > 0 ? 'var(--green)' : 'var(--red)') + '">' + (trend > 0 ? '▲' : '▼') + ' ' + Math.abs(trend) + '%</div>' : '') + '</div>';
   }
 
-  var html = '<div style="margin-bottom:10px;font-size:11px;color:var(--muted)">Periodo: <strong>' + desdeStr + '</strong> al <strong>' + hastaStr + '</strong> · ' + ha + ' hectáreas · ' + totalCab + ' cabezas</div>';
+  var html = '<div style="margin-bottom:10px;font-size:11px;color:var(--muted)">Periodo: <strong>' + desdeStr + '</strong> al <strong>' + hastaStr + '</strong> · ' + ha + ' ha · ' + totalCab + ' cabezas · Stock: ' + Math.round(stockFinalKg/1000) + ' ton</div>';
+
+  // Fórmula CREA visible
+  html += '<div style="background:rgba(240,160,48,.06);border:1px solid rgba(240,160,48,.15);border-radius:8px;padding:10px 16px;font-size:11px;margin-bottom:16px;display:flex;gap:16px;flex-wrap:wrap;align-items:center">';
+  html += '<span style="font-weight:700;color:var(--amber2)">Producción CREA:</span>';
+  html += '<span>Kg vendidos: <strong>' + Math.round(kgVendidos).toLocaleString() + '</strong></span>';
+  html += '<span>+ Diferencia stock: <strong>' + Math.round(stockFinalKg - stockInicialKg).toLocaleString() + '</strong> kg</span>';
+  html += '<span>= <strong style="color:var(--green)">' + Math.round(produccionCREA).toLocaleString() + ' kg</strong></span>';
+  if (cabCompradas) html += '<span style="color:var(--muted)">· Compras: ' + cabCompradas + ' cab (' + Math.round(kgComprados).toLocaleString() + ' kg)</span>';
+  html += '</div>';
 
   // PRODUCTIVOS
   html += '<div style="font-size:14px;font-weight:700;color:var(--amber2);margin:16px 0 10px;border-bottom:1px solid var(--bor);padding-bottom:6px">🐄 Indicadores Productivos</div>';
@@ -11340,8 +11394,10 @@ function renderReporteCREA() {
     { rubro: '⛽ Combustible', total: gastDiesel },
     { rubro: '🔧 Mantenimiento', total: gastMaint },
     { rubro: '🛒 Compras insumos', total: gastCompras },
+    { rubro: '🛢️ Aceite/Lubricantes', total: gastAceite },
     { rubro: '🏢 Administración', total: gastoAdmin },
     { rubro: '🏗️ Estructura', total: gastoEstructura },
+    { rubro: '🐄 Compra de ganado', total: inversionCompras },
   ];
   html += '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Rubro</th><th>Total (Bs)</th><th>% Total</th><th>Por Ha</th><th>Por Cab</th></tr></thead><tbody>';
   gastos.forEach(function(g) {
@@ -11350,6 +11406,19 @@ function renderReporteCREA() {
   });
   html += '<tr style="font-weight:700;border-top:2px solid var(--bor)"><td>TOTAL</td><td style="font-family:DM Mono;color:var(--amber2)">Bs. ' + Math.round(gastTotales).toLocaleString() + '</td><td>100%</td><td style="font-family:DM Mono;color:var(--amber2)">' + (ha > 0 ? Math.round(gastTotales / ha) : 0) + '</td><td style="font-family:DM Mono;color:var(--amber2)">' + (existMedia > 0 ? Math.round(gastTotales / existMedia) : 0) + '</td></tr>';
   html += '</tbody></table></div>';
+
+  // INDICADORES OPERATIVOS
+  html += '<div style="font-size:14px;font-weight:700;color:var(--amber2);margin:20px 0 10px;border-bottom:1px solid var(--bor);padding-bottom:6px">📌 Indicadores Operativos del Período</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:16px">';
+  html += kpi('Partos', partosPeriodo, 'en el período', '', 'var(--green)');
+  html += kpi('Lluvia Acumulada', Math.round(lluviaPeriodo), 'mm', '', 'var(--blue)');
+  html += kpi('Consumo Diesel', Math.round(dieselLitros).toLocaleString(), 'litros', '', 'var(--amber)');
+  html += kpi('Sal / Cab', salPorCab, 'kg / cab', 'sal total ÷ exist. media', 'var(--amber)');
+  html += kpi('Tratamientos', tratamientosPeriodo, 'aplicaciones', '', 'var(--green)');
+  html += kpi('Conteos', conteosPeriodo, 'realizados', '', 'var(--blue)');
+  html += kpi('Cab. Compradas', cabCompradas, 'cabezas (' + Math.round(kgComprados).toLocaleString() + ' kg)', '', 'var(--amber)');
+  html += kpi('Cab. Vendidas', cabVendidas, 'cabezas (' + Math.round(kgVendidos).toLocaleString() + ' kg)', '', 'var(--green)');
+  html += '</div>';
 
   // BENCHMARK
   html += '<div style="font-size:14px;font-weight:700;color:var(--amber2);margin:20px 0 10px;border-bottom:1px solid var(--bor);padding-bottom:6px">🏆 Benchmark — Tu Estancia vs Referencia Regional</div>';
