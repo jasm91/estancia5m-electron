@@ -932,7 +932,7 @@ function pullFromRailwayDesktop(thenPush) {
     <div class="stat"><div class="stat-icon">🐂</div><div class="stat-val" id="cg-total-animales">0</div><div class="stat-lbl">Animales comprados</div></div>
     <div class="stat"><div class="stat-icon">💰</div><div class="stat-val" id="cg-total-bs">Bs. 0</div><div class="stat-lbl">Inversion total</div></div>
     <div class="stat"><div class="stat-icon">⚖️</div><div class="stat-val" id="cg-peso-prom">0 kg</div><div class="stat-lbl">Peso prom. compra</div></div>
-    <div class="stat"><div class="stat-icon">📊</div><div class="stat-val" id="cg-precio-kg">Bs. 0</div><div class="stat-lbl">Precio prom. Bs./kg</div></div>
+    <div class="stat"><div class="stat-icon">📊</div><div class="stat-val" id="cg-stat-precio-kg">Bs. 0</div><div class="stat-lbl">Precio prom. Bs./kg</div></div>
   </div>
   <div class="card">
     <div class="card-body" style="padding:0">
@@ -2900,12 +2900,30 @@ function saveDB(lotChanged) {
   }
 }
 
+// Tracking de IDs borrados para que el merge no los traiga de vuelta
+function getDeletedIds() {
+  try { return JSON.parse(localStorage.getItem('e5m_deleted_ids') || '{}'); } catch(e) { return {}; }
+}
+function trackDeletion(id) {
+  var deleted = getDeletedIds();
+  deleted[String(id)] = Date.now();
+  // Mantener solo últimos 500 para no crecer infinito
+  var keys = Object.keys(deleted);
+  if (keys.length > 500) {
+    keys.sort(function(a,b){ return deleted[a]-deleted[b]; });
+    for (var i = 0; i < keys.length - 500; i++) delete deleted[keys[i]];
+  }
+  localStorage.setItem('e5m_deleted_ids', JSON.stringify(deleted));
+}
+
 function mergeArrays(local, remote, idField) {
   var localIds = {};
+  var deleted = getDeletedIds();
   (local || []).forEach(function(r) { localIds[r[idField]] = true; });
   var merged = (local || []).slice();
   (remote || []).forEach(function(r) {
-    if (!localIds[r[idField]]) merged.push(r);
+    var rid = String(r[idField] || '');
+    if (!localIds[rid] && !deleted[rid]) merged.push(r);
   });
   return merged;
 }
@@ -2962,55 +2980,30 @@ function pullFromRailwayDesktop(thenPush) {
         return;
       }
 
-      // Remote reemplaza completamente para tablas donde desktop es dueno de eliminar
-      if (remote.treatments)  db.treatments  = remote.treatments;
-      if (remote.purchases)   db.purchases   = remote.purchases;
-      if (remote.maintenance) db.maintenance = remote.maintenance;
+      // ═══ DESKTOP ES LA FUENTE ÚNICA DE VERDAD ═══
+      // NO se importa NADA de Railway excepto paddock y stock
+      // Esto evita que registros borrados regresen
 
-      // Merge records - remote fills gaps, local keeps its own
-      var tables = [
-        { local: 'pesajes',    remote: remote.pesajes },
-        { local: 'advances',   remote: remote.advances },
-        { local: 'activities', remote: remote.field_activities },
-        { local: 'agua',       remote: remote.agua },
-        { local: 'sal',        remote: remote.sal },
-        { local: 'conteo',     remote: remote.conteo },
-        { local: 'partos',     remote: remote.partos },
-        { local: 'alimento',   remote: remote.alimento },
-        { local: 'lluvias',    remote: remote.lluvias },
-        { local: 'diesel',     remote: remote.diesel },
-        { local: 'aceite',         remote: remote.aceite },
-        { local: 'historial_sueldos', remote: remote.historial_sueldos },
-        { local: 'kardex',            remote: remote.kardex },
-        { local: 'cuentas',          remote: remote.cuentas },
-      ];
-      tables.forEach(function(t) {
-        if (t.remote && t.remote.length) {
-          db[t.local] = mergeArrays(db[t.local] || [], t.remote, 'id');
-        }
-      });
-
-      // Products - Railway es fuente de verdad para stock_qty
-      if (remote.products && remote.products.length) {
-        db.products = remote.products;
-      }
-
-      // Lots - desktop es dueno de los lotes (no agregar lotes viejos de Railway)
-      // Solo actualizar paddock/animal_count/avg_weight desde el campo
+      // Solo actualizar paddock desde el campo (PWA puede mover lotes)
       if (remote.lots && remote.lots.length) {
         remote.lots.forEach(function(rl) {
-          // Buscar por code primero, luego por id
-          var local = db.lots.find(function(l){ return l.code === rl.code; }) ||
-                      db.lots.find(function(l){ return l.id === rl.id; });
-          if (local) {
-            // Campo puede actualizar paddock y conteo
-            if (rl.paddock && rl.paddock !== local.paddock) local.paddock = rl.paddock;
-            if (typeof rl.animal_count === 'number' && rl.animal_count > 0) local.animal_count = rl.animal_count;
-            if (rl.avg_weight && rl.avg_weight > 0) local.avg_weight = rl.avg_weight;
+          var local = db.lots.find(function(l){ return l.code === rl.code; });
+          if (local && rl.paddock && rl.paddock !== local.paddock) {
+            local.paddock = rl.paddock;
           }
-          // Si no existe localmente, NO agregar - desktop maneja sus propios lotes
         });
       }
+
+      // Re-sincronizar animal_count desde e5m_animals (fuente de verdad local)
+      var _syncAnim = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
+      db.lots.forEach(function(lt) {
+        var anims = _syncAnim[lt.code];
+        if (anims && anims.length > 0) {
+          lt.animal_count = anims.length;
+          var ws = anims.map(function(a){ return a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length-1].peso : 0; }).filter(function(w){ return w > 0; });
+          if (ws.length) lt.avg_weight = Math.round(ws.reduce(function(s,w){return s+w;},0)/ws.length*10)/10;
+        }
+      });
 
       // Tasks merge
       if (remote.tasks && remote.tasks.length) {
@@ -3118,6 +3111,7 @@ function pushDesktopRecords() {
       historial_sueldos: db.historial_sueldos || [],
       kardex:           db.kardex || [],
       cuentas:          db.cuentas || [],
+      compras_ganado:   db.compras_ganado || [],
       tasks_list:       tasks,
     },
     preserve_lots: true
@@ -3126,9 +3120,13 @@ function pushDesktopRecords() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
     body: JSON.stringify(payload),
-  }).then(function(r){ return r.json(); }).then(function(d){
-    if (d.ok) { setSyncStatus('ok'); }
-  }).catch(function(){});
+  }).then(function(r){ 
+    if (!r.ok) { console.error('pushDesktop HTTP error:', r.status); return r.text().then(function(t){ console.error(t); return {ok:false}; }); }
+    return r.json(); 
+  }).then(function(d){
+    if (d && d.ok) { setSyncStatus('ok'); console.log('pushDesktop OK:', d.pushed); }
+    else { console.error('pushDesktop failed:', d); }
+  }).catch(function(e){ console.error('pushDesktop error:', e); });
 }
 
 function pushToRailway() {
@@ -3171,6 +3169,7 @@ function pushToRailway() {
       historial_sueldos: db.historial_sueldos || [],
       kardex:           db.kardex || [],
       cuentas:          db.cuentas || [],
+      compras_ganado:   db.compras_ganado || [],
       tasks_list:       tasks,
       animals: (function(){
         try {
@@ -3197,11 +3196,15 @@ function pushToRailway() {
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
     body: JSON.stringify(payload),
   })
-  .then(function(r){ return r.json(); })
-  .then(function(d){
-    if (d.ok) { setSyncStatus('ok'); }
+  .then(function(r){ 
+    if (!r.ok) { console.error('Push HTTP error:', r.status, r.statusText); return r.text().then(function(t){ console.error('Push body:', t); return {ok:false}; }); }
+    return r.json(); 
   })
-  .catch(function(){}); // Silent fail - offline
+  .then(function(d){
+    if (d && d.ok) { setSyncStatus('ok'); console.log('Push OK:', d.pushed); }
+    else { console.error('Push failed:', d); }
+  })
+  .catch(function(e){ console.error('Push error:', e); });
 }
 
 // Safety: ensure db has all required fields
@@ -3469,6 +3472,18 @@ function renderDashboard() {
 // ══════════════════════════════════════════════════
 function renderLotes() {
   renderParams();
+
+  // SIEMPRE recalcular animal_count desde getAnimalesDB (fuente de verdad)
+  var _animDB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
+  db.lots.forEach(function(lt) {
+    var anims = _animDB[lt.code];
+    if (anims && anims.length > 0) {
+      lt.animal_count = anims.length;
+      var ws = anims.map(function(a){ return a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length-1].peso : 0; }).filter(function(w){ return w > 0; });
+      if (ws.length) lt.avg_weight = Math.round(ws.reduce(function(s,w){return s+w;},0)/ws.length*10)/10;
+    }
+  });
+
   const active = db.lots.filter(l=>!l.status||l.status==='activo'||l.status==='active');
   document.getElementById('lotes-sub').textContent = active.length+' lotes activos · '+active.reduce((s,l)=>s+l.animal_count,0)+' animales';
   const tbody = document.getElementById('lotes-tbody');
@@ -3531,6 +3546,7 @@ function moveLot() {
 
 function deleteLot(id) {
   if(!confirm('¿Eliminar este lote?')) return;
+  trackDeletion(id);
   db.lots = db.lots.filter(l=>l.id!==id);
   saveDB(true); renderLotes(); 
 // ══════════════════════════════════════════════════
@@ -3958,6 +3974,7 @@ function pushTableToRailway(tableName, records) {
 }
 function deleteMaint(id) {
   if (!confirm('\u00bfEliminar este registro?')) return;
+  trackDeletion(id);
   db.maintenance = db.maintenance.filter(function(m){ return m.id!==id; });
   saveDB(); renderMantenimiento();
   // Push inmediato a Railway — sin pull posterior para no restaurar el borrado
@@ -4344,6 +4361,7 @@ setInterval(function() {
 
 function deletePesaje(id) {
   if (!confirm('\u00bfEliminar este pesaje?')) return;
+  trackDeletion(id);
   db.pesajes = db.pesajes.filter(function(p){ return p.id!==id; });
   saveDB(); renderPesajes();
   pushTableToRailway('pesajes', db.pesajes);
@@ -4797,6 +4815,7 @@ function renderSubmodule(type) {
 
 function deleteSubmodule(id, type) {
   if (!confirm('\u00bfEliminar este registro?')) return;
+  trackDeletion(id);
   db[type] = (db[type]||[]).filter(function(r){return r.id!==id;});
   saveDB(); renderSubmodule(type);
   pushTableToRailway(type, db[type]);
@@ -5199,6 +5218,7 @@ function saveTreatment() {
 
 function deleteTreatment(id) {
   if (!confirm('\u00bfEliminar esta curacion? El stock NO se restaura.')) return;
+  trackDeletion(id);
   db.treatments = db.treatments.filter(function(t){ return t.id !== id; });
   saveDB();
   renderSanidad();
@@ -5331,6 +5351,7 @@ function addStock() {
 
 function deleteProduct(id) {
   if(!confirm('Eliminar este producto del stock veterinario?')) return;
+  trackDeletion(id);
   db.products = db.products.filter(function(p){ return p.id !== id; });
   saveDB();
   // Pushear tabla completa a Railway para que la PWA refleje el cambio
@@ -5468,6 +5489,7 @@ function toggleSaleIds(id) {
 
 function deleteSale(id) {
   if (!confirm('\u00bfEliminar esta venta?')) return;
+  trackDeletion(id);
   db.sales = db.sales.filter(function(s){ return s.id!==id; });
   saveDB(); renderVentas(); renderDashboard();
   toast('Venta eliminada', 'success');
@@ -5856,6 +5878,7 @@ function renderCompras() {
 
 function deletePurchase(id) {
   if (!confirm('Eliminar esta compra?')) return;
+  trackDeletion(id);
   db.purchases = db.purchases.filter(function(p){ return p.id!==id; });
   // Guardar en lista de eliminados para sincronizar con Railway
   var deleted = JSON.parse(localStorage.getItem('e5m_deleted_purchases') || '[]');
@@ -6490,6 +6513,7 @@ function toggleAdvance(id) {
 
 function deleteAdvance(id) {
   if (!confirm('\u00bfEliminar este adelanto?')) return;
+  trackDeletion(id);
   db.advances = db.advances.filter(function(a){ return a.id!==id; });
   saveDB();
   renderAdvances();
@@ -6500,6 +6524,7 @@ function deleteEmployee(id) {
   var emp = db.employees.find(function(e){ return e.id===id; });
   if (!emp) return;
   if (!confirm('\u00bfEliminar a ' + emp.name + '? Se perderan sus registros de actividad.')) return;
+  trackDeletion(id);
   db.employees = db.employees.filter(function(e){ return e.id!==id; });
   saveDB();
   renderPersonal();
@@ -6508,6 +6533,7 @@ function deleteEmployee(id) {
 
 function deleteActivity(id) {
   if (!confirm('\u00bfEliminar esta actividad?')) return;
+  trackDeletion(id);
   db.activities = db.activities.filter(function(a){ return a.id!==id; });
   saveDB(); renderPersonal(); renderDashboard();
   toast('Actividad eliminada', 'success');
@@ -7312,9 +7338,9 @@ function renderCGAnimalsTable() {
   var raza = document.getElementById('cg-raza').value;
   tbody.innerHTML = _cgAnimals.map(function(a, i) {
     return '<tr>' +
-      '<td><input class="form-input" style="width:100px;padding:4px 8px;font-size:11px" value="' + (a.id||'') + '" placeholder="ID-' + (i+1) + '" onchange="_cgAnimals['+i+'].id=this.value"></td>' +
-      '<td><input class="form-input" type="number" style="width:80px;padding:4px 8px;font-size:11px" value="' + (a.peso||'') + '" placeholder="kg" onchange="_cgAnimals['+i+'].peso=parseFloat(this.value)||0;calcCGTotal()"></td>' +
-      '<td><input class="form-input" style="width:80px;padding:4px 8px;font-size:11px" value="' + (a.raza||raza) + '" onchange="_cgAnimals['+i+'].raza=this.value"></td>' +
+      '<td><input class="form-input" style="width:100px;padding:4px 8px;font-size:11px" value="' + (a.id||'') + '" placeholder="ID-' + (i+1) + '" oninput="_cgAnimals['+i+'].id=this.value"></td>' +
+      '<td><input class="form-input" type="number" style="width:80px;padding:4px 8px;font-size:11px" value="' + (a.peso||'') + '" placeholder="kg" oninput="_cgAnimals['+i+'].peso=parseFloat(this.value)||0;calcCGTotal()"></td>' +
+      '<td><input class="form-input" style="width:80px;padding:4px 8px;font-size:11px" value="' + (a.raza||raza) + '" oninput="_cgAnimals['+i+'].raza=this.value"></td>' +
       '<td><button class="btn btn-ghost btn-sm" onclick="removeCGAnimal('+i+')" style="padding:2px 6px;color:var(--red)">✕</button></td>' +
       '</tr>';
   }).join('');
@@ -7346,13 +7372,22 @@ function saveCompraGanado() {
   if (!fecha) { toast('Ingresa la fecha', 'error'); return; }
   if (!lote) { toast('Selecciona el lote destino', 'error'); return; }
   if (!_cgAnimals.length) { toast('Agrega al menos un animal', 'error'); return; }
+  if (!precioKg) { toast('Ingresa el precio por kg', 'error'); return; }
 
   var pesoTotal = _cgAnimals.reduce(function(s,a) { return s + (a.peso||0); }, 0);
   var total = Math.round(pesoTotal * precioKg * 100) / 100;
 
-  // Asignar IDs si están vacíos
+  // Obtener DB de animales
+  var animals = getAnimalesDB();
+
+  // Validar IDs duplicados
+  var allExistingIds = {};
+  Object.values(animals).forEach(function(list) {
+    list.forEach(function(a) { allExistingIds[String(a.id)] = true; });
+  });
+
+  // Asignar IDs vacíos y validar duplicados
   var maxId = 0;
-  var animals = JSON.parse(localStorage.getItem('e5m_animals') || '{}');
   Object.values(animals).forEach(function(list) {
     list.forEach(function(a) {
       var num = parseInt(String(a.id).replace(/[^0-9]/g, '')) || 0;
@@ -7360,27 +7395,36 @@ function saveCompraGanado() {
     });
   });
 
+  var duplicados = [];
   _cgAnimals.forEach(function(a, i) {
-    if (!a.id) a.id = String(maxId + 1 + i);
+    if (!a.id) {
+      a.id = String(maxId + 1 + i);
+    } else if (allExistingIds[String(a.id)]) {
+      duplicados.push(a.id);
+    }
   });
 
-  // Agregar animales al lote en e5m_animals
+  if (duplicados.length) {
+    toast('IDs duplicados: ' + duplicados.join(', ') + '. Cambia los IDs antes de guardar.', 'error');
+    return;
+  }
+
+  // Agregar animales al lote
   if (!animals[lote]) animals[lote] = [];
   _cgAnimals.forEach(function(a) {
     animals[lote].push({
-      id: a.id,
+      id: String(a.id),
       raza: a.raza || '',
       pesajes: [{ fecha: fecha, peso: a.peso }]
     });
   });
-  localStorage.setItem('e5m_animals', JSON.stringify(animals));
+  saveAnimalesDB(animals);
 
-  // Actualizar conteo del lote
+  // Actualizar conteo del lote DESDE la DB de animales (fuente de verdad)
   var lotObj = db.lots.find(function(l) { return l.code === lote; });
   if (lotObj) {
-    lotObj.animal_count = (lotObj.animal_count || 0) + _cgAnimals.length;
-    // Recalcular peso promedio
-    var allPesos = (animals[lote] || []).map(function(a) {
+    lotObj.animal_count = animals[lote].length;
+    var allPesos = animals[lote].map(function(a) {
       var ps = a.pesajes || [];
       return ps.length ? ps[ps.length-1].peso : 0;
     }).filter(function(p) { return p > 0; });
@@ -7417,13 +7461,19 @@ function saveCompraGanado() {
     created_at: new Date().toISOString()
   });
 
-  saveDB(true);
+  // Guardar SIN trigger de pull-push (evita que Railway sobreescriba el conteo)
+  localStorage.setItem(DB_KEY, JSON.stringify(db));
   closeModal('modal-compra-ganado');
+
   renderComprasGanado();
   renderLotes();
   renderDashboard();
   toast('Compra registrada: ' + _cgAnimals.length + ' animales ingresados al lote ' + lote, 'success');
   _cgAnimals = [];
+
+  // Push después de renderizar (sin pull que sobreescriba)
+  clearTimeout(window._syncTimer);
+  window._syncTimer = setTimeout(function() { pushDesktopRecords(); }, 2000);
 }
 
 function renderComprasGanado() {
@@ -7442,7 +7492,7 @@ function renderComprasGanado() {
   el = document.getElementById('cg-total-animales'); if(el) el.textContent = totalAnimales;
   el = document.getElementById('cg-total-bs'); if(el) el.textContent = 'Bs. ' + totalBs.toLocaleString();
   el = document.getElementById('cg-peso-prom'); if(el) el.textContent = pesoProm + ' kg';
-  el = document.getElementById('cg-precio-kg'); if(el && el.tagName !== 'INPUT') el.textContent = 'Bs. ' + precioKgProm;
+  el = document.getElementById('cg-stat-precio-kg'); if(el) el.textContent = 'Bs. ' + precioKgProm;
 
   if (!compras.length) {
     tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--muted)">Sin compras de ganado registradas</td></tr>';
@@ -7467,6 +7517,7 @@ function renderComprasGanado() {
 
 function deleteCompraGanado(id) {
   if (!confirm('Eliminar esta compra de ganado?')) return;
+  trackDeletion(id);
   db.compras_ganado = (db.compras_ganado || []).filter(function(c) { return c.id !== id; });
   saveDB(true);
   renderComprasGanado();
@@ -7759,8 +7810,18 @@ function saveTask() {
   closeModal('modal-task');
   renderTareas();
   toast(taskId ? 'Tarea actualizada' : 'Tarea creada', 'success');
-  // Push inmediato a Railway para que la PWA vea la tarea de inmediato
-  if (navigator.onLine) pushToRailway();
+  // Push directo de tareas a Railway
+  if (navigator.onLine) {
+    var apiUrl2 = localStorage.getItem('e5m_api_url') || 'https://estancia5m-api-production.up.railway.app/api';
+    var token2 = localStorage.getItem('e5m_api_token') || 'estancia5m-2026-secreto';
+    fetch(apiUrl2 + '/tasks/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token2 },
+      body: JSON.stringify({ tasks: tasks, replace_all: true })
+    }).then(function(r){ return r.json(); })
+    .then(function(d){ if(d.ok) console.log('Tasks sync OK:', d.count); })
+    .catch(function(e){ console.error('Tasks sync error:', e); });
+  }
 }
 
 // ══════════════════════════════════════════════════
@@ -8825,6 +8886,7 @@ function guardarCuenta() {
 
 function deleteCuenta(id) {
   if(!confirm('Eliminar este registro?'))return;
+  trackDeletion(id);
   db.cuentas=db.cuentas.filter(function(r){return r.id!==id;});
   saveDB();renderContabilidad();toast('Eliminado','success');
 }
@@ -9028,6 +9090,7 @@ function guardarKardex(){
 
 function deleteKardex(id){
   if(!confirm('Eliminar este movimiento?'))return;
+  trackDeletion(id);
   db.kardex=db.kardex.filter(function(r){return r.id!==id;});
   saveDB();renderKardex();toast('Eliminado','success');
 }
@@ -9169,6 +9232,7 @@ function guardarPagoSueldo() {
 }
 function deletePagoSueldo(id) {
   if(!confirm('Eliminar?')) return;
+  trackDeletion(id);
   db.historial_sueldos=db.historial_sueldos.filter(function(r){return r.id!==id;});
   saveDB();renderHistorialSueldos();toast('Eliminado','success');
 }
