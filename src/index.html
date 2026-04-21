@@ -511,32 +511,34 @@ function pullFromRailwayDesktop(thenPush) {
   <div class="nav-sec">
     <div class="nav-lbl">Principal</div>
     <button class="nav-btn active" onclick="showPage('dashboard',this)"><span class="nav-icon">📊</span>Dashboard</button>
-    <button class="nav-btn" onclick="showPage('lotes',this)"><span class="nav-icon">🐄</span>Lotes <span class="nav-badge nb-green" id="nb-lotes">0</span></button>
-    <button class="nav-btn" onclick="showPage('sanidad',this)"><span class="nav-icon">💉</span>Sanidad <span class="nav-badge nb-red" id="nb-alertas">0</span></button>
     <button class="nav-btn" onclick="showPage('stock',this)"><span class="nav-icon">📦</span>Stock Vet.</button>
+    <button class="nav-btn" onclick="showPage('alertas',this)"><span class="nav-icon">🔔</span>Alertas <span class="nav-badge nb-red" id="nb-alertas">0</span></button>
   </div>
   <div class="nav-sec">
     <div class="nav-lbl">Operacion</div>
-    <button class="nav-btn" onclick="showPage('ventas',this)"><span class="nav-icon">🤝</span>Ventas</button>
-    <button class="nav-btn" onclick="showPage('compras',this)"><span class="nav-icon">🛒</span>Compras</button>
+    <button class="nav-btn" onclick="showPage('compra-ganado',this)"><span class="nav-icon">🐂</span>Compra Ganado</button>
+    <button class="nav-btn" onclick="showPage('ventas',this)"><span class="nav-icon">🤝</span>Venta Ganado</button>
+    <button class="nav-btn" onclick="showPage('lotes',this)"><span class="nav-icon">🐄</span>Lotes <span class="nav-badge nb-green" id="nb-lotes">0</span></button>
+    <button class="nav-btn" onclick="showPage('sanidad',this)"><span class="nav-icon">💉</span>Sanidad</button>
+    <button class="nav-btn" onclick="showPage('compras',this)"><span class="nav-icon">🛒</span>Compras Insumos</button>
     <button class="nav-btn" onclick="showPage('mantenimiento',this)"><span class="nav-icon">🔧</span>Mantenimiento</button>
-    <button class="nav-btn" onclick="showPage('lluvias',this)"><span class="nav-icon">🌧</span>Lluvias</button>
-    <button class="nav-btn" onclick="showPage('diesel',this)"><span class="nav-icon">⛽</span>Diesel</button>
-    <button class="nav-btn" onclick="showPage('kardex',this)"><span class="nav-icon">📒</span>Kardex</button>
-    <button class="nav-btn" onclick="showPage('contabilidad',this)"><span class="nav-icon">📊</span>Contabilidad</button>
-    <button class="nav-btn" onclick="showPage('costos',this)"><span class="nav-icon">💰</span>Costos</button>
+    <button class="nav-btn" onclick="showPage('lluvias',this)"><span class="nav-icon">🌧</span>Pluviometria</button>
+    <button class="nav-btn" onclick="showPage('diesel',this)"><span class="nav-icon">⛽</span>Combustible</button>
     <button class="nav-btn" onclick="showPage('personal',this)"><span class="nav-icon">👷</span>Personal</button>
   </div>
   <div class="nav-sec">
     <div class="nav-lbl">Reportes</div>
+    <button class="nav-btn" onclick="showPage('kardex',this)"><span class="nav-icon">📒</span>Kardex</button>
+    <button class="nav-btn" onclick="showPage('contabilidad',this)"><span class="nav-icon">📊</span>Contabilidad</button>
+    <button class="nav-btn" onclick="showPage('costos',this)"><span class="nav-icon">💰</span>Costos</button>
     <button class="nav-btn" onclick="showPage('trazabilidad',this)"><span class="nav-icon">🔖</span>Trazabilidad</button>
-    <button class="nav-btn" onclick="showPage('alertas',this)"><span class="nav-icon">🔔</span>Alertas</button>
     <button class="nav-btn" onclick="showPage('reportes',this)"><span class="nav-icon">📊</span>Reportes Gerenciales</button>
     <button class="nav-btn" onclick="showPage('params-reporte',this)"><span class="nav-icon">🎯</span>Params. Reporte</button>
   </div>
   <div class="nav-sec">
     <div class="nav-lbl">Equipo</div>
     <button class="nav-btn" onclick="showPage('tareas',this)"><span class="nav-icon">📋</span>Tareas <span class="nav-badge nb-red" id="nb-tareas" style="display:none"></span></button>
+    <button class="nav-btn" onclick="showPage('actividades',this)"><span class="nav-icon">📝</span>Actividades</button>
   </div>
   <div class="nav-sec">
     <div class="nav-lbl">Sistema</div>
@@ -900,7 +902,7 @@ function pullFromRailwayDesktop(thenPush) {
 <!-- ═══ VENTAS ═══ -->
 <div id="page-ventas" class="page">
   <div class="ph">
-    <div><div class="pt">🤝 Ventas</div><div class="ps">Comercializacion de hacienda</div></div>
+    <div><div class="pt">🤝 Venta de Ganado</div><div class="ps">Comercializacion de hacienda</div></div>
     <button class="btn btn-primary" onclick="openModal('modal-sale')">+ Registrar venta</button>
     <button class="btn btn-ghost" onclick="exportVentas()" title="Exportar a Excel">⬇ Excel</button>
   </div>
@@ -914,6 +916,29 @@ function pullFromRailwayDesktop(thenPush) {
       <table class="tbl">
         <thead><tr><th>Lote</th><th>Comprador</th><th>Tipo</th><th>Animales</th><th>Kg totales</th><th>Bs./kg</th><th>Total</th><th>Fecha</th><th>Trazab.</th><th>IDs</th><th></th></tr></thead>
         <tbody id="sales-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ COMPRA DE GANADO ═══ -->
+<div id="page-compra-ganado" class="page">
+  <div class="ph">
+    <div><div class="pt">🐂 Compra de Ganado</div><div class="ps">Ingreso de animales a la estancia</div></div>
+    <button class="btn btn-primary" onclick="openModalCompraGanado()">+ Registrar compra</button>
+    <button class="btn btn-ghost" onclick="exportComprasGanado()" title="Exportar a Excel">⬇ Excel</button>
+  </div>
+  <div class="stats" style="grid-template-columns:repeat(4,1fr)">
+    <div class="stat"><div class="stat-icon">🐂</div><div class="stat-val" id="cg-total-animales">0</div><div class="stat-lbl">Animales comprados</div></div>
+    <div class="stat"><div class="stat-icon">💰</div><div class="stat-val" id="cg-total-bs">Bs. 0</div><div class="stat-lbl">Inversion total</div></div>
+    <div class="stat"><div class="stat-icon">⚖️</div><div class="stat-val" id="cg-peso-prom">0 kg</div><div class="stat-lbl">Peso prom. compra</div></div>
+    <div class="stat"><div class="stat-icon">📊</div><div class="stat-val" id="cg-precio-kg">Bs. 0</div><div class="stat-lbl">Precio prom. Bs./kg</div></div>
+  </div>
+  <div class="card">
+    <div class="card-body" style="padding:0">
+      <table class="tbl">
+        <thead><tr><th>Fecha</th><th>Proveedor</th><th>Animales</th><th>Kg totales</th><th>Bs./kg</th><th>Total Bs.</th><th>Lote destino</th><th>Detalle</th><th></th></tr></thead>
+        <tbody id="cg-tbody"></tbody>
       </table>
     </div>
   </div>
@@ -1137,7 +1162,7 @@ function pullFromRailwayDesktop(thenPush) {
 <div id="page-diesel" class="page">
   <div class="ph">
     <div>
-      <div class="pt">⛽ Diesel y Lubricantes</div>
+      <div class="pt">⛽ Combustible y Lubricantes</div>
       <div class="ps" id="diesel-sub">Control de combustible y aceite</div>
     </div>
     <button class="btn btn-primary" onclick="openModalDiesel()">+ Registrar</button>
@@ -1145,7 +1170,7 @@ function pullFromRailwayDesktop(thenPush) {
 
   <!-- Tabs -->
   <div class="tabs" style="margin-bottom:20px">
-    <button class="tab-btn active" id="diesel-tab-diesel-btn" onclick="switchTab('diesel-tab','diesel-tab-diesel-btn','diesel-tab-diesel')">⛽ Diesel</button>
+    <button class="tab-btn active" id="diesel-tab-diesel-btn" onclick="switchTab('diesel-tab','diesel-tab-diesel-btn','diesel-tab-diesel')">⛽ Combustible</button>
     <button class="tab-btn" id="diesel-tab-aceite-btn" onclick="switchTab('diesel-tab','diesel-tab-aceite-btn','diesel-tab-aceite')">🛢 Aceite</button>
   </div>
 
@@ -1245,7 +1270,7 @@ function pullFromRailwayDesktop(thenPush) {
 <div id="page-lluvias" class="page">
   <div class="ph">
     <div>
-      <div class="pt">🌧 Registro de Lluvias</div>
+      <div class="pt">🌧 Pluviometria</div>
       <div class="ps" id="lluvia-desktop-sub">Precipitaciones diarias</div>
     </div>
     <button class="btn btn-primary" onclick="openModalLluviaDesktop()">+ Registrar lluvia</button>
@@ -1307,7 +1332,7 @@ function pullFromRailwayDesktop(thenPush) {
 
 <div id="page-compras" class="page">
   <div class="ph">
-    <div><div class="pt">🛒 Compras</div><div class="ps">Insumos · medicamentos · animales</div></div>
+    <div><div class="pt">🛒 Compras Insumos</div><div class="ps">Insumos · medicamentos · servicios</div></div>
     <button class="btn btn-primary" onclick="openModal('modal-purchase')">+ Registrar compra</button>
     <button class="btn btn-ghost" onclick="exportCompras()" title="Exportar a Excel">⬇ Excel</button>
   </div>
@@ -1950,6 +1975,21 @@ function pullFromRailwayDesktop(thenPush) {
   </div>
 </div>
 
+<!-- ═══ ACTIVIDADES ═══ -->
+<div id="page-actividades" class="page">
+  <div class="ph">
+    <div><div class="pt">📝 Actividades de Campo</div><div class="ps">Historial de actividades del equipo</div></div>
+  </div>
+  <div class="card">
+    <div class="card-body" style="padding:0">
+      <table class="tbl">
+        <thead><tr><th>Fecha</th><th>Tipo</th><th>Responsable</th><th>Lote</th><th>Detalle</th></tr></thead>
+        <tbody id="actividades-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 </main>
 </div>
 
@@ -2166,7 +2206,7 @@ function pullFromRailwayDesktop(thenPush) {
 
 <!-- New Sale -->
 <div class="modal-overlay" id="modal-sale">
-<div class="modal" style="max-width:700px"><h2>🤝 Registrar Venta</h2>
+<div class="modal" style="max-width:700px"><h2>🤝 Registrar Venta de Ganado</h2>
 <div class="form-row">
   <div class="form-group"><label class="form-label">Lote</label>
     <select class="form-select" id="sale-lot" onchange="onSaleLotChange(this.value)"><option value="">Seleccionar...</option></select>
@@ -2259,6 +2299,73 @@ function pullFromRailwayDesktop(thenPush) {
 <div class="form-actions">
   <button class="btn btn-ghost" onclick="closeModal('modal-sale')">Cancelar</button>
   <button class="btn btn-primary" onclick="saveSale()">Registrar venta</button>
+</div></div></div>
+
+<!-- Modal Compra Ganado -->
+<div class="modal-overlay" id="modal-compra-ganado">
+<div class="modal" style="max-width:800px;max-height:90vh;overflow-y:auto"><h2>🐂 Registrar Compra de Ganado</h2>
+<div class="form-row">
+  <div class="form-group"><label class="form-label">Proveedor / Vendedor</label>
+    <input class="form-input" id="cg-proveedor" placeholder="Ej: Estancia San Jose - Pedro Lopez">
+  </div>
+  <div class="form-group"><label class="form-label">Fecha de compra</label>
+    <input class="form-input" type="date" id="cg-fecha">
+  </div>
+</div>
+<div class="form-row">
+  <div class="form-group"><label class="form-label">Lote destino</label>
+    <select class="form-select" id="cg-lote"><option value="">Seleccionar lote...</option></select>
+  </div>
+  <div class="form-group"><label class="form-label">Categoria</label>
+    <select class="form-select" id="cg-categoria">
+      <option value="Novillo">Novillo</option><option value="Ternero">Ternero</option>
+      <option value="Vaquillona">Vaquillona</option><option value="Vaca">Vaca</option>
+      <option value="Toro">Toro</option><option value="Recria mixta">Recria mixta</option>
+    </select>
+  </div>
+</div>
+<div class="form-row">
+  <div class="form-group"><label class="form-label">Raza</label>
+    <select class="form-select" id="cg-raza">
+      <option value="Nelore">Nelore</option><option value="Brahman">Brahman</option>
+      <option value="F1">F1</option><option value="Criollo">Criollo</option>
+      <option value="Angus">Angus</option><option value="Hereford">Hereford</option>
+    </select>
+  </div>
+  <div class="form-group"><label class="form-label">Precio Bs./kg</label>
+    <input class="form-input" type="number" id="cg-precio-kg" step="0.01" min="0" oninput="calcCGTotal()">
+  </div>
+</div>
+
+<div style="background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.2);border-radius:8px;padding:14px;margin:12px 0">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <div style="font-size:12px;font-weight:700;color:var(--blue)">🐄 Animales a ingresar</div>
+    <button class="btn btn-ghost btn-sm" onclick="addCGAnimal()">+ Agregar animal</button>
+  </div>
+  <div style="max-height:250px;overflow-y:auto" id="cg-animals-list">
+    <table class="tbl" style="font-size:11px">
+      <thead><tr><th>ID / Caravana</th><th>Peso (kg)</th><th>Raza</th><th></th></tr></thead>
+      <tbody id="cg-animals-tbody"></tbody>
+    </table>
+  </div>
+  <div style="margin-top:8px;display:flex;gap:16px;font-size:12px;color:var(--muted)">
+    <span>Animales: <strong id="cg-count-display" style="color:var(--amber2)">0</strong></span>
+    <span>Peso total: <strong id="cg-peso-total" style="color:var(--text)">0 kg</strong></span>
+    <span>Peso prom: <strong id="cg-peso-prom-display" style="color:var(--text)">0 kg</strong></span>
+  </div>
+</div>
+
+<div class="form-row">
+  <div class="form-group"><label class="form-label">Total compra (Bs.)</label>
+    <input class="form-input" id="cg-total" readonly style="background:var(--sur2);color:var(--green);font-weight:700;font-size:16px">
+  </div>
+  <div class="form-group"><label class="form-label">Notas</label>
+    <input class="form-input" id="cg-notas" placeholder="Observaciones de la compra...">
+  </div>
+</div>
+<div class="form-actions">
+  <button class="btn btn-ghost" onclick="closeModal('modal-compra-ganado')">Cancelar</button>
+  <button class="btn btn-primary" onclick="saveCompraGanado()">Registrar compra</button>
 </div></div></div>
 
 <!-- New Purchase -->
@@ -3229,6 +3336,8 @@ function renderPage(name) {
     contabilidad: renderContabilidad,
     kardex: renderKardex,
     diesel: renderDieselDesktop,
+    'compra-ganado': renderComprasGanado,
+    actividades: renderActividades,
   };
   if(renders[name]) renders[name]();
 }
@@ -5862,13 +5971,17 @@ function savePurchase() {
 
 // ══════════════════════════════════════════════════
 function renderCostos() {
-  var totalPurchases   = db.purchases.reduce(function(s,p){return s+(p.total||0);},0);
-  var totalTreatments  = db.treatments.reduce(function(s,t){return s+(t.cost||0);},0);
-  var totalSalaries    = db.employees.filter(function(e){return e.active;}).reduce(function(s,e){return s+(e.salary||0);},0);
+  var totalPurchases   = (db.purchases||[]).reduce(function(s,p){return s+(p.total||0);},0);
+  var totalTreatments  = (db.treatments||[]).reduce(function(s,t){return s+(t.cost||0);},0);
+  var totalSalaries    = (db.employees||[]).filter(function(e){return e.active;}).reduce(function(s,e){return s+(e.salary||0);},0);
   var totalMaint       = (db.maintenance||[]).reduce(function(s,m){return s+(m.cost||0);},0);
-  var totalExpenses    = totalPurchases + totalTreatments + totalSalaries + totalMaint;
-  var totalRevenue     = db.sales.reduce(function(s,v){return s+(v.total||0);},0);
-  var totalKg          = db.sales.reduce(function(s,v){return s+(v.kg||0);},0);
+  var totalDiesel      = (db.diesel||[]).reduce(function(s,d){return s+(d.total||0);},0);
+  var totalAceite      = (db.aceite||[]).reduce(function(s,a){return s+(a.total||0);},0);
+  var totalAdelantos   = (db.advances||[]).reduce(function(s,a){return s+(a.amount||0);},0);
+  var totalCompraGanado= (db.compras_ganado||[]).reduce(function(s,c){return s+(c.total||0);},0);
+  var totalExpenses    = totalPurchases + totalTreatments + totalSalaries + totalMaint + totalDiesel + totalAceite + totalAdelantos;
+  var totalRevenue     = (db.sales||[]).reduce(function(s,v){return s+(v.total||0);},0);
+  var totalKg          = (db.sales||[]).reduce(function(s,v){return s+(v.kg||0);},0);
 
   document.getElementById('c-total').textContent   = 'Bs. '+totalExpenses.toLocaleString();
   document.getElementById('c-revenue').textContent = 'Bs. '+totalRevenue.toLocaleString();
@@ -5885,6 +5998,8 @@ function renderCostos() {
       {name:'Compras e insumos',     val:totalPurchases,  cls:'pf-blue'},
       {name:'Sanidad y tratamientos',val:totalTreatments, cls:'pf-amber'},
       {name:'Personal (mensual)',    val:totalSalaries,   cls:'pf-green'},
+      {name:'Adelantos personal',    val:totalAdelantos,  cls:'pf-amber'},
+      {name:'Combustible y lubric.', val:totalDiesel+totalAceite, cls:'pf-red'},
       {name:'Mantenimiento',         val:totalMaint,      cls:'pf-red'},
     ];
     bdEl.innerHTML = '';
@@ -5904,8 +6019,11 @@ function renderCostos() {
       ['Compras e insumos',      'Bs. '+totalPurchases.toLocaleString(),           'var(--red)'],
       ['Sanidad y tratamientos', 'Bs. '+totalTreatments.toLocaleString(),          'var(--red)'],
       ['Personal (mensual)',     'Bs. '+totalSalaries.toLocaleString(),            'var(--red)'],
+      ['Adelantos personal',     'Bs. '+totalAdelantos.toLocaleString(),           'var(--amber2)'],
+      ['Combustible y lubric.',  'Bs. '+(totalDiesel+totalAceite).toLocaleString(),'var(--red)'],
       ['Mantenimiento',          'Bs. '+totalMaint.toLocaleString(),               'var(--red)'],
-      ['Total gastos',           'Bs. '+totalExpenses.toLocaleString(),            'var(--red)'],
+      ['Total gastos operativos','Bs. '+totalExpenses.toLocaleString(),            'var(--red)'],
+      ['Inversion compra ganado','Bs. '+totalCompraGanado.toLocaleString(),        'var(--blue)'],
       ['Margen neto',            'Bs. '+Math.abs(margin).toLocaleString(),         margin>=0?'var(--green)':'var(--red)'],
       ['Costo/kg producido',     totalKg?'Bs. '+(totalExpenses/totalKg).toFixed(4):'-', 'var(--amber2)'],
       ['Precio prom. venta/kg',  totalKg?'Bs. '+(totalRevenue/totalKg).toFixed(2):'-',  'var(--blue)'],
@@ -6269,7 +6387,7 @@ function renderAdvances() {
           ? '<span class="bdg bdg-amber">Pendiente</span>'
           : '<span class="bdg bdg-green">Descontado</span>';
 
-        tr.innerHTML = '<td style="font-weight:500">'+escH(a.employee)+'</td><td style="color:var(--amber2);font-weight:600">Bs. '+a.amount.toLocaleString()+'</td><td>'+a.date+'</td><td style="font-size:12px;color:var(--muted)">'+escH(a.reason||'-')+'</td><td>'+statusBdg+'</td><td style="display:flex;gap:4px"></td>';
+        tr.innerHTML = '<td style="font-weight:500">'+escH(a.employee||'')+'</td><td style="color:var(--amber2);font-weight:600">Bs. '+(a.amount||0).toLocaleString()+'</td><td>'+(a.date||'')+'</td><td style="font-size:12px;color:var(--muted)">'+escH(a.reason||a.notes||'-')+'</td><td>'+statusBdg+'</td><td style="display:flex;gap:4px"></td>';
 
         var toggleBtn = document.createElement('button');
         toggleBtn.className = 'btn btn-ghost btn-sm';
@@ -7131,6 +7249,264 @@ function setTaskDB(tasks) {
   var b = document.getElementById('nb-tareas');
   if (b) { b.style.display = n ? 'inline' : 'none'; b.textContent = n; }
 }
+
+// ══════════════════════════════════════════════════
+// COMPRA DE GANADO
+// ══════════════════════════════════════════════════
+
+var _cgAnimals = [];
+
+function openModalCompraGanado() {
+  _cgAnimals = [];
+  document.getElementById('cg-proveedor').value = '';
+  document.getElementById('cg-fecha').value = new Date().toISOString().slice(0,10);
+  document.getElementById('cg-precio-kg').value = '';
+  document.getElementById('cg-total').value = '';
+  document.getElementById('cg-notas').value = '';
+  // Poblar lotes
+  var sel = document.getElementById('cg-lote');
+  sel.innerHTML = '<option value="">Seleccionar lote...</option>';
+  (db.lots || []).forEach(function(l) {
+    if (l.status === 'activo' || l.status === 'active') {
+      sel.innerHTML += '<option value="' + l.code + '">' + l.code + ' - ' + l.category + ' (' + l.animal_count + ' cab.)</option>';
+    }
+  });
+  // Poblar razas desde params
+  var params = getParams();
+  var razaSel = document.getElementById('cg-raza');
+  razaSel.innerHTML = '';
+  (params.razas || []).forEach(function(r) {
+    razaSel.innerHTML += '<option value="' + r.name + '">' + r.name + '</option>';
+  });
+  // Poblar categorias
+  var catSel = document.getElementById('cg-categoria');
+  catSel.innerHTML = '';
+  (params.categorias || []).forEach(function(c) {
+    catSel.innerHTML += '<option value="' + c.name + '">' + c.name + '</option>';
+  });
+  renderCGAnimalsTable();
+  openModal('modal-compra-ganado');
+}
+
+function addCGAnimal() {
+  var raza = document.getElementById('cg-raza').value;
+  _cgAnimals.push({ id: '', peso: 0, raza: raza });
+  renderCGAnimalsTable();
+}
+
+function removeCGAnimal(idx) {
+  _cgAnimals.splice(idx, 1);
+  renderCGAnimalsTable();
+  calcCGTotal();
+}
+
+function renderCGAnimalsTable() {
+  var tbody = document.getElementById('cg-animals-tbody');
+  if (!_cgAnimals.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:16px;font-size:12px">Agrega animales con el boton + Agregar animal</td></tr>';
+    document.getElementById('cg-count-display').textContent = '0';
+    document.getElementById('cg-peso-total').textContent = '0 kg';
+    document.getElementById('cg-peso-prom-display').textContent = '0 kg';
+    return;
+  }
+  var raza = document.getElementById('cg-raza').value;
+  tbody.innerHTML = _cgAnimals.map(function(a, i) {
+    return '<tr>' +
+      '<td><input class="form-input" style="width:100px;padding:4px 8px;font-size:11px" value="' + (a.id||'') + '" placeholder="ID-' + (i+1) + '" onchange="_cgAnimals['+i+'].id=this.value"></td>' +
+      '<td><input class="form-input" type="number" style="width:80px;padding:4px 8px;font-size:11px" value="' + (a.peso||'') + '" placeholder="kg" onchange="_cgAnimals['+i+'].peso=parseFloat(this.value)||0;calcCGTotal()"></td>' +
+      '<td><input class="form-input" style="width:80px;padding:4px 8px;font-size:11px" value="' + (a.raza||raza) + '" onchange="_cgAnimals['+i+'].raza=this.value"></td>' +
+      '<td><button class="btn btn-ghost btn-sm" onclick="removeCGAnimal('+i+')" style="padding:2px 6px;color:var(--red)">✕</button></td>' +
+      '</tr>';
+  }).join('');
+  calcCGTotal();
+}
+
+function calcCGTotal() {
+  var precioKg = parseFloat(document.getElementById('cg-precio-kg').value) || 0;
+  var pesoTotal = _cgAnimals.reduce(function(s,a) { return s + (a.peso||0); }, 0);
+  var count = _cgAnimals.length;
+  var pesoProm = count > 0 ? Math.round(pesoTotal / count * 10) / 10 : 0;
+  var total = Math.round(pesoTotal * precioKg * 100) / 100;
+
+  document.getElementById('cg-count-display').textContent = count;
+  document.getElementById('cg-peso-total').textContent = pesoTotal.toLocaleString() + ' kg';
+  document.getElementById('cg-peso-prom-display').textContent = pesoProm + ' kg';
+  document.getElementById('cg-total').value = 'Bs. ' + total.toLocaleString();
+}
+
+function saveCompraGanado() {
+  var proveedor = document.getElementById('cg-proveedor').value.trim();
+  var fecha = document.getElementById('cg-fecha').value;
+  var lote = document.getElementById('cg-lote').value;
+  var categoria = document.getElementById('cg-categoria').value;
+  var precioKg = parseFloat(document.getElementById('cg-precio-kg').value) || 0;
+  var notas = document.getElementById('cg-notas').value.trim();
+
+  if (!proveedor) { toast('Ingresa el proveedor', 'error'); return; }
+  if (!fecha) { toast('Ingresa la fecha', 'error'); return; }
+  if (!lote) { toast('Selecciona el lote destino', 'error'); return; }
+  if (!_cgAnimals.length) { toast('Agrega al menos un animal', 'error'); return; }
+
+  var pesoTotal = _cgAnimals.reduce(function(s,a) { return s + (a.peso||0); }, 0);
+  var total = Math.round(pesoTotal * precioKg * 100) / 100;
+
+  // Asignar IDs si están vacíos
+  var maxId = 0;
+  var animals = JSON.parse(localStorage.getItem('e5m_animals') || '{}');
+  Object.values(animals).forEach(function(list) {
+    list.forEach(function(a) {
+      var num = parseInt(String(a.id).replace(/[^0-9]/g, '')) || 0;
+      if (num > maxId) maxId = num;
+    });
+  });
+
+  _cgAnimals.forEach(function(a, i) {
+    if (!a.id) a.id = String(maxId + 1 + i);
+  });
+
+  // Agregar animales al lote en e5m_animals
+  if (!animals[lote]) animals[lote] = [];
+  _cgAnimals.forEach(function(a) {
+    animals[lote].push({
+      id: a.id,
+      raza: a.raza || '',
+      pesajes: [{ fecha: fecha, peso: a.peso }]
+    });
+  });
+  localStorage.setItem('e5m_animals', JSON.stringify(animals));
+
+  // Actualizar conteo del lote
+  var lotObj = db.lots.find(function(l) { return l.code === lote; });
+  if (lotObj) {
+    lotObj.animal_count = (lotObj.animal_count || 0) + _cgAnimals.length;
+    // Recalcular peso promedio
+    var allPesos = (animals[lote] || []).map(function(a) {
+      var ps = a.pesajes || [];
+      return ps.length ? ps[ps.length-1].peso : 0;
+    }).filter(function(p) { return p > 0; });
+    if (allPesos.length) lotObj.avg_weight = Math.round(allPesos.reduce(function(s,p){return s+p;},0) / allPesos.length * 10) / 10;
+  }
+
+  // Registrar la compra de ganado
+  if (!db.compras_ganado) db.compras_ganado = [];
+  db.compras_ganado.push({
+    id: 'cg_' + Date.now(),
+    proveedor: proveedor,
+    fecha: fecha,
+    lot_code: lote,
+    categoria: categoria,
+    animal_count: _cgAnimals.length,
+    total_kg: pesoTotal,
+    price_per_kg: precioKg,
+    total: total,
+    animales: _cgAnimals.map(function(a) { return { id: a.id, peso: a.peso, raza: a.raza }; }),
+    notes: notas,
+    created_at: new Date().toISOString()
+  });
+
+  // Registrar en costos
+  if (!db.cuentas) db.cuentas = [];
+  db.cuentas.push({
+    id: 'ct_' + Date.now(),
+    cuenta: 'INVERSIONES',
+    subcuenta: 'Compra de ganado',
+    descripcion: _cgAnimals.length + ' ' + categoria + ' de ' + proveedor + ' -> Lote ' + lote,
+    monto: total,
+    tipo: 'egreso',
+    fecha: fecha,
+    created_at: new Date().toISOString()
+  });
+
+  saveDB(true);
+  closeModal('modal-compra-ganado');
+  renderComprasGanado();
+  renderLotes();
+  renderDashboard();
+  toast('Compra registrada: ' + _cgAnimals.length + ' animales ingresados al lote ' + lote, 'success');
+  _cgAnimals = [];
+}
+
+function renderComprasGanado() {
+  var compras = db.compras_ganado || [];
+  var tbody = document.getElementById('cg-tbody');
+  if (!tbody) return;
+
+  // KPIs
+  var totalAnimales = compras.reduce(function(s,c) { return s + (c.animal_count||0); }, 0);
+  var totalBs = compras.reduce(function(s,c) { return s + (c.total||0); }, 0);
+  var totalKg = compras.reduce(function(s,c) { return s + (c.total_kg||0); }, 0);
+  var pesoProm = totalAnimales > 0 ? Math.round(totalKg / totalAnimales * 10) / 10 : 0;
+  var precioKgProm = totalKg > 0 ? Math.round(totalBs / totalKg * 100) / 100 : 0;
+
+  var el;
+  el = document.getElementById('cg-total-animales'); if(el) el.textContent = totalAnimales;
+  el = document.getElementById('cg-total-bs'); if(el) el.textContent = 'Bs. ' + totalBs.toLocaleString();
+  el = document.getElementById('cg-peso-prom'); if(el) el.textContent = pesoProm + ' kg';
+  el = document.getElementById('cg-precio-kg'); if(el && el.tagName !== 'INPUT') el.textContent = 'Bs. ' + precioKgProm;
+
+  if (!compras.length) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--muted)">Sin compras de ganado registradas</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = compras.sort(function(a,b) { return (b.fecha||'').localeCompare(a.fecha||''); }).map(function(c) {
+    var detalle = (c.animales || []).map(function(a) { return a.id + ' (' + a.peso + 'kg)'; }).join(', ');
+    return '<tr>' +
+      '<td>' + (c.fecha||'') + '</td>' +
+      '<td>' + (c.proveedor||'') + '</td>' +
+      '<td style="font-weight:700;color:var(--amber2)">' + (c.animal_count||0) + '</td>' +
+      '<td>' + (c.total_kg||0).toLocaleString() + ' kg</td>' +
+      '<td>Bs. ' + (c.price_per_kg||0) + '</td>' +
+      '<td style="font-weight:700;color:var(--green)">Bs. ' + (c.total||0).toLocaleString() + '</td>' +
+      '<td>' + (c.lot_code||'') + '</td>' +
+      '<td style="font-size:10px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis">' + detalle + '</td>' +
+      '<td><button class="btn btn-ghost btn-sm" onclick="deleteCompraGanado(\'' + c.id + '\')" style="color:var(--red)">🗑</button></td>' +
+      '</tr>';
+  }).join('');
+}
+
+function deleteCompraGanado(id) {
+  if (!confirm('Eliminar esta compra de ganado?')) return;
+  db.compras_ganado = (db.compras_ganado || []).filter(function(c) { return c.id !== id; });
+  saveDB(true);
+  renderComprasGanado();
+}
+
+function exportComprasGanado() {
+  var compras = db.compras_ganado || [];
+  if (!compras.length) { toast('Sin compras para exportar', 'error'); return; }
+  exportCSV('compras_ganado_estanciapro',
+    ['Fecha','Proveedor','Animales','Kg Totales','Bs/kg','Total Bs','Lote','Notas'],
+    compras.map(function(c) { return [c.fecha,c.proveedor,c.animal_count,c.total_kg,c.price_per_kg,c.total,c.lot_code,c.notes]; })
+  );
+}
+
+// ══════════════════════════════════════════════════
+// ACTIVIDADES
+// ══════════════════════════════════════════════════
+
+function renderActividades() {
+  var activities = db.activities || [];
+  var tbody = document.getElementById('actividades-tbody');
+  if (!tbody) return;
+  if (!activities.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--muted)">Sin actividades registradas</td></tr>';
+    return;
+  }
+  tbody.innerHTML = activities.sort(function(a,b) { return (b.date||'').localeCompare(a.date||''); }).map(function(a) {
+    return '<tr>' +
+      '<td>' + (a.date||'') + '</td>' +
+      '<td>' + (a.type||'') + '</td>' +
+      '<td>' + (a.responsible||a.operator||'') + '</td>' +
+      '<td>' + (a.lot_code||'') + '</td>' +
+      '<td style="font-size:11px;color:var(--muted)">' + (a.notes||a.description||'') + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════
+// TAREAS
+// ══════════════════════════════════════════════════
 
 function renderTareas() {
   // Seed if empty
@@ -8271,6 +8647,39 @@ function renderContabilidad() {
       tipo:'VARIABLE', fecha:m.date,
       detalle:m.title||'Mantenimiento',
       monto:m.cost||0, origen:'auto'
+    });
+  });
+
+  // COSTOS: de adelantos al personal
+  (db.advances||[]).forEach(function(a) {
+    if (!a.date) return;
+    derivados.push({
+      id:'adv-'+a.id, cuenta:'COSTOS', subcuenta:'Adelantos personal',
+      tipo:'VARIABLE', fecha:a.date,
+      detalle:'Adelanto '+escH(a.employee||'')+(a.reason?' - '+a.reason:''),
+      monto:a.amount||0, origen:'auto'
+    });
+  });
+
+  // COSTOS: de aceite/lubricantes
+  (db.aceite||[]).forEach(function(a) {
+    if (!a.fecha) return;
+    derivados.push({
+      id:'aceite-'+a.id, cuenta:'COSTOS', subcuenta:'Combustible',
+      tipo:'VARIABLE', fecha:a.fecha,
+      detalle:'Aceite/Lubricante - '+(a.tipo||'')+(a.equipo?' - '+a.equipo:''),
+      monto:a.total||0, origen:'auto'
+    });
+  });
+
+  // INVERSIONES: de compras de ganado
+  (db.compras_ganado||[]).forEach(function(c) {
+    if (!c.fecha) return;
+    derivados.push({
+      id:'cg-'+c.id, cuenta:'INVERSIONES', subcuenta:'Compra de ganado',
+      tipo:'VARIABLE', fecha:c.fecha,
+      detalle:(c.animal_count||0)+' animales de '+(c.proveedor||'')+ ' -> Lote '+(c.lot_code||''),
+      monto:c.total||0, origen:'auto'
     });
   });
 
@@ -10664,7 +11073,11 @@ function renderReportesGerenciales() {
   var totalSanidad=(db.treatments||[]).reduce(function(s,t){return s+(t.cost||0);},0);
   var totalSalarios=(db.employees||[]).filter(function(e){return e.active;}).reduce(function(s,e){return s+(e.salary||0);},0);
   var totalMaint=(db.maintenance||[]).reduce(function(s,m){return s+(m.cost||0);},0);
-  var totalEgresos=totalCompras+totalSanidad+totalSalarios+totalMaint;
+  var totalDieselRpt=(db.diesel||[]).reduce(function(s,d){return s+(d.total||0);},0);
+  var totalAceiteRpt=(db.aceite||[]).reduce(function(s,a){return s+(a.total||0);},0);
+  var totalAdelantosRpt=(db.advances||[]).reduce(function(s,a){return s+(a.amount||0);},0);
+  var totalCompraGanadoRpt=(db.compras_ganado||[]).reduce(function(s,c){return s+(c.total||0);},0);
+  var totalEgresos=totalCompras+totalSanidad+totalSalarios+totalMaint+totalDieselRpt+totalAceiteRpt+totalAdelantosRpt;
   var totalIngresos=(db.sales||[]).reduce(function(s,v){return s+(v.total||0);},0);
   var margen=totalIngresos-totalEgresos;
   var rentabilidad=totalIngresos?Math.round(margen/totalIngresos*100):0;

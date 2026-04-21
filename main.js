@@ -185,20 +185,8 @@ function checkForUpdates() {
     return;
   }
 
-  // Registrar listeners siempre (antes de verificar token)
-  autoUpdater.removeAllListeners();
-
   // Token para repo privado de GitHub
-  var ghToken = store.get('github_token', '');
-  if (!ghToken) { console.log('[Updater] No hay GitHub token'); return; }
-  autoUpdater.requestHeaders = { 'Authorization': 'token ' + ghToken };
-  autoUpdater.setFeedURL({
-    provider: 'github',
-    owner: 'jasm91',
-    repo: 'estancia5m-electron',
-    private: true,
-    token: ghToken
-  });
+  autoUpdater.requestHeaders = { 'Authorization': 'token 5vPUnndEawQejHCgIFq7lBe6YLjnMM2PzSBt' };
   autoUpdater.autoDownload = true;
   autoUpdater.logger = require('electron-log');
   autoUpdater.logger.transports.file.level = 'info';
@@ -209,7 +197,13 @@ function checkForUpdates() {
     console.log('[Updater] Buscando actualización...');
   });
   autoUpdater.on('update-available', (info) => {
-    console.log('[Updater] Actualización disponible:', info.version, '— descargando en segundo plano...');
+    console.log('[Updater] Actualización disponible:', info.version);
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Actualización disponible',
+      message: 'Hay una nueva versión de Jisunu 5M (' + info.version + '). Se descargará en segundo plano.',
+      buttons: ['OK'],
+    });
   });
   autoUpdater.on('update-not-available', (info) => {
     console.log('[Updater] Sin actualizaciones. Versión más reciente:', info.version);
@@ -219,25 +213,14 @@ function checkForUpdates() {
   });
   autoUpdater.on('update-downloaded', (info) => {
     console.log('[Updater] Descarga completa:', info.version);
-    if (process.platform === 'darwin') {
-      dialog.showMessageBox(mainWindow, {
-        type: 'info',
-        title: 'Actualización disponible',
-        message: 'Nueva versión ' + info.version + ' disponible. Descarga e instala el DMG para actualizar.',
-        buttons: ['Descargar', 'Más tarde'],
-      }).then(result => {
-        if (result.response === 0) shell.openExternal('https://github.com/jasm91/estancia5m-electron/releases/latest');
-      });
-    } else {
-      dialog.showMessageBox(mainWindow, {
-        type: 'question',
-        title: 'Actualización lista',
-        message: 'La versión ' + info.version + ' está lista. ¿Reiniciar ahora para instalar?',
-        buttons: ['Reiniciar', 'Más tarde'],
-      }).then(result => {
-        if (result.response === 0) autoUpdater.quitAndInstall();
-      });
-    }
+    dialog.showMessageBox(mainWindow, {
+      type: 'question',
+      title: 'Actualización lista',
+      message: 'La versión ' + info.version + ' está lista. ¿Reiniciar ahora para instalar?',
+      buttons: ['Reiniciar', 'Más tarde'],
+    }).then(result => {
+      if (result.response === 0) autoUpdater.quitAndInstall();
+    });
   });
 
   autoUpdater.checkForUpdates();
@@ -280,8 +263,8 @@ ipcMain.handle('app:version', () => app.getVersion());
 
 ipcMain.handle('app:set-gh-token', (_, token) => {
   if (token) {
-    store.set('github_token', token);
-    if (app.isPackaged) checkForUpdates();
+    autoUpdater.requestHeaders = { 'Authorization': 'token ' + token };
+    autoUpdater.checkForUpdatesAndNotify();
   }
   return true;
 });
