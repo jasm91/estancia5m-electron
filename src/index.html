@@ -2024,16 +2024,30 @@ function pullFromRailwayDesktop(thenPush) {
 <!-- ═══ ACTIVIDADES ═══ -->
 <div id="page-actividades" class="page">
   <div class="ph">
-    <div><div class="pt">📝 Actividades de Campo</div><div class="ps">Historial de actividades del equipo</div></div>
+    <div><div class="pt">📅 Actividad General</div><div class="ps">Historial completo de todas las operaciones</div></div>
   </div>
-  <div class="card">
-    <div class="card-body" style="padding:0">
-      <table class="tbl">
-        <thead><tr><th>Fecha</th><th>Tipo</th><th>Responsable</th><th>Lote</th><th>Detalle</th></tr></thead>
-        <tbody id="actividades-tbody"></tbody>
-      </table>
-    </div>
+  <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px">
+    <select class="form-select" id="act-page-filter-lot" style="width:160px;padding:6px 10px;font-size:12px" onchange="renderActividades()">
+      <option value="">Todos los lotes</option>
+    </select>
+    <select class="form-select" id="act-page-filter-type" style="width:160px;padding:6px 10px;font-size:12px" onchange="renderActividades()">
+      <option value="">Todos los tipos</option>
+      <option value="curacion">💉 Curaciones</option>
+      <option value="pesaje">⚖️ Pesajes</option>
+      <option value="compra">🛒 Compras</option>
+      <option value="venta">💰 Ventas</option>
+      <option value="mantenimiento">🔧 Mantenimiento</option>
+      <option value="diesel">⛽ Combustible</option>
+      <option value="adelanto">💵 Adelantos</option>
+      <option value="agua">💧 Agua</option>
+      <option value="sal">🧂 Sal</option>
+      <option value="conteo">🔢 Conteo</option>
+      <option value="parto">🐄 Partos</option>
+      <option value="alimento">🌿 Alimento</option>
+      <option value="movimiento">🔄 Movimientos</option>
+    </select>
   </div>
+  <div class="card"><div class="card-body" style="padding:0"><div id="act-page-list"></div></div></div>
 </div>
 
 </main>
@@ -2947,13 +2961,22 @@ function saveDB(lotChanged) {
 }
 
 // Tracking de IDs borrados para que el merge no los traiga de vuelta
-function getDeletedIds() {
-  try { return JSON.parse(localStorage.getItem('e5m_deleted_ids') || '{}'); } catch(e) { return {}; }
+function getDeletedIds(table) {
+  try { 
+    var all = JSON.parse(localStorage.getItem('e5m_deleted_ids') || '{}');
+    if (!table) return all;
+    // Filtrar solo los del tabla específica
+    var filtered = {};
+    Object.keys(all).forEach(function(k) {
+      if (k.indexOf(table + ':') === 0) filtered[k.replace(table + ':', '')] = all[k];
+    });
+    return filtered;
+  } catch(e) { return {}; }
 }
-function trackDeletion(id) {
-  var deleted = getDeletedIds();
-  deleted[String(id)] = Date.now();
-  // Mantener solo últimos 500 para no crecer infinito
+function trackDeletion(id, table) {
+  var deleted = JSON.parse(localStorage.getItem('e5m_deleted_ids') || '{}');
+  var key = table ? (table + ':' + String(id)) : String(id);
+  deleted[key] = Date.now();
   var keys = Object.keys(deleted);
   if (keys.length > 500) {
     keys.sort(function(a,b){ return deleted[a]-deleted[b]; });
@@ -2976,9 +2999,9 @@ function replaceTableInRailway(tableName, records) {
   .catch(function(e){ console.error('Railway push error:', e); });
 }
 
-function mergeArrays(local, remote, idField) {
+function mergeArrays(local, remote, idField, tableName) {
   var localIds = {};
-  var deleted = getDeletedIds();
+  var deleted = getDeletedIds(tableName);
   (local || []).forEach(function(r) { localIds[r[idField]] = true; });
   var merged = (local || []).slice();
   (remote || []).forEach(function(r) {
@@ -3079,10 +3102,13 @@ function pullFromRailwayDesktop(thenPush) {
         { local: 'alimento',   remote: remote.alimento },
         { local: 'lluvias',    remote: remote.lluvias },
         { local: 'diesel',     remote: remote.diesel },
+        { local: 'purchases',  remote: remote.purchases },
+        { local: 'aceite',     remote: remote.aceite },
+        { local: 'sales',      remote: remote.sales },
       ];
       fieldTables.forEach(function(t) {
         if (t.remote && t.remote.length) {
-          db[t.local] = mergeArrays(db[t.local] || [], t.remote, 'id');
+          db[t.local] = mergeArrays(db[t.local] || [], t.remote, 'id', t.local);
         }
       });
 
@@ -3108,7 +3134,7 @@ function pullFromRailwayDesktop(thenPush) {
         var remoteTasks = remote.tasks || [];
         var remoteIds = {};
         remoteTasks.forEach(function(t) { remoteIds[t.id] = true; });
-        var deleted = getDeletedIds();
+        var deleted = getDeletedIds('tasks');
         // Solo preservar tareas locales que no están en Railway Y no fueron borradas
         var localOnly = localTasks.filter(function(t) {
           if (remoteIds[t.id]) return false;
@@ -3141,7 +3167,9 @@ function pullFromRailwayDesktop(thenPush) {
       }
       if (typeof renderPesajes === 'function') renderPesajes();
       if (typeof renderMantenimiento === 'function') renderMantenimiento();
-      if (typeof renderCompras === 'function') renderCompras();
+      if (typeof renderVentas === 'function') renderVentas();
+      if (typeof renderComprasGanado === 'function') renderComprasGanado();
+      if (typeof renderDieselDesktop === 'function') renderDieselDesktop();
 
       if (thenPush) {
         pushToRailway();
@@ -3629,7 +3657,7 @@ function moveLot() {
 
 function deleteLot(id) {
   if(!confirm('¿Eliminar este lote?')) return;
-  trackDeletion(id);
+  trackDeletion(id, 'lots');
   db.lots = db.lots.filter(l=>l.id!==id);
   saveDB(true); renderLotes(); 
   replaceTableInRailway('lots', db.lots || []);
@@ -4058,7 +4086,7 @@ function pushTableToRailway(tableName, records) {
 }
 function deleteMaint(id) {
   if (!confirm('\u00bfEliminar este registro?')) return;
-  trackDeletion(id);
+  trackDeletion(id, 'maintenance');
   db.maintenance = db.maintenance.filter(function(m){ return m.id!==id; });
   saveDB(); renderMantenimiento();
   replaceTableInRailway('maintenance', db.maintenance || []);
@@ -4446,7 +4474,7 @@ setInterval(function() {
 
 function deletePesaje(id) {
   if (!confirm('\u00bfEliminar este pesaje?')) return;
-  trackDeletion(id);
+  trackDeletion(id, 'pesajes');
   db.pesajes = db.pesajes.filter(function(p){ return p.id!==id; });
   saveDB(); renderPesajes();
   replaceTableInRailway('pesajes', db.pesajes || []);
@@ -4901,7 +4929,7 @@ function renderSubmodule(type) {
 
 function deleteSubmodule(id, type) {
   if (!confirm('\u00bfEliminar este registro?')) return;
-  trackDeletion(id);
+  trackDeletion(id, type);
   db[type] = (db[type]||[]).filter(function(r){return r.id!==id;});
   saveDB(); renderSubmodule(type);
   replaceTableInRailway(type, db[type] || []);
@@ -5305,7 +5333,7 @@ function saveTreatment() {
 
 function deleteTreatment(id) {
   if (!confirm('\u00bfEliminar esta curacion? El stock NO se restaura.')) return;
-  trackDeletion(id);
+  trackDeletion(id, 'treatments');
   db.treatments = db.treatments.filter(function(t){ return t.id !== id; });
   saveDB();
   replaceTableInRailway('treatments', db.treatments || []);
@@ -5439,7 +5467,7 @@ function addStock() {
 
 function deleteProduct(id) {
   if(!confirm('Eliminar este producto del stock veterinario?')) return;
-  trackDeletion(id);
+  trackDeletion(id, 'products');
   db.products = db.products.filter(function(p){ return p.id !== id; });
   saveDB();
   replaceTableInRailway('vet_products', db.products || []);
@@ -5578,7 +5606,7 @@ function toggleSaleIds(id) {
 
 function deleteSale(id) {
   if (!confirm('\u00bfEliminar esta venta?')) return;
-  trackDeletion(id);
+  trackDeletion(id, 'sales');
   db.sales = db.sales.filter(function(s){ return s.id!==id; });
   saveDB(); renderVentas(); renderDashboard();
   replaceTableInRailway('sales', db.sales || []);
@@ -5968,7 +5996,7 @@ function renderCompras() {
 
 function deletePurchase(id) {
   if (!confirm('Eliminar esta compra?')) return;
-  trackDeletion(id);
+  trackDeletion(id, 'purchases');
   db.purchases = db.purchases.filter(function(p){ return p.id!==id; });
   // Guardar en lista de eliminados para sincronizar con Railway
   var deleted = JSON.parse(localStorage.getItem('e5m_deleted_purchases') || '[]');
@@ -6604,7 +6632,7 @@ function toggleAdvance(id) {
 
 function deleteAdvance(id) {
   if (!confirm('\u00bfEliminar este adelanto?')) return;
-  trackDeletion(id);
+  trackDeletion(id, 'advances');
   db.advances = db.advances.filter(function(a){ return a.id!==id; });
   saveDB();
   replaceTableInRailway('advances', db.advances || []);
@@ -6616,7 +6644,7 @@ function deleteEmployee(id) {
   var emp = db.employees.find(function(e){ return e.id===id; });
   if (!emp) return;
   if (!confirm('\u00bfEliminar a ' + emp.name + '? Se perderan sus registros de actividad.')) return;
-  trackDeletion(id);
+  trackDeletion(id, 'employees');
   db.employees = db.employees.filter(function(e){ return e.id!==id; });
   saveDB();
   replaceTableInRailway('employees', db.employees || []);
@@ -6626,7 +6654,7 @@ function deleteEmployee(id) {
 
 function deleteActivity(id) {
   if (!confirm('\u00bfEliminar esta actividad?')) return;
-  trackDeletion(id);
+  trackDeletion(id, 'activities');
   db.activities = db.activities.filter(function(a){ return a.id!==id; });
   saveDB(); renderPersonal(); renderDashboard();
   replaceTableInRailway('field_activities', db.activities || []);
@@ -7613,7 +7641,7 @@ function renderComprasGanado() {
 
 function deleteCompraGanado(id) {
   if (!confirm('Eliminar esta compra de ganado?')) return;
-  trackDeletion(id);
+  trackDeletion(id, 'compras_ganado');
   db.compras_ganado = (db.compras_ganado || []).filter(function(c) { return c.id !== id; });
   saveDB(true);
   replaceTableInRailway('compras_ganado', db.compras_ganado || []);
@@ -7634,22 +7662,145 @@ function exportComprasGanado() {
 // ══════════════════════════════════════════════════
 
 function renderActividades() {
-  var activities = db.activities || [];
-  var tbody = document.getElementById('actividades-tbody');
-  if (!tbody) return;
-  if (!activities.length) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--muted)">Sin actividades registradas</td></tr>';
+  var lotSel = document.getElementById('act-page-filter-lot');
+  if (lotSel) {
+    var curVal = lotSel.value;
+    lotSel.innerHTML = '<option value="">Todos los lotes</option>';
+    (db.lots||[]).forEach(function(l){
+      var o = document.createElement('option');
+      o.value = l.code; o.textContent = l.code + ' - ' + (l.paddock||l.category||'');
+      lotSel.appendChild(o);
+    });
+    lotSel.value = curVal;
+  }
+  var filterLot  = (document.getElementById('act-page-filter-lot')||{}).value||'';
+  var filterType = (document.getElementById('act-page-filter-type')||{}).value||'';
+  var all = [];
+  if (!filterType || filterType==='curacion') {
+    (db.treatments||[]).forEach(function(r){
+      if(filterLot && r.lot_code!==filterLot) return;
+      all.push({date:r.applied_at||r.created_at||'',created_at:r.created_at||'',tag:'CUR',color:'var(--red)',
+        title:r.product_name+' - '+r.count+' animales - '+(r.total||0)+' '+(r.unit||''),
+        sub:r.diagnosis||'',lot:r.lot_code,by:r.by||''});
+    });
+  }
+  if (!filterType || filterType==='pesaje') {
+    (db.pesajes||[]).forEach(function(r){
+      if(filterLot && r.lot_code!==filterLot) return;
+      var esV = r.tipo==='venta'||r.nota==='Peso al momento de venta';
+      all.push({date:r.date,created_at:r.created_at||'',tag:esV?'PES-V':'PES',color:esV?'var(--green)':'var(--amber2)',
+        title:esV?'Pesaje venta — Animal '+(r.animal_id||'?')+' — '+(r.peso||'?')+' kg':'Pesaje: '+(r.avg_weight||'?')+' kg prom - '+(r.animal_count||'?')+' animales',
+        sub:r.min_weight?'Min: '+r.min_weight+' / Max: '+r.max_weight+' kg':'',lot:r.lot_code,by:r.by||''});
+    });
+  }
+  if (!filterType || filterType==='compra') {
+    (db.purchases||[]).forEach(function(r){
+      all.push({date:r.date||r.created_at||'',created_at:r.created_at||'',tag:'COM',color:'var(--blue)',
+        title:'Compra: '+(r.desc||'')+' — '+(r.qty||0)+' '+(r.unit||'')+' — Bs. '+(r.total||0),
+        sub:(r.supplier?'Proveedor: '+r.supplier:'')+(r.status==='paid'?' (Pagado)':''),lot:'',by:r.by||''});
+    });
+  }
+  if (!filterType || filterType==='venta') {
+    (db.sales||[]).forEach(function(r){
+      all.push({date:r.date||'',created_at:r.created_at||'',tag:'VTA',color:'var(--green)',
+        title:'Venta: '+(r.animals||r.animal_count||0)+' cab. a '+(r.buyer||'')+' — Bs. '+(r.total||0).toLocaleString(),
+        sub:(r.kg?r.kg+' kg — ':'')+' Bs. '+(r.price_per_kg||0)+'/kg',lot:r.lot_code||'',by:r.by||''});
+    });
+  }
+  if (!filterType || filterType==='mantenimiento') {
+    (db.maintenance||[]).forEach(function(r){
+      all.push({date:r.date||'',created_at:r.created_at||'',tag:'MNT',color:'var(--amber)',
+        title:(r.desc||'Mantenimiento')+' — Bs. '+(r.cost||0),
+        sub:(r.category||'')+(r.location?' — '+r.location:'')+(r.status?' ('+r.status+')':''),lot:'',by:r.who||''});
+    });
+  }
+  if (!filterType || filterType==='diesel') {
+    (db.diesel||[]).forEach(function(r){
+      all.push({date:r.fecha||'',created_at:r.created_at||'',tag:'DSL',color:'var(--amber2)',
+        title:'Combustible: '+(r.litros||0)+' lts — '+(r.vehiculo||'')+' — Bs. '+(r.total||0),
+        sub:r.proveedor?'Proveedor: '+r.proveedor:'',lot:'',by:r.by||''});
+    });
+  }
+  if (!filterType || filterType==='adelanto') {
+    (db.advances||[]).forEach(function(r){
+      all.push({date:r.date||'',created_at:r.created_at||'',tag:'ADL',color:'var(--purple)',
+        title:'Adelanto: '+(r.employee||'')+' — Bs. '+(r.amount||0),
+        sub:r.reason||'',lot:'',by:r.by||''});
+    });
+  }
+  if (!filterType || filterType==='agua') {
+    var eMap={lleno:'OK Lleno',medio:'Medio',bajo:'Bajo',seco:'Seco',roto:'Roto'};
+    (db.agua||[]).forEach(function(r){
+      if(filterLot && r.lot_code!==filterLot) return;
+      all.push({date:r.date,created_at:r.created_at||'',tag:'H2O',color:'var(--blue)',
+        title:'Agua: '+(eMap[r.estado]||r.estado),sub:r.obs||'',lot:r.lot_code,by:r.by||''});
+    });
+  }
+  if (!filterType || filterType==='sal') {
+    (db.sal||[]).forEach(function(r){
+      if(filterLot && r.lot_code!==filterLot) return;
+      all.push({date:r.date,created_at:r.created_at||'',tag:'SAL',color:'var(--muted)',
+        title:'Sal: '+(r.qty||0)+' kg'+(r.tipo?' - '+r.tipo:''),sub:r.obs||'',lot:r.lot_code,by:r.by||''});
+    });
+  }
+  if (!filterType || filterType==='conteo') {
+    (db.conteo||[]).forEach(function(r){
+      if(filterLot && r.lot_code!==filterLot) return;
+      var diff=r.diff||0;
+      all.push({date:r.date,created_at:r.created_at||'',tag:'CNT',color:'var(--purple)',
+        title:'Conteo: '+r.counted+' cab. (sistema: '+r.ref+') Dif: '+(diff>0?'+':'')+diff,
+        sub:r.obs||'',lot:r.lot_code,by:r.by||'',diff:diff});
+    });
+  }
+  if (!filterType || filterType==='parto') {
+    (db.partos||[]).forEach(function(r){
+      if(filterLot && r.lot_code!==filterLot) return;
+      all.push({date:r.date,tag:'PAR',color:'var(--green)',
+        title:'Parto: '+(r.sexo==='macho'?'Macho':'Hembra')+(r.peso?' '+r.peso+' kg':'')+' - '+(r.estado||''),
+        sub:(r.cria_id?'Arete: '+r.cria_id:'')+(r.obs?' '+r.obs:''),lot:r.lot_code,by:r.by||''});
+    });
+  }
+  if (!filterType || filterType==='alimento') {
+    (db.alimento||[]).forEach(function(r){
+      if(filterLot && r.lot_code!==filterLot) return;
+      all.push({date:r.date,created_at:r.created_at||'',tag:'ALI',color:'var(--green)',
+        title:'Alimento: '+((r.tipo||'').replace(/_/g,' '))+' - '+(r.qty||0)+' kg',
+        sub:r.obs||'',lot:r.lot_code,by:r.by||''});
+    });
+  }
+  if (!filterType || filterType==='movimiento') {
+    (db.activities||[]).filter(function(a){return a.type==='movimiento';}).forEach(function(r){
+      if(filterLot && r.lot!==filterLot) return;
+      all.push({date:r.date,created_at:r.created_at||r.date||'',tag:'MOV',color:'var(--amber2)',
+        title:r.desc||'Movimiento de lote',sub:'',lot:r.lot||'',by:r.employee||''});
+    });
+  }
+  all.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+  var el = document.getElementById('act-page-list');
+  if (!el) return;
+  if (!all.length) {
+    el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--muted);font-size:12px">Sin actividad'+(filterLot?' para lote '+filterLot:'')+(filterType?' con filtro '+filterType:'')+'</div>';
     return;
   }
-  tbody.innerHTML = activities.sort(function(a,b) { return (b.date||'').localeCompare(a.date||''); }).map(function(a) {
-    return '<tr>' +
-      '<td>' + (a.date||'') + '</td>' +
-      '<td>' + (a.type||'') + '</td>' +
-      '<td>' + (a.responsible||a.operator||'') + '</td>' +
-      '<td>' + (a.lot_code||'') + '</td>' +
-      '<td style="font-size:11px;color:var(--muted)">' + (a.notes||a.description||'') + '</td>' +
-      '</tr>';
-  }).join('');
+  el.innerHTML = '';
+  all.forEach(function(r) {
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:12px;padding:10px 16px;border-bottom:1px solid rgba(48,54,61,.3);font-size:12px;align-items:flex-start';
+    var diffStyle = (r.diff !== undefined) ? (r.diff < 0 ? ';color:var(--red)' : r.diff > 0 ? ';color:var(--blue)' : '') : '';
+    var safeTitle = (r.title||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    var safeSub = r.sub ? r.sub.replace(/&/g,'&amp;').replace(/</g,'&lt;') : '';
+    row.innerHTML =
+      '<div style="font-size:9px;font-weight:700;color:'+r.color+';background:rgba(0,0,0,.2);padding:2px 5px;border-radius:4px;flex-shrink:0;margin-top:2px;font-family:DM Mono,monospace">'+r.tag+'</div>'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-weight:500;color:var(--text)'+diffStyle+'">'+safeTitle+'</div>'+
+        (safeSub?'<div style="color:var(--muted);margin-top:2px">'+safeSub+'</div>':'')+
+        '<div style="color:var(--muted);font-size:10px;margin-top:3px">'+
+          (r.lot?'<span style="color:var(--amber2);background:rgba(212,160,23,.08);padding:1px 6px;border-radius:3px;margin-right:6px">'+r.lot+'</span>':'')+
+          (r.by||'')+(r.by?' - ':'')+fmtDT(r.created_at||r.date||'')+
+        '</div>'+
+      '</div>';
+    el.appendChild(row);
+  });
 }
 
 // ══════════════════════════════════════════════════
@@ -7804,7 +7955,7 @@ function renderTaskList() {
     delBtn.style.color = 'var(--muted)';
     delBtn.onclick = (function(id){ return function(){
       if (!confirm('Eliminar esta tarea?')) return;
-      trackDeletion(id);
+      trackDeletion(id, 'tasks');
       var remaining = getTaskDB().filter(function(t){ return t.id !== id; });
       setTaskDB(remaining);
       renderTaskList();
@@ -8327,18 +8478,8 @@ function testConnectionSilent() {
     });
 }
 
-function manualSync() {
-  toast('Sincronizando...', 'info');
-  fetch(_PING_URL, { signal: (function(){ var c=new AbortController(); setTimeout(function(){c.abort();},7000); return c.signal; })() })
-    .then(function(r) {
-      if (r.ok) {
-        localStorage.setItem('lastSync', new Date().toISOString());
-        toast('Sincronizacion completada', 'success');
-        renderConfig();
-      } else { toast('Error al sincronizar', 'error'); }
-    })
-    .catch(function() { toast('Sin conexion', 'warning'); });
-}
+// manualSync delegada a la definición principal (línea ~3030)
+// NO redefinir aquí — window._manualSync_real ya apunta a pullFromRailwayDesktop
 
 function guardarGhToken() {
   var token = ((document.getElementById('cfg-gh-token')||{}).value||'').trim();
@@ -8975,7 +9116,7 @@ function guardarCuenta() {
 
 function deleteCuenta(id) {
   if(!confirm('Eliminar este registro?'))return;
-  trackDeletion(id);
+  trackDeletion(id, 'cuentas');
   db.cuentas=db.cuentas.filter(function(r){return r.id!==id;});
   saveDB();renderContabilidad();toast('Eliminado','success');
   replaceTableInRailway('cuentas', db.cuentas || []);
@@ -9180,7 +9321,7 @@ function guardarKardex(){
 
 function deleteKardex(id){
   if(!confirm('Eliminar este movimiento?'))return;
-  trackDeletion(id);
+  trackDeletion(id, 'kardex');
   db.kardex=db.kardex.filter(function(r){return r.id!==id;});
   saveDB();renderKardex();toast('Eliminado','success');
   replaceTableInRailway('kardex', db.kardex || []);
@@ -9323,7 +9464,7 @@ function guardarPagoSueldo() {
 }
 function deletePagoSueldo(id) {
   if(!confirm('Eliminar?')) return;
-  trackDeletion(id);
+  trackDeletion(id, 'historial_sueldos');
   db.historial_sueldos=db.historial_sueldos.filter(function(r){return r.id!==id;});
   saveDB();renderHistorialSueldos();toast('Eliminado','success');
   replaceTableInRailway('historial_sueldos', db.historial_sueldos || []);
