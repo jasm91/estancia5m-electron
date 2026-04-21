@@ -609,6 +609,7 @@ function pullFromRailwayDesktop(thenPush) {
     <div><div class="pt">🐄 Lotes</div><div class="ps" id="lotes-sub">Inventario por lote</div></div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-primary" onclick="openModal('modal-lot')">+ Nuevo lote</button>
+      <button class="btn btn-primary" onclick="openModal('modal-bulk-animals')" style="background:var(--green);font-size:12px">📥 Carga Masiva</button>
       <button class="btn btn-ghost" onclick="exportLotes()" style="font-size:12px">⬇ Excel</button>
     </div>
   </div>
@@ -2051,6 +2052,41 @@ function pullFromRailwayDesktop(thenPush) {
 </div>
 
 </main>
+</div>
+
+<!-- BULK ANIMALS MODAL -->
+<div class="modal-overlay" id="modal-bulk-animals" style="align-items:center">
+  <div class="modal" style="width:700px;max-height:85vh;overflow-y:auto">
+    <h2>📥 Carga Masiva de Animales</h2>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+      Sube un archivo CSV con los animales. Formato: <strong>ID, Raza, Peso (kg)</strong> — una fila por animal.<br>
+      <span style="color:var(--amber2)">Tip: Desde Excel, guarda cada hoja como CSV (Archivo → Guardar como → CSV UTF-8)</span>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Lote destino</label>
+        <select class="form-select" id="bulk-lot-select"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fecha de pesaje</label>
+        <input class="form-input" type="date" id="bulk-pesaje-date">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Archivo CSV o pegar datos</label>
+      <input type="file" id="bulk-file-input" accept=".csv,.txt" style="margin-bottom:8px" onchange="parseBulkFile(this)">
+      <textarea class="form-textarea" id="bulk-paste-area" placeholder="O pega aquí los datos (ID, Raza, Peso):&#10;1041, F1, 370&#10;1043, F1, 391&#10;1045, F1, 339" style="min-height:100px;font-family:DM Mono,monospace;font-size:11px"></textarea>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="btn btn-ghost" onclick="previewBulkAnimals()" style="font-size:12px">👁 Previsualizar</button>
+      <span id="bulk-preview-count" style="font-size:12px;color:var(--muted);align-self:center"></span>
+    </div>
+    <div id="bulk-preview-table" style="max-height:250px;overflow-y:auto;margin-bottom:12px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeModal('modal-bulk-animals')">Cancelar</button>
+      <button class="btn btn-primary" id="bulk-confirm-btn" onclick="confirmBulkAnimals()" disabled>📥 Cargar Animales</button>
+    </div>
+  </div>
 </div>
 
 <!-- TASK MODAL -->
@@ -12025,14 +12061,17 @@ function listCloudBackups() {
   .then(function(list){
     if(!listEl)return;
     if(!list.length){listEl.innerHTML='<span style="color:var(--muted)">Sin snapshots guardados</span>';return;}
-    listEl.innerHTML='<table class="tbl" style="font-size:11px"><thead><tr><th>Fecha</th><th>Tamaño</th><th>Origen</th><th></th></tr></thead><tbody>'+
+    listEl.innerHTML='<table class="tbl" style="font-size:11px"><thead><tr><th>Fecha</th><th>Tamaño</th><th>Origen</th><th>Acciones</th></tr></thead><tbody>'+
       list.map(function(s){
+        var originLabel = s.triggered_by==='auto-push'?'Auto (sync)':s.triggered_by==='auto-desktop'?'Auto (inicio)':s.triggered_by==='pre-restore'?'Pre-restauración':'Manual';
         return '<tr>'+
           '<td style="font-family:DM Mono,monospace">'+new Date(s.created_at).toLocaleString('es-BO')+'</td>'+
           '<td style="font-family:DM Mono,monospace">'+s.size_kb+' KB</td>'+
-          '<td style="color:var(--muted)">'+escH(s.triggered_by||'auto')+'</td>'+
-          '<td><a href="'+apiUrl+'/cloud-backup/'+s.id+'?token='+token+'" download style="color:var(--blue);font-size:11px;text-decoration:none">Descargar</a></td>'+
-        '</tr>';
+          '<td style="color:var(--muted)">'+escH(originLabel)+'</td>'+
+          '<td style="display:flex;gap:8px">'+
+            '<a href="'+apiUrl+'/cloud-backup/'+s.id+'?token='+token+'" download style="color:var(--blue);font-size:11px;text-decoration:none">⬇ Descargar</a>'+
+            '<button onclick="restoreCloudSnapshot(\''+s.id+'\',\''+new Date(s.created_at).toLocaleString('es-BO').replace(/'/g,'')+'\')" style="background:none;border:none;color:var(--amber2);font-size:11px;cursor:pointer;text-decoration:underline">🔄 Restaurar</button>'+
+          '</td></tr>';
       }).join('')+
     '</tbody></table>';
     var lbl=document.getElementById('cloud-backup-last');
@@ -12041,6 +12080,46 @@ function listCloudBackups() {
     if(listEl)listEl.innerHTML='<span style="color:var(--red)">Error al conectar con Railway</span>';
   });
 }
+
+function restoreCloudSnapshot(snapshotId, dateLabel) {
+  if (!confirm('⚠️ RESTAURAR SNAPSHOT del ' + dateLabel + '?\n\nEsto reemplazará TODOS los datos en Railway Y en esta app.\nSe creará un snapshot de seguridad antes de restaurar.\n\n¿Continuar?')) return;
+  if (!confirm('SEGUNDA CONFIRMACIÓN: ¿Estás seguro? Los datos actuales serán reemplazados.')) return;
+  var apiUrl = localStorage.getItem('e5m_api_url') || 'https://estancia5m-api-production.up.railway.app/api';
+  var token = localStorage.getItem('e5m_api_token') || 'estancia5m-2026-secreto';
+  toast('Restaurando snapshot del ' + dateLabel + '...', 'info');
+  fetch(apiUrl + '/cloud-backup/' + snapshotId + '/restore', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (d.ok) {
+      toast('Railway restaurado (' + d.restored_tables + ' tablas). Recargando...', 'success');
+      setTimeout(function() {
+        pullFromRailwayDesktop(false);
+        setTimeout(function() { location.reload(); }, 3000);
+      }, 1000);
+    } else { toast('Error: ' + (d.error || 'desconocido'), 'error'); }
+  })
+  .catch(function() { toast('Error de conexión al restaurar', 'error'); });
+}
+
+// Auto-backup local al iniciar (guarda últimos 3 días en localStorage)
+(function autoLocalBackupOnStart() {
+  try {
+    var backup = getBackupData();
+    var key = 'e5m_startup_backup_' + new Date().toISOString().slice(0,10);
+    var allKeys = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf('e5m_startup_backup_') === 0) allKeys.push(k);
+    }
+    allKeys.sort().reverse();
+    for (var j = 2; j < allKeys.length; j++) localStorage.removeItem(allKeys[j]);
+    localStorage.setItem(key, JSON.stringify(backup));
+    console.log('[Backup] Startup backup:', key, Math.round(JSON.stringify(backup).length/1024) + 'KB');
+  } catch(e) { console.warn('[Backup] Startup backup error:', e); }
+})();
 
 // Backup nube automático: cada vez que se abre Config, verificar si hay backup del día
 function checkCloudBackupStatus() {
@@ -12071,6 +12150,172 @@ function openBackupFolder() {
   } else {
     toast('Solo disponible en la app de escritorio', 'error');
   }
+}
+
+// ══════════════════════════════════════════════════
+// CARGA MASIVA DE ANIMALES
+// ══════════════════════════════════════════════════
+var _bulkAnimals = [];
+
+function openBulkModal() {
+  var sel = document.getElementById('bulk-lot-select');
+  if (sel) {
+    sel.innerHTML = '<option value="">Seleccionar lote...</option>';
+    (db.lots || []).forEach(function(l) {
+      var o = document.createElement('option');
+      o.value = l.code;
+      o.textContent = l.code + ' - ' + (l.category || '') + ' (' + (l.animal_count || 0) + ' cab.)';
+      sel.appendChild(o);
+    });
+  }
+  var dateEl = document.getElementById('bulk-pesaje-date');
+  if (dateEl) dateEl.value = today();
+  document.getElementById('bulk-paste-area').value = '';
+  document.getElementById('bulk-preview-table').innerHTML = '';
+  document.getElementById('bulk-preview-count').textContent = '';
+  document.getElementById('bulk-confirm-btn').disabled = true;
+  _bulkAnimals = [];
+}
+
+// Auto-init modal when opened
+var _origOpenModal = typeof openModal === 'function' ? openModal : null;
+var _patchedBulk = false;
+if (!_patchedBulk) {
+  var _realOpen = openModal;
+  openModal = function(id) {
+    _realOpen(id);
+    if (id === 'modal-bulk-animals') openBulkModal();
+  };
+  _patchedBulk = true;
+}
+
+function parseBulkFile(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    document.getElementById('bulk-paste-area').value = e.target.result;
+    previewBulkAnimals();
+  };
+  reader.readAsText(file);
+}
+
+function parseBulkData(text) {
+  var lines = text.trim().split(/\r?\n/);
+  var animals = [];
+  var seen = {};
+  lines.forEach(function(line) {
+    // Skip empty lines and headers
+    if (!line.trim()) return;
+    var lower = line.toLowerCase();
+    if (lower.indexOf('id') >= 0 && (lower.indexOf('raza') >= 0 || lower.indexOf('breed') >= 0 || lower.indexOf('peso') >= 0)) return;
+    // Parse: support comma, semicolon, tab separators
+    var parts = line.split(/[,;\t]+/).map(function(s) { return s.trim(); });
+    if (parts.length < 2) return;
+    // Try to find ID, Raza, Peso
+    var id = '', raza = '', peso = 0;
+    // If first column is a row number (1,2,3...) skip it
+    var startCol = 0;
+    if (parts.length >= 3 && /^\d+$/.test(parts[0]) && parseInt(parts[0]) < 1000 && parts.length >= 4) {
+      startCol = 1; // Skip row number
+    }
+    id = String(parts[startCol] || '').trim();
+    if (!id || id === '0') return;
+    raza = String(parts[startCol + 1] || '').trim();
+    // Find peso - first numeric value after ID
+    for (var i = startCol + 1; i < parts.length; i++) {
+      var num = parseFloat(parts[i]);
+      if (!isNaN(num) && num > 50 && num < 2000) { peso = num; break; }
+    }
+    // Dedup
+    if (seen[id]) return;
+    seen[id] = true;
+    animals.push({ id: id, raza: raza, peso: peso });
+  });
+  return animals;
+}
+
+function previewBulkAnimals() {
+  var text = document.getElementById('bulk-paste-area').value;
+  _bulkAnimals = parseBulkData(text);
+  var count = document.getElementById('bulk-preview-count');
+  var table = document.getElementById('bulk-preview-table');
+  var btn = document.getElementById('bulk-confirm-btn');
+  if (!_bulkAnimals.length) {
+    count.textContent = 'No se encontraron animales válidos';
+    count.style.color = 'var(--red)';
+    table.innerHTML = '';
+    btn.disabled = true;
+    return;
+  }
+  count.textContent = _bulkAnimals.length + ' animales encontrados';
+  count.style.color = 'var(--green)';
+  btn.disabled = false;
+  // Check for duplicates with existing animals
+  var lotCode = (document.getElementById('bulk-lot-select') || {}).value || '';
+  var animalesDB = getAnimalesDB();
+  var existing = {};
+  Object.keys(animalesDB).forEach(function(lot) {
+    (animalesDB[lot] || []).forEach(function(a) {
+      existing[String(a.id || a.animal_id || '')] = lot;
+    });
+  });
+  var avgPeso = _bulkAnimals.reduce(function(s, a) { return s + a.peso; }, 0) / _bulkAnimals.length;
+  table.innerHTML = '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">Peso promedio: <strong>' + Math.round(avgPeso * 10) / 10 + ' kg</strong></div>' +
+    '<table class="tbl" style="font-size:11px"><thead><tr><th>#</th><th>ID</th><th>Raza</th><th>Peso</th><th>Estado</th></tr></thead><tbody>' +
+    _bulkAnimals.map(function(a, i) {
+      var dup = existing[a.id];
+      var estado = dup ? '<span style="color:var(--amber)">⚠ Ya existe en ' + dup + '</span>' : '<span style="color:var(--green)">✓ Nuevo</span>';
+      return '<tr><td>' + (i + 1) + '</td><td style="font-family:DM Mono;font-weight:700;color:var(--amber2)">' + escH(a.id) + '</td><td>' + escH(a.raza) + '</td><td style="font-family:DM Mono">' + (a.peso || '—') + ' kg</td><td>' + estado + '</td></tr>';
+    }).join('') +
+    '</tbody></table>';
+}
+
+function confirmBulkAnimals() {
+  var lotCode = (document.getElementById('bulk-lot-select') || {}).value;
+  var date = (document.getElementById('bulk-pesaje-date') || {}).value || today();
+  if (!lotCode) { toast('Selecciona un lote destino', 'error'); return; }
+  if (!_bulkAnimals.length) { toast('No hay animales para cargar', 'error'); return; }
+  var lot = db.lots.find(function(l) { return l.code === lotCode; });
+  if (!lot) { toast('Lote no encontrado', 'error'); return; }
+  if (!confirm('Cargar ' + _bulkAnimals.length + ' animales al lote ' + lotCode + '?')) return;
+  // Get or create animals DB
+  var animalesDB = getAnimalesDB();
+  if (!animalesDB[lotCode]) animalesDB[lotCode] = [];
+  var existing = {};
+  animalesDB[lotCode].forEach(function(a) { existing[String(a.id || a.animal_id || '')] = true; });
+  var added = 0, skipped = 0;
+  _bulkAnimals.forEach(function(a) {
+    if (existing[a.id]) { skipped++; return; }
+    var animal = {
+      id: a.id,
+      animal_id: a.id,
+      raza: a.raza || '',
+      breed: a.raza || '',
+      pesajes: []
+    };
+    if (a.peso > 0) {
+      animal.pesajes.push({ fecha: date, peso: a.peso, tipo: 'entrada', nota: 'Carga masiva' });
+    }
+    animalesDB[lotCode].push(animal);
+    added++;
+  });
+  // Save animals
+  localStorage.setItem('e5m_animals', JSON.stringify(animalesDB));
+  // Update lot count
+  lot.animal_count = animalesDB[lotCode].length;
+  // Calculate avg weight
+  var totalPeso = 0, conPeso = 0;
+  animalesDB[lotCode].forEach(function(a) {
+    if (a.pesajes && a.pesajes.length) { totalPeso += a.pesajes[a.pesajes.length - 1].peso; conPeso++; }
+  });
+  if (conPeso > 0) lot.avg_weight = Math.round(totalPeso / conPeso * 10) / 10;
+  saveDB();
+  // Push to Railway
+  pushTableToRailway('animals', animalesDB);
+  closeModal('modal-bulk-animals');
+  renderLotes();
+  toast('✅ ' + added + ' animales cargados al lote ' + lotCode + (skipped ? ' (' + skipped + ' duplicados omitidos)' : ''), 'success');
 }
 
 // Verificar backup al inicio (con delay para no bloquear carga)
