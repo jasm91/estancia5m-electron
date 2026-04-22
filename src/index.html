@@ -6034,6 +6034,14 @@ function renderCompras() {
       tr.innerHTML = '<td>'+escH(p.desc)+'</td><td><span class="bdg bdg-blue">'+capFirst(p.type)+'</span></td><td>'+p.qty+'</td><td>$'+p.unit_price+'</td><td style="color:var(--amber2)">Bs. '+p.total.toLocaleString()+'</td><td>'+escH(p.supplier||'-')+'</td><td>'+p.date+'</td><td><span class="bdg '+(p.status==='paid'?'bdg-green':'bdg-amber')+'">'+(p.status==='paid'?'Pagado':'Pendiente')+'</span></td><td></td>';
       // Boton cambiar estado
       var statusCell = tr.lastElementChild;
+      // Botón ver imagen
+      var imgBtn = document.createElement('button');
+      imgBtn.className = 'btn btn-ghost btn-sm';
+      imgBtn.style.cssText = 'color:var(--blue);margin-right:4px;font-size:11px';
+      imgBtn.textContent = '📷';
+      imgBtn.title = 'Ver comprobante';
+      imgBtn.onclick = (function(id){ return function(){ viewTransactionImage(id); }; })(p.id);
+      statusCell.appendChild(imgBtn);
       if (p.status !== 'paid') {
         var payBtn = document.createElement('button');
         payBtn.className = 'btn btn-ghost btn-sm';
@@ -6602,6 +6610,14 @@ function renderAdvances() {
         delBtn.textContent = '✕';
         delBtn.onclick = (function(id){ return function(){ deleteAdvance(id); }; })(a.id);
 
+        var imgBtn2 = document.createElement('button');
+        imgBtn2.className = 'btn btn-ghost btn-sm';
+        imgBtn2.style.cssText = 'color:var(--blue);font-size:11px';
+        imgBtn2.textContent = '📷';
+        imgBtn2.title = 'Ver comprobante';
+        imgBtn2.onclick = (function(id){ return function(){ viewTransactionImage(id); }; })(a.id);
+
+        tr.lastElementChild.appendChild(imgBtn2);
         tr.lastElementChild.appendChild(toggleBtn);
         tr.lastElementChild.appendChild(delBtn);
         tbody.appendChild(tr);
@@ -12340,6 +12356,58 @@ function confirmBulkAnimals() {
   closeModal('modal-bulk-animals');
   renderLotes();
   toast('✅ ' + added + ' animales cargados al lote ' + lotCode + (skipped ? ' (' + skipped + ' duplicados omitidos)' : ''), 'success');
+}
+
+// ══════════════════════════════════════════════════
+// VER IMAGEN DE TRANSACCIÓN
+// ══════════════════════════════════════════════════
+function viewTransactionImage(txId) {
+  var apiUrl = localStorage.getItem('e5m_api_url') || 'https://estancia5m-api-production.up.railway.app/api';
+  var token = localStorage.getItem('e5m_api_token') || 'estancia5m-2026-secreto';
+  var old = document.getElementById('overlay-tx-image');
+  if (old) old.remove();
+
+  // Loading overlay
+  var overlay = document.createElement('div');
+  overlay.id = 'overlay-tx-image';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.8);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:pointer';
+  overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+  var loading = document.createElement('div');
+  loading.style.cssText = 'color:var(--text);font-size:14px';
+  loading.textContent = 'Cargando imagen...';
+  overlay.appendChild(loading);
+  document.body.appendChild(overlay);
+
+  fetch(apiUrl + '/transaction-image/' + txId, { headers: { 'Authorization': 'Bearer ' + token } })
+  .then(function(r) {
+    if (r.status === 404) throw new Error('sin imagen');
+    return r.json();
+  })
+  .then(function(img) {
+    overlay.innerHTML = '';
+    var container = document.createElement('div');
+    container.style.cssText = 'background:var(--sur);border-radius:12px;padding:16px;max-width:90vw;max-height:90vh;display:flex;flex-direction:column;align-items:center;gap:12px';
+    container.onclick = function(e) { e.stopPropagation(); };
+    var title = document.createElement('div');
+    title.style.cssText = 'font-size:13px;color:var(--muted)';
+    title.textContent = '📷 Comprobante — ' + new Date(img.created_at).toLocaleString('es-BO') + ' — ' + img.size_kb + ' KB';
+    var imgEl = document.createElement('img');
+    imgEl.src = 'data:' + (img.mime_type || 'image/jpeg') + ';base64,' + img.base64;
+    imgEl.style.cssText = 'max-width:80vw;max-height:70vh;border-radius:8px;border:1px solid var(--bor)';
+    var closeBtn = document.createElement('button');
+    closeBtn.textContent = 'Cerrar';
+    closeBtn.style.cssText = 'padding:8px 20px;background:var(--sur2);border:1px solid var(--bor);color:var(--text);border-radius:8px;cursor:pointer;font-family:Syne;font-weight:600';
+    closeBtn.onclick = function() { overlay.remove(); };
+    container.appendChild(title);
+    container.appendChild(imgEl);
+    container.appendChild(closeBtn);
+    overlay.appendChild(container);
+  })
+  .catch(function() {
+    loading.textContent = 'Sin comprobante adjunto para esta transacción.';
+    loading.style.color = 'var(--muted)';
+    setTimeout(function() { overlay.remove(); }, 2000);
+  });
 }
 
 // ══════════════════════════════════════════════════
