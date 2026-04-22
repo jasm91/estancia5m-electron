@@ -3096,7 +3096,7 @@ function setSyncStatus(state) {
 function manualSync() {
   if (!navigator.onLine) { setSyncStatus('error'); return; }
   setSyncStatus('syncing');
-  pullFromRailwayDesktop(true);
+  pullFromRailwayDesktop(false);
 }
 window._manualSync_real = manualSync;
 
@@ -3222,9 +3222,15 @@ function pullFromRailwayDesktop(thenPush) {
       if (typeof renderVentas === 'function') renderVentas();
       if (typeof renderComprasGanado === 'function') renderComprasGanado();
       if (typeof renderDieselDesktop === 'function') renderDieselDesktop();
+      if (typeof renderPersonal === 'function') renderPersonal();
+      if (typeof renderAdvances === 'function') renderAdvances();
+      if (typeof renderActividades === 'function') renderActividades();
+      if (typeof renderTareas === 'function') renderTareas();
 
       if (thenPush) {
-        pushToRailway();
+        setSyncStatus('ok');
+        // Push con delay para no congelar la UI después del re-render
+        setTimeout(function() { pushToRailway(); }, 2000);
       } else {
         setSyncStatus('ok');
       }
@@ -12565,6 +12571,21 @@ function renderConteoHistory() {
 setTimeout(function() { runAutoBackupIfDue(); }, 10000);
 // Y cada hora
 setInterval(function() { runAutoBackupIfDue(); }, 60 * 60 * 1000);
+
+// Push completo en background: al inicio + cada 2 horas
+(function backgroundPushScheduler() {
+  function doPush() {
+    if (!navigator.onLine) return;
+    console.log('[BackgroundPush] Push completo...');
+    setTimeout(function() {
+      if (typeof pushToRailway === 'function') pushToRailway();
+    }, 100);
+  }
+  // Push al iniciar la app (30 seg después para no bloquear arranque)
+  setTimeout(doPush, 30 * 1000);
+  // Cada 2 horas
+  setInterval(doPush, 2 * 60 * 60 * 1000);
+})();
 
 function exportBackup() {
   var backup = {
