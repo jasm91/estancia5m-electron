@@ -889,8 +889,11 @@ function pullFromRailwayDesktop(thenPush) {
 <div id="page-stock" class="page">
   <div class="ph">
     <div><div class="pt">📦 Stock Veterinario</div><div class="ps">Medicamentos · sal mineral · alertas automaticas</div></div>
-    <button class="btn btn-primary" onclick="openModal('modal-product')">+ Nuevo producto</button>
-    <button class="btn btn-ghost" onclick="exportStock()" title="Exportar a Excel">⬇ Excel</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" onclick="openModal('modal-product')">+ Nuevo producto</button>
+      <button class="btn btn-primary" onclick="openConteoInventario()" style="background:var(--blue);font-size:12px">📋 Conteo Inventario</button>
+      <button class="btn btn-ghost" onclick="exportStock()" title="Exportar a Excel">⬇ Excel</button>
+    </div>
   </div>
   <div class="card">
     <div class="card-body" style="padding:0">
@@ -898,6 +901,17 @@ function pullFromRailwayDesktop(thenPush) {
         <thead><tr><th>Producto</th><th>Tipo</th><th>Stock actual</th><th>Minimo</th><th>Nivel</th><th>Vencimiento</th><th>Estado</th><th></th></tr></thead>
         <tbody id="stock-tbody"></tbody>
       </table>
+    </div>
+  </div>
+  <div id="conteo-history-section" style="margin-top:16px;display:none">
+    <div class="card">
+      <div class="card-hd" style="cursor:pointer" onclick="toggleConteoHistory()">
+        <div class="card-title">📋 Historial de Conteos de Inventario</div>
+        <span style="color:var(--muted);font-size:11px" id="conteo-history-toggle">▼ Mostrar</span>
+      </div>
+      <div class="card-body" style="padding:0;display:none" id="conteo-history-body">
+        <div id="conteo-history-list"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -2053,6 +2067,8 @@ function pullFromRailwayDesktop(thenPush) {
 
 </main>
 </div>
+
+<!-- CONTEO INVENTARIO: se genera dinámicamente en openConteoInventario() -->
 
 <!-- BULK ANIMALS MODAL -->
 <div class="modal-overlay" id="modal-bulk-animals" style="align-items:center">
@@ -5407,6 +5423,7 @@ function renderStock() {
       '</td></tr>'+
       '<tr id="stock-act-'+p.id+'" style="display:none"><td colspan="8" style="padding:0;background:var(--sur2)"><div id="stock-act-inner-'+p.id+'" style="padding:12px 16px"></div></td></tr>';
   }).join('');
+  if (typeof renderConteoHistory === 'function') renderConteoHistory();
 }
 
 function toggleStockActivity(prodId) {
@@ -9644,6 +9661,7 @@ function saveAceite() {
   var obs=((document.getElementById('aceite-obs')||{}).value||'').trim();
   if(!fecha||!vehiculo){toast('Completa fecha y vehiculo','error');return;}
   if(!db.aceite) db.aceite=[];
+  if(!db.inventory_counts) db.inventory_counts=[];
   db.aceite.push({id:Date.now(),fecha:fecha,vehiculo:vehiculo,kmhr:kmhr,tipo:tipo,costo:costo,obs:obs,by:'Desktop',created_at:new Date().toISOString()});
   saveDB(); closeModal('modal-aceite'); renderDieselDesktop();
   toast('Cambio de aceite registrado','success');
@@ -12316,6 +12334,231 @@ function confirmBulkAnimals() {
   closeModal('modal-bulk-animals');
   renderLotes();
   toast('✅ ' + added + ' animales cargados al lote ' + lotCode + (skipped ? ' (' + skipped + ' duplicados omitidos)' : ''), 'success');
+}
+
+// ══════════════════════════════════════════════════
+// CONTEO DE INVENTARIO VETERINARIO
+// ══════════════════════════════════════════════════
+
+function openConteoInventario() {
+  // Remove existing overlay if any
+  var old = document.getElementById('overlay-conteo-inv');
+  if (old) old.remove();
+
+  var overlay = document.createElement('div');
+  overlay.id = 'overlay-conteo-inv';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center';
+  overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+
+  var modal = document.createElement('div');
+  modal.style.cssText = 'background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:24px;width:780px;max-height:85vh;overflow-y:auto;color:var(--text);font-family:Syne,sans-serif';
+
+  // Header
+  modal.innerHTML = '<h2 style="font-size:18px;margin-bottom:4px">📋 Conteo de Inventario Veterinario</h2>' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:14px">Ingresa el <strong>stock físico</strong> de cada producto. El sistema calculará la merma automáticamente.</div>';
+
+  // Date + By row
+  var topRow = document.createElement('div');
+  topRow.style.cssText = 'display:flex;gap:12px;margin-bottom:14px';
+  topRow.innerHTML = '<div style="flex:1"><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">FECHA DEL CONTEO</label>' +
+    '<input type="date" id="ic-date-dyn" value="' + today() + '" style="width:100%;background:var(--sur2);border:1px solid var(--bor);color:var(--text);border-radius:6px;padding:8px;font-family:Syne"></div>' +
+    '<div style="flex:1"><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">REALIZADO POR</label>' +
+    '<select id="ic-by-dyn" style="width:100%;background:var(--sur2);border:1px solid var(--bor);color:var(--text);border-radius:6px;padding:8px;font-family:Syne"><option value="">Seleccionar...</option>' +
+    (db.employees || []).filter(function(e) { return e.active; }).map(function(e) { return '<option value="' + escH(e.name) + '">' + escH(e.name) + '</option>'; }).join('') +
+    '</select></div>';
+  modal.appendChild(topRow);
+
+  // Column headers
+  var headers = document.createElement('div');
+  headers.style.cssText = 'display:flex;gap:10px;padding:8px 4px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--bor)';
+  headers.innerHTML = '<span style="flex:1">Producto</span><span style="width:50px">Unidad</span><span style="width:80px;text-align:right">Teórico</span><span style="width:100px;text-align:center;color:var(--blue)">Físico</span><span style="width:80px;text-align:right">Diferencia</span><span style="width:130px">Motivo</span>';
+  modal.appendChild(headers);
+
+  // Product rows
+  var sorted = (db.products || []).slice().sort(function(a, b) { return a.name.localeCompare(b.name); });
+  sorted.forEach(function(p) {
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:10px;padding:8px 4px;border-bottom:1px solid rgba(48,54,61,.3);align-items:center;font-size:13px';
+    row.setAttribute('data-pid', p.id);
+
+    var diffSpan = document.createElement('span');
+    diffSpan.id = 'ic-diff-dyn-' + p.id;
+    diffSpan.style.cssText = 'width:80px;text-align:right;font-family:DM Mono,monospace;color:var(--muted)';
+    diffSpan.textContent = '0';
+
+    var inp = document.createElement('input');
+    inp.type = 'number';
+    inp.className = 'ic-fisico-dyn';
+    inp.setAttribute('data-pid', String(p.id));
+    inp.value = p.stock_qty;
+    inp.style.cssText = 'width:90px;text-align:center;font-family:DM Mono,monospace;font-weight:700;font-size:13px;background:var(--sur2);border:1px solid var(--bor);color:var(--text);border-radius:6px;padding:6px';
+    (function(prod, diffEl) {
+      inp.oninput = function() {
+        var fisico = parseFloat(this.value) || 0;
+        var diff = Math.round((fisico - prod.stock_qty) * 100) / 100;
+        diffEl.textContent = (diff > 0 ? '+' : '') + diff;
+        diffEl.style.color = diff < 0 ? 'var(--red)' : diff > 0 ? 'var(--green)' : 'var(--muted)';
+        diffEl.style.fontWeight = diff !== 0 ? '700' : '400';
+        recalcTotalMerma();
+      };
+    })(p, diffSpan);
+
+    var sel = document.createElement('select');
+    sel.className = 'ic-motivo-dyn';
+    sel.setAttribute('data-pid', String(p.id));
+    sel.style.cssText = 'width:130px;padding:4px 8px;font-size:11px;background:var(--sur2);border:1px solid var(--bor);color:var(--text);border-radius:6px';
+    sel.innerHTML = '<option value="">—</option><option value="derrame">Derrame</option><option value="vencido">Vencido</option><option value="error_registro">Error registro</option><option value="robo">Robo/Pérdida</option><option value="uso_no_registrado">Uso no registrado</option><option value="otro">Otro</option>';
+
+    row.innerHTML = '<span style="flex:1;font-weight:500">' + escH(p.name) + '</span>' +
+      '<span style="width:50px;color:var(--muted)">' + (p.unit || 'ml') + '</span>' +
+      '<span style="width:80px;text-align:right;font-family:DM Mono,monospace;font-weight:600">' + p.stock_qty + '</span>';
+
+    var inpWrap = document.createElement('span');
+    inpWrap.style.cssText = 'width:100px;text-align:center';
+    inpWrap.appendChild(inp);
+    row.appendChild(inpWrap);
+    row.appendChild(diffSpan);
+    row.appendChild(sel);
+    modal.appendChild(row);
+  });
+
+  // Total merma
+  var totalRow = document.createElement('div');
+  totalRow.style.cssText = 'display:flex;justify-content:flex-end;padding:12px 4px;border-top:2px solid var(--bor);font-weight:700;font-size:13px;gap:8px';
+  totalRow.innerHTML = '<span>Total merma estimada:</span><span id="ic-total-merma-dyn" style="font-family:DM Mono,monospace;color:var(--red)">Bs. 0</span>';
+  modal.appendChild(totalRow);
+
+  // Checkbox
+  var chkRow = document.createElement('div');
+  chkRow.style.cssText = 'margin-top:10px;display:flex;align-items:center;gap:8px';
+  chkRow.innerHTML = '<input type="checkbox" id="ic-ajustar-dyn" checked style="width:16px;height:16px"><label style="font-size:12px;cursor:pointer" for="ic-ajustar-dyn">Ajustar stock al conteo físico <span style="color:var(--muted);font-size:10px">(recomendado)</span></label>';
+  modal.appendChild(chkRow);
+
+  // Buttons
+  var btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;margin-top:14px';
+  var cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Cancelar';
+  cancelBtn.style.cssText = 'padding:8px 20px;background:var(--sur2);border:1px solid var(--bor);color:var(--text);border-radius:8px;cursor:pointer;font-family:Syne;font-weight:600';
+  cancelBtn.onclick = function() { overlay.remove(); };
+  var saveBtn = document.createElement('button');
+  saveBtn.textContent = '💾 Guardar Conteo';
+  saveBtn.style.cssText = 'padding:8px 20px;background:var(--amber2);color:#000;border:none;border-radius:8px;cursor:pointer;font-family:Syne;font-weight:700';
+  saveBtn.onclick = function() { saveConteoInventario(overlay); };
+  btnRow.appendChild(cancelBtn);
+  btnRow.appendChild(saveBtn);
+  modal.appendChild(btnRow);
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+}
+
+function recalcTotalMerma() {
+  var totalMerma = 0;
+  document.querySelectorAll('.ic-fisico-dyn').forEach(function(inp) {
+    var pid = parseInt(inp.getAttribute('data-pid'));
+    var prod = db.products.find(function(p) { return p.id === pid; });
+    if (!prod) return;
+    var diff = (parseFloat(inp.value) || 0) - prod.stock_qty;
+    if (diff < 0) totalMerma += Math.abs(diff) * (prod.unit_cost || 0);
+  });
+  var el = document.getElementById('ic-total-merma-dyn');
+  if (el) el.textContent = 'Bs. ' + Math.round(totalMerma).toLocaleString();
+}
+
+function saveConteoInventario(overlay) {
+  var date = (document.getElementById('ic-date-dyn') || {}).value || today();
+  var by = (document.getElementById('ic-by-dyn') || {}).value || '';
+  var ajustar = (document.getElementById('ic-ajustar-dyn') || {}).checked;
+  var items = [];
+  var totalMerma = 0;
+  document.querySelectorAll('.ic-fisico-dyn').forEach(function(inp) {
+    var pid = parseInt(inp.getAttribute('data-pid'));
+    var prod = db.products.find(function(p) { return p.id === pid; });
+    if (!prod) return;
+    var fisico = parseFloat(inp.value) || 0;
+    var diff = Math.round((fisico - prod.stock_qty) * 100) / 100;
+    var motivo = '';
+    var motivoEl = document.querySelector('.ic-motivo-dyn[data-pid="' + pid + '"]');
+    if (motivoEl) motivo = motivoEl.value;
+    items.push({
+      product_id: pid, product_name: prod.name, unit: prod.unit || 'ml',
+      stock_teorico: prod.stock_qty, stock_fisico: fisico,
+      diferencia: diff,
+      costo_merma: diff < 0 ? Math.round(Math.abs(diff) * (prod.unit_cost || 0) * 100) / 100 : 0,
+      motivo: motivo
+    });
+    if (diff < 0) totalMerma += Math.abs(diff) * (prod.unit_cost || 0);
+  });
+  if (!items.length) { toast('No hay productos para contar', 'error'); return; }
+  var conDiff = items.filter(function(i) { return i.diferencia !== 0; });
+  if (conDiff.length === 0 && !confirm('Todos los conteos coinciden. ¿Guardar?')) return;
+  if (conDiff.length > 0 && !confirm(conDiff.length + ' diferencias encontradas.\nMerma: Bs. ' + Math.round(totalMerma) + '\n' + (ajustar ? 'Stock se AJUSTARÁ.' : 'Stock NO se ajustará.') + '\n\n¿Guardar?')) return;
+  if (!db.inventory_counts) db.inventory_counts = [];
+  db.inventory_counts.push({
+    id: 'ic_' + Date.now(), date: date, by: by, items: items,
+    total_merma_bs: Math.round(totalMerma * 100) / 100,
+    total_items: items.length, items_con_diferencia: conDiff.length,
+    ajustado: ajustar, created_at: new Date().toISOString()
+  });
+  if (ajustar) {
+    items.forEach(function(item) {
+      var prod = db.products.find(function(p) { return p.id === item.product_id; });
+      if (prod && item.diferencia !== 0) {
+        prod.stock_qty = item.stock_fisico;
+        prod.stock_updated_at = new Date().toISOString();
+      }
+    });
+  }
+  saveDB();
+  pushTableToRailway('inventory_counts', db.inventory_counts);
+  if (ajustar) replaceTableInRailway('vet_products', db.products);
+  if (overlay) overlay.remove();
+  renderStock();
+  toast('✅ Conteo guardado' + (conDiff.length ? ' — ' + conDiff.length + ' ajustes, merma: Bs. ' + Math.round(totalMerma) : ' — sin diferencias'), 'success');
+}
+
+function toggleConteoHistory() {
+  var body = document.getElementById('conteo-history-body');
+  var toggle = document.getElementById('conteo-history-toggle');
+  if (!body) return;
+  var open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'block';
+  if (toggle) toggle.textContent = open ? '▼ Mostrar' : '▲ Ocultar';
+}
+
+function renderConteoHistory() {
+  var section = document.getElementById('conteo-history-section');
+  var list = document.getElementById('conteo-history-list');
+  if (!section || !list) return;
+  var counts = (db.inventory_counts || []).slice().sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
+  if (!counts.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  list.innerHTML = counts.map(function(c) {
+    var mermaColor = c.total_merma_bs > 0 ? 'var(--red)' : 'var(--green)';
+    var itemsHtml = (c.items || []).filter(function(i) { return i.diferencia !== 0; }).map(function(i) {
+      return '<div style="display:flex;justify-content:space-between;padding:3px 12px;font-size:11px">' +
+        '<span>' + escH(i.product_name) + '</span>' +
+        '<span style="font-family:DM Mono;color:' + (i.diferencia < 0 ? 'var(--red)' : 'var(--green)') + '">' +
+          (i.diferencia > 0 ? '+' : '') + i.diferencia + ' ' + i.unit +
+          (i.costo_merma ? ' (Bs. ' + i.costo_merma + ')' : '') +
+          (i.motivo ? ' · ' + i.motivo : '') +
+        '</span></div>';
+    }).join('');
+    return '<div style="border-bottom:1px solid var(--bor);padding:12px 16px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center">' +
+        '<div>' +
+          '<span style="font-weight:600">' + c.date + '</span>' +
+          '<span style="color:var(--muted);font-size:11px;margin-left:8px">' + (c.by || '') + '</span>' +
+          '<span style="color:var(--muted);font-size:11px;margin-left:8px">' + c.total_items + ' productos, ' + c.items_con_diferencia + ' diferencias</span>' +
+        '</div>' +
+        '<div style="font-family:DM Mono;font-weight:700;color:' + mermaColor + '">' +
+          (c.total_merma_bs > 0 ? 'Merma: Bs. ' + c.total_merma_bs.toLocaleString() : '✓ Sin merma') +
+        '</div>' +
+      '</div>' +
+      (itemsHtml ? '<div style="margin-top:6px;background:var(--sur2);border-radius:6px;padding:4px 0">' + itemsHtml + '</div>' : '') +
+    '</div>';
+  }).join('');
 }
 
 // Verificar backup al inicio (con delay para no bloquear carga)
