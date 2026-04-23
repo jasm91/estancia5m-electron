@@ -247,8 +247,8 @@ function showPage(name,btn){
     window._pageChangePull = setTimeout(function(){ if(typeof pullFromRailwayDesktop==='function') pullFromRailwayDesktop(false); }, 500);
   }
 }
-function openModal(id){var el=document.getElementById(id);if(!el)return;el.classList.add('open');var t=new Date().toISOString().split('T')[0];el.querySelectorAll('input[type="date"]').forEach(function(d){if(!d.value)d.value=t;});if(typeof populateSelects==='function')populateSelects();if(id==='modal-pesaje'&&typeof populatePesajeModal==='function')populatePesajeModal();}
-function closeModal(id){var el=document.getElementById(id);if(el)el.classList.remove('open');}
+// [removed duplicate openModal - full version below]
+// [removed duplicate closeModal - full version below]
 function renderActividadLote() {
   var lotSel = document.getElementById('actividad-filter-lot');
   if (lotSel) {
@@ -395,10 +395,6 @@ function showLotesTab(tabId, btn) {
 }
 function today(){return new Date().toISOString().split('T')[0];}
 
-
-function switchTab(prefix,btn,targetId){if(btn&&btn.closest)btn.closest('.tabs').querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active');});if(btn)btn.classList.add('active');document.querySelectorAll('[id^="'+prefix+'-tab-"]').forEach(function(p){p.classList.remove('active');});var t=document.getElementById(targetId);if(t)t.classList.add('active');}
-
-
 function publishTasksToPWA() {
   var apiUrl = localStorage.getItem('e5m_api_url') || 'https://estancia5m-api-production.up.railway.app/api';
   var token  = localStorage.getItem('e5m_api_token') || 'estancia5m-2026-secreto';
@@ -423,16 +419,7 @@ function publishTasksToPWA() {
 
 // Stubs para funciones definidas en el segundo script
 // Evita errores si se llaman antes de que cargue el segundo bloque
-function manualSync() {
-  if (window._manualSync_real) return window._manualSync_real();
-  setTimeout(function(){ if(typeof window._manualSync_real==='function') window._manualSync_real(); }, 200);
-}
-function pullFromRailwayDesktop(thenPush) {
-  if (window._pullFromRailway_real) return window._pullFromRailway_real(thenPush);
-}
 </script>
-
-
 
 <div class="app">
 
@@ -1929,7 +1916,7 @@ function pullFromRailwayDesktop(thenPush) {
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
           <div>
             <div style="font-size:13px;font-weight:600">Backup automatico local</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px">Guarda en Documentos/Jisunu5M_Backups</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">Guarda en Documentos/EstanciaPro_Backups</div>
           </div>
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
             <input type="checkbox" id="auto-backup-enabled" onchange="toggleAutoBackup(this.checked)" style="width:16px;height:16px;cursor:pointer">
@@ -1992,13 +1979,23 @@ function pullFromRailwayDesktop(thenPush) {
         <input type="password" class="form-input" id="cfg-gh-token" placeholder="ghp_xxxxxxxxxxxx" style="font-size:12px;font-family:DM Mono,monospace">
         <div style="font-size:10px;color:var(--muted);margin-top:3px">Necesario para recibir actualizaciones automaticas desde el repositorio privado</div>
       </div>
+      <!-- ACTUALIZACIONES -->
+      <div style="padding:14px 18px;border-bottom:1px solid rgba(48,54,61,.4)">
+        <div style="font-size:13px;font-weight:700;margin-bottom:10px">🔄 Actualizaciones</div>
+        <div id="update-status" style="font-size:12px;color:var(--muted);margin-bottom:10px;padding:8px 12px;background:var(--sur2);border-radius:6px;border:1px solid var(--bor)">
+          Estado: No verificado
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-ghost" onclick="checkForAppUpdate()" style="font-size:12px;padding:8px 16px" id="btn-check-update">🔍 Verificar actualizaciones</button>
+          <button class="btn btn-primary" onclick="forceAppUpdate()" style="font-size:12px;padding:8px 16px" id="btn-force-update">⬇️ Actualizar ahora</button>
+          <button class="btn btn-ghost" onclick="quitAndInstallUpdate()" style="font-size:12px;padding:8px 16px;display:none;color:var(--green)" id="btn-install-update">🚀 Instalar y reiniciar</button>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:6px">Si el auto-updater no funciona, usa "Actualizar ahora" para forzar la descarga desde GitHub</div>
+      </div>
       <div style="display:flex;justify-content:space-between;padding:10px 18px;font-size:13px"><span style="color:var(--muted)">SG Bolivia</span><span style="font-family:DM Mono,monospace;color:var(--muted)">sgbolivia.com</span></div>
     </div>
   </div>
 </div>
-
-
-
 
 <!-- ═══ TAREAS ═══ -->
 <div id="page-tareas" class="page">
@@ -2990,9 +2987,6 @@ const SERVER_CONFIG = {
 localStorage.setItem('apiUrl', SERVER_CONFIG.url);
 localStorage.setItem('apiToken', SERVER_CONFIG.token);
 
-function initAnimales() {
-  localStorage.setItem('e5m_animals', JSON.stringify({"A-01":[{"id":"1041","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":370.0},{"fecha":"2026-04-02","peso":451.0}]},{"id":"1043","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":391.0},{"fecha":"2026-04-02","peso":472.0}]},{"id":"1045","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":339.0},{"fecha":"2026-04-02","peso":420.0}]},{"id":"1046","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":355.0},{"fecha":"2026-04-02","peso":436.0}]},{"id":"1047","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":379.0},{"fecha":"2026-04-02","peso":460.0}]},{"id":"1048","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":412.0},{"fecha":"2026-04-02","peso":493.0}]},{"id":"1052","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":357.0},{"fecha":"2026-04-02","peso":438.0}]},{"id":"1056","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":364.0},{"fecha":"2026-04-02","peso":445.0}]},{"id":"1057","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":357.0},{"fecha":"2026-04-02","peso":438.0}]},{"id":"1059","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":388.0},{"fecha":"2026-04-02","peso":469.0}]},{"id":"1060","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":376.0},{"fecha":"2026-04-02","peso":457.0}]},{"id":"1061","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":382.0},{"fecha":"2026-04-02","peso":463.0}]},{"id":"1062","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":381.0},{"fecha":"2026-04-02","peso":462.0}]},{"id":"1064","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":399.0},{"fecha":"2026-04-02","peso":480.0}]},{"id":"1067","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":416.0},{"fecha":"2026-04-02","peso":497.0}]},{"id":"1069","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":400.0},{"fecha":"2026-04-02","peso":481.0}]},{"id":"1073","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":422.0},{"fecha":"2026-04-02","peso":503.0}]},{"id":"1075","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":358.0},{"fecha":"2026-04-02","peso":439.0}]},{"id":"1078","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":413.0},{"fecha":"2026-04-02","peso":494.0}]},{"id":"1080","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":400.0},{"fecha":"2026-04-02","peso":481.0}]},{"id":"1081","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":406.0},{"fecha":"2026-04-02","peso":487.0}]},{"id":"1083","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":380.0},{"fecha":"2026-04-02","peso":461.0}]},{"id":"1085","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":406.0},{"fecha":"2026-04-02","peso":487.0}]},{"id":"1086","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":392.0},{"fecha":"2026-04-02","peso":473.0}]},{"id":"1087","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":378.0},{"fecha":"2026-04-02","peso":459.0}]},{"id":"1088","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":388.0},{"fecha":"2026-04-02","peso":469.0}]},{"id":"1091","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":418.0},{"fecha":"2026-04-02","peso":499.0}]},{"id":"1094","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":438.0},{"fecha":"2026-04-02","peso":519.0}]},{"id":"1097","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":399.0},{"fecha":"2026-04-02","peso":480.0}]},{"id":"1098","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":447.0},{"fecha":"2026-04-02","peso":528.0}]},{"id":"1099","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":370.0},{"fecha":"2026-04-02","peso":451.0}]},{"id":"1100","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":418.0},{"fecha":"2026-04-02","peso":499.0}]},{"id":"1102","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":359.0},{"fecha":"2026-04-02","peso":440.0}]},{"id":"1104","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":375.0},{"fecha":"2026-04-02","peso":456.0}]},{"id":"1105","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":407.0},{"fecha":"2026-04-02","peso":488.0}]},{"id":"1106","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":399.0},{"fecha":"2026-04-02","peso":480.0}]},{"id":"1108","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":349.0},{"fecha":"2026-04-02","peso":430.0}]},{"id":"1111","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":368.0},{"fecha":"2026-04-02","peso":449.0}]},{"id":"1114","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":386.0},{"fecha":"2026-04-02","peso":467.0}]},{"id":"1117","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":393.0},{"fecha":"2026-04-02","peso":474.0}]},{"id":"1118","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":392.0},{"fecha":"2026-04-02","peso":473.0}]},{"id":"1119","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":343.0},{"fecha":"2026-04-02","peso":424.0}]},{"id":"1121","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":396.0},{"fecha":"2026-04-02","peso":477.0}]},{"id":"1122","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":469.0},{"fecha":"2026-04-02","peso":550.0}]},{"id":"1124","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":362.0},{"fecha":"2026-04-02","peso":443.0}]},{"id":"1127","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":354.0},{"fecha":"2026-04-02","peso":435.0}]},{"id":"1128","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":399.0},{"fecha":"2026-04-02","peso":480.0}]},{"id":"1129","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":375.0},{"fecha":"2026-04-02","peso":456.0}]},{"id":"1130","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":354.0},{"fecha":"2026-04-02","peso":435.0}]},{"id":"1131","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":366.0},{"fecha":"2026-04-02","peso":447.0}]},{"id":"1132","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":379.0},{"fecha":"2026-04-02","peso":460.0}]},{"id":"1133","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":373.0},{"fecha":"2026-04-02","peso":454.0}]},{"id":"1134","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":352.0},{"fecha":"2026-04-02","peso":433.0}]},{"id":"1137","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":389.0},{"fecha":"2026-04-02","peso":470.0}]},{"id":"1138","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":378.0},{"fecha":"2026-04-02","peso":459.0}]},{"id":"1140","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":385.0},{"fecha":"2026-04-02","peso":466.0}]},{"id":"1142","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":414.0},{"fecha":"2026-04-02","peso":495.0}]},{"id":"1143","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":381.0},{"fecha":"2026-04-02","peso":462.0}]},{"id":"1146","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":393.0},{"fecha":"2026-04-02","peso":474.0}]},{"id":"1148","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":365.0},{"fecha":"2026-04-02","peso":446.0}]},{"id":"1149","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":409.0},{"fecha":"2026-04-02","peso":490.0}]},{"id":"1153","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":409.0},{"fecha":"2026-04-02","peso":490.0}]},{"id":"1157","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":388.0},{"fecha":"2026-04-02","peso":469.0}]},{"id":"1158","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":376.0},{"fecha":"2026-04-02","peso":457.0}]},{"id":"1159","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":379.0},{"fecha":"2026-04-02","peso":460.0}]},{"id":"1161","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":372.0},{"fecha":"2026-04-02","peso":453.0}]},{"id":"1162","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":350.0},{"fecha":"2026-04-02","peso":431.0}]},{"id":"1164","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":381.0},{"fecha":"2026-04-02","peso":462.0}]},{"id":"1165","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":427.0},{"fecha":"2026-04-02","peso":508.0}]},{"id":"1166","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":368.0},{"fecha":"2026-04-02","peso":449.0}]},{"id":"1175","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":426.0},{"fecha":"2026-04-02","peso":507.0}]},{"id":"1176","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":357.0},{"fecha":"2026-04-02","peso":438.0}]},{"id":"1177","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":371.0},{"fecha":"2026-04-02","peso":452.0}]},{"id":"1181","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":408.0},{"fecha":"2026-04-02","peso":489.0}]},{"id":"1182","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":448.0},{"fecha":"2026-04-02","peso":529.0}]},{"id":"1185","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":397.0},{"fecha":"2026-04-02","peso":478.0}]},{"id":"1186","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":406.0},{"fecha":"2026-04-02","peso":487.0}]},{"id":"1187","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":402.0},{"fecha":"2026-04-02","peso":483.0}]},{"id":"1194","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":371.0},{"fecha":"2026-04-02","peso":452.0}]},{"id":"1195","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":395.0},{"fecha":"2026-04-02","peso":476.0}]},{"id":"1196","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":419.0},{"fecha":"2026-04-02","peso":500.0}]},{"id":"1197","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":404.0},{"fecha":"2026-04-02","peso":485.0}]},{"id":"1205","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":358.0},{"fecha":"2026-04-02","peso":439.0}]},{"id":"1206","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":396.0},{"fecha":"2026-04-02","peso":477.0}]},{"id":"1207","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":426.0},{"fecha":"2026-04-02","peso":507.0}]},{"id":"1209","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":356.0},{"fecha":"2026-04-02","peso":437.0}]},{"id":"1212","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":397.0},{"fecha":"2026-04-02","peso":478.0}]},{"id":"1213","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":375.0},{"fecha":"2026-04-02","peso":456.0}]},{"id":"1214","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":414.0},{"fecha":"2026-04-02","peso":495.0}]},{"id":"1215","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":408.0},{"fecha":"2026-04-02","peso":489.0}]},{"id":"1216","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":412.0},{"fecha":"2026-04-02","peso":493.0}]},{"id":"1218","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":370.0},{"fecha":"2026-04-02","peso":451.0}]},{"id":"1219","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":380.0},{"fecha":"2026-04-02","peso":461.0}]},{"id":"1225","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":363.0},{"fecha":"2026-04-02","peso":444.0}]},{"id":"1232","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":338.0},{"fecha":"2026-04-02","peso":419.0}]},{"id":"1235","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":349.0},{"fecha":"2026-04-02","peso":430.0}]},{"id":"1239","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":343.0},{"fecha":"2026-04-02","peso":424.0}]},{"id":"1241","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":376.0},{"fecha":"2026-04-02","peso":457.0}]},{"id":"1243","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":394.0},{"fecha":"2026-04-02","peso":475.0}]},{"id":"1247","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":360.0},{"fecha":"2026-04-02","peso":441.0}]},{"id":"1248","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":387.0},{"fecha":"2026-04-02","peso":468.0}]},{"id":"1249","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":372.0},{"fecha":"2026-04-02","peso":453.0}]},{"id":"1251","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":368.0},{"fecha":"2026-04-02","peso":449.0}]},{"id":"1253","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":390.0},{"fecha":"2026-04-02","peso":471.0}]},{"id":"1256","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":360.0},{"fecha":"2026-04-02","peso":441.0}]},{"id":"1257","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":371.0},{"fecha":"2026-04-02","peso":452.0}]},{"id":"1260","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":340.0},{"fecha":"2026-04-02","peso":421.0}]},{"id":"1264","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":394.0},{"fecha":"2026-04-02","peso":475.0}]},{"id":"1265","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":366.0},{"fecha":"2026-04-02","peso":447.0}]},{"id":"1270","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":446.0},{"fecha":"2026-04-02","peso":527.0}]},{"id":"1271","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":393.0},{"fecha":"2026-04-02","peso":474.0}]},{"id":"1284","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":358.0},{"fecha":"2026-04-02","peso":439.0}]},{"id":"1287","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":372.0},{"fecha":"2026-04-02","peso":453.0}]},{"id":"1288","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":362.0},{"fecha":"2026-04-02","peso":443.0}]},{"id":"1293","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":407.0},{"fecha":"2026-04-02","peso":488.0}]},{"id":"1295","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":382.0},{"fecha":"2026-04-02","peso":463.0}]},{"id":"1299","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":373.0},{"fecha":"2026-04-02","peso":454.0}]},{"id":"1303","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":400.0},{"fecha":"2026-04-02","peso":481.0}]},{"id":"1308","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":380.0},{"fecha":"2026-04-02","peso":461.0}]},{"id":"1311","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":386.0},{"fecha":"2026-04-02","peso":467.0}]},{"id":"1319","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":416.0},{"fecha":"2026-04-02","peso":497.0}]},{"id":"1326","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":389.0},{"fecha":"2026-04-02","peso":470.0}]},{"id":"1329","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":383.0},{"fecha":"2026-04-02","peso":464.0}]},{"id":"1333","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":368.0},{"fecha":"2026-04-02","peso":449.0}]},{"id":"1335","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":397.0},{"fecha":"2026-04-02","peso":478.0}]},{"id":"1344","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":434.0},{"fecha":"2026-04-02","peso":515.0}]},{"id":"1345","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":378.0},{"fecha":"2026-04-02","peso":459.0}]},{"id":"1346","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":403.0},{"fecha":"2026-04-02","peso":484.0}]},{"id":"1351","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":386.0},{"fecha":"2026-04-02","peso":467.0}]},{"id":"1354","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":445.0},{"fecha":"2026-04-02","peso":526.0}]},{"id":"1355","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":393.0},{"fecha":"2026-04-02","peso":474.0}]},{"id":"1359","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":386.0},{"fecha":"2026-04-02","peso":467.0}]},{"id":"1362","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":398.0},{"fecha":"2026-04-02","peso":479.0}]},{"id":"1370","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":369.0},{"fecha":"2026-04-02","peso":450.0}]},{"id":"1371","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":486.0},{"fecha":"2026-04-02","peso":567.0}]},{"id":"1373","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":406.0},{"fecha":"2026-04-02","peso":487.0}]},{"id":"1377","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":460.0},{"fecha":"2026-04-02","peso":541.0}]},{"id":"1378","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":363.0},{"fecha":"2026-04-02","peso":444.0}]},{"id":"1381","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":396.0},{"fecha":"2026-04-02","peso":477.0}]},{"id":"1385","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":419.0},{"fecha":"2026-04-02","peso":500.0}]},{"id":"1386","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":422.0},{"fecha":"2026-04-02","peso":503.0}]},{"id":"1394","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":434.0},{"fecha":"2026-04-02","peso":515.0}]},{"id":"1396","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":393.0},{"fecha":"2026-04-02","peso":474.0}]},{"id":"1398","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":369.0},{"fecha":"2026-04-02","peso":450.0}]},{"id":"1399","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":398.0},{"fecha":"2026-04-02","peso":479.0}]},{"id":"1400","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":393.0},{"fecha":"2026-04-02","peso":474.0}]},{"id":"1402","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":370.0},{"fecha":"2026-04-02","peso":451.0}]},{"id":"1404","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":392.0},{"fecha":"2026-04-02","peso":473.0}]},{"id":"1408","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":385.0},{"fecha":"2026-04-02","peso":466.0}]},{"id":"1410","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":417.0},{"fecha":"2026-04-02","peso":498.0}]},{"id":"1417","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":393.0},{"fecha":"2026-04-02","peso":474.0}]},{"id":"1421","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":452.0},{"fecha":"2026-04-02","peso":533.0}]},{"id":"1423","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":384.0},{"fecha":"2026-04-02","peso":465.0}]},{"id":"1424","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":414.0},{"fecha":"2026-04-02","peso":495.0}]},{"id":"1425","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":392.0},{"fecha":"2026-04-02","peso":473.0}]},{"id":"1428","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":385.0},{"fecha":"2026-04-02","peso":466.0}]},{"id":"1435","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":400.0},{"fecha":"2026-04-02","peso":481.0}]},{"id":"1438","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":399.0},{"fecha":"2026-04-02","peso":480.0}]},{"id":"1441","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":377.0},{"fecha":"2026-04-02","peso":458.0}]},{"id":"1446","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":394.0},{"fecha":"2026-04-02","peso":475.0}]},{"id":"1448","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":433.0},{"fecha":"2026-04-02","peso":514.0}]},{"id":"1450","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":417.0},{"fecha":"2026-04-02","peso":498.0}]},{"id":"1451","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":434.0},{"fecha":"2026-04-02","peso":515.0}]},{"id":"1455","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":398.0},{"fecha":"2026-04-02","peso":479.0}]},{"id":"1456","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":413.0},{"fecha":"2026-04-02","peso":494.0}]},{"id":"1458","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":386.0},{"fecha":"2026-04-02","peso":467.0}]},{"id":"1464","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":396.0},{"fecha":"2026-04-02","peso":477.0}]},{"id":"1465","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":401.0},{"fecha":"2026-04-02","peso":482.0}]},{"id":"1472","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":398.0},{"fecha":"2026-04-02","peso":479.0}]},{"id":"1473","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":442.0},{"fecha":"2026-04-02","peso":523.0}]},{"id":"1476","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":458.0},{"fecha":"2026-04-02","peso":539.0}]},{"id":"1478","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":414.0},{"fecha":"2026-04-02","peso":495.0}]},{"id":"1481","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":390.0},{"fecha":"2026-04-02","peso":471.0}]},{"id":"1482","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":403.0},{"fecha":"2026-04-02","peso":484.0}]},{"id":"1484","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":398.0},{"fecha":"2026-04-02","peso":479.0}]},{"id":"1489","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":373.0},{"fecha":"2026-04-02","peso":454.0}]},{"id":"1495","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":406.0},{"fecha":"2026-04-02","peso":487.0}]},{"id":"1501","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":444.0},{"fecha":"2026-04-02","peso":525.0}]},{"id":"1503","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":398.0},{"fecha":"2026-04-02","peso":479.0}]},{"id":"1505","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":375.0},{"fecha":"2026-04-02","peso":456.0}]},{"id":"1509","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":384.0},{"fecha":"2026-04-02","peso":465.0}]},{"id":"1510","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":429.0},{"fecha":"2026-04-02","peso":510.0}]},{"id":"1512","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":404.0},{"fecha":"2026-04-02","peso":485.0}]},{"id":"1515","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":405.0},{"fecha":"2026-04-02","peso":486.0}]},{"id":"1517","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":408.0},{"fecha":"2026-04-02","peso":489.0}]},{"id":"1518","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":367.0},{"fecha":"2026-04-02","peso":448.0}]},{"id":"1520","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":375.0},{"fecha":"2026-04-02","peso":456.0}]},{"id":"1524","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":378.0},{"fecha":"2026-04-02","peso":459.0}]},{"id":"1525","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":384.0},{"fecha":"2026-04-02","peso":465.0}]},{"id":"1526","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":380.0},{"fecha":"2026-04-02","peso":461.0}]},{"id":"1529","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":375.0},{"fecha":"2026-04-02","peso":456.0}]},{"id":"1534","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":426.0},{"fecha":"2026-04-02","peso":507.0}]},{"id":"1541","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":385.0},{"fecha":"2026-04-02","peso":466.0}]},{"id":"1544","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":385.0},{"fecha":"2026-04-02","peso":466.0}]},{"id":"1547","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":395.0},{"fecha":"2026-04-02","peso":476.0}]},{"id":"1548","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":388.0},{"fecha":"2026-04-02","peso":469.0}]},{"id":"1549","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":425.0},{"fecha":"2026-04-02","peso":506.0}]},{"id":"1552","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":425.0},{"fecha":"2026-04-02","peso":506.0}]},{"id":"1554","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":403.0},{"fecha":"2026-04-02","peso":484.0}]},{"id":"1555","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":416.0},{"fecha":"2026-04-02","peso":497.0}]},{"id":"1556","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":383.0},{"fecha":"2026-04-02","peso":464.0}]},{"id":"1635","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":342.0},{"fecha":"2026-04-02","peso":423.0}]}],"B-02":[{"id":"1040","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":331.0},{"fecha":"2026-04-02","peso":412.0}]},{"id":"1042","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":334.0},{"fecha":"2026-04-02","peso":415.0}]},{"id":"1044","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":296.0},{"fecha":"2026-04-02","peso":377.0}]},{"id":"1053","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":337.0},{"fecha":"2026-04-02","peso":418.0}]},{"id":"1054","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":309.0},{"fecha":"2026-04-02","peso":390.0}]},{"id":"1055","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":317.0},{"fecha":"2026-04-02","peso":398.0}]},{"id":"1063","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":338.0},{"fecha":"2026-04-02","peso":419.0}]},{"id":"1066","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":320.0},{"fecha":"2026-04-02","peso":401.0}]},{"id":"1070","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":310.0},{"fecha":"2026-04-02","peso":391.0}]},{"id":"1072","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":348.0},{"fecha":"2026-04-02","peso":429.0}]},{"id":"1074","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":325.0},{"fecha":"2026-04-02","peso":406.0}]},{"id":"1079","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":333.0},{"fecha":"2026-04-02","peso":414.0}]},{"id":"1082","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":318.0},{"fecha":"2026-04-02","peso":399.0}]},{"id":"1101","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":281.0},{"fecha":"2026-04-02","peso":362.0}]},{"id":"1103","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":307.0},{"fecha":"2026-04-02","peso":388.0}]},{"id":"1107","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":308.0},{"fecha":"2026-04-02","peso":389.0}]},{"id":"1110","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":306.0},{"fecha":"2026-04-02","peso":387.0}]},{"id":"1113","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":327.0},{"fecha":"2026-04-02","peso":408.0}]},{"id":"1115","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":330.0},{"fecha":"2026-04-02","peso":411.0}]},{"id":"1123","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":332.0},{"fecha":"2026-04-02","peso":413.0}]},{"id":"1125","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":318.0},{"fecha":"2026-04-02","peso":399.0}]},{"id":"1135","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":331.0},{"fecha":"2026-04-02","peso":412.0}]},{"id":"1136","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":317.0},{"fecha":"2026-04-02","peso":398.0}]},{"id":"1139","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":326.0},{"fecha":"2026-04-02","peso":407.0}]},{"id":"1141","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":313.0},{"fecha":"2026-04-02","peso":394.0}]},{"id":"1146","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":393.0},{"fecha":"2026-04-02","peso":474.0}]},{"id":"1150","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":337.0},{"fecha":"2026-04-02","peso":418.0}]},{"id":"1152","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":288.0},{"fecha":"2026-04-02","peso":369.0}]},{"id":"1154","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":333.0},{"fecha":"2026-04-02","peso":414.0}]},{"id":"1163","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":318.0},{"fecha":"2026-04-02","peso":399.0}]},{"id":"1167","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":311.0},{"fecha":"2026-04-02","peso":392.0}]},{"id":"1168","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":291.0},{"fecha":"2026-04-02","peso":372.0}]},{"id":"1172","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":335.0},{"fecha":"2026-04-02","peso":416.0}]},{"id":"1173","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":315.0},{"fecha":"2026-04-02","peso":396.0}]},{"id":"1179","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":344.0},{"fecha":"2026-04-02","peso":425.0}]},{"id":"1180","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":316.0},{"fecha":"2026-04-02","peso":397.0}]},{"id":"1184","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":332.0},{"fecha":"2026-04-02","peso":413.0}]},{"id":"1189","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":327.0},{"fecha":"2026-04-02","peso":408.0}]},{"id":"1190","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":322.0},{"fecha":"2026-04-02","peso":403.0}]},{"id":"1192","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":339.0},{"fecha":"2026-04-02","peso":420.0}]},{"id":"1193","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":329.0},{"fecha":"2026-04-02","peso":410.0}]},{"id":"1199","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":355.0},{"fecha":"2026-04-02","peso":436.0}]},{"id":"1201","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":324.0},{"fecha":"2026-04-02","peso":405.0}]},{"id":"1202","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":345.0},{"fecha":"2026-04-02","peso":426.0}]},{"id":"1211","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":337.0},{"fecha":"2026-04-02","peso":418.0}]},{"id":"1221","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":329.0},{"fecha":"2026-04-02","peso":410.0}]},{"id":"1222","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":330.0},{"fecha":"2026-04-02","peso":411.0}]},{"id":"1224","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":364.0},{"fecha":"2026-04-02","peso":445.0}]},{"id":"1226","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":333.0},{"fecha":"2026-04-02","peso":414.0}]},{"id":"1227","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":329.0},{"fecha":"2026-04-02","peso":410.0}]},{"id":"1229","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":330.0},{"fecha":"2026-04-02","peso":411.0}]},{"id":"1230","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":315.0},{"fecha":"2026-04-02","peso":396.0}]},{"id":"1233","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":342.0},{"fecha":"2026-04-02","peso":423.0}]},{"id":"1234","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":337.0},{"fecha":"2026-04-02","peso":418.0}]},{"id":"1236","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":332.0},{"fecha":"2026-04-02","peso":413.0}]},{"id":"1238","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":323.0},{"fecha":"2026-04-02","peso":404.0}]},{"id":"1244","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":326.0},{"fecha":"2026-04-02","peso":407.0}]},{"id":"1245","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":327.0},{"fecha":"2026-04-02","peso":408.0}]},{"id":"1255","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":338.0},{"fecha":"2026-04-02","peso":419.0}]},{"id":"1262","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":333.0},{"fecha":"2026-04-02","peso":414.0}]},{"id":"1266","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":329.0},{"fecha":"2026-04-02","peso":410.0}]},{"id":"1268","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":298.0},{"fecha":"2026-04-02","peso":379.0}]},{"id":"1269","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":305.0},{"fecha":"2026-04-02","peso":386.0}]},{"id":"1276","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":307.0},{"fecha":"2026-04-02","peso":388.0}]},{"id":"1279","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":319.0},{"fecha":"2026-04-02","peso":400.0}]},{"id":"1282","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":305.0},{"fecha":"2026-04-02","peso":386.0}]},{"id":"1283","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":326.0},{"fecha":"2026-04-02","peso":407.0}]},{"id":"1286","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":321.0},{"fecha":"2026-04-02","peso":402.0}]},{"id":"1291","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":306.0},{"fecha":"2026-04-02","peso":387.0}]},{"id":"1294","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":314.0},{"fecha":"2026-04-02","peso":395.0}]},{"id":"1296","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":346.0},{"fecha":"2026-04-02","peso":427.0}]},{"id":"1297","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":329.0},{"fecha":"2026-04-02","peso":410.0}]},{"id":"1301","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":357.0},{"fecha":"2026-04-02","peso":438.0}]},{"id":"1304","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":316.0},{"fecha":"2026-04-02","peso":397.0}]},{"id":"1305","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":347.0},{"fecha":"2026-04-02","peso":428.0}]},{"id":"1306","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":331.0},{"fecha":"2026-04-02","peso":412.0}]},{"id":"1307","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":342.0},{"fecha":"2026-04-02","peso":423.0}]},{"id":"1310","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":348.0},{"fecha":"2026-04-02","peso":429.0}]},{"id":"1312","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":348.0},{"fecha":"2026-04-02","peso":429.0}]},{"id":"1325","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":322.0},{"fecha":"2026-04-02","peso":403.0}]},{"id":"1328","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":331.0},{"fecha":"2026-04-02","peso":412.0}]},{"id":"1331","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":328.0},{"fecha":"2026-04-02","peso":409.0}]},{"id":"1334","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":316.0},{"fecha":"2026-04-02","peso":397.0}]},{"id":"1339","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":326.0},{"fecha":"2026-04-02","peso":407.0}]},{"id":"1340","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":336.0},{"fecha":"2026-04-02","peso":417.0}]},{"id":"1342","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":303.0},{"fecha":"2026-04-02","peso":384.0}]},{"id":"1350","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":364.0},{"fecha":"2026-04-02","peso":445.0}]},{"id":"1353","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":341.0},{"fecha":"2026-04-02","peso":422.0}]},{"id":"1358","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":310.0},{"fecha":"2026-04-02","peso":391.0}]},{"id":"1364","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":314.0},{"fecha":"2026-04-02","peso":395.0}]},{"id":"1368","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":315.0},{"fecha":"2026-04-02","peso":396.0}]},{"id":"1369","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":336.0},{"fecha":"2026-04-02","peso":417.0}]},{"id":"1376","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":338.0},{"fecha":"2026-04-02","peso":419.0}]},{"id":"1382","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":330.0},{"fecha":"2026-04-02","peso":411.0}]},{"id":"1383","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":321.0},{"fecha":"2026-04-02","peso":402.0}]},{"id":"1384","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":356.0},{"fecha":"2026-04-02","peso":437.0}]},{"id":"1387","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":327.0},{"fecha":"2026-04-02","peso":408.0}]},{"id":"1389","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":358.0},{"fecha":"2026-04-02","peso":439.0}]},{"id":"1393","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":331.0},{"fecha":"2026-04-02","peso":412.0}]},{"id":"1403","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":364.0},{"fecha":"2026-04-02","peso":445.0}]},{"id":"1405","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":331.0},{"fecha":"2026-04-02","peso":412.0}]},{"id":"1406","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":364.0},{"fecha":"2026-04-02","peso":445.0}]},{"id":"1407","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":344.0},{"fecha":"2026-04-02","peso":425.0}]},{"id":"1409","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":328.0},{"fecha":"2026-04-02","peso":409.0}]},{"id":"1411","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":328.0},{"fecha":"2026-04-02","peso":409.0}]},{"id":"1412","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":320.0},{"fecha":"2026-04-02","peso":401.0}]},{"id":"1413","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":313.0},{"fecha":"2026-04-02","peso":394.0}]},{"id":"1419","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":353.0},{"fecha":"2026-04-02","peso":434.0}]},{"id":"1427","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":337.0},{"fecha":"2026-04-02","peso":418.0}]},{"id":"1430","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":335.0},{"fecha":"2026-04-02","peso":416.0}]},{"id":"1432","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":329.0},{"fecha":"2026-04-02","peso":410.0}]},{"id":"1433","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":321.0},{"fecha":"2026-04-02","peso":402.0}]},{"id":"1434","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":349.0},{"fecha":"2026-04-02","peso":430.0}]},{"id":"1436","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":348.0},{"fecha":"2026-04-02","peso":429.0}]},{"id":"1437","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":327.0},{"fecha":"2026-04-02","peso":408.0}]},{"id":"1439","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":359.0},{"fecha":"2026-04-02","peso":440.0}]},{"id":"1440","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":336.0},{"fecha":"2026-04-02","peso":417.0}]},{"id":"1444","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":369.0},{"fecha":"2026-04-02","peso":450.0}]},{"id":"1447","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":350.0},{"fecha":"2026-04-02","peso":431.0}]},{"id":"1452","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":346.0},{"fecha":"2026-04-02","peso":427.0}]},{"id":"1453","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":336.0},{"fecha":"2026-04-02","peso":417.0}]},{"id":"1454","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":359.0},{"fecha":"2026-04-02","peso":440.0}]},{"id":"1462","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":327.0},{"fecha":"2026-04-02","peso":408.0}]},{"id":"1463","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":348.0},{"fecha":"2026-04-02","peso":429.0}]},{"id":"1466","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":334.0},{"fecha":"2026-04-02","peso":415.0}]},{"id":"1468","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":329.0},{"fecha":"2026-04-02","peso":410.0}]},{"id":"1470","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":295.0},{"fecha":"2026-04-02","peso":376.0}]},{"id":"1474","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":333.0},{"fecha":"2026-04-02","peso":414.0}]},{"id":"1475","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":373.0},{"fecha":"2026-04-02","peso":454.0}]},{"id":"1477","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":336.0},{"fecha":"2026-04-02","peso":417.0}]},{"id":"1479","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":337.0},{"fecha":"2026-04-02","peso":418.0}]},{"id":"1480","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":334.0},{"fecha":"2026-04-02","peso":415.0}]},{"id":"1486","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":335.0},{"fecha":"2026-04-02","peso":416.0}]},{"id":"1491","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":319.0},{"fecha":"2026-04-02","peso":400.0}]},{"id":"1492","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":344.0},{"fecha":"2026-04-02","peso":425.0}]},{"id":"1494","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":346.0},{"fecha":"2026-04-02","peso":427.0}]},{"id":"1497","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":336.0},{"fecha":"2026-04-02","peso":417.0}]},{"id":"1499","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":363.0},{"fecha":"2026-04-02","peso":444.0}]},{"id":"1500","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":313.0},{"fecha":"2026-04-02","peso":394.0}]},{"id":"1504","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":349.0},{"fecha":"2026-04-02","peso":430.0}]},{"id":"1507","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":341.0},{"fecha":"2026-04-02","peso":422.0}]},{"id":"1508","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":321.0},{"fecha":"2026-04-02","peso":402.0}]},{"id":"1511","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":328.0},{"fecha":"2026-04-02","peso":409.0}]},{"id":"1514","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":342.0},{"fecha":"2026-04-02","peso":423.0}]},{"id":"1519","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":365.0},{"fecha":"2026-04-02","peso":446.0}]},{"id":"1521","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":336.0},{"fecha":"2026-04-02","peso":417.0}]},{"id":"1523","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":338.0},{"fecha":"2026-04-02","peso":419.0}]},{"id":"1527","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":358.0},{"fecha":"2026-04-02","peso":439.0}]},{"id":"1528","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":339.0},{"fecha":"2026-04-02","peso":420.0}]},{"id":"1531","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":356.0},{"fecha":"2026-04-02","peso":437.0}]},{"id":"1532","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":346.0},{"fecha":"2026-04-02","peso":427.0}]},{"id":"1537","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":344.0},{"fecha":"2026-04-02","peso":425.0}]},{"id":"1540","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":341.0},{"fecha":"2026-04-02","peso":422.0}]},{"id":"1543","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":349.0},{"fecha":"2026-04-02","peso":430.0}]},{"id":"1545","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":319.0},{"fecha":"2026-04-02","peso":400.0}]},{"id":"1558","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":352.0},{"fecha":"2026-04-02","peso":433.0}]},{"id":"1561","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":373.0},{"fecha":"2026-04-02","peso":454.0}]},{"id":"1567","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":340.0},{"fecha":"2026-04-02","peso":421.0}]},{"id":"1568","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":328.0},{"fecha":"2026-04-02","peso":409.0}]},{"id":"1569","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":315.0},{"fecha":"2026-04-02","peso":396.0}]},{"id":"1571","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":353.0},{"fecha":"2026-04-02","peso":434.0}]},{"id":"1577","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":310.0},{"fecha":"2026-04-02","peso":391.0}]},{"id":"1581","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":317.0},{"fecha":"2026-04-02","peso":398.0}]},{"id":"1582","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":315.0},{"fecha":"2026-04-02","peso":396.0}]},{"id":"1584","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":317.0},{"fecha":"2026-04-02","peso":398.0}]},{"id":"1585","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":299.0},{"fecha":"2026-04-02","peso":380.0}]},{"id":"1586","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":315.0},{"fecha":"2026-04-02","peso":396.0}]},{"id":"1594","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":313.0},{"fecha":"2026-04-02","peso":394.0}]},{"id":"1597","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":340.0},{"fecha":"2026-04-02","peso":421.0}]},{"id":"1599","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":308.0},{"fecha":"2026-04-02","peso":389.0}]},{"id":"1600","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":317.0},{"fecha":"2026-04-02","peso":398.0}]},{"id":"1601","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":335.0},{"fecha":"2026-04-02","peso":416.0}]},{"id":"1602","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":302.0},{"fecha":"2026-04-02","peso":383.0}]},{"id":"1603","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":335.0},{"fecha":"2026-04-02","peso":416.0}]},{"id":"1606","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":339.0},{"fecha":"2026-04-02","peso":420.0}]},{"id":"1608","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":306.0},{"fecha":"2026-04-02","peso":387.0}]},{"id":"1611","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":337.0},{"fecha":"2026-04-02","peso":418.0}]},{"id":"1612","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":363.0},{"fecha":"2026-04-02","peso":444.0}]},{"id":"1615","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":320.0},{"fecha":"2026-04-02","peso":401.0}]},{"id":"1617","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":328.0},{"fecha":"2026-04-02","peso":409.0}]},{"id":"1618","raza":"F1","pesajes":[{"fecha":"2025-12-15","peso":329.0},{"fecha":"2026-04-02","peso":410.0}]},{"id":"1620","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":313.0},{"fecha":"2026-04-02","peso":394.0}]},{"id":"1621","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":306.0},{"fecha":"2026-04-02","peso":387.0}]},{"id":"1622","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":348.0},{"fecha":"2026-04-02","peso":429.0}]},{"id":"1626","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":328.0},{"fecha":"2026-04-02","peso":409.0}]},{"id":"1642","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":344.0},{"fecha":"2026-04-02","peso":425.0}]},{"id":"1643","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":353.0},{"fecha":"2026-04-02","peso":434.0}]},{"id":"1634","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":304.0},{"fecha":"2026-04-02","peso":385.0}]},{"id":"1647","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":325.0},{"fecha":"2026-04-02","peso":406.0}]},{"id":"1649","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":296.0},{"fecha":"2026-04-02","peso":377.0}]},{"id":"1652","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":297.0},{"fecha":"2026-04-02","peso":378.0}]},{"id":"1655","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":295.0},{"fecha":"2026-04-02","peso":376.0}]},{"id":"1656","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":317.0},{"fecha":"2026-04-02","peso":398.0}]},{"id":"1661","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":306.0},{"fecha":"2026-04-02","peso":387.0}]},{"id":"1662","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":321.0},{"fecha":"2026-04-02","peso":402.0}]},{"id":"1664","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":316.0},{"fecha":"2026-04-02","peso":397.0}]},{"id":"1665","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":314.0},{"fecha":"2026-04-02","peso":395.0}]},{"id":"1669","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":325.0},{"fecha":"2026-04-02","peso":406.0}]},{"id":"1674","raza":"NE","pesajes":[{"fecha":"2025-12-15","peso":313.0},{"fecha":"2026-04-02","peso":394.0}]}],"B-03":[{"id":"1039","raza":"","pesajes":[{"fecha":"2025-12-15","peso":296.0},{"fecha":"2026-04-02","peso":371.6}]},{"id":"1049","raza":"","pesajes":[{"fecha":"2025-12-15","peso":310.0},{"fecha":"2026-04-02","peso":385.6}]},{"id":"1050","raza":"","pesajes":[{"fecha":"2025-12-15","peso":288.0},{"fecha":"2026-04-02","peso":363.6}]},{"id":"1051","raza":"","pesajes":[{"fecha":"2025-12-15","peso":289.0},{"fecha":"2026-04-02","peso":364.6}]},{"id":"1058","raza":"","pesajes":[{"fecha":"2025-12-15","peso":283.0},{"fecha":"2026-04-02","peso":358.6}]},{"id":"1065","raza":"","pesajes":[{"fecha":"2025-12-15","peso":272.0},{"fecha":"2026-04-02","peso":347.6}]},{"id":"1068","raza":"","pesajes":[{"fecha":"2025-12-15","peso":266.0},{"fecha":"2026-04-02","peso":341.6}]},{"id":"1071","raza":"","pesajes":[{"fecha":"2025-12-15","peso":260.0},{"fecha":"2026-04-02","peso":335.6}]},{"id":"1076","raza":"","pesajes":[{"fecha":"2025-12-15","peso":243.0},{"fecha":"2026-04-02","peso":318.6}]},{"id":"1084","raza":"","pesajes":[{"fecha":"2025-12-15","peso":276.0},{"fecha":"2026-04-02","peso":351.6}]},{"id":"1089","raza":"","pesajes":[{"fecha":"2025-12-15","peso":292.0},{"fecha":"2026-04-02","peso":367.6}]},{"id":"1090","raza":"","pesajes":[{"fecha":"2025-12-15","peso":255.0},{"fecha":"2026-04-02","peso":330.6}]},{"id":"1092","raza":"","pesajes":[{"fecha":"2025-12-15","peso":296.0},{"fecha":"2026-04-02","peso":371.6}]},{"id":"1095","raza":"","pesajes":[{"fecha":"2025-12-15","peso":279.0},{"fecha":"2026-04-02","peso":354.6}]},{"id":"1109","raza":"","pesajes":[{"fecha":"2025-12-15","peso":292.0},{"fecha":"2026-04-02","peso":367.6}]},{"id":"1112","raza":"","pesajes":[{"fecha":"2025-12-15","peso":286.0},{"fecha":"2026-04-02","peso":361.6}]},{"id":"1116","raza":"","pesajes":[{"fecha":"2025-12-15","peso":257.0},{"fecha":"2026-04-02","peso":332.6}]},{"id":"1120","raza":"","pesajes":[{"fecha":"2025-12-15","peso":263.0},{"fecha":"2026-04-02","peso":338.6}]},{"id":"1126","raza":"","pesajes":[{"fecha":"2025-12-15","peso":255.0},{"fecha":"2026-04-02","peso":330.6}]},{"id":"1144","raza":"","pesajes":[{"fecha":"2025-12-15","peso":281.0},{"fecha":"2026-04-02","peso":356.6}]},{"id":"1147","raza":"","pesajes":[{"fecha":"2025-12-15","peso":289.0},{"fecha":"2026-04-02","peso":364.6}]},{"id":"1155","raza":"","pesajes":[{"fecha":"2025-12-15","peso":289.0},{"fecha":"2026-04-02","peso":364.6}]},{"id":"1156","raza":"","pesajes":[{"fecha":"2025-12-15","peso":294.0},{"fecha":"2026-04-02","peso":369.6}]},{"id":"1160","raza":"","pesajes":[{"fecha":"2025-12-15","peso":255.0},{"fecha":"2026-04-02","peso":330.6}]},{"id":"1169","raza":"","pesajes":[{"fecha":"2025-12-15","peso":282.0},{"fecha":"2026-04-02","peso":357.6}]},{"id":"1171","raza":"","pesajes":[{"fecha":"2025-12-15","peso":272.0},{"fecha":"2026-04-02","peso":347.6}]},{"id":"1174","raza":"","pesajes":[{"fecha":"2025-12-15","peso":261.0},{"fecha":"2026-04-02","peso":336.6}]},{"id":"1178","raza":"","pesajes":[{"fecha":"2025-12-15","peso":274.0},{"fecha":"2026-04-02","peso":349.6}]},{"id":"1183","raza":"","pesajes":[{"fecha":"2025-12-15","peso":273.0},{"fecha":"2026-04-02","peso":348.6}]},{"id":"1188","raza":"","pesajes":[{"fecha":"2025-12-15","peso":278.0},{"fecha":"2026-04-02","peso":353.6}]},{"id":"1191","raza":"","pesajes":[{"fecha":"2025-12-15","peso":261.0},{"fecha":"2026-04-02","peso":336.6}]},{"id":"1198","raza":"","pesajes":[{"fecha":"2025-12-15","peso":264.0},{"fecha":"2026-04-02","peso":339.6}]},{"id":"1200","raza":"","pesajes":[{"fecha":"2025-12-15","peso":283.0},{"fecha":"2026-04-02","peso":358.6}]},{"id":"1203","raza":"","pesajes":[{"fecha":"2025-12-15","peso":260.0},{"fecha":"2026-04-02","peso":335.6}]},{"id":"1204","raza":"","pesajes":[{"fecha":"2025-12-15","peso":278.0},{"fecha":"2026-04-02","peso":353.6}]},{"id":"1208","raza":"","pesajes":[{"fecha":"2025-12-15","peso":245.0},{"fecha":"2026-04-02","peso":320.6}]},{"id":"1210","raza":"","pesajes":[{"fecha":"2025-12-15","peso":276.0},{"fecha":"2026-04-02","peso":351.6}]},{"id":"1217","raza":"","pesajes":[{"fecha":"2025-12-15","peso":275.0},{"fecha":"2026-04-02","peso":350.6}]},{"id":"1220","raza":"","pesajes":[{"fecha":"2025-12-15","peso":240.0},{"fecha":"2026-04-02","peso":315.6}]},{"id":"1223","raza":"","pesajes":[{"fecha":"2025-12-15","peso":274.0},{"fecha":"2026-04-02","peso":349.6}]},{"id":"1228","raza":"","pesajes":[{"fecha":"2025-12-15","peso":272.0},{"fecha":"2026-04-02","peso":347.6}]},{"id":"1231","raza":"","pesajes":[{"fecha":"2025-12-15","peso":292.0},{"fecha":"2026-04-02","peso":367.6}]},{"id":"1237","raza":"","pesajes":[{"fecha":"2025-12-15","peso":291.0},{"fecha":"2026-04-02","peso":366.6}]},{"id":"1240","raza":"","pesajes":[{"fecha":"2025-12-15","peso":250.0},{"fecha":"2026-04-02","peso":325.6}]},{"id":"1242","raza":"","pesajes":[{"fecha":"2025-12-15","peso":244.0},{"fecha":"2026-04-02","peso":319.6}]},{"id":"1246","raza":"","pesajes":[{"fecha":"2025-12-15","peso":270.0},{"fecha":"2026-04-02","peso":345.6}]},{"id":"1250","raza":"","pesajes":[{"fecha":"2025-12-15","peso":231.0},{"fecha":"2026-04-02","peso":306.6}]},{"id":"1252","raza":"","pesajes":[{"fecha":"2025-12-15","peso":282.0},{"fecha":"2026-04-02","peso":357.6}]},{"id":"1254","raza":"","pesajes":[{"fecha":"2025-12-15","peso":256.0},{"fecha":"2026-04-02","peso":331.6}]},{"id":"1258","raza":"","pesajes":[{"fecha":"2025-12-15","peso":245.0},{"fecha":"2026-04-02","peso":320.6}]},{"id":"1259","raza":"","pesajes":[{"fecha":"2025-12-15","peso":235.0},{"fecha":"2026-04-02","peso":310.6}]},{"id":"1261","raza":"","pesajes":[{"fecha":"2025-12-15","peso":336.0},{"fecha":"2026-04-02","peso":411.6}]},{"id":"1263","raza":"","pesajes":[{"fecha":"2025-12-15","peso":274.0},{"fecha":"2026-04-02","peso":349.6}]},{"id":"1267","raza":"","pesajes":[{"fecha":"2025-12-15","peso":278.0},{"fecha":"2026-04-02","peso":353.6}]},{"id":"1272","raza":"","pesajes":[{"fecha":"2025-12-15","peso":259.0},{"fecha":"2026-04-02","peso":334.6}]},{"id":"1273","raza":"","pesajes":[{"fecha":"2025-12-15","peso":256.0},{"fecha":"2026-04-02","peso":331.6}]},{"id":"1274","raza":"","pesajes":[{"fecha":"2025-12-15","peso":283.0},{"fecha":"2026-04-02","peso":358.6}]},{"id":"1275","raza":"","pesajes":[{"fecha":"2025-12-15","peso":278.0},{"fecha":"2026-04-02","peso":353.6}]},{"id":"1277","raza":"","pesajes":[{"fecha":"2025-12-15","peso":256.0},{"fecha":"2026-04-02","peso":331.6}]},{"id":"1278","raza":"","pesajes":[{"fecha":"2025-12-15","peso":277.0},{"fecha":"2026-04-02","peso":352.6}]},{"id":"1280","raza":"","pesajes":[{"fecha":"2025-12-15","peso":283.0},{"fecha":"2026-04-02","peso":358.6}]},{"id":"1281","raza":"","pesajes":[{"fecha":"2025-12-15","peso":276.0},{"fecha":"2026-04-02","peso":351.6}]},{"id":"1285","raza":"","pesajes":[{"fecha":"2025-12-15","peso":301.0},{"fecha":"2026-04-02","peso":376.6}]},{"id":"1289","raza":"","pesajes":[{"fecha":"2025-12-15","peso":252.0},{"fecha":"2026-04-02","peso":327.6}]},{"id":"1290","raza":"","pesajes":[{"fecha":"2025-12-15","peso":253.0},{"fecha":"2026-04-02","peso":328.6}]},{"id":"1292","raza":"","pesajes":[{"fecha":"2025-12-15","peso":297.0},{"fecha":"2026-04-02","peso":372.6}]},{"id":"1298","raza":"","pesajes":[{"fecha":"2025-12-15","peso":291.0},{"fecha":"2026-04-02","peso":366.6}]},{"id":"1300","raza":"","pesajes":[{"fecha":"2025-12-15","peso":272.0},{"fecha":"2026-04-02","peso":347.6}]},{"id":"1302","raza":"","pesajes":[{"fecha":"2025-12-15","peso":259.0},{"fecha":"2026-04-02","peso":334.6}]},{"id":"1309","raza":"","pesajes":[{"fecha":"2025-12-15","peso":271.0},{"fecha":"2026-04-02","peso":346.6}]},{"id":"1313","raza":"","pesajes":[{"fecha":"2025-12-15","peso":304.0},{"fecha":"2026-04-02","peso":379.6}]},{"id":"1314","raza":"","pesajes":[{"fecha":"2025-12-15","peso":241.0},{"fecha":"2026-04-02","peso":316.6}]},{"id":"1315","raza":"","pesajes":[{"fecha":"2025-12-15","peso":293.0},{"fecha":"2026-04-02","peso":368.6}]},{"id":"1316","raza":"","pesajes":[{"fecha":"2025-12-15","peso":259.0},{"fecha":"2026-04-02","peso":334.6}]},{"id":"1317","raza":"","pesajes":[{"fecha":"2025-12-15","peso":293.0},{"fecha":"2026-04-02","peso":368.6}]},{"id":"1318","raza":"","pesajes":[{"fecha":"2025-12-15","peso":285.0},{"fecha":"2026-04-02","peso":360.6}]},{"id":"1321","raza":"","pesajes":[{"fecha":"2025-12-15","peso":281.0},{"fecha":"2026-04-02","peso":356.6}]},{"id":"1322","raza":"","pesajes":[{"fecha":"2025-12-15","peso":307.0},{"fecha":"2026-04-02","peso":382.6}]},{"id":"1323","raza":"","pesajes":[{"fecha":"2025-12-15","peso":301.0},{"fecha":"2026-04-02","peso":376.6}]},{"id":"1324","raza":"","pesajes":[{"fecha":"2025-12-15","peso":315.0},{"fecha":"2026-04-02","peso":390.6}]},{"id":"1327","raza":"","pesajes":[{"fecha":"2025-12-15","peso":258.0},{"fecha":"2026-04-02","peso":333.6}]},{"id":"1330","raza":"","pesajes":[{"fecha":"2025-12-15","peso":279.0},{"fecha":"2026-04-02","peso":354.6}]},{"id":"1332","raza":"","pesajes":[{"fecha":"2025-12-15","peso":280.0},{"fecha":"2026-04-02","peso":355.6}]},{"id":"1336","raza":"","pesajes":[{"fecha":"2025-12-15","peso":284.0},{"fecha":"2026-04-02","peso":359.6}]},{"id":"1337","raza":"","pesajes":[{"fecha":"2025-12-15","peso":288.0},{"fecha":"2026-04-02","peso":363.6}]},{"id":"1338","raza":"","pesajes":[{"fecha":"2025-12-15","peso":302.0},{"fecha":"2026-04-02","peso":377.6}]},{"id":"1341","raza":"","pesajes":[{"fecha":"2025-12-15","peso":234.0},{"fecha":"2026-04-02","peso":309.6}]},{"id":"1343","raza":"","pesajes":[{"fecha":"2025-12-15","peso":299.0},{"fecha":"2026-04-02","peso":374.6}]},{"id":"1348","raza":"","pesajes":[{"fecha":"2025-12-15","peso":310.0},{"fecha":"2026-04-02","peso":385.6}]},{"id":"1349","raza":"","pesajes":[{"fecha":"2025-12-15","peso":241.0},{"fecha":"2026-04-02","peso":316.6}]},{"id":"1352","raza":"","pesajes":[{"fecha":"2025-12-15","peso":275.0},{"fecha":"2026-04-02","peso":350.6}]},{"id":"1356","raza":"","pesajes":[{"fecha":"2025-12-15","peso":302.0},{"fecha":"2026-04-02","peso":377.6}]},{"id":"1357","raza":"","pesajes":[{"fecha":"2025-12-15","peso":276.0},{"fecha":"2026-04-02","peso":351.6}]},{"id":"1360","raza":"","pesajes":[{"fecha":"2025-12-15","peso":268.0},{"fecha":"2026-04-02","peso":343.6}]},{"id":"1361","raza":"","pesajes":[{"fecha":"2025-12-15","peso":310.0},{"fecha":"2026-04-02","peso":385.6}]},{"id":"1363","raza":"","pesajes":[{"fecha":"2025-12-15","peso":260.0},{"fecha":"2026-04-02","peso":335.6}]},{"id":"1365","raza":"","pesajes":[{"fecha":"2025-12-15","peso":254.0},{"fecha":"2026-04-02","peso":329.6}]},{"id":"1366","raza":"","pesajes":[{"fecha":"2025-12-15","peso":292.0},{"fecha":"2026-04-02","peso":367.6}]},{"id":"1367","raza":"","pesajes":[{"fecha":"2025-12-15","peso":274.0},{"fecha":"2026-04-02","peso":349.6}]},{"id":"1372","raza":"","pesajes":[{"fecha":"2025-12-15","peso":292.0},{"fecha":"2026-04-02","peso":367.6}]},{"id":"1374","raza":"","pesajes":[{"fecha":"2025-12-15","peso":278.0},{"fecha":"2026-04-02","peso":353.6}]},{"id":"1375","raza":"","pesajes":[{"fecha":"2025-12-15","peso":260.0},{"fecha":"2026-04-02","peso":335.6}]},{"id":"1380","raza":"","pesajes":[{"fecha":"2025-12-15","peso":295.0},{"fecha":"2026-04-02","peso":370.6}]},{"id":"1388","raza":"","pesajes":[{"fecha":"2025-12-15","peso":300.0},{"fecha":"2026-04-02","peso":375.6}]},{"id":"1390","raza":"","pesajes":[{"fecha":"2025-12-15","peso":264.0},{"fecha":"2026-04-02","peso":339.6}]},{"id":"1391","raza":"","pesajes":[{"fecha":"2025-12-15","peso":276.0},{"fecha":"2026-04-02","peso":351.6}]},{"id":"1392","raza":"","pesajes":[{"fecha":"2025-12-15","peso":298.0},{"fecha":"2026-04-02","peso":373.6}]},{"id":"1395","raza":"","pesajes":[{"fecha":"2025-12-15","peso":272.0},{"fecha":"2026-04-02","peso":347.6}]},{"id":"1397","raza":"","pesajes":[{"fecha":"2025-12-15","peso":323.0},{"fecha":"2026-04-02","peso":398.6}]},{"id":"1401","raza":"","pesajes":[{"fecha":"2025-12-15","peso":229.0},{"fecha":"2026-04-02","peso":304.6}]},{"id":"1414","raza":"","pesajes":[{"fecha":"2025-12-15","peso":263.0},{"fecha":"2026-04-02","peso":338.6}]},{"id":"1415","raza":"","pesajes":[{"fecha":"2025-12-15","peso":295.0},{"fecha":"2026-04-02","peso":370.6}]},{"id":"1416","raza":"","pesajes":[{"fecha":"2025-12-15","peso":259.0},{"fecha":"2026-04-02","peso":334.6}]},{"id":"1418","raza":"","pesajes":[{"fecha":"2025-12-15","peso":269.0},{"fecha":"2026-04-02","peso":344.6}]},{"id":"1422","raza":"","pesajes":[{"fecha":"2025-12-15","peso":226.0},{"fecha":"2026-04-02","peso":301.6}]},{"id":"1429","raza":"","pesajes":[{"fecha":"2025-12-15","peso":284.0},{"fecha":"2026-04-02","peso":359.6}]},{"id":"1431","raza":"","pesajes":[{"fecha":"2025-12-15","peso":272.0},{"fecha":"2026-04-02","peso":347.6}]},{"id":"1443","raza":"","pesajes":[{"fecha":"2025-12-15","peso":305.0},{"fecha":"2026-04-02","peso":380.6}]},{"id":"1445","raza":"","pesajes":[{"fecha":"2025-12-15","peso":319.0},{"fecha":"2026-04-02","peso":394.6}]},{"id":"1449","raza":"","pesajes":[{"fecha":"2025-12-15","peso":285.0},{"fecha":"2026-04-02","peso":360.6}]},{"id":"1457","raza":"","pesajes":[{"fecha":"2025-12-15","peso":298.0},{"fecha":"2026-04-02","peso":373.6}]},{"id":"1459","raza":"","pesajes":[{"fecha":"2025-12-15","peso":272.0},{"fecha":"2026-04-02","peso":347.6}]},{"id":"1460","raza":"","pesajes":[{"fecha":"2025-12-15","peso":271.0},{"fecha":"2026-04-02","peso":346.6}]},{"id":"1461","raza":"","pesajes":[{"fecha":"2025-12-15","peso":305.0},{"fecha":"2026-04-02","peso":380.6}]},{"id":"1467","raza":"","pesajes":[{"fecha":"2025-12-15","peso":294.0},{"fecha":"2026-04-02","peso":369.6}]},{"id":"1469","raza":"","pesajes":[{"fecha":"2025-12-15","peso":311.0},{"fecha":"2026-04-02","peso":386.6}]},{"id":"1471","raza":"","pesajes":[{"fecha":"2025-12-15","peso":255.0},{"fecha":"2026-04-02","peso":330.6}]},{"id":"1483","raza":"","pesajes":[{"fecha":"2025-12-15","peso":285.0},{"fecha":"2026-04-02","peso":360.6}]},{"id":"1485","raza":"","pesajes":[{"fecha":"2025-12-15","peso":333.0},{"fecha":"2026-04-02","peso":408.6}]},{"id":"1487","raza":"","pesajes":[{"fecha":"2025-12-15","peso":292.0},{"fecha":"2026-04-02","peso":367.6}]},{"id":"1488","raza":"","pesajes":[{"fecha":"2025-12-15","peso":291.0},{"fecha":"2026-04-02","peso":366.6}]},{"id":"1490","raza":"","pesajes":[{"fecha":"2025-12-15","peso":342.0},{"fecha":"2026-04-02","peso":417.6}]},{"id":"1493","raza":"","pesajes":[{"fecha":"2025-12-15","peso":262.0},{"fecha":"2026-04-02","peso":337.6}]},{"id":"1496","raza":"","pesajes":[{"fecha":"2025-12-15","peso":275.0},{"fecha":"2026-04-02","peso":350.6}]},{"id":"1498","raza":"","pesajes":[{"fecha":"2025-12-15","peso":282.0},{"fecha":"2026-04-02","peso":357.6}]},{"id":"1502","raza":"","pesajes":[{"fecha":"2025-12-15","peso":252.0},{"fecha":"2026-04-02","peso":327.6}]},{"id":"1506","raza":"","pesajes":[{"fecha":"2025-12-15","peso":293.0},{"fecha":"2026-04-02","peso":368.6}]},{"id":"1320","raza":"","pesajes":[{"fecha":"2025-12-15","peso":246.0},{"fecha":"2026-04-02","peso":321.6}]},{"id":"1516","raza":"","pesajes":[{"fecha":"2025-12-15","peso":224.0},{"fecha":"2026-04-02","peso":299.6}]},{"id":"1530","raza":"","pesajes":[{"fecha":"2025-12-15","peso":311.0},{"fecha":"2026-04-02","peso":386.6}]},{"id":"1533","raza":"","pesajes":[{"fecha":"2025-12-15","peso":298.0},{"fecha":"2026-04-02","peso":373.6}]},{"id":"1535","raza":"","pesajes":[{"fecha":"2025-12-15","peso":238.0},{"fecha":"2026-04-02","peso":313.6}]},{"id":"1536","raza":"","pesajes":[{"fecha":"2025-12-15","peso":268.0},{"fecha":"2026-04-02","peso":343.6}]},{"id":"1538","raza":"","pesajes":[{"fecha":"2025-12-15","peso":278.0},{"fecha":"2026-04-02","peso":353.6}]},{"id":"1539","raza":"","pesajes":[{"fecha":"2025-12-15","peso":244.0},{"fecha":"2026-04-02","peso":319.6}]},{"id":"1542","raza":"","pesajes":[{"fecha":"2025-12-15","peso":270.0},{"fecha":"2026-04-02","peso":345.6}]},{"id":"1546","raza":"","pesajes":[{"fecha":"2025-12-15","peso":257.0},{"fecha":"2026-04-02","peso":332.6}]},{"id":"1550","raza":"","pesajes":[{"fecha":"2025-12-15","peso":290.0},{"fecha":"2026-04-02","peso":365.6}]},{"id":"1551","raza":"","pesajes":[{"fecha":"2025-12-15","peso":308.0},{"fecha":"2026-04-02","peso":383.6}]},{"id":"1553","raza":"","pesajes":[{"fecha":"2025-12-15","peso":256.0},{"fecha":"2026-04-02","peso":331.6}]},{"id":"1559","raza":"","pesajes":[{"fecha":"2025-12-15","peso":294.0},{"fecha":"2026-04-02","peso":369.6}]},{"id":"1560","raza":"","pesajes":[{"fecha":"2025-12-15","peso":282.0},{"fecha":"2026-04-02","peso":357.6}]},{"id":"1562","raza":"","pesajes":[{"fecha":"2025-12-15","peso":288.0},{"fecha":"2026-04-02","peso":363.6}]},{"id":"1563","raza":"","pesajes":[{"fecha":"2025-12-15","peso":302.0},{"fecha":"2026-04-02","peso":377.6}]},{"id":"1564","raza":"","pesajes":[{"fecha":"2025-12-15","peso":301.0},{"fecha":"2026-04-02","peso":376.6}]},{"id":"1565","raza":"","pesajes":[{"fecha":"2025-12-15","peso":261.0},{"fecha":"2026-04-02","peso":336.6}]},{"id":"1566","raza":"","pesajes":[{"fecha":"2025-12-15","peso":255.0},{"fecha":"2026-04-02","peso":330.6}]},{"id":"1570","raza":"","pesajes":[{"fecha":"2025-12-15","peso":292.0},{"fecha":"2026-04-02","peso":367.6}]},{"id":"1572","raza":"","pesajes":[{"fecha":"2025-12-15","peso":299.0},{"fecha":"2026-04-02","peso":374.6}]},{"id":"1573","raza":"","pesajes":[{"fecha":"2025-12-15","peso":296.0},{"fecha":"2026-04-02","peso":371.6}]},{"id":"1574","raza":"","pesajes":[{"fecha":"2025-12-15","peso":326.0},{"fecha":"2026-04-02","peso":401.6}]},{"id":"1575","raza":"","pesajes":[{"fecha":"2025-12-15","peso":262.0},{"fecha":"2026-04-02","peso":337.6}]},{"id":"1576","raza":"","pesajes":[{"fecha":"2025-12-15","peso":285.0},{"fecha":"2026-04-02","peso":360.6}]},{"id":"1578","raza":"","pesajes":[{"fecha":"2025-12-15","peso":279.0},{"fecha":"2026-04-02","peso":354.6}]},{"id":"1579","raza":"","pesajes":[{"fecha":"2025-12-15","peso":295.0},{"fecha":"2026-04-02","peso":370.6}]},{"id":"1580","raza":"","pesajes":[{"fecha":"2025-12-15","peso":291.0},{"fecha":"2026-04-02","peso":366.6}]},{"id":"1583","raza":"","pesajes":[{"fecha":"2025-12-15","peso":283.0},{"fecha":"2026-04-02","peso":358.6}]},{"id":"1587","raza":"","pesajes":[{"fecha":"2025-12-15","peso":264.0},{"fecha":"2026-04-02","peso":339.6}]},{"id":"1588","raza":"","pesajes":[{"fecha":"2025-12-15","peso":296.0},{"fecha":"2026-04-02","peso":371.6}]},{"id":"1589","raza":"","pesajes":[{"fecha":"2025-12-15","peso":296.0},{"fecha":"2026-04-02","peso":371.6}]},{"id":"1590","raza":"","pesajes":[{"fecha":"2025-12-15","peso":283.0},{"fecha":"2026-04-02","peso":358.6}]},{"id":"1591","raza":"","pesajes":[{"fecha":"2025-12-15","peso":274.0},{"fecha":"2026-04-02","peso":349.6}]},{"id":"1592","raza":"","pesajes":[{"fecha":"2025-12-15","peso":303.0},{"fecha":"2026-04-02","peso":378.6}]},{"id":"1593","raza":"","pesajes":[{"fecha":"2025-12-15","peso":313.0},{"fecha":"2026-04-02","peso":388.6}]},{"id":"1595","raza":"","pesajes":[{"fecha":"2025-12-15","peso":294.0},{"fecha":"2026-04-02","peso":369.6}]},{"id":"1598","raza":"","pesajes":[{"fecha":"2025-12-15","peso":270.0},{"fecha":"2026-04-02","peso":345.6}]},{"id":"1604","raza":"","pesajes":[{"fecha":"2025-12-15","peso":302.0},{"fecha":"2026-04-02","peso":377.6}]},{"id":"1605","raza":"","pesajes":[{"fecha":"2025-12-15","peso":292.0},{"fecha":"2026-04-02","peso":367.6}]},{"id":"1607","raza":"","pesajes":[{"fecha":"2025-12-15","peso":263.0},{"fecha":"2026-04-02","peso":338.6}]},{"id":"1609","raza":"","pesajes":[{"fecha":"2025-12-15","peso":282.0},{"fecha":"2026-04-02","peso":357.6}]},{"id":"1610","raza":"","pesajes":[{"fecha":"2025-12-15","peso":319.0},{"fecha":"2026-04-02","peso":394.6}]},{"id":"1613","raza":"","pesajes":[{"fecha":"2025-12-15","peso":291.0},{"fecha":"2026-04-02","peso":366.6}]},{"id":"1614","raza":"","pesajes":[{"fecha":"2025-12-15","peso":271.0},{"fecha":"2026-04-02","peso":346.6}]},{"id":"1616","raza":"","pesajes":[{"fecha":"2025-12-15","peso":281.0},{"fecha":"2026-04-02","peso":356.6}]},{"id":"1619","raza":"","pesajes":[{"fecha":"2025-12-15","peso":287.0},{"fecha":"2026-04-02","peso":362.6}]},{"id":"1623","raza":"","pesajes":[{"fecha":"2025-12-15","peso":294.0},{"fecha":"2026-04-02","peso":369.6}]},{"id":"1624","raza":"","pesajes":[{"fecha":"2025-12-15","peso":261.0},{"fecha":"2026-04-02","peso":336.6}]},{"id":"1625","raza":"","pesajes":[{"fecha":"2025-12-15","peso":270.0},{"fecha":"2026-04-02","peso":345.6}]},{"id":"1627","raza":"","pesajes":[{"fecha":"2025-12-15","peso":285.0},{"fecha":"2026-04-02","peso":360.6}]},{"id":"1628","raza":"","pesajes":[{"fecha":"2025-12-15","peso":294.0},{"fecha":"2026-04-02","peso":369.6}]},{"id":"1630","raza":"","pesajes":[{"fecha":"2025-12-15","peso":305.0},{"fecha":"2026-04-02","peso":380.6}]},{"id":"1631","raza":"","pesajes":[{"fecha":"2025-12-15","peso":267.0},{"fecha":"2026-04-02","peso":342.6}]},{"id":"1632","raza":"","pesajes":[{"fecha":"2025-12-15","peso":277.0},{"fecha":"2026-04-02","peso":352.6}]},{"id":"1633","raza":"","pesajes":[{"fecha":"2025-12-15","peso":284.0},{"fecha":"2026-04-02","peso":359.6}]},{"id":"1636","raza":"","pesajes":[{"fecha":"2025-12-15","peso":282.0},{"fecha":"2026-04-02","peso":357.6}]},{"id":"1637","raza":"","pesajes":[{"fecha":"2025-12-15","peso":299.0},{"fecha":"2026-04-02","peso":374.6}]},{"id":"1638","raza":"","pesajes":[{"fecha":"2025-12-15","peso":283.0},{"fecha":"2026-04-02","peso":358.6}]},{"id":"1639","raza":"","pesajes":[{"fecha":"2025-12-15","peso":290.0},{"fecha":"2026-04-02","peso":365.6}]},{"id":"1640","raza":"","pesajes":[{"fecha":"2025-12-15","peso":254.0},{"fecha":"2026-04-02","peso":329.6}]},{"id":"1641","raza":"","pesajes":[{"fecha":"2025-12-15","peso":314.0},{"fecha":"2026-04-02","peso":389.6}]},{"id":"1644","raza":"","pesajes":[{"fecha":"2025-12-15","peso":311.0},{"fecha":"2026-04-02","peso":386.6}]},{"id":"1645","raza":"","pesajes":[{"fecha":"2025-12-15","peso":275.0},{"fecha":"2026-04-02","peso":350.6}]},{"id":"1646","raza":"","pesajes":[{"fecha":"2025-12-15","peso":294.0},{"fecha":"2026-04-02","peso":369.6}]},{"id":"1648","raza":"","pesajes":[{"fecha":"2025-12-15","peso":287.0},{"fecha":"2026-04-02","peso":362.6}]},{"id":"1650","raza":"","pesajes":[{"fecha":"2025-12-15","peso":285.0},{"fecha":"2026-04-02","peso":360.6}]},{"id":"1651","raza":"","pesajes":[{"fecha":"2025-12-15","peso":279.0},{"fecha":"2026-04-02","peso":354.6}]},{"id":"1653","raza":"","pesajes":[{"fecha":"2025-12-15","peso":302.0},{"fecha":"2026-04-02","peso":377.6}]},{"id":"1654","raza":"","pesajes":[{"fecha":"2025-12-15","peso":314.0},{"fecha":"2026-04-02","peso":389.6}]},{"id":"1657","raza":"","pesajes":[{"fecha":"2025-12-15","peso":293.0},{"fecha":"2026-04-02","peso":368.6}]},{"id":"1658","raza":"","pesajes":[{"fecha":"2025-12-15","peso":286.0},{"fecha":"2026-04-02","peso":361.6}]},{"id":"1659","raza":"","pesajes":[{"fecha":"2025-12-15","peso":279.0},{"fecha":"2026-04-02","peso":354.6}]},{"id":"1660","raza":"","pesajes":[{"fecha":"2025-12-15","peso":307.0},{"fecha":"2026-04-02","peso":382.6}]},{"id":"1663","raza":"","pesajes":[{"fecha":"2025-12-15","peso":313.0},{"fecha":"2026-04-02","peso":388.6}]},{"id":"1666","raza":"","pesajes":[{"fecha":"2025-12-15","peso":307.0},{"fecha":"2026-04-02","peso":382.6}]},{"id":"1667","raza":"","pesajes":[{"fecha":"2025-12-15","peso":251.0},{"fecha":"2026-04-02","peso":326.6}]},{"id":"1668","raza":"","pesajes":[{"fecha":"2025-12-15","peso":272.0},{"fecha":"2026-04-02","peso":347.6}]},{"id":"1670","raza":"","pesajes":[{"fecha":"2025-12-15","peso":287.0},{"fecha":"2026-04-02","peso":362.6}]},{"id":"1671","raza":"","pesajes":[{"fecha":"2025-12-15","peso":268.0},{"fecha":"2026-04-02","peso":343.6}]},{"id":"1672","raza":"","pesajes":[{"fecha":"2025-12-15","peso":298.0},{"fecha":"2026-04-02","peso":373.6}]},{"id":"1673","raza":"","pesajes":[{"fecha":"2025-12-15","peso":276.0},{"fecha":"2026-04-02","peso":351.6}]},{"id":"1675","raza":"","pesajes":[{"fecha":"2025-12-15","peso":296.0},{"fecha":"2026-04-02","peso":371.6}]},{"id":"1676","raza":"","pesajes":[{"fecha":"2025-12-15","peso":254.0},{"fecha":"2026-04-02","peso":329.6}]},{"id":"1677","raza":"","pesajes":[{"fecha":"2025-12-15","peso":296.0},{"fecha":"2026-04-02","peso":371.6}]}]}));
-}
 
 function loadDB() {
   const raw = localStorage.getItem(DB_KEY);
@@ -3098,7 +3092,6 @@ function manualSync() {
   setSyncStatus('syncing');
   pullFromRailwayDesktop(false);
 }
-window._manualSync_real = manualSync;
 
 function pullFromRailwayDesktop(thenPush) {
   window._pullFromRailway_real = pullFromRailwayDesktop;
@@ -3134,7 +3127,7 @@ function pullFromRailwayDesktop(thenPush) {
       db.lots.forEach(function(lt) {
         var anims = _syncAnim[lt.code];
         if (anims && anims.length > 0) {
-          lt.animal_count = anims.length;
+          lt.animal_count = Math.max(lt.animal_count || 0, anims.length);
           var ws = anims.map(function(a){ return a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length-1].peso : 0; }).filter(function(w){ return w > 0; });
           if (ws.length) lt.avg_weight = Math.round(ws.reduce(function(s,w){return s+w;},0)/ws.length*10)/10;
         }
@@ -3157,6 +3150,7 @@ function pullFromRailwayDesktop(thenPush) {
         { local: 'purchases',  remote: remote.purchases },
         { local: 'aceite',     remote: remote.aceite },
         { local: 'sales',      remote: remote.sales },
+        { local: 'inventory_counts', remote: remote.inventory_counts },
       ];
       fieldTables.forEach(function(t) {
         if (t.remote && t.remote.length) {
@@ -3387,7 +3381,7 @@ function ensureDB() {
   db.lots.forEach(function(lot) {
     var animals = animalsDB[lot.code];
     if (animals && animals.length > 0) {
-      lot.animal_count = animals.length;
+      lot.animal_count = Math.max(lot.animal_count || 0, animals.length);
       // Recalcular avg_weight desde el ultimo pesaje de cada animal
       var ws = animals.map(function(a){ return a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length-1].peso : 0; }).filter(function(w){ return w > 0; });
       if (ws.length) lot.avg_weight = Math.round(ws.reduce(function(s,w){return s+w;},0)/ws.length*10)/10;
@@ -3520,6 +3514,16 @@ function renderDashboard() {
   const today = new Date();
   document.getElementById('dash-date').textContent = today.toLocaleDateString('es-BO',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 
+  // Recalcular animal_count desde e5m_animals (igual que renderLotes)
+  var _dashAnimDB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
+  db.lots.forEach(function(lt) {
+    var anims = _dashAnimDB[lt.code];
+    if (anims && anims.length > 0) {
+      lt.animal_count = Math.max(lt.animal_count || 0, anims.length);
+      var ws = anims.map(function(a){ return a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length-1].peso : 0; }).filter(function(w){ return w > 0; });
+      if (ws.length) lt.avg_weight = Math.round(ws.reduce(function(s,w){return s+w;},0)/ws.length*10)/10;
+    }
+  });
   const activeLots = db.lots.filter(l=>!l.status||l.status==='activo'||l.status==='active');
   const totalAnimals = activeLots.reduce((s,l)=>s+l.animal_count,0);
   const avgWeight = activeLots.length ? Math.round(activeLots.reduce((s,l)=>s+(l.avg_weight*l.animal_count),0)/totalAnimals) : 0;
@@ -3647,7 +3651,7 @@ function renderLotes() {
   db.lots.forEach(function(lt) {
     var anims = _animDB[lt.code];
     if (anims && anims.length > 0) {
-      lt.animal_count = anims.length;
+      lt.animal_count = Math.max(lt.animal_count || 0, anims.length);
       var ws = anims.map(function(a){ return a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length-1].peso : 0; }).filter(function(w){ return w > 0; });
       if (ws.length) lt.avg_weight = Math.round(ws.reduce(function(s,w){return s+w;},0)/ws.length*10)/10;
     }
@@ -3717,1325 +3721,9 @@ function deleteLot(id) {
   if(!confirm('¿Eliminar este lote?')) return;
   trackDeletion(id, 'lots');
   db.lots = db.lots.filter(l=>l.id!==id);
-  saveDB(true); renderLotes(); 
+  saveDB(true); renderLotes();
   replaceTableInRailway('lots', db.lots || []);
-// ══════════════════════════════════════════════════
-// EXPORTAR A EXCEL (CSV)
-// ══════════════════════════════════════════════════
-
-function exportCSV(filename, headers, rows) {
-  var BOM = '\uFEFF'; // UTF-8 BOM for Excel
-  var lines = [headers.join(',')];
-  rows.forEach(function(row) {
-    lines.push(row.map(function(cell) {
-      var s = String(cell === null || cell === undefined ? '' : cell);
-      // Escape quotes and wrap in quotes if contains comma/newline/quote
-      if (s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0) {
-        s = '"' + s.replace(/"/g, '""') + '"';
-      }
-      return s;
-    }).join(','));
-  });
-  var csv = BOM + lines.join('\r\n');
-  var blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
-  var url = URL.createObjectURL(blob);
-  var a = document.createElement('a');
-  a.href = url;
-  a.download = filename + '_' + today() + '.csv';
-  a.click();
-  URL.revokeObjectURL(url);
-  toast('Exportado: ' + a.download, 'success');
-}
-
-function exportLotes() {
-  exportCSV('lotes_estancia5m',
-    ['Codigo','Categoria','Raza','Potrero','Animales','Peso Prom (kg)','Fecha Ingreso','Estado'],
-    db.lots.map(function(l){ return [l.code, l.category, l.breed||'', l.paddock||'', l.animal_count, l.avg_weight||'', l.entry_date, l.status]; })
-  );
-}
-
-function exportSanidad() {
-  exportCSV('curaciones_estancia5m',
-    ['Lote/Animal','Producto','Dosis','Cant. Total','Animales','Fecha Aplicacion','Proxima Aplicacion','Por','Costo (Bs.)'],
-    db.treatments.map(function(t){ return [t.scope==='lot'?('Lote '+t.lot_code):('Animal '+t.animal_id), t.product_name, t.dose, t.total, t.count, t.applied_at, t.next_app||'', t.by||'', t.cost||'']; })
-  );
-}
-
-function exportVentas() {
-  exportCSV('ventas_estancia5m',
-    ['Lote','Comprador','Tipo','Animales','KG Totales','$/KG','Total (Bs.)','Fecha','Factura','Trazabilidad'],
-    db.sales.map(function(s){ return [s.lot_code, s.buyer, s.type, s.animals, s.kg||'', s.price_per_kg||'', s.total, s.date, s.invoice||'', s.trace_req?'Si':'No']; })
-  );
-}
-
-function exportCompras() {
-  exportCSV('compras_estancia5m',
-    ['Descripcion','Tipo','Cantidad','Unidad','Precio Unit ($)','Total (Bs.)','Proveedor','Fecha','Estado'],
-    db.purchases.map(function(p){ return [p.desc, p.type, p.qty, p.unit||'', p.unit_price, p.total, p.supplier||'', p.date, p.status]; })
-  );
-}
-
-function exportPersonal() {
-  var rows = db.employees.map(function(e){ return [e.name, e.role, e.phone||'', e.salary||'', e.hire_date, e.active?'Activo':'Inactivo']; });
-  exportCSV('personal_estancia5m',
-    ['Nombre','Rol','Telefono','Salario (Bs.)','Fecha Ingreso','Estado'],
-    rows
-  );
-}
-
-function exportAdelantos() {
-  if (!db.advances || !db.advances.length) { toast('Sin adelantos para exportar', 'error'); return; }
-  exportCSV('adelantos_estancia5m',
-    ['Empleado','Monto (Bs.)','Fecha','Motivo','Estado'],
-    db.advances.map(function(a){ return [a.employee, a.amount, a.date, a.reason||'', a.status]; })
-  );
-}
-
-function exportStock() {
-  exportCSV('stock_veterinario_estancia5m',
-    ['Producto','Tipo','Stock Actual','Unidad','Stock Minimo','Costo Unit ($)','Proveedor','Vencimiento','Estado'],
-    db.products.map(function(p){ return [p.name, p.type, p.stock_qty, p.unit, p.stock_min, p.unit_cost||'', p.supplier||'', p.expiry_date||'', p.stock_qty<=p.stock_min?'CRITICO':'OK']; })
-  );
-}
-
-function exportCostos() {
-  var totalRevenue    = db.sales.reduce(function(s,v){return s+(v.total||0);},0);
-  var totalPurchases  = db.purchases.reduce(function(s,p){return s+(p.total||0);},0);
-  var totalTreatments = db.treatments.reduce(function(s,t){return s+(t.cost||0);},0);
-  var totalSalaries   = db.employees.filter(function(e){return e.active;}).reduce(function(s,e){return s+(e.salary||0);},0);
-  var totalMaint      = (db.maintenance||[]).reduce(function(s,m){return s+(m.cost||0);},0);
-  var totalExpenses   = totalPurchases + totalTreatments + totalSalaries + totalMaint;
-  var rows = [
-    ['Ingresos por ventas', totalRevenue],
-    ['Gastos - Compras e insumos', totalPurchases],
-    ['Gastos - Sanidad y tratamientos', totalTreatments],
-    ['Gastos - Personal (mensual)', totalSalaries],
-    ['Gastos - Mantenimiento y reparaciones', totalMaint],
-    ['Total gastos', totalExpenses],
-    ['Margen neto', totalRevenue - totalExpenses],
-  ];
-  exportCSV('costos_estancia5m', ['Concepto','Monto (Bs.)'], rows);
-}
-
-// ══════════════════════════════════════════════════
-// DASHBOARD PERIOD FILTER
-// ══════════════════════════════════════════════════
-
-var _dashPeriod = 'todo';
-var _dashFrom   = null;
-var _dashTo     = null;
-
-function setDashPeriod(period, btn) {
-  _dashPeriod = period;
-  document.querySelectorAll('.dash-period-btn').forEach(function(b){ b.classList.remove('active'); });
-  if (btn) btn.classList.add('active');
-
-  var customInputs = document.getElementById('custom-range-inputs');
-  var label = document.getElementById('period-label');
-  var todayStr = today();
-
-  if (period === 'custom') {
-    if (customInputs) customInputs.style.display = 'flex';
-    if (!document.getElementById('range-from').value) {
-      document.getElementById('range-from').value = new Date(Date.now()-30*86400000).toISOString().split('T')[0];
-      document.getElementById('range-to').value = todayStr;
-    }
-    applyCustomRange();
-    return;
-  } else {
-    if (customInputs) customInputs.style.display = 'none';
-  }
-
-  var from, to = todayStr;
-  if (period === 'dia') {
-    from = todayStr;
-    if (label) label.textContent = 'Hoy · ' + new Date().toLocaleDateString('es-BO',{weekday:'long',day:'numeric',month:'long'});
-  } else if (period === 'semana') {
-    from = new Date(Date.now()-7*86400000).toISOString().split('T')[0];
-    if (label) label.textContent = 'Últimos 7 dias';
-  } else if (period === 'mes') {
-    from = new Date(Date.now()-30*86400000).toISOString().split('T')[0];
-    if (label) label.textContent = 'Últimos 30 dias';
-  } else {
-    from = null; to = null;
-    if (label) label.textContent = 'Todo el periodo';
-  }
-
-  _dashFrom = from;
-  _dashTo   = to;
-  renderDashWithPeriod();
-}
-
-function applyCustomRange() {
-  _dashFrom = document.getElementById('range-from').value;
-  _dashTo   = document.getElementById('range-to').value;
-  var label = document.getElementById('period-label');
-  if (label && _dashFrom && _dashTo) label.textContent = _dashFrom + ' → ' + _dashTo;
-  renderDashWithPeriod();
-}
-
-function inPeriod(dateStr) {
-  if (!_dashFrom && !_dashTo) return true;
-  if (_dashFrom && dateStr < _dashFrom) return false;
-  if (_dashTo   && dateStr > _dashTo)   return false;
-  return true;
-}
-
-function renderDashWithPeriod() {
-  // Sales filtered
-  var filteredSales = _dashFrom || _dashTo
-    ? db.sales.filter(function(s){ return inPeriod(s.date); })
-    : db.sales;
-
-  // Activities filtered
-  var filteredActs = _dashFrom || _dashTo
-    ? db.activities.filter(function(a){ return inPeriod((a.date||'').slice(0,10)); })
-    : db.activities;
-
-  // Treatments filtered
-  var filteredTreats = _dashFrom || _dashTo
-    ? db.treatments.filter(function(t){ return inPeriod(t.applied_at); })
-    : db.treatments;
-
-  // Update sales card
-  var salesEl = document.getElementById('dash-sales');
-  if (salesEl) {
-    salesEl.innerHTML = '';
-    if (!filteredSales.length) {
-      salesEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-size:12px">Sin ventas en este periodo</div>';
-    } else {
-      var totalPeriod = filteredSales.reduce(function(s,v){return s+(v.total||0);},0);
-      filteredSales.slice(-5).reverse().forEach(function(s){
-        var row = document.createElement('div');
-        row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(48,54,61,.4)';
-        var info = document.createElement('div');
-        var name = document.createElement('div'); name.style.cssText='font-size:12px;color:var(--text)'; name.textContent=s.buyer;
-        var meta = document.createElement('div'); meta.style.cssText='font-size:10px;color:var(--muted);font-family:"DM Mono",monospace'; meta.textContent='Lote '+s.lot_code+' · '+s.date;
-        info.appendChild(name); info.appendChild(meta);
-        var amt = document.createElement('div'); amt.style.cssText='font-family:"DM Mono",monospace;font-size:12px;color:var(--green);font-weight:600'; amt.textContent='Bs. '+(s.total||0).toLocaleString();
-        row.appendChild(info); row.appendChild(amt);
-        salesEl.appendChild(row);
-      });
-      var totalRow = document.createElement('div');
-      totalRow.style.cssText = 'display:flex;justify-content:space-between;padding:8px 0;font-size:12px;border-top:1px solid var(--bor);margin-top:4px';
-      totalRow.innerHTML = '<span style="color:var(--muted)">Total per\u00edodo</span><span style="color:var(--amber2);font-weight:600">$'+totalPeriod.toLocaleString()+'</span>';
-      salesEl.appendChild(totalRow);
-    }
-  }
-
-  // Update activity
-  var actEl = document.getElementById('dash-activity');
-  if (actEl) {
-    actEl.innerHTML = '';
-    if (!filteredActs.length) {
-      actEl.innerHTML = '<div style="color:var(--muted);font-size:12px;text-align:center;padding:20px">Sin actividad en este periodo</div>';
-    } else {
-      filteredActs.slice(-5).reverse().forEach(function(a){
-        var div = document.createElement('div'); div.className='tl-item done';
-        var dateEl = document.createElement('div'); dateEl.className='tl-date'; dateEl.textContent=(a.date||'').slice(0,16)+' · '+escH(a.employee);
-        var ttl = document.createElement('div'); ttl.className='tl-ttl'; ttl.textContent=escH(a.desc);
-        div.appendChild(dateEl); div.appendChild(ttl);
-        if(a.lot){var sub=document.createElement('div');sub.className='tl-sub';sub.textContent='Lote '+escH(a.lot);div.appendChild(sub);}
-        actEl.appendChild(div);
-      });
-    }
-  }
-
-  // Update treatments count in stats
-  var sanWeek = document.getElementById('san-week');
-  if (sanWeek) sanWeek.textContent = filteredTreats.reduce(function(s,t){return s+t.count;},0);
-}
-
-// ══════════════════════════════════════════════════
-// MANTENIMIENTO & REPARACIONES
-// ══════════════════════════════════════════════════
-
-var _mntFrom = new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().split('T')[0];
-var _mntTo   = new Date(new Date().getFullYear(),new Date().getMonth()+1,0).toISOString().split('T')[0];
-var _mntPhotos = [];
-
-var MNT_CAT_ICONS = {
-  maquinaria:'🚜', corrales:'🐄', pozos:'💧', alambrado:'⚡',
-  vehiculos:'🚗', infraestructura:'🏗', otro:'🔧'
-};
-var MNT_STATUS_COLORS = {
-  completado:'var(--green)', en_proceso:'var(--amber2)', pendiente:'var(--muted)'
-};
-var MNT_STATUS_LABELS = {
-  completado:'✅ Completado', en_proceso:'⚙️ En proceso', pendiente:'📋 Pendiente'
-};
-
-function setMntPeriod(period, btn) {
-  document.querySelectorAll('#mnt-p-mes,#mnt-p-todo,#mnt-p-custom').forEach(function(b){ b.classList.remove('active'); });
-  if (btn) btn.classList.add('active');
-  var ri = document.getElementById('mnt-range-inputs');
-  var now = new Date();
-  if (period==='mes') {
-    _mntFrom = new Date(now.getFullYear(),now.getMonth(),1).toISOString().split('T')[0];
-    _mntTo   = new Date(now.getFullYear(),now.getMonth()+1,0).toISOString().split('T')[0];
-    if(ri) ri.style.display='none';
-  } else if (period==='todo') {
-    _mntFrom = null; _mntTo = null;
-    if(ri) ri.style.display='none';
-  } else {
-    if(ri) ri.style.display='flex';
-  }
-  renderMantenimiento();
-}
-
-function renderMantenimiento() {
-  if (!db.maintenance) db.maintenance = [];
-
-  // Populate who filter
-  var whoFilter = document.getElementById('mnt-filter-who');
-  if (whoFilter) {
-    var cur = whoFilter.value;
-    var whos = [];
-    db.maintenance.forEach(function(m){ if(m.who&&whos.indexOf(m.who)<0) whos.push(m.who); });
-    whoFilter.innerHTML = '<option value="">Todos los responsables</option>';
-    whos.forEach(function(w){ var o=document.createElement('option'); o.value=w; o.textContent=w; if(w===cur)o.selected=true; whoFilter.appendChild(o); });
-  }
-
-  var filterCat = (document.getElementById('mnt-filter-cat')||{}).value || '';
-  var filterWho = (document.getElementById('mnt-filter-who')||{}).value || '';
-
-  var filtered = db.maintenance.filter(function(m) {
-    if (filterCat && m.category !== filterCat) return false;
-    if (filterWho && m.who !== filterWho) return false;
-    if (_mntFrom && m.date < _mntFrom) return false;
-    if (_mntTo   && m.date > _mntTo)   return false;
-    return true;
-  });
-
-  // Stats
-  var total = db.maintenance.reduce(function(s,m){return s+(m.cost||0);},0);
-  var monthFrom = new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().split('T')[0];
-  var monthTotal = db.maintenance.filter(function(m){return m.date>=monthFrom;}).reduce(function(s,m){return s+(m.cost||0);},0);
-  var cntEl=document.getElementById('mnt-count'); if(cntEl) cntEl.textContent=db.maintenance.length;
-  var totEl=document.getElementById('mnt-total'); if(totEl) totEl.textContent='Bs. '+total.toLocaleString();
-  var mthEl=document.getElementById('mnt-month'); if(mthEl) mthEl.textContent='Bs. '+monthTotal.toLocaleString();
-
-  // Render cards
-  var list = document.getElementById('mnt-list');
-  if (!list) return;
-  list.innerHTML = '';
-
-  if (!filtered.length) {
-    list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);font-size:13px">Sin trabajos registrados en este periodo</div>';
-    return;
-  }
-
-  filtered.slice().reverse().forEach(function(m) {
-    var card = document.createElement('div');
-    card.style.cssText = 'background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:16px;margin-bottom:12px';
-
-    // Header
-    var hdr = document.createElement('div');
-    hdr.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px';
-
-    var left = document.createElement('div');
-    var catRow = document.createElement('div');
-    catRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:4px';
-
-    var ico = document.createElement('span');
-    ico.style.fontSize='20px';
-    ico.textContent = MNT_CAT_ICONS[m.category]||'🔧';
-
-    var catLbl = document.createElement('span');
-    catLbl.className = 'bdg bdg-blue';
-    catLbl.textContent = (m.category||'otro').charAt(0).toUpperCase()+(m.category||'otro').slice(1).replace(/_/g,' ');
-
-    var statusLbl = document.createElement('span');
-    statusLbl.className = 'bdg';
-    statusLbl.style.color = MNT_STATUS_COLORS[m.status]||'var(--muted)';
-    statusLbl.style.background = 'rgba(0,0,0,.2)';
-    statusLbl.textContent = MNT_STATUS_LABELS[m.status]||m.status;
-
-    catRow.appendChild(ico); catRow.appendChild(catLbl); catRow.appendChild(statusLbl);
-    left.appendChild(catRow);
-
-    var desc = document.createElement('div');
-    desc.style.cssText = 'font-size:14px;font-weight:500;color:var(--text)';
-    desc.textContent = m.desc;
-    left.appendChild(desc);
-    hdr.appendChild(left);
-
-    // Cost + delete
-    var right = document.createElement('div');
-    right.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;gap:6px';
-    var costEl = document.createElement('div');
-    costEl.style.cssText = 'font-family:"DM Mono",monospace;font-size:18px;font-weight:700;color:var(--amber2)';
-    costEl.textContent = 'Bs. '+(m.cost||0).toLocaleString();
-    var delBtn = document.createElement('button');
-    delBtn.className='btn btn-ghost btn-sm'; delBtn.style.color='var(--red)'; delBtn.textContent='✕ Eliminar';
-    delBtn.onclick = (function(id){ return function(){ deleteMaint(id); }; })(m.id);
-    right.appendChild(costEl); right.appendChild(delBtn);
-    hdr.appendChild(right);
-    card.appendChild(hdr);
-
-    // Meta row
-    var meta = document.createElement('div');
-    meta.style.cssText = 'display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);padding:8px 0;border-top:1px solid var(--bor);border-bottom:1px solid var(--bor);margin-bottom:10px';
-    if (m.who) { var w=document.createElement('span'); w.innerHTML='👷 <strong style="color:var(--text)">'+escH(m.who)+'</strong>'; meta.appendChild(w); }
-    if (m.date) { var d=document.createElement('span'); d.innerHTML='📅 '+m.date; meta.appendChild(d); }
-    if (m.location) { var l=document.createElement('span'); l.innerHTML='📍 '+escH(m.location); meta.appendChild(l); }
-    card.appendChild(meta);
-
-    // Notes
-    if (m.notes) {
-      var notesEl = document.createElement('div');
-      notesEl.style.cssText = 'font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5;font-style:italic';
-      notesEl.textContent = m.notes;
-      card.appendChild(notesEl);
-    }
-
-    // Photos
-    if (m.photos && m.photos.length) {
-      var photosRow = document.createElement('div');
-      photosRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap';
-      m.photos.forEach(function(p) {
-        var img = document.createElement('img');
-        img.src=p; img.style.cssText='width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--bor);cursor:pointer';
-        img.onclick=(function(src){ return function(){ openPhotoLightbox(src); }; })(p);
-        photosRow.appendChild(img);
-      });
-      card.appendChild(photosRow);
-    }
-
-    list.appendChild(card);
-  });
-}
-
-function saveMaint() {
-  var desc = (document.getElementById('mnt-desc')||{}).value||'';
-  if (!desc.trim()) { toast('Ingresa una descripcion', 'error'); return; }
-  if (!db.maintenance) db.maintenance = [];
-  db.maintenance.push({
-    id: db.next_ids.maint++,
-    category: (document.getElementById('mnt-cat')||{}).value||'otro',
-    status: (document.getElementById('mnt-status')||{}).value||'completado',
-    desc: desc.trim(),
-    who: (document.getElementById('mnt-who')||{}).value.trim(),
-    cost: parseFloat((document.getElementById('mnt-cost')||{}).value)||0,
-    date: (document.getElementById('mnt-date')||{}).value||today(),
-    location: (document.getElementById('mnt-location')||{}).value.trim(),
-    notes: (document.getElementById('mnt-notes')||{}).value.trim(),
-    photos: _mntPhotos.slice(),
-    created_at: new Date().toISOString(),
-  });
-  saveDB();
-  closeModal('modal-maint');
-  _mntPhotos = [];
-  document.getElementById('mnt-photos-preview').innerHTML = '';
-  renderMantenimiento();
-  toast('Trabajo registrado', 'success');
-}
-
-
-function pushTableToRailway(tableName, records) {
-  if (!navigator.onLine) return;
-  var apiUrl = localStorage.getItem('e5m_api_url') || 'https://estancia5m-api-production.up.railway.app/api';
-  var token = localStorage.getItem('e5m_api_token') || 'estancia5m-2026-secreto';
-  fetch(apiUrl+'/bulk-push', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json','Authorization':'Bearer '+token},
-    body: JSON.stringify({table: tableName, records: records})
-  }).catch(function(){});
-}
-function deleteMaint(id) {
-  if (!confirm('\u00bfEliminar este registro?')) return;
-  trackDeletion(id, 'maintenance');
-  db.maintenance = db.maintenance.filter(function(m){ return m.id!==id; });
-  saveDB(); renderMantenimiento();
-  replaceTableInRailway('maintenance', db.maintenance || []);
-  // Push inmediato a Railway — sin pull posterior para no restaurar el borrado
-  var apiUrl = localStorage.getItem('e5m_api_url') || 'https://estancia5m-api-production.up.railway.app/api';
-  var token = localStorage.getItem('e5m_api_token') || 'estancia5m-2026-secreto';
-  fetch(apiUrl+'/bulk-push', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json','Authorization':'Bearer '+token},
-    body: JSON.stringify({table:'maintenance', records: db.maintenance})
-  }).then(function(r){ return r.json(); }).then(function(d){
-    if(d.ok) toast('Registro eliminado y sincronizado', 'success');
-    else toast('Eliminado localmente. Sync pendiente.', 'success');
-  }).catch(function(){ toast('Eliminado localmente. Sin conexion.', 'success'); });
-}
-
-function exportMantenimiento() {
-  if (!db.maintenance||!db.maintenance.length) { toast('Sin datos para exportar','error'); return; }
-  exportCSV('mantenimiento_estancia5m',
-    ['Fecha','Categoria','Descripcion','Realizado por','Costo (Bs.)','Ubicacion','Estado','Notas'],
-    db.maintenance.map(function(m){
-      return [m.date,m.category,m.desc,m.who||'',m.cost||0,m.location||'',m.status,m.notes||''];
-    })
-  );
-}
-
-// Photo handling for maint modal
-document.addEventListener('DOMContentLoaded', function() {
-  initTruTestImport();
-  var inp = document.getElementById('mnt-photo-input');
-  if (inp) inp.addEventListener('change', function() {
-    Array.from(this.files).forEach(function(file) {
-      var reader = new FileReader();
-      reader.onload = function(e) {
-        _mntPhotos.push(e.target.result);
-        var preview = document.getElementById('mnt-photos-preview');
-        if (preview) {
-          var wrap = document.createElement('div');
-          wrap.style.cssText = 'position:relative;display:inline-block';
-          var img = document.createElement('img');
-          img.src=e.target.result;
-          img.style.cssText='width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--bor)';
-          var rm = document.createElement('button');
-          rm.style.cssText='position:absolute;top:-6px;right:-6px;background:var(--red);color:#fff;border:none;border-radius:50%;width:16px;height:16px;font-size:10px;cursor:pointer;line-height:16px;text-align:center;padding:0';
-          rm.textContent='✕';
-          var idx = _mntPhotos.length-1;
-          rm.onclick=(function(i){ return function(){ _mntPhotos.splice(i,1); wrap.remove(); }; })(idx);
-          wrap.appendChild(img); wrap.appendChild(rm);
-          preview.appendChild(wrap);
-        }
-      };
-      reader.readAsDataURL(file);
-    });
-    this.value='';
-  });
-});
-
-// ══════════════════════════════════════════════════
-// PARÁMETROS (Potreros, Categorias, Razas, Actividades)
-// ══════════════════════════════════════════════════
-
-var PARAM_DEFAULTS = {
-  potreros:    [{name:'Potrero Norte',capacity:100},{name:'Potrero Sur',capacity:80},{name:'Potrero Este',capacity:120},{name:'Potrero Oeste',capacity:90},{name:'Potrero Central',capacity:150}],
-  categorias:  [{name:'Novillo'},{name:'Ternero'},{name:'Vaquillona'},{name:'Recria mixta'},{name:'Toro'},{name:'Vaca'}],
-  razas:       [{name:'Nelore'},{name:'Brahman'},{name:'Criollo'},{name:'Angus'},{name:'Hereford'}],
-  actividades: [{name:'Curacion'},{name:'Pesaje'},{name:'Movimiento de lote'},{name:'Vacunacion'},{name:'Alimentacion'},{name:'Inspeccion de potrero'},{name:'Cavado de pozo'},{name:'Otro'}],
-};
-
-function getParams() {
-  var defaults = (typeof PARAM_DEFAULTS !== 'undefined') ? PARAM_DEFAULTS : {potreros:[],categorias:[],razas:[],actividades:[]};
-  var saved = lsGetParamsJSON('e5m_params');
-  if (!saved) {
-    lsSetParamsJSON('e5m_params', defaults);
-    return defaults;
-  }
-  Object.keys(defaults).forEach(function(k){ if(!saved[k]) saved[k]=defaults[k]; });
-  return saved;
-}
-function lsGetParamsJSON(k){ try{var v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch(e){return null;} }
-function lsSetParamsJSON(k,v){ try{localStorage.setItem(k,JSON.stringify(v));}catch(e){} }
-function saveParams(params){ lsSetParamsJSON('e5m_params', params); }
-
-// renderActividadLote definida en linea 248
-function renderParams() {
-  var params = getParams();
-  var keys = {potreros:'potreros', categorias:'categorias', razas:'razas', actividades:'actividades'};
-  Object.keys(keys).forEach(function(key) {
-    var el = document.getElementById('params-'+key+'-list');
-    if (!el) return;
-    el.innerHTML = '';
-    if (!params[key] || !params[key].length) {
-      el.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:12px">Sin elementos. Agrega uno.</div>';
-      return;
-    }
-    params[key].forEach(function(item, idx) {
-      var row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid rgba(48,54,61,.3);font-size:13px';
-      var left = document.createElement('div');
-      left.style.flex='1';
-      left.textContent = item.name;
-      if (key==='potreros' && item.capacity) {
-        var cap = document.createElement('span');
-        cap.style.cssText='font-size:10px;color:var(--muted);margin-left:8px';
-        cap.textContent = 'Cap. '+item.capacity+' animales';
-        left.appendChild(cap);
-      }
-      var del = document.createElement('button');
-      del.className='btn btn-ghost btn-sm'; del.style.color='var(--red)'; del.textContent='✕';
-      del.onclick=(function(k2,i){ return function(){ deleteParam(k2,i); }; })(key,idx);
-      row.appendChild(left); row.appendChild(del);
-      el.appendChild(row);
-    });
-  });
-  // Update selects in modals
-  updateParamSelects();
-}
-
-function addParam(key, item) {
-  if (!item.name || !item.name.trim()) { toast('Ingresa un nombre','error'); return; }
-  var params = getParams();
-  if (!params[key]) params[key]=[];
-  // Avoid duplicates
-  if (params[key].find(function(p){ return p.name.toLowerCase()===item.name.trim().toLowerCase(); })) {
-    toast('Ya existe ese elemento','error'); return;
-  }
-  params[key].push({name: item.name.trim(), capacity: item.capacity||undefined});
-  saveParams(params);
-  // Clear input
-  var inputMap = {potreros:'param-potrero-name', categorias:'param-cat-name', razas:'param-raza-name', actividades:'param-act-name'};
-  var inp = document.getElementById(inputMap[key]);
-  if (inp) inp.value='';
-  var capInp = document.getElementById('param-potrero-cap');
-  if (capInp && key==='potreros') capInp.value='';
-  renderParams();
-  toast(item.name.trim()+' agregado', 'success');
-}
-
-function deleteParam(key, idx) {
-  var params = getParams();
-  var name = params[key][idx].name;
-  if (!confirm('\u00bfEliminar ' + name + '?')) return;
-  params[key].splice(idx, 1);
-  saveParams(params);
-  renderParams();
-  toast(name+' eliminado', 'success');
-}
-
-function updateParamSelects() {
-  var params = getParams();
-  // Update lot-paddock (potrero) select in modal-lot
-  var paddockSel = document.getElementById('lot-paddock-sel');
-  if (paddockSel) {
-    paddockSel.innerHTML = '<option value="">Seleccionar potrero...</option>';
-    params.potreros.forEach(function(p){
-      var o=document.createElement('option'); o.value=p.name; o.textContent=p.name+(p.capacity?' (Cap. '+p.capacity+')':'');
-      paddockSel.appendChild(o);
-    });
-  }
-  // Update lot-category select
-  var catSel = document.getElementById('lot-category');
-  if (catSel) {
-    var cur = catSel.value;
-    catSel.innerHTML = '<option value="">Seleccionar...</option>';
-    params.categorias.forEach(function(c){
-      var o=document.createElement('option'); o.value=c.name.toLowerCase().replace(/ /g,'_'); o.textContent=c.name;
-      if(o.value===cur) o.selected=true;
-      catSel.appendChild(o);
-    });
-  }
-  // Update lot-breed select
-  var breedSel = document.getElementById('lot-breed-sel');
-  if (breedSel) {
-    breedSel.innerHTML = '<option value="">Seleccionar raza...</option>';
-    params.razas.forEach(function(r){
-      var o=document.createElement('option'); o.value=r.name; o.textContent=r.name;
-      breedSel.appendChild(o);
-    });
-  }
-  // Update activity type select in modal-activity
-  var actSel = document.getElementById('act-type');
-  if (actSel) {
-    var curAct = actSel.value;
-    actSel.innerHTML = '';
-    params.actividades.forEach(function(a){
-      var o=document.createElement('option'); o.value=a.name.toLowerCase().replace(/ /g,'_'); o.textContent=a.name;
-      if(o.value===curAct) o.selected=true;
-      actSel.appendChild(o);
-    });
-  }
-}
-
-// ══════════════════════════════════════════════════
-// PESAJES
-// ══════════════════════════════════════════════════
-
-function calcPesajeTotals() {
-  var avg = parseFloat((document.getElementById('pesaje-avg')||{}).value)||0;
-  var count = parseInt((document.getElementById('pesaje-count')||{}).value)||0;
-  var total = Math.round(avg * count);
-  var totalEl = document.getElementById('pesaje-total');
-  if (totalEl) totalEl.value = total ? total.toLocaleString() + ' kg' : '';
-}
-
-function renderPesajes() {
-  if (!db.pesajes) db.pesajes = [];
-  if (!db.agua) db.agua = [];
-  if (!db.sal) db.sal = [];
-  if (!db.conteo) db.conteo = [];
-  if (!db.partos) db.partos = [];
-  if (!db.alimento) db.alimento = [];
-
-  // Populate lot filter
-  var lotFilter = document.getElementById('pesaje-filter-lot');
-  if (lotFilter) {
-    var cur = lotFilter.value;
-    lotFilter.innerHTML = '<option value="">Todos los lotes</option>';
-    db.lots.forEach(function(l){
-      var o = document.createElement('option'); o.value=l.code; o.textContent=l.code;
-      if(l.code===cur) o.selected=true;
-      lotFilter.appendChild(o);
-    });
-    lotFilter.onchange = function() { renderPesajes(); updateHistogramForFilter(); };
-  }
-  updateHistogramForFilter();
-
-  var filterLot = (document.getElementById('pesaje-filter-lot')||{}).value||'';
-  var filtered = filterLot
-    ? db.pesajes.filter(function(p){ return p.lot_code===filterLot; })
-    : db.pesajes;
-
-  // Summary cards by lot
-  var cardsEl = document.getElementById('pesaje-summary-cards');
-  if (cardsEl) {
-    cardsEl.innerHTML = '';
-    var lots = filterLot ? db.lots.filter(function(l){return l.code===filterLot;}) : db.lots.filter(function(l){return !l.status||l.status==='activo'||l.status==='active';});
-    lots.forEach(function(lot) {
-      var lotPesajes = db.pesajes.filter(function(p){return p.lot_code===lot.code;});
-      if (!lotPesajes.length) return;
-      var last = lotPesajes.slice(-1)[0];
-      var card = document.createElement('div');
-      card.style.cssText = 'background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:14px';
-      card.innerHTML = '<div style="font-size:14px;font-weight:700;color:var(--amber2);margin-bottom:8px">'+lot.code+'</div>' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;text-align:center">' +
-        '<div><div style="font-size:10px;color:var(--muted)">PROMEDIO</div><div style="font-size:16px;font-weight:700;color:var(--text)">'+(last.avg_weight||'-')+' kg</div></div>' +
-        '<div><div style="font-size:10px;color:var(--green)">MÍNIMO</div><div style="font-size:16px;font-weight:700;color:var(--green)">'+(last.min_weight||'-')+' kg</div></div>' +
-        '<div><div style="font-size:10px;color:var(--amber2)">MÁXIMO</div><div style="font-size:16px;font-weight:700;color:var(--amber2)">'+(last.max_weight||'-')+' kg</div></div>' +
-        '</div>' +
-        '<div style="font-size:10px;color:var(--muted);margin-top:8px;text-align:center">Último pesaje: '+last.date+' · '+lotPesajes.length+' registros</div>';
-      cardsEl.appendChild(card);
-    });
-  }
-
-  // Table
-  var tbody = document.getElementById('pesajes-tbody');
-  if (!tbody) return;
-  tbody.innerHTML = '';
-  if (!filtered.length) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted);font-size:12px">Sin pesajes registrados. Hace clic en "+ Registrar pesaje" para empezar.</td></tr>';
-    return;
-  }
-  filtered.slice().reverse().forEach(function(p) {
-    var tr = document.createElement('tr');
-    var delBtn = document.createElement('button');
-    delBtn.className='btn btn-ghost btn-sm'; delBtn.style.color='var(--red)'; delBtn.textContent='✕';
-    delBtn.onclick=(function(id){return function(){deletePesaje(id);};})(p.id);
-    tr.innerHTML = '<td style="color:var(--amber2);font-weight:600">'+p.lot_code+'</td>' +
-      '<td>'+fmtDT(p.created_at||p.date)+'</td>' +
-      '<td>'+p.animal_count+'</td>' +
-      '<td style="font-weight:600">'+p.avg_weight+' kg</td>' +
-      '<td style="color:var(--green)">'+( p.min_weight||'-')+' kg</td>' +
-      '<td style="color:var(--amber2)">'+(p.max_weight||'-')+' kg</td>' +
-      '<td>'+(p.total_kg?p.total_kg.toLocaleString()+' kg':'-')+'</td>' +
-      '<td style="font-size:11px;color:var(--muted)">'+(p.by||'-')+'</td>' +
-      '<td></td>';
-    tr.lastElementChild.appendChild(delBtn);
-    tbody.appendChild(tr);
-  });
-}
-
-function savePesaje() {
-  var lotCode = (document.getElementById('pesaje-lot')||{}).value;
-  var date    = (document.getElementById('pesaje-date')||{}).value||today();
-  var count   = parseInt((document.getElementById('pesaje-count')||{}).value)||0;
-  var avg     = parseFloat((document.getElementById('pesaje-avg')||{}).value)||0;
-  var min     = parseFloat((document.getElementById('pesaje-min')||{}).value)||0;
-  var max     = parseFloat((document.getElementById('pesaje-max')||{}).value)||0;
-  var by      = (document.getElementById('pesaje-by')||{}).value||'Cesar Moreno';
-  var notes   = (document.getElementById('pesaje-notes')||{}).value||'';
-
-  if (!lotCode || !avg) { toast('Selecciona lote e ingresa peso promedio', 'error'); return; }
-  if (min && max && min > max) { toast('El peso minimo no puede ser mayor al maximo', 'error'); return; }
-  var pesajeLot = db.lots.find(function(l){ return l.code===lotCode; });
-  if (pesajeLot && count && count > pesajeLot.animal_count) {
-    toast('⚠ Pesaje registra '+count+' animales pero el lote tiene '+pesajeLot.animal_count+'. Verifica el dato.', 'error');
-    // Warn but allow - pesaje is measurement only, doesn't modify lot count
-  }
-
-  if (!db.pesajes) db.pesajes = [];
-  if (!db.agua) db.agua = [];
-  if (!db.sal) db.sal = [];
-  if (!db.conteo) db.conteo = [];
-  if (!db.partos) db.partos = [];
-  if (!db.alimento) db.alimento = [];
-  db.pesajes.push({
-    id: db.next_ids.pesaje++,
-    lot_code: lotCode,
-    date: date,
-    animal_count: count,
-    avg_weight: avg,
-    min_weight: min || null,
-    max_weight: max || null,
-    total_kg: count && avg ? Math.round(count * avg) : null,
-    by: by,
-    notes: notes,
-    created_at: new Date().toISOString(),
-  });
-
-  // Update lot's avg_weight with latest pesaje
-  var lot = db.lots.find(function(l){ return l.code===lotCode; });
-  if (lot) lot.avg_weight = avg;
-
-  saveDB();
-  closeModal('modal-pesaje');
-  renderPesajes();
-  renderLotes();
   renderDashboard();
-// Verificar activación y cargar branding al iniciar
-(function(){
-  loadBranding();
-  if (!checkActivation()) return; // Si no está activado, detener aquí
-})();
-
-// Auto-sync on startup if online
-(function(){
-  if (!navigator.onLine) return;
-  var apiUrl = localStorage.getItem('e5m_api_url') || 'https://estancia5m-api-production.up.railway.app/api';
-  var token  = localStorage.getItem('e5m_api_token') || 'estancia5m-2026-secreto';
-  var headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token, 'X-App-Version': _APP_VERSION, 'X-App-Type': 'desktop' };
-  // Pull tasks from Railway
-  fetch(apiUrl + '/tasks', { headers: headers })
-    .then(function(r){ return r.json(); })
-    .then(function(d){
-      if (d && Array.isArray(d) && d.length > 0) {
-        localStorage.setItem('e5m_tasks', JSON.stringify(d));
-        if (typeof renderTareas === 'function') renderTareas();
-      }
-    }).catch(function(){});
-  // Pull lots
-  fetch(apiUrl + '/lots', { headers: headers })
-    .then(function(r){ return r.json(); })
-    .then(function(d){
-      if (d && Array.isArray(d) && d.length > 0) {
-        db.lots = d; saveDB(); renderLotes(); renderDashboard();
-      }
-    }).catch(function(){});
-  // Pull products
-  fetch(apiUrl + '/vet-products', { headers: headers })
-    .then(function(r){ return r.json(); })
-    .then(function(d){
-      if (d && Array.isArray(d) && d.length > 0) {
-        db.products = d; saveDB(); renderStock();
-      }
-    }).catch(function(){});
-})();
-// Initialize params defaults on first run
-(function(){
-  var p = lsGetParamsJSON('e5m_params');
-  if (!p) lsSetParamsJSON('e5m_params', PARAM_DEFAULTS);
-})();
-
-// Pull automatico al arrancar (despues de 2s para dejar cargar la UI)
-setTimeout(function() {
-  if (navigator.onLine) {
-    setSyncStatus('syncing');
-    pullFromRailwayDesktop(false);
-  }
-}, 2000);
-
-// Pull periodico cada 2 minutos
-setInterval(function() {
-  if (navigator.onLine) pullFromRailwayDesktop(false);
-}, 2 * 60 * 1000);
-  toast('Pesaje registrado para lote '+lotCode, 'success');
-}
-
-function deletePesaje(id) {
-  if (!confirm('\u00bfEliminar este pesaje?')) return;
-  trackDeletion(id, 'pesajes');
-  db.pesajes = db.pesajes.filter(function(p){ return p.id!==id; });
-  saveDB(); renderPesajes();
-  replaceTableInRailway('pesajes', db.pesajes || []);
-  pushTableToRailway('pesajes', db.pesajes);
-  toast('Pesaje eliminado', 'success');
-}
-
-function exportPesajes() {
-  if (!db.pesajes||!db.pesajes.length) { toast('Sin pesajes para exportar','error'); return; }
-  exportCSV('pesajes_estancia5m',
-    ['Lote','Fecha','Animales','Peso Prom (kg)','Peso Min (kg)','Peso Max (kg)','Total kg','Registrado por','Notas'],
-    db.pesajes.map(function(p){
-      return [p.lot_code,p.date,p.animal_count,p.avg_weight,p.min_weight||'',p.max_weight||'',p.total_kg||'',p.by||'',p.notes||''];
-    })
-  );
-}
-
-// Populate pesaje modal selects
-function populatePesajeModal() {
-  var lotSel = document.getElementById('pesaje-lot');
-  if (lotSel) {
-    lotSel.innerHTML = '<option value="">Seleccionar lote...</option>';
-    var activeLots = db.lots.filter(function(l){
-      var s = (l.status || '').toLowerCase();
-      return s !== 'sold' && s !== 'vendido';
-    });
-    activeLots.forEach(function(l){
-      var o = document.createElement('option');
-      o.value = l.code;
-      o.textContent = l.code + ' (' + l.animal_count + ' cab. · ' + (l.avg_weight || 0) + ' kg prom)';
-      lotSel.appendChild(o);
-    });
-  }
-  var bySel = document.getElementById('pesaje-by');
-  if (bySel) {
-    bySel.innerHTML = '<option value="Cesar Moreno">Cesar Moreno (Dueno)</option>';
-    db.employees.filter(function(e){return e.active;}).forEach(function(e){
-      var o = document.createElement('option');
-      o.value = e.name;
-      o.textContent = e.name + ' (' + capFirst(e.role) + ')';
-      bySel.appendChild(o);
-    });
-  }
-  // Pre-fill animal count from selected lot
-  if (lotSel) lotSel.onchange = function() {
-    var lot = db.lots.find(function(l){return l.code===lotSel.value;});
-    if (lot) {
-      document.getElementById('pesaje-count').value = lot.animal_count;
-      calcPesajeTotals();
-    }
-  };
-}
-
-// ══════════════════════════════════════════════════
-// TRU-TEST IMPORT + HISTOGRAM
-// ══════════════════════════════════════════════════
-
-// TRU-TEST Excel format:
-// Row with "Animal Count", "Average Weight (kg)", "Minimum Weight (kg)", "Maximum Weight (kg)"
-// Followed by individual animal weights in a column
-
-function initTruTestImport() {
-  var inp = document.getElementById('trutest-import');
-  if (!inp) return;
-  inp.addEventListener('change', function() {
-    var file = this.files[0];
-    if (!file) return;
-    var name = file.name.toLowerCase();
-    if (name.endsWith('.csv')) {
-      var reader = new FileReader();
-      reader.onload = function(e) { parseTruTestCSV(e.target.result); };
-      reader.readAsText(file);
-    } else if (name.endsWith('.xlsx')) {
-      var reader2 = new FileReader();
-      reader2.onload = function(e) { parseTruTestXLSX(e.target.result); };
-      reader2.readAsArrayBuffer(file);
-    }
-    this.value = '';
-  });
-}
-
-function parseTruTestCSV(text) {
-  // TRU-TEST CSV: session info rows, then data rows with individual weights
-  var lines = text.split('\n').map(function(l){return l.trim();}).filter(Boolean);
-  var data = {date:'', count:0, avg:0, min:0, max:0, weights:[]};
-
-  lines.forEach(function(line) {
-    var cols = line.split(',').map(function(c){return c.replace(/"/g,'').trim();});
-    if (cols[0] && cols[0].toLowerCase().includes('date')) data.date = cols[1]||'';
-    if (cols[0] && cols[0].toLowerCase().includes('animal count')) data.count = parseFloat(cols[1])||0;
-    if (cols[0] && cols[0].toLowerCase().includes('average weight')) data.avg = parseFloat(cols[1])||0;
-    if (cols[0] && cols[0].toLowerCase().includes('minimum weight')) data.min = parseFloat(cols[1])||0;
-    if (cols[0] && cols[0].toLowerCase().includes('maximum weight')) data.max = parseFloat(cols[1])||0;
-    // Individual weights: a line with just a number
-    var num = parseFloat(cols[0]);
-    if (!isNaN(num) && cols.length <= 2 && num > 50 && num < 2000) data.weights.push(num);
-  });
-
-  if (!data.avg && !data.count) {
-    toast('No se reconocio el formato TRU-TEST. Verifica que sea el reporte de sesion.', 'error');
-    return;
-  }
-  openTruTestModal(data);
-}
-
-function parseTruTestXLSX(buffer) {
-  // Simple XLSX parser - read as binary and extract numbers
-  // Since we can't use SheetJS in Electron easily, guide user to export as CSV
-  toast('Para importar desde Excel, exporta el reporte TRU-TEST como CSV primero (Archivo → Guardar como → CSV)', 'error');
-}
-
-function openTruTestModal(data) {
-  // Show confirmation dialog before importing
-  var msg = 'Datos detectados del TRU-TEST:\n\n' +
-    'Animales: ' + (data.count||'?') + '\n' +
-    'Peso promedio: ' + (data.avg||'?') + ' kg\n' +
-    'Peso minimo: ' + (data.min||'?') + ' kg\n' +
-    'Peso maximo: ' + (data.max||'?') + ' kg\n' +
-    (data.weights.length ? 'Pesos individuales: ' + data.weights.length + ' registros\n' : '') +
-    '\n¿A que lote corresponde este pesaje?';
-
-  // Pre-fill the pesaje modal with TRU-TEST data
-  openModal('modal-pesaje');
-  setTimeout(function() {
-    if (data.count) document.getElementById('pesaje-count').value = data.count;
-    if (data.avg)   document.getElementById('pesaje-avg').value   = data.avg;
-    if (data.min)   document.getElementById('pesaje-min').value   = data.min;
-    if (data.max)   document.getElementById('pesaje-max').value   = data.max;
-    if (data.date) {
-      // Try to parse date from TRU-TEST format
-      var d = new Date(data.date);
-      if (!isNaN(d)) document.getElementById('pesaje-date').value = d.toISOString().split('T')[0];
-    }
-    // Store weights for histogram
-    if (data.weights.length) window._truTestWeights = data.weights;
-    calcPesajeTotals();
-    toast('Datos TRU-TEST cargados. Selecciona el lote y guarda.', 'success');
-  }, 300);
-}
-
-// -- HISTOGRAM ----------------------------------------------------------------
-
-function renderHistogram(pesaje) {
-  var card = document.getElementById('pesaje-histogram-card');
-  var canvas = document.getElementById('pesaje-histogram-canvas');
-  if (!card || !canvas) return;
-
-  if (!pesaje || !pesaje.min_weight || !pesaje.max_weight || !pesaje.animal_count) {
-    card.style.display = 'none';
-    return;
-  }
-
-  card.style.display = 'block';
-  var title = document.getElementById('pesaje-histogram-title');
-  var sub   = document.getElementById('pesaje-histogram-sub');
-  if (title) title.textContent = '📊 Distribucion de pesos - Lote ' + pesaje.lot_code;
-  if (sub) sub.textContent = pesaje.date + ' · ' + pesaje.animal_count + ' animales';
-
-  // Build histogram buckets
-  var min = pesaje.min_weight;
-  var max = pesaje.max_weight;
-  var avg = pesaje.avg_weight;
-  var range = max - min;
-  var buckets = 8;
-  var bucketSize = Math.ceil(range / buckets);
-  if (bucketSize < 1) bucketSize = 1;
-
-  // Estimate distribution using normal distribution approximation
-  var bucketLabels = [];
-  var bucketValues = [];
-  var total = pesaje.animal_count;
-
-  for (var i = 0; i < buckets; i++) {
-    var lo = min + i * bucketSize;
-    var hi = lo + bucketSize;
-    bucketLabels.push(Math.round(lo) + '-' + Math.round(hi));
-    // Approximate count using normal distribution
-    var midpoint = (lo + hi) / 2;
-    var stddev = (max - min) / 4;
-    var z = (midpoint - avg) / Math.max(stddev, 1);
-    var density = Math.exp(-0.5 * z * z) / (stddev * Math.sqrt(2 * Math.PI));
-    bucketValues.push(Math.max(0, Math.round(density * bucketSize * total)));
-  }
-
-  // Draw histogram on canvas
-  var ctx = canvas.getContext('2d');
-  var W = canvas.offsetWidth || 600;
-  var H = 140;
-  canvas.width = W;
-  canvas.height = H;
-  ctx.clearRect(0, 0, W, H);
-
-  var maxVal = Math.max.apply(null, bucketValues);
-  var barW = Math.floor((W - 40) / buckets) - 4;
-  var colors = ['#3fb950','#3fb950','#58a6ff','#58a6ff','#d4a017','#d4a017','#f85149','#f85149'];
-
-  bucketValues.forEach(function(val, i) {
-    var barH = maxVal > 0 ? Math.round((val / maxVal) * (H - 30)) : 0;
-    var x = 20 + i * (barW + 4);
-    var y = H - 20 - barH;
-    ctx.fillStyle = colors[i] || '#58a6ff';
-    ctx.fillRect(x, y, barW, barH);
-    // Label
-    ctx.fillStyle = '#8b949e';
-    ctx.font = '9px DM Mono,monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(Math.round(parseInt(bucketLabels[i])), x + barW/2, H - 6);
-    if (val > 0) {
-      ctx.fillStyle = '#e6edf3';
-      ctx.fillText(val, x + barW/2, y - 3);
-    }
-  });
-
-  // Avg line
-  var avgX = 20 + ((avg - min) / Math.max(range, 1)) * (W - 40);
-  ctx.strokeStyle = '#e3b341';
-  ctx.lineWidth = 2;
-  ctx.setLineDash([4, 3]);
-  ctx.beginPath(); ctx.moveTo(avgX, 0); ctx.lineTo(avgX, H - 20); ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.fillStyle = '#e3b341';
-  ctx.font = 'bold 10px DM Mono,monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText('Prom: ' + avg + 'kg', avgX, 12);
-
-  // Ranges summary
-  var rangesEl = document.getElementById('pesaje-histogram-ranges');
-  if (rangesEl) {
-    var third = range / 3;
-    var r1 = Math.round(min + third);
-    var r2 = Math.round(min + 2 * third);
-    var c1 = bucketValues.slice(0, 3).reduce(function(s,v){return s+v;},0);
-    var c2 = bucketValues.slice(3, 5).reduce(function(s,v){return s+v;},0);
-    var c3 = bucketValues.slice(5).reduce(function(s,v){return s+v;},0);
-    rangesEl.innerHTML =
-      '<span style="background:rgba(248,81,73,.15);color:var(--red);padding:3px 10px;border-radius:20px">' + c1 + ' · Bajo ' + r1 + 'kg</span>' +
-      '<span style="background:rgba(88,166,255,.15);color:var(--blue);padding:3px 10px;border-radius:20px">' + c2 + ' · ' + r1 + '-' + r2 + 'kg</span>' +
-      '<span style="background:rgba(63,185,80,.15);color:var(--green);padding:3px 10px;border-radius:20px">' + c3 + ' · Sobre ' + r2 + 'kg</span>';
-  }
-}
-
-// Show histogram for last pesaje of selected lot
-function updateHistogramForFilter() {
-  var filterLot = (document.getElementById('pesaje-filter-lot')||{}).value||'';
-  if (!filterLot || !db.pesajes) { document.getElementById('pesaje-histogram-card').style.display='none'; return; }
-  var lotPesajes = db.pesajes.filter(function(p){return p.lot_code===filterLot;});
-  if (!lotPesajes.length) { document.getElementById('pesaje-histogram-card').style.display='none'; return; }
-  renderHistogram(lotPesajes[lotPesajes.length-1]);
-}
-
-// ══════════════════════════════════════════════════
-// PUBLISH TASKS TO RAILWAY (for PWA sync)
-// ══════════════════════════════════════════════════
-// publishTasksToPWA moved to global script
-
-// ══════════════════════════════════════════════════
-// SUBMÓDULOS DE LOTES
-// ══════════════════════════════════════════════════
-
-var SUBMODULE_CONFIG = {
-  agua:     { table:'agua',    id_prefix:'agua',    modal:'modal-agua',    fields:['lot','date','estado','obs','by'] },
-  sal:      { table:'sal',     id_prefix:'sal',     modal:'modal-sal',     fields:['lot','date','qty','tipo','obs','by'] },
-  conteo:   { table:'conteo',  id_prefix:'conteo',  modal:'modal-conteo',  fields:['lot','date','count','obs','by'] },
-  partos:   { table:'partos',  id_prefix:'parto',   modal:'modal-parto',   fields:['lot','date','sexo','peso','estado','id','obs','by'] },
-  alimento: { table:'alimento',id_prefix:'alimento',modal:'modal-alimento',fields:['lot','date','tipo','qty','obs','by'] },
-};
-
-var SUBMODULE_TABS = ['lotes-tab-list','lotes-tab-pesajes','lotes-tab-agua','lotes-tab-sal','lotes-tab-conteo','lotes-tab-partos','lotes-tab-alimento','lotes-tab-animales','lotes-tab-historial','lotes-tab-actividad','lotes-tab-params'];
-
-function populateSubmoduleLots(prefix) {
-  var activeLots = db.lots.filter(function(l){return !l.status||l.status==='activo'||l.status==='active';});
-  var empOpts = '<option value="Cesar Moreno">Cesar Moreno (Dueno)</option>' +
-    db.employees.filter(function(e){return e.active;}).map(function(e){
-      return '<option value="'+escH(e.name)+'">'+escH(e.name)+'</option>';
-    }).join('');
-
-  var lotSel = document.getElementById(prefix+'-lot');
-  if (lotSel) {
-    lotSel.innerHTML = '<option value="">Seleccionar lote...</option>';
-    activeLots.forEach(function(l){
-      var o=document.createElement('option'); o.value=l.code;
-      o.textContent=l.code+' - '+capFirst(l.category)+' ('+l.animal_count+' cab.)';
-      lotSel.appendChild(o);
-    });
-  }
-  var bySel = document.getElementById(prefix+'-by');
-  if (bySel) bySel.innerHTML = empOpts;
-
-  // Populate stock product selectors in sal and alimento modals
-  var stockOpts = '<option value="">- No descontar de stock -</option>' +
-    db.products.map(function(p){
-      return '<option value="'+p.id+'">'+escH(p.name)+' ('+p.stock_qty+' '+p.unit+' disponibles)</option>';
-    }).join('');
-  var salStock = document.getElementById('sal-stock-product');
-  if (salStock) salStock.innerHTML = stockOpts;
-  var aliStock = document.getElementById('alimento-stock-product');
-  if (aliStock) aliStock.innerHTML = stockOpts;
-}
-
-function saveSubmodule(type) {
-  var cfg = SUBMODULE_CONFIG[type];
-  if (!cfg) return;
-  var prefix = cfg.id_prefix;
-
-  var lot    = (document.getElementById(prefix+'-lot')||{}).value||'';
-  var date   = (document.getElementById(prefix+'-date')||{}).value||today();
-  var obs    = (document.getElementById(prefix+'-obs')||{}).value||'';
-  var by     = (document.getElementById(prefix+'-by')||{}).value||'Cesar Moreno';
-
-  if (!lot) { toast('Selecciona un lote','error'); return; }
-
-  if (!db[cfg.table]) db[cfg.table] = [];
-  if (!db.next_ids[type]) db.next_ids[type] = 1;
-
-  var record = { id: db.next_ids[type]++, lot_code: lot, date: date, obs: obs, by: by, created_at: new Date().toISOString() };
-
-  // Extra fields per type
-  if (type==='agua') {
-    record.estado = (document.getElementById('agua-estado')||{}).value||'';
-  } else if (type==='sal') {
-    var salQty = parseFloat((document.getElementById('sal-qty')||{}).value)||0;
-    var salTipo = (document.getElementById('sal-tipo')||{}).value||'sal mineral';
-    record.qty  = salQty;
-    record.tipo = salTipo;
-    // Descontar del stock veterinario si el usuario selecciono producto
-    var salStockId = parseInt((document.getElementById('sal-stock-product')||{}).value)||0;
-    if (salQty > 0 && salStockId) {
-      var salProd = db.products.find(function(p){ return p.id===salStockId; });
-      if (salProd) {
-        if (salProd.stock_qty < salQty) {
-          toast('⚠ Stock insuficiente de '+salProd.name+': disponible '+salProd.stock_qty+' kg', 'error');
-          return;
-        }
-        salProd.stock_qty = Math.round((salProd.stock_qty - salQty)*100)/100;
-        if (salProd.stock_qty <= salProd.stock_min) {
-          var existing = db.alerts.find(function(a){return !a.resolved&&a.type==='stock_low'&&a.title.includes(salProd.name);});
-          if (!existing) db.alerts.push({id:db.next_ids.alert++,type:'stock_low',severity:'warning',title:'Stock bajo: '+salProd.name,message:'Quedan '+salProd.stock_qty+' kg. Minimo: '+salProd.stock_min+'.',resolved:false,created_at:new Date().toISOString()});
-        }
-        record.stock_product = salProd.name;
-        record.stock_descontado = salQty;
-      }
-    }
-  } else if (type==='conteo') {
-    var counted = parseInt((document.getElementById('conteo-count')||{}).value)||0;
-    var lotObj  = db.lots.find(function(l){return l.code===lot;});
-    var ref     = lotObj ? lotObj.animal_count : 0;
-    record.counted = counted;
-    record.ref     = ref;
-    record.diff    = counted - ref;
-    if (!counted) { toast('Ingresa la cantidad contada','error'); return; }
-    // Alerta si faltan animales
-    if (record.diff < 0) {
-      if (!db.alerts) db.alerts = [];
-      if (!db.next_ids.alert) db.next_ids.alert = 1;
-      var alertMsg = 'Conteo del '+date+': '+counted+' cab. contadas, '+ref+' en sistema. Faltan '+Math.abs(record.diff)+' animales.';
-      var existingAlert = db.alerts.find(function(a){return !a.resolved&&a.type==='conteo_diff'&&a.lot_code===lot;});
-      if (!existingAlert) {
-        db.alerts.push({id:db.next_ids.alert++,type:'conteo_diff',severity:'critical',lot_code:lot,title:'⚠ Faltan animales - Lote '+lot,message:alertMsg,resolved:false,created_at:new Date().toISOString()});
-      } else {
-        existingAlert.message = alertMsg;
-        existingAlert.created_at = new Date().toISOString();
-      }
-    } else if (record.diff === 0) {
-      // Resolver alerta si el conteo cuadra
-      db.alerts = (db.alerts||[]).map(function(a){
-        if(a.type==='conteo_diff'&&a.lot_code===lot) return {...a, resolved:true};
-        return a;
-      });
-    }
-  } else if (type==='partos') {
-    record.sexo   = (document.getElementById('parto-sexo')||{}).value||'';
-    record.peso   = parseFloat((document.getElementById('parto-peso')||{}).value)||0;
-    record.estado = (document.getElementById('parto-estado')||{}).value||'sano';
-    record.cria_id= (document.getElementById('parto-id')||{}).value||'';
-    // Auto increment lot animal count
-    var partoLot = db.lots.find(function(l){return l.code===lot;});
-    if (partoLot && record.estado !== 'muerto') partoLot.animal_count++;
-  } else if (type==='alimento') {
-    var aliTipo = (document.getElementById('alimento-tipo')||{}).value||'';
-    var aliQty  = parseFloat((document.getElementById('alimento-qty')||{}).value)||0;
-    record.tipo = aliTipo;
-    record.qty  = aliQty;
-    // Descontar del stock si el usuario selecciono producto
-    var aliStockId = parseInt((document.getElementById('alimento-stock-product')||{}).value)||0;
-    if (aliQty > 0 && aliStockId) {
-      var aliProd = db.products.find(function(p){ return p.id===aliStockId; });
-      if (aliProd) {
-        if (aliProd.stock_qty < aliQty) {
-          if (!confirm('Stock insuficiente de '+aliProd.name+' (disponible: '+aliProd.stock_qty+' '+aliProd.unit+'). ¿Registrar igual?')) return;
-        } else {
-          aliProd.stock_qty = Math.round((aliProd.stock_qty - aliQty)*100)/100;
-          if (aliProd.stock_qty <= aliProd.stock_min) {
-            var aliExisting = db.alerts.find(function(a){return !a.resolved&&a.type==='stock_low'&&a.title.includes(aliProd.name);});
-            if (!aliExisting) db.alerts.push({id:db.next_ids.alert++,type:'stock_low',severity:'warning',title:'Stock bajo: '+aliProd.name,message:'Quedan '+aliProd.stock_qty+' '+aliProd.unit+'. Minimo: '+aliProd.stock_min+'.',resolved:false,created_at:new Date().toISOString()});
-          }
-          record.stock_product = aliProd.name;
-          record.stock_descontado = aliQty;
-        }
-      }
-    }
-  }
-
-  db[cfg.table].push(record);
-  saveDB();
-  closeModal(cfg.modal);
-  renderSubmodule(type);
-  if (type==='partos') renderLotes();
-  toast('Registro guardado', 'success');
-}
-
-function renderSubmodule(type) {
-  var data = db[type] || [];
-  var tbody = document.getElementById(type+'-tbody');
-  if (!tbody) return;
-
-  if (!data.length) {
-    var cols = {agua:6,sal:7,conteo:8,partos:8,alimento:7};
-    tbody.innerHTML = '<tr><td colspan="'+cols[type]+'" style="text-align:center;padding:20px;color:var(--muted);font-size:12px">Sin registros aun</td></tr>';
-    return;
-  }
-  tbody.innerHTML = '';
-  data.slice().sort(function(a,b){ return ((b.date||b.created_at||'').localeCompare(a.date||a.created_at||'')); }).forEach(function(r) {
-    var tr = document.createElement('tr');
-    var cells = [];
-
-    if (type==='agua') {
-      var estadoColors = {lleno:'var(--green)',medio:'var(--amber2)',bajo:'var(--red)',seco:'var(--red)',roto:'var(--muted)'};
-      var estadoLabels = {lleno:'✅ Lleno',medio:'⚠️ Medio',bajo:'🔴 Bajo',seco:'❌ Seco',roto:'🔧 Roto'};
-      cells = [r.date, escH(r.lot_code), '<span style="color:'+estadoColors[r.estado]+'">'+estadoLabels[r.estado]+'</span>', escH(r.obs||'-'), escH(r.by||'-')];
-    } else if (type==='sal') {
-      cells = [r.date, escH(r.lot_code), escH(r.lot_code), (r.qty||0)+' kg', escH(r.obs||'-'), escH(r.by||'-')];
-    } else if (type==='conteo') {
-      var diff = r.diff||0;
-      var diffColor = diff===0?'var(--green)':diff>0?'var(--blue)':'var(--red)';
-      cells = [r.date, escH(r.lot_code), r.counted, r.ref, '<span style="color:'+diffColor+';">'+(diff>0?'+':'')+diff+'</span>', escH(r.obs||'-'), escH(r.by||'-')];
-    } else if (type==='partos') {
-      var sexoLabel = r.sexo==='macho'?'🐂 Macho':'🐄 Hembra';
-      var estadoParto = {sano:'✅ Sano',debil:'⚠️ Debil',muerto:'❌ Mortinato'}[r.estado]||r.estado;
-      cells = [r.date, escH(r.lot_code), sexoLabel, (r.peso||'-')+' kg', estadoParto, escH(r.obs||'-'), escH(r.by||'-')];
-    } else if (type==='alimento') {
-      cells = [r.date, escH(r.lot_code), capFirst((r.tipo||'').replace(/_/g,' ')), (r.qty||0)+' kg', escH(r.obs||'-'), escH(r.by||'-')];
-    }
-
-    tr.innerHTML = cells.map(function(c){ return '<td>'+c+'</td>'; }).join('') + '<td></td>';
-    var delBtn = document.createElement('button');
-    delBtn.className='btn btn-ghost btn-sm'; delBtn.style.color='var(--red)'; delBtn.textContent='✕';
-    delBtn.onclick=(function(id,t){ return function(){ deleteSubmodule(id,t); }; })(r.id, type);
-    tr.lastElementChild.appendChild(delBtn);
-    tbody.appendChild(tr);
-  });
-}
-
-function deleteSubmodule(id, type) {
-  if (!confirm('\u00bfEliminar este registro?')) return;
-  trackDeletion(id, type);
-  db[type] = (db[type]||[]).filter(function(r){return r.id!==id;});
-  saveDB(); renderSubmodule(type);
-  replaceTableInRailway(type, db[type] || []);
-  pushTableToRailway(type, db[type]);
-  toast('Registro eliminado','success');
-}
-
-function exportSubmodule(type) {
-  var data = db[type]||[];
-  if (!data.length) { toast('Sin datos para exportar','error'); return; }
-  var headers = {
-    agua:     ['Fecha','Lote','Estado','Observaciones','Por'],
-    sal:      ['Fecha','Lote','Potrero','Cantidad (kg)','Observaciones','Por'],
-    conteo:   ['Fecha','Lote','Contado','Sistema','Diferencia','Observaciones','Por'],
-    partos:   ['Fecha','Lote madre','Sexo','Peso (kg)','Estado','Observaciones','Por'],
-    alimento: ['Fecha','Lote','Tipo','Cantidad (kg)','Observaciones','Por'],
-  };
-  var rows = {
-    agua:     data.map(function(r){return [r.date,r.lot_code,r.estado,r.obs||'',r.by||''];}),
-    sal:      data.map(function(r){return [r.date,r.lot_code,r.lot_code,r.qty||0,r.obs||'',r.by||''];}),
-    conteo:   data.map(function(r){return [r.date,r.lot_code,r.counted,r.ref,r.diff,r.obs||'',r.by||''];}),
-    partos:   data.map(function(r){return [r.date,r.lot_code,r.sexo,r.peso||'',r.estado,r.obs||'',r.by||''];}),
-    alimento: data.map(function(r){return [r.date,r.lot_code,r.tipo,r.qty||0,r.obs||'',r.by||''];}),
-  };
-  exportCSV(type+'_estancia5m', headers[type], rows[type]);
-}
-
-function updateConteoRef(lotCode) {
-  var lot = db.lots.find(function(l){return l.code===lotCode;});
-  var refEl = document.getElementById('conteo-ref');
-  if (refEl) refEl.value = lot ? lot.animal_count+' animales' : '-';
-  calcConteoDiff();
-}
-
-function calcConteoDiff() {
-  var counted = parseInt((document.getElementById('conteo-count')||{}).value)||0;
-  var refEl = document.getElementById('conteo-ref');
-  var ref = refEl ? parseInt(refEl.value)||0 : 0;
-  var diffEl = document.getElementById('conteo-diff');
-  if (diffEl && counted) {
-    var diff = counted - ref;
-    diffEl.value = (diff>0?'+':'')+diff+(diff===0?' (sin diferencia)':diff>0?' (mas de lo esperado)':' (faltan animales)');
-    diffEl.style.color = diff===0?'var(--green)':diff>0?'var(--blue)':'var(--red)';
-  }
-}
-
-renderDashboard();
-
   toast('Lote eliminado','warning');
 }
 
@@ -5385,8 +4073,12 @@ function saveTreatment() {
   addActivity('Cesar Moreno','curacion',lot_code||animal_id,'Curacion: '+(prod.name)+' × '+(count)+' animales'+(diag?' - '+diag:'')+'');
   saveDB();
   closeModal('modal-treatment');
-  toast('Curacion registrada. Stock de '+prod.name+': '+prod.stock_qty+' '+prod.unit,'success');
   renderDashboard();
+  renderSanidad();
+  renderStock();
+  replaceTableInRailway('treatments', db.treatments || []);
+  replaceTableInRailway('vet_products', db.products || []);
+  toast('Curacion registrada. Stock de '+prod.name+': '+prod.stock_qty+' '+prod.unit,'success');
 }
 
 function deleteTreatment(id) {
@@ -5672,18 +4364,6 @@ function deleteSale(id) {
   toast('Venta eliminada', 'success');
 }
 
-function onSaleLotChange(lotCode) {
-  var lot = db.lots.find(function(l){return l.code===lotCode;});
-  var maxEl = document.getElementById('sale-count-max');
-  var countEl = document.getElementById('sale-count');
-  if (lot && maxEl) {
-    maxEl.textContent = '(max. '+lot.animal_count+' disponibles)';
-    if (countEl) countEl.max = lot.animal_count;
-  } else if (maxEl) {
-    maxEl.textContent = '';
-  }
-  validateSaleCount();
-}
 
 function validateSaleCount() {
   var lotCode = (document.getElementById('sale-lot')||{}).value;
@@ -6019,6 +4699,8 @@ function saveSale() {
   db.sales.push(sale);
   addActivity('Sistema','otro',lot_code,'Venta: '+sale.animals+' animales a '+buyer+' - Bs. '+sale.total.toLocaleString());
   saveDB(); closeModal('modal-sale'); renderVentas(); renderLotes(); renderDashboard();
+  replaceTableInRailway('sales', db.sales || []);
+  replaceTableInRailway('lots', db.lots || []);
   toast('Venta registrada: Bs. '+sale.total.toLocaleString(),'success');
 }
 
@@ -6118,19 +4800,6 @@ function onPurProductChange(val) {
   calcPurTotal();
 }
 
-function calcPurTotal() {
-  var qty = parseFloat((document.getElementById('pur-qty')||{}).value)||0;
-  var price = parseFloat((document.getElementById('pur-price')||{}).value)||0;
-  var total = Math.round(qty*price*100)/100;
-  var totalEl = document.getElementById('pur-total');
-  if(totalEl) totalEl.value = total ? 'Bs. '+total.toLocaleString() : '';
-  var prodId = (document.getElementById('pur-product-link')||{}).value;
-  var afterEl = document.getElementById('pur-stock-after');
-  if(afterEl && prodId && prodId !== 'otro') {
-    var prod = db.products.find(function(p){ return p.id == prodId; });
-    if(prod && qty) afterEl.textContent = Math.round((prod.stock_qty + qty)*100)/100 + ' ' + prod.unit;
-  }
-}
 
 function savePurchase() {
   var productLinkId = (document.getElementById('pur-product-link')||{}).value||'';
@@ -6175,6 +4844,8 @@ function savePurchase() {
     var el = document.getElementById(id); if(el) el.value = '';
   });
   saveDB(); closeModal('modal-purchase'); renderCompras(); renderStock(); renderDashboard();
+  replaceTableInRailway('purchases', db.purchases || []);
+  replaceTableInRailway('vet_products', db.products || []);
 }
 
 
@@ -6969,7 +5640,7 @@ function generateTrace() {
   var certNum = 'CERT-'+lot_code.replace('-','')+'-'+Date.now().toString().slice(-8);
   // Guardar IDs seleccionados (vacío = todos)
   var selectedIds = _traceSelectedAnimals.slice();
-  console.log('[Trazabilidad] IDs seleccionados:', selectedIds.length, selectedIds);
+  // console.log('[Trazabilidad] IDs seleccionados:', selectedIds.length, selectedIds);
   var rec = {
     id: db.next_ids.trace++,
     cert_number: certNum,
@@ -7005,7 +5676,7 @@ function viewTrace(id) {
         return t.animal_ids.some(function(sid){ return sid.toString().trim() === aid; });
       })
     : todosAnimales;
-  console.log('[Trazabilidad] animal_ids guardados:', t.animal_ids, '| animales filtrados:', animals.length, '| total lote:', todosAnimales.length);
+  // console.log('[Trazabilidad] animal_ids guardados:', t.animal_ids, '| animales filtrados:', animals.length, '| total lote:', todosAnimales.length);
 
   // Construir HTML del certificado
   var meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -7438,6 +6109,7 @@ function switchTab(prefix,btnOrId,targetId) {
 // ══════════════════════════════════════════════════
 // UTILS
 // ══════════════════════════════════════════════════
+function esc(s){return escH(s);}
 function escH(str) { return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function capFirst(str) { return str?str.charAt(0).toUpperCase()+str.slice(1).replace('_',' '):''; }
 function getProdUnit(id) { const p=db.products.find(p=>p.id===id); return p?p.unit:''; }
@@ -7451,8 +6123,6 @@ function toast(msg, type='success') {
   wrap.appendChild(el);
   setTimeout(()=>el.remove(),3500);
 }
-
-
 
 // ══════════════════════════════════════════════════
 // TAREAS - Simple list with status changes
@@ -8562,12 +7232,124 @@ function guardarGhToken() {
   if(window.estancia && window.estancia.settings) {
     window.estancia.settings.set('gh_token', token).then(function(){
       toast('Token guardado — la app buscará actualizaciones al reiniciar','success');
-      // Notificar a main process para reconfigurar el updater
-      if(window.estancia.setGhToken) window.estancia.setGhToken(token);
+      if(window.estancia.app && window.estancia.app.setGhToken) window.estancia.app.setGhToken(token);
     });
   } else {
     localStorage.setItem('gh_token', token);
     toast('Token guardado','success');
+  }
+}
+
+// ══════════════════════════════════════════════════
+// ACTUALIZACIONES MANUALES
+// ══════════════════════════════════════════════════
+function setUpdateStatus(html, color) {
+  var el = document.getElementById('update-status');
+  if (el) { el.innerHTML = html; el.style.borderColor = color || 'var(--bor)'; }
+}
+
+function checkForAppUpdate() {
+  var btn = document.getElementById('btn-check-update');
+  if (btn) btn.disabled = true;
+  setUpdateStatus('🔍 Verificando...', 'var(--blue)');
+
+  if (window.estancia && window.estancia.app && window.estancia.app.checkUpdate) {
+    window.estancia.app.checkUpdate().then(function(res) {
+      if (btn) btn.disabled = false;
+      if (res.status === 'available') {
+        setUpdateStatus('✅ <strong>Nueva versión disponible:</strong> v' + res.version + ' (actual: v' + res.currentVersion + ')<br><span style="font-size:10px;color:var(--muted)">Haz click en "Actualizar ahora" para descargar</span>', 'var(--green)');
+        var forceBtn = document.getElementById('btn-force-update');
+        if (forceBtn) forceBtn.style.animation = 'pulse 1.5s infinite';
+      } else if (res.status === 'current') {
+        setUpdateStatus('✅ Estás en la versión más reciente: <strong>v' + res.version + '</strong>', 'var(--green)');
+      } else if (res.status === 'dev') {
+        setUpdateStatus('🔧 ' + res.message, 'var(--amber)');
+      } else {
+        setUpdateStatus('❌ Error: ' + (res.message || 'No se pudo verificar'), 'var(--red)');
+      }
+    }).catch(function(e) {
+      if (btn) btn.disabled = false;
+      setUpdateStatus('❌ Error: ' + e.message, 'var(--red)');
+    });
+  } else {
+    // Fallback: verificar via GitHub API
+    var ghToken = ((document.getElementById('cfg-gh-token')||{}).value||'').trim() || localStorage.getItem('gh_token') || '';
+    var headers = {};
+    if (ghToken) headers['Authorization'] = 'token ' + ghToken;
+    fetch('https://api.github.com/repos/jasm91/estancia5m-electron/releases/latest', { headers: headers })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (btn) btn.disabled = false;
+      if (data.tag_name) {
+        var latestVersion = data.tag_name.replace('v','');
+        var currentVersion = _APP_VERSION || '0.0.0';
+        if (latestVersion !== currentVersion) {
+          setUpdateStatus('✅ <strong>Nueva versión:</strong> v' + latestVersion + ' (actual: v' + currentVersion + ')<br><span style="font-size:10px;color:var(--muted)">Haz click en "Actualizar ahora" para descargar</span>', 'var(--green)');
+        } else {
+          setUpdateStatus('✅ Versión actual: <strong>v' + currentVersion + '</strong> (la más reciente)', 'var(--green)');
+        }
+      } else {
+        setUpdateStatus('⚠️ No se pudo obtener la versión más reciente', 'var(--amber)');
+      }
+    }).catch(function(e) {
+      if (btn) btn.disabled = false;
+      setUpdateStatus('❌ Error verificando: ' + e.message, 'var(--red)');
+    });
+  }
+}
+
+function forceAppUpdate() {
+  var btn = document.getElementById('btn-force-update');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Descargando...'; }
+  setUpdateStatus('⬇️ Descargando actualización...', 'var(--blue)');
+
+  if (window.estancia && window.estancia.app && window.estancia.app.forceUpdate) {
+    // Listen for progress
+    if (window.estancia.app.onUpdateProgress) {
+      window.estancia.app.onUpdateProgress(function(p) {
+        setUpdateStatus('⬇️ Descargando: <strong>' + p.percent + '%</strong> (' + Math.round(p.transferred/1024/1024*10)/10 + ' / ' + Math.round(p.total/1024/1024*10)/10 + ' MB)', 'var(--blue)');
+      });
+    }
+    if (window.estancia.app.onUpdateDownloaded) {
+      window.estancia.app.onUpdateDownloaded(function(info) {
+        setUpdateStatus('✅ <strong>v' + info.version + ' descargada.</strong> Click "Instalar y reiniciar" para aplicar.', 'var(--green)');
+        if (btn) { btn.disabled = false; btn.textContent = '⬇️ Actualizar ahora'; btn.style.animation = ''; }
+        var installBtn = document.getElementById('btn-install-update');
+        if (installBtn) { installBtn.style.display = 'inline-block'; installBtn.style.animation = 'pulse 1.5s infinite'; }
+      });
+    }
+    window.estancia.app.forceUpdate().then(function(res) {
+      if (res.status === 'current') {
+        setUpdateStatus('✅ ' + res.message, 'var(--green)');
+        if (btn) { btn.disabled = false; btn.textContent = '⬇️ Actualizar ahora'; }
+      } else if (res.status === 'error') {
+        setUpdateStatus('❌ Error: ' + res.message, 'var(--red)');
+        if (btn) { btn.disabled = false; btn.textContent = '⬇️ Actualizar ahora'; }
+      }
+      // If downloading, the progress/downloaded events will handle the UI
+    }).catch(function(e) {
+      setUpdateStatus('❌ Error: ' + e.message, 'var(--red)');
+      if (btn) { btn.disabled = false; btn.textContent = '⬇️ Actualizar ahora'; }
+    });
+  } else {
+    // Fallback: abrir releases en GitHub
+    var url = 'https://github.com/jasm91/estancia5m-electron/releases/latest';
+    if (window.estancia && window.estancia.app) {
+      window.estancia.app.openExternal(url);
+    } else {
+      window.open(url, '_blank');
+    }
+    setUpdateStatus('🌐 Se abrió la página de descargas en el navegador', 'var(--amber)');
+    if (btn) { btn.disabled = false; btn.textContent = '⬇️ Actualizar ahora'; }
+  }
+}
+
+function quitAndInstallUpdate() {
+  if (window.estancia && window.estancia.app && window.estancia.app.quitAndInstall) {
+    setUpdateStatus('🚀 Reiniciando para instalar...', 'var(--green)');
+    setTimeout(function() { window.estancia.app.quitAndInstall(); }, 500);
+  } else {
+    toast('No hay actualización descargada para instalar', 'error');
   }
 }
 
@@ -8640,9 +7422,6 @@ window._stopCamera     = typeof _stopCamera     !== 'undefined' ? _stopCamera   
 window._removePhoto    = typeof _removePhoto    !== 'undefined' ? _removePhoto    : null;
 window._resolveAlert   = typeof _resolveAlert   !== 'undefined' ? _resolveAlert   : null;
 window._manualSync     = typeof _manualSync     !== 'undefined' ? _manualSync     : null;
-
-
-
 
 // ══════════════════════════════════════════════════
 // EXPORTAR A EXCEL (CSV)
@@ -11481,19 +10260,26 @@ function renderReporteCREA() {
     });
   });
 
-  // Stock inicial estimado (stock actual - ganancia + vendidos - comprados)
-  // Simplificado: stock inicial ≈ stock final - ganancia neta del período
-  var stockInicialKg = stockFinalKg + kgVendidos - kgComprados;
-  // Si hay pesajes históricos, usar el primer pesaje del período
-  var allFirstPesos = 0;
+  // Stock inicial estimado: usar pesaje más cercano a desdeStr
+  var stockInicialKg = 0;
   activeLots.forEach(function(lot) {
     var anims = animalesDB[lot.code] || [];
     anims.forEach(function(a) {
-      if (a.pesajes && a.pesajes.length) allFirstPesos += a.pesajes[0].peso || 0;
-      else allFirstPesos += 300;
+      if (a.pesajes && a.pesajes.length) {
+        // Buscar pesaje más cercano a desdeStr
+        var closest = a.pesajes[0];
+        var closestDist = Math.abs(new Date(closest.fecha || closest.date || desdeStr).getTime() - new Date(desdeStr).getTime());
+        a.pesajes.forEach(function(p) {
+          var d = Math.abs(new Date(p.fecha || p.date || desdeStr).getTime() - new Date(desdeStr).getTime());
+          if (d < closestDist) { closest = p; closestDist = d; }
+        });
+        stockInicialKg += closest.peso || 0;
+      } else {
+        stockInicialKg += 300;
+      }
     });
   });
-  if (allFirstPesos > 0) stockInicialKg = allFirstPesos;
+  if (stockInicialKg === 0) stockInicialKg = stockFinalKg + kgVendidos - kgComprados;
 
   // PRODUCCIÓN CREA = kg vendidos + (stock final - stock inicial) - kg comprados
   var produccionCREA = kgVendidos + (stockFinalKg - stockInicialKg);
@@ -11521,7 +10307,7 @@ function renderReporteCREA() {
 
   // INDICADORES PRODUCTIVOS
   var prodCarne = ha > 0 ? Math.round(produccionCREA / ha * 10) / 10 : 0;
-  var cargaAnimal = ha > 0 ? Math.round(stockFinalKg / pesoUA / ha * 100) / 100 : 0;
+  var cargaAnimal = (ha > 0 && pesoUA > 0) ? Math.round(stockFinalKg / pesoUA / ha * 100) / 100 : 0;
 
   // GDPV global
   var allGmds = [];
@@ -11979,7 +10765,7 @@ function generarReportePDF() {
 function getBackupData() {
   return {
     version: '1.0',
-    app: 'Jisunu5M',
+    app: 'EstanciaPro',
     exported_at: new Date().toISOString(),
     db: JSON.parse(localStorage.getItem('estancia5m_v1') || '{}'),
     animals: JSON.parse(localStorage.getItem('e5m_animals') || '{}'),
@@ -12058,7 +10844,7 @@ async function runAutoBackupIfDue() {
         localStorage.setItem('e5m_auto_backup_next', nextDate.toISOString());
         var lbl = document.getElementById('cfg-last-backup');
         if(lbl) lbl.textContent = 'Ultimo backup auto: ' + now;
-        console.log('[Backup] Auto backup guardado:', result.path);
+        // console.log('[Backup] Auto backup guardado:', result.path);
       }
     }
   } catch(e) {
@@ -12157,7 +10943,7 @@ function restoreCloudSnapshot(snapshotId, dateLabel) {
     allKeys.sort().reverse();
     for (var j = 2; j < allKeys.length; j++) localStorage.removeItem(allKeys[j]);
     localStorage.setItem(key, JSON.stringify(backup));
-    console.log('[Backup] Startup backup:', key, Math.round(JSON.stringify(backup).length/1024) + 'KB');
+    // console.log('[Backup] Startup backup:', key, Math.round(JSON.stringify(backup).length/1024) + 'KB');
   } catch(e) { console.warn('[Backup] Startup backup error:', e); }
 })();
 
@@ -12646,7 +11432,9 @@ setInterval(function() { runAutoBackupIfDue(); }, 60 * 60 * 1000);
     if (!navigator.onLine) return;
     console.log('[BackgroundPush] Push completo...');
     setTimeout(function() {
-      if (typeof pushToRailway === 'function') pushToRailway();
+      if (typeof pushToRailway === 'function') {
+        requestIdleCallback ? requestIdleCallback(function() { pushToRailway(); }) : setTimeout(function() { pushToRailway(); }, 500);
+      }
     }, 100);
   }
   // Push al iniciar la app (30 seg después para no bloquear arranque)
@@ -12658,7 +11446,7 @@ setInterval(function() { runAutoBackupIfDue(); }, 60 * 60 * 1000);
 function exportBackup() {
   var backup = {
     version: '1.0',
-    app: 'Jisunu5M',
+    app: 'EstanciaPro',
     exported_at: new Date().toISOString(),
     db: JSON.parse(localStorage.getItem('estancia5m_v1') || '{}'),
     animals: JSON.parse(localStorage.getItem('e5m_animals') || '{}'),
@@ -12695,8 +11483,8 @@ function importBackup(input) {
     try {
       var backup = JSON.parse(e.target.result);
       // Validar que sea un backup valido
-      if(!backup.app || backup.app !== 'Jisunu5M') {
-        if(statusEl){ statusEl.textContent='Error: el archivo no es un backup valido de Jisunu5M.'; statusEl.style.color='var(--red)'; }
+      if(!backup.app || backup.app !== 'EstanciaPro') {
+        if(statusEl){ statusEl.textContent='Error: el archivo no es un backup valido de EstanciaPro.'; statusEl.style.color='var(--red)'; }
         toast('Archivo invalido', 'error');
         return;
       }

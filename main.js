@@ -201,7 +201,7 @@ function checkForUpdates() {
     dialog.showMessageBox(mainWindow, {
       type: 'info',
       title: 'Actualización disponible',
-      message: 'Hay una nueva versión de Jisunu 5M (' + info.version + '). Se descargará en segundo plano.',
+      message: 'Hay una nueva versión de EstanciaPro (' + info.version + '). Se descargará en segundo plano.',
       buttons: ['OK'],
     });
   });
@@ -213,6 +213,7 @@ function checkForUpdates() {
   });
   autoUpdater.on('update-downloaded', (info) => {
     console.log('[Updater] Descarga completa:', info.version);
+    if (mainWindow) mainWindow.webContents.send('update:downloaded', { version: info.version });
     dialog.showMessageBox(mainWindow, {
       type: 'question',
       title: 'Actualización lista',
@@ -221,6 +222,10 @@ function checkForUpdates() {
     }).then(result => {
       if (result.response === 0) autoUpdater.quitAndInstall();
     });
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    if (mainWindow) mainWindow.webContents.send('update:progress', { percent: Math.round(progress.percent), speed: progress.bytesPerSecond, transferred: progress.transferred, total: progress.total });
   });
 
   autoUpdater.checkForUpdates();
@@ -260,6 +265,38 @@ ipcMain.handle('settings:getAll', () => store.store);
 
 // APP INFO
 ipcMain.handle('app:version', () => app.getVersion());
+
+ipcMain.handle('app:check-update', async () => {
+  if (!app.isPackaged) return { status: 'dev', message: 'Modo desarrollo — no se verifican actualizaciones' };
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    if (result && result.updateInfo) {
+      return { status: result.updateInfo.version !== app.getVersion() ? 'available' : 'current', version: result.updateInfo.version, currentVersion: app.getVersion() };
+    }
+    return { status: 'current', version: app.getVersion(), currentVersion: app.getVersion() };
+  } catch(e) {
+    return { status: 'error', message: e.message };
+  }
+});
+
+ipcMain.handle('app:force-update', async () => {
+  if (!app.isPackaged) return { status: 'dev', message: 'Modo desarrollo' };
+  try {
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+    const result = await autoUpdater.checkForUpdatesAndNotify();
+    if (result && result.updateInfo && result.updateInfo.version !== app.getVersion()) {
+      return { status: 'downloading', version: result.updateInfo.version };
+    }
+    return { status: 'current', message: 'Ya tienes la versión más reciente' };
+  } catch(e) {
+    return { status: 'error', message: e.message };
+  }
+});
+
+ipcMain.handle('app:quit-and-install', () => {
+  autoUpdater.quitAndInstall(false, true);
+});
 
 ipcMain.handle('app:set-gh-token', (_, token) => {
   if (token) {

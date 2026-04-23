@@ -31,6 +31,11 @@ contextBridge.exposeInMainWorld('estancia', {
     version: () => ipcRenderer.invoke('app:version'),
     setGhToken: (token) => ipcRenderer.invoke('app:set-gh-token', token),
     openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
+    checkUpdate: () => ipcRenderer.invoke('app:check-update'),
+    forceUpdate: () => ipcRenderer.invoke('app:force-update'),
+    quitAndInstall: () => ipcRenderer.invoke('app:quit-and-install'),
+    onUpdateProgress: (cb) => ipcRenderer.on('update:progress', (_, data) => cb(data)),
+    onUpdateDownloaded: (cb) => ipcRenderer.on('update:downloaded', (_, data) => cb(data)),
   },
 
   // ── Export ───────────────────────────────────────────────
