@@ -178,14 +178,23 @@ async function checkOnline() {
 }
 
 // ── Auto updater ───────────────────────────────────────────────
+// Track update state globally
+let _updateDownloaded = false;
+let _updateVersion = null;
+
 // Registrar listeners de progreso SIEMPRE (fuera de checkForUpdates)
 if (app.isPackaged) {
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoDownload = true;
+
   autoUpdater.on('download-progress', (progress) => {
     console.log('[Updater] Progreso:', Math.round(progress.percent) + '%', Math.round(progress.bytesPerSecond/1024) + 'KB/s');
     if (mainWindow) mainWindow.webContents.send('update:progress', { percent: Math.round(progress.percent), speed: progress.bytesPerSecond, transferred: progress.transferred, total: progress.total });
   });
   autoUpdater.on('update-downloaded', (info) => {
     console.log('[Updater] Descarga completa:', info.version);
+    _updateDownloaded = true;
+    _updateVersion = info.version;
     if (mainWindow) mainWindow.webContents.send('update:downloaded', { version: info.version });
   });
 }
@@ -284,7 +293,21 @@ ipcMain.handle('app:force-update', async () => {
 });
 
 ipcMain.handle('app:quit-and-install', () => {
-  autoUpdater.quitAndInstall(false, true);
+  console.log('[Updater] quitAndInstall called. Downloaded:', _updateDownloaded, 'Version:', _updateVersion);
+  if (_updateDownloaded) {
+    setImmediate(() => {
+      app.removeAllListeners('window-all-closed');
+      autoUpdater.quitAndInstall(false, true);
+    });
+  } else {
+    console.log('[Updater] No update downloaded, forcing check...');
+    autoUpdater.checkForUpdatesAndNotify();
+  }
+  return { ok: true, downloaded: _updateDownloaded };
+});
+
+ipcMain.handle('app:update-status', () => {
+  return { downloaded: _updateDownloaded, version: _updateVersion };
 });
 
 ipcMain.handle('app:restart', () => {

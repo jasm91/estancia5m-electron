@@ -7401,11 +7401,18 @@ function forceAppUpdate() {
 }
 
 function quitAndInstallUpdate() {
-  if (window.estancia && window.estancia.app && window.estancia.app.quitAndInstall) {
-    setUpdateStatus('🚀 Reiniciando para instalar...', 'var(--green)');
-    setTimeout(function() { window.estancia.app.quitAndInstall(); }, 500);
+  if (window.estancia && window.estancia.app) {
+    // Check if update is actually downloaded
+    window.estancia.app.updateStatus().then(function(s) {
+      if (s.downloaded) {
+        setUpdateStatus('🚀 Instalando v' + s.version + '... La app se reiniciará.', 'var(--green)');
+        setTimeout(function() { window.estancia.app.quitAndInstall(); }, 1000);
+      } else {
+        setUpdateStatus('⚠️ La actualización no se descargó completamente. Haz click en "Actualizar ahora" primero.', 'var(--amber)');
+      }
+    });
   } else {
-    toast('No hay actualización descargada para instalar', 'error');
+    toast('Función no disponible', 'error');
   }
 }
 

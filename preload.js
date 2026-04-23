@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('estancia', {
     checkUpdate: () => ipcRenderer.invoke('app:check-update'),
     forceUpdate: () => ipcRenderer.invoke('app:force-update'),
     quitAndInstall: () => ipcRenderer.invoke('app:quit-and-install'),
+    updateStatus: () => ipcRenderer.invoke('app:update-status'),
     restart: () => ipcRenderer.invoke('app:restart'),
     onUpdateProgress: (cb) => ipcRenderer.on('update:progress', (_, data) => cb(data)),
     onUpdateDownloaded: (cb) => ipcRenderer.on('update:downloaded', (_, data) => cb(data)),
