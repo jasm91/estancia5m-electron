@@ -1,6 +1,6 @@
 {
   "name": "estancia5m",
-  "version": "1.1.41",
+  "version": "1.1.42",
   "description": "Sistema de Gesti\u00f3n Ganadera \u2014 Estancia 5M",
   "main": "main.js",
   "scripts": {
@@ -22,7 +22,7 @@
   },
   "build": {
     "appId": "com.sgbolivia.estancia5m",
-    "productName": "Jisunu 5M",
+    "productName": "Estancia Pro",
     "copyright": "SG Bolivia",
     "mac": {
       "target": [
@@ -46,7 +46,7 @@
       "darkModeSupport": true
     },
     "dmg": {
-      "title": "Estancia 5M",
+      "title": "Estancia Pro",
       "icon": "assets/icon.icns",
       "contents": [
         {
@@ -105,7 +105,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Jisunu 5M",
+      "shortcutName": "Estancia Pro",
       "installerIcon": "assets/icon.ico",
       "uninstallerIcon": "assets/icon.ico",
       "installerHeaderIcon": "assets/icon.ico",

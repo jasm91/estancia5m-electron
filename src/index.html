@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Jisunu 5M - Sistema de Gestion</title>
+<title>EstanciaPro - Sistema de Gestión Ganadera</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet"></noscript>
 <style>
@@ -425,7 +425,7 @@ function publishTasksToPWA() {
 
 <!-- TOPBAR -->
 <header class="topbar">
-  <div class="logo">🐄 JISUNU <span>5M</span></div>
+  <div class="logo">🐄 ESTANCIA <span>PRO</span></div>
   <div class="topbar-right">
     <span class="user-chip">Cesar <strong>Moreno</strong></span>
     <span class="alert-count" id="alertCountBadge" onclick="showPage('alertas')">0 alertas</span>
@@ -5761,7 +5761,7 @@ function viewTrace(id) {
 
   // Parámetros del reporte si existen
   var rp = JSON.parse(localStorage.getItem('e5m_report_params')||'{}');
-  var estanciaNombre = rp.nombre_estancia || 'JISUNU 5M';
+  var estanciaNombre = rp.nombre_estancia || 'EstanciaPro';
   var propietario = rp.propietario || 'Cesar Eduardo Moreno';
   var ubicacion = rp.ubicacion || 'San Rafael de Velasco, Beni, Bolivia';
 
@@ -5837,7 +5837,7 @@ function viewTrace(id) {
     '</div>'+
 
     '<p style="text-align:center;font-size:9px;color:#999;margin-top:20px">'+
-      'Documento generado por Jisunu 5M · SG Bolivia · '+escH(t.cert_number)+' · '+escH(t.date)+
+      'Documento generado por EstanciaPro · SG Bolivia · '+escH(t.cert_number)+' · '+escH(t.date)+
     '</p>'+
 
     '</body></html>';
@@ -7984,7 +7984,7 @@ function exportCuentas() {
   var csv=[headers.join(',')].concat(rows).join('\n');
   var a=document.createElement('a');
   a.href='data:text/csv;charset=utf-8,﻿'+encodeURIComponent(csv);
-  a.download='contabilidad_jisunu5m_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.download='contabilidad_estanciapro_'+new Date().toISOString().slice(0,10)+'.csv';
   a.click();
   toast('Exportado correctamente','success');
 }
@@ -10831,7 +10831,7 @@ async function runAutoBackupIfDue() {
     var backup = getBackupData();
     var json = JSON.stringify(backup, null, 2);
     var fecha = new Date().toISOString().slice(0,10);
-    var filename = 'backup_jisunu5m_' + fecha + '.json';
+    var filename = 'backup_estanciapro_' + fecha + '.json';
     if(window.estancia && window.estancia.backup) {
       var result = await window.estancia.backup.auto(json, filename);
       if(result.success) {
@@ -11461,7 +11461,7 @@ function exportBackup() {
   var a = document.createElement('a');
   var fecha = new Date().toISOString().slice(0,10);
   a.href = url;
-  a.download = 'backup_jisunu5m_' + fecha + '.json';
+  a.download = 'backup_estanciapro_' + fecha + '.json';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

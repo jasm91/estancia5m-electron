@@ -336,7 +336,7 @@ ipcMain.handle('backup:auto', async (_, { data, filename }) => {
     fs.writeFileSync(filePath, data, 'utf8');
     // Mantener solo los ultimos 30 backups
     const files = fs.readdirSync(backupDir)
-      .filter(f => f.startsWith('backup_jisunu5m_') && f.endsWith('.json'))
+      .filter(f => f.startsWith('backup_estanciapro_') && f.endsWith('.json'))
       .sort().reverse();
     if (files.length > 30) {
       files.slice(30).forEach(f => {
