@@ -295,13 +295,27 @@ ipcMain.handle('app:force-update', async () => {
 ipcMain.handle('app:quit-and-install', () => {
   console.log('[Updater] quitAndInstall called. Downloaded:', _updateDownloaded, 'Version:', _updateVersion);
   if (_updateDownloaded) {
-    setImmediate(() => {
-      app.removeAllListeners('window-all-closed');
-      autoUpdater.quitAndInstall(false, true);
-    });
-  } else {
-    console.log('[Updater] No update downloaded, forcing check...');
-    autoUpdater.checkForUpdatesAndNotify();
+    // Force quit all windows and install
+    autoUpdater.autoInstallOnAppQuit = true;
+    if (mainWindow) {
+      mainWindow.removeAllListeners('close');
+      mainWindow.close();
+    }
+    setTimeout(() => {
+      try {
+        autoUpdater.quitAndInstall(false, true);
+      } catch(e) {
+        console.error('[Updater] quitAndInstall failed:', e);
+        // Fallback: relaunch
+        app.relaunch();
+        app.exit(0);
+      }
+    }, 1000);
+    // Force exit after 5 seconds if quitAndInstall hangs
+    setTimeout(() => {
+      console.log('[Updater] Force exit after timeout');
+      app.exit(0);
+    }, 5000);
   }
   return { ok: true, downloaded: _updateDownloaded };
 });
