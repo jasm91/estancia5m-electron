@@ -1,6 +1,6 @@
 {
   "name": "estancia5m",
-  "version": "1.1.50",
+  "version": "1.1.52",
   "description": "Sistema de Gesti\u00f3n Ganadera \u2014 Estancia 5M",
   "main": "main.js",
   "scripts": {
@@ -116,7 +116,8 @@
     "sql.js": "^1.11.0",
     "electron-store": "^8.1.0",
     "electron-updater": "5.3.0",
-    "node-fetch": "^3.3.2"
+    "node-fetch": "^3.3.2",
+    "pdfkit": "^0.13.0"
   },
   "devDependencies": {
     "electron": "22.3.27",

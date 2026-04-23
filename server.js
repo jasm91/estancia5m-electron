@@ -332,6 +332,56 @@ app.get('/api/transaction-images/list', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Send PDF via WhatsApp ─────────────────────────────────────
+app.post('/api/send-whatsapp-pdf', auth, async (req, res) => {
+  try {
+    const { base64, phone, caption, filename, meta_token, phone_number_id } = req.body;
+    if (!base64 || !phone) return res.status(400).json({ error: 'base64 y phone requeridos' });
+
+    const token = meta_token || process.env.META_TOKEN;
+    const phoneId = phone_number_id || process.env.META_PHONE_ID || '1124983387355546';
+    if (!token) return res.status(400).json({ error: 'META_TOKEN no configurado' });
+
+    const pdfBuffer = Buffer.from(base64, 'base64');
+    const boundary = '----FormBoundary' + Date.now();
+    const parts = [
+      `--${boundary}\r\nContent-Disposition: form-data; name="messaging_product"\r\n\r\nwhatsapp\r\n`,
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename || 'informe.pdf'}"\r\nContent-Type: application/pdf\r\n\r\n`,
+    ];
+    const bodyEnd = `\r\n--${boundary}--\r\n`;
+    const fullBody = Buffer.concat([Buffer.from(parts[0]), Buffer.from(parts[1]), pdfBuffer, Buffer.from(bodyEnd)]);
+
+    // 1. Upload media
+    const fetch = (await import('node-fetch')).default;
+    const uploadRes = await fetch(`https://graph.facebook.com/v21.0/${phoneId}/media`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+      body: fullBody
+    });
+    const uploadData = await uploadRes.json();
+    if (!uploadData.id) {
+      console.error('[WA-PDF] Upload failed:', JSON.stringify(uploadData));
+      return res.status(500).json({ error: 'Upload to Meta failed', details: uploadData });
+    }
+
+    // 2. Send document message
+    const sendRes = await fetch(`https://graph.facebook.com/v21.0/${phoneId}/messages`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp', to: phone, type: 'document',
+        document: { id: uploadData.id, filename: filename || 'informe.pdf', caption: caption || 'Informe EstanciaPro' }
+      })
+    });
+    const sendData = await sendRes.json();
+    console.log('[WA-PDF] Sent to', phone, 'media_id:', uploadData.id);
+    res.json({ ok: true, media_id: uploadData.id, message_id: sendData.messages?.[0]?.id });
+  } catch(e) {
+    console.error('[WA-PDF] Error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Bot Sessions ──────────────────────────────────────────────
 app.get('/api/bot-session/:phone', auth, async (req, res) => {
   try {
@@ -348,6 +398,348 @@ app.post('/api/bot-session/:phone', auth, async (req, res) => {
     await setTable(req.tenantId, 'bot_session_' + phone, { history: history || [], pending_transaction: pending_transaction || null, pending_image_for: pending_image_for || null, pending_image_type: pending_image_type || null, updated_at: new Date().toISOString() });
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Animal Queries ──────────────────────────────────────────
+app.post('/api/animals/query', auth, async (req, res) => {
+  try {
+    const { min_weight, max_weight, lot_code, breed } = req.body;
+    const animals = await getTable(req.tenantId, 'animals');
+    const lots = await getTable(req.tenantId, 'lots');
+    const lotsMap = {};
+    (Array.isArray(lots) ? lots : []).forEach(l => { lotsMap[l.code] = l; });
+
+    const results = [];
+    const animalsObj = (animals && typeof animals === 'object' && !Array.isArray(animals)) ? animals : {};
+
+    Object.keys(animalsObj).forEach(lotCode => {
+      if (lot_code && lotCode !== lot_code) return;
+      const lot = lotsMap[lotCode] || {};
+      (animalsObj[lotCode] || []).forEach(a => {
+        const lastPeso = (a.pesajes && a.pesajes.length) ? a.pesajes[a.pesajes.length - 1].peso : 0;
+        const firstPeso = (a.pesajes && a.pesajes.length) ? a.pesajes[0].peso : 0;
+        const animalBreed = a.breed || a.raza || lot.breed || '';
+        if (breed && animalBreed.toLowerCase().indexOf(breed.toLowerCase()) === -1) return;
+        if (min_weight && lastPeso < min_weight) return;
+        if (max_weight && lastPeso > max_weight) return;
+
+        const pesajes = (a.pesajes || []).sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+        let gmd = 0;
+        if (pesajes.length >= 2) {
+          const first = pesajes[0];
+          const last = pesajes[pesajes.length - 1];
+          const days = Math.max(1, (new Date(last.fecha) - new Date(first.fecha)) / 86400000);
+          gmd = Math.round(((last.peso - first.peso) / days) * 100) / 100;
+        }
+
+        results.push({
+          animal_id: a.animal_id || a.id || '',
+          lot_code: lotCode,
+          category: lot.category || '',
+          breed: animalBreed,
+          last_weight: lastPeso,
+          first_weight: firstPeso,
+          pesajes_count: pesajes.length,
+          gmd: gmd,
+          last_pesaje_date: pesajes.length ? pesajes[pesajes.length - 1].fecha : '',
+          paddock: lot.paddock || ''
+        });
+      });
+    });
+
+    results.sort((a, b) => b.last_weight - a.last_weight);
+
+    // Summary by lot
+    const byLot = {};
+    results.forEach(r => {
+      if (!byLot[r.lot_code]) byLot[r.lot_code] = { lot_code: r.lot_code, category: r.category, paddock: r.paddock, count: 0, total_kg: 0, animals: [] };
+      byLot[r.lot_code].count++;
+      byLot[r.lot_code].total_kg += r.last_weight;
+      byLot[r.lot_code].animals.push(r);
+    });
+
+    const summary = Object.values(byLot).map(g => ({
+      ...g,
+      avg_weight: g.count ? Math.round(g.total_kg / g.count) : 0,
+      animals: g.animals.slice(0, 50) // limit per lot
+    }));
+
+    res.json({
+      total: results.length,
+      total_kg: Math.round(results.reduce((s, r) => s + r.last_weight, 0)),
+      avg_weight: results.length ? Math.round(results.reduce((s, r) => s + r.last_weight, 0) / results.length) : 0,
+      filters: { min_weight, max_weight, lot_code, breed },
+      by_lot: summary,
+      animals: results.slice(0, 200)
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/animal/:animalId', auth, async (req, res) => {
+  try {
+    const animals = await getTable(req.tenantId, 'animals');
+    const lots = await getTable(req.tenantId, 'lots');
+    const treatments = await getTable(req.tenantId, 'treatments');
+    const animalsObj = (animals && typeof animals === 'object' && !Array.isArray(animals)) ? animals : {};
+    const targetId = req.params.animalId;
+
+    let found = null;
+    let foundLot = null;
+    Object.keys(animalsObj).forEach(lotCode => {
+      (animalsObj[lotCode] || []).forEach(a => {
+        const aid = String(a.animal_id || a.id || '');
+        if (aid === targetId || aid.toLowerCase() === targetId.toLowerCase()) {
+          found = a;
+          foundLot = lotCode;
+        }
+      });
+    });
+
+    if (!found) return res.status(404).json({ error: 'Animal no encontrado' });
+
+    const lot = (Array.isArray(lots) ? lots : []).find(l => l.code === foundLot) || {};
+    const pesajes = (found.pesajes || []).sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+    const animalTreatments = (Array.isArray(treatments) ? treatments : []).filter(t =>
+      t.animal_id === targetId || (t.scope === 'lot' && t.lot_code === foundLot)
+    );
+
+    let gmd = 0;
+    if (pesajes.length >= 2) {
+      const days = Math.max(1, (new Date(pesajes[pesajes.length-1].fecha) - new Date(pesajes[0].fecha)) / 86400000);
+      gmd = Math.round(((pesajes[pesajes.length-1].peso - pesajes[0].peso) / days) * 100) / 100;
+    }
+
+    res.json({
+      animal_id: found.animal_id || found.id,
+      lot_code: foundLot,
+      breed: found.breed || found.raza || lot.breed || '',
+      category: lot.category || '',
+      paddock: lot.paddock || '',
+      last_weight: pesajes.length ? pesajes[pesajes.length-1].peso : 0,
+      first_weight: pesajes.length ? pesajes[0].peso : 0,
+      gmd: gmd,
+      pesajes: pesajes,
+      treatments: animalTreatments.slice(0, 20),
+      days_in_estancia: pesajes.length ? Math.round((Date.now() - new Date(pesajes[0].fecha).getTime()) / 86400000) : 0
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── PDF Generation ──────────────────────────────────────────
+app.post('/api/generate-pdf', auth, async (req, res) => {
+  try {
+    const PDFDocument = require('pdfkit');
+    const { type, data } = req.body;
+    if (!type) return res.status(400).json({ error: 'type requerido' });
+
+    const lots = await getTable(req.tenantId, 'lots');
+    const branding = await getTable(req.tenantId, 'branding');
+    const brand = (branding && !Array.isArray(branding)) ? branding : {};
+    const estanciaName = brand.nombre || data?.estancia_name || 'EstanciaPro';
+    const propietario = brand.propietario || data?.propietario || '';
+
+    const doc = new PDFDocument({ size: 'LETTER', margin: 50 });
+    const chunks = [];
+    doc.on('data', c => chunks.push(c));
+
+    const promise = new Promise((resolve, reject) => {
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+    });
+
+    // Colors
+    const amber = '#D4860B';
+    const dark = '#1a1a2e';
+    const gray = '#666';
+
+    // Header helper
+    function pdfHeader(title, subtitle) {
+      doc.rect(0, 0, doc.page.width, 80).fill(dark);
+      doc.fill('#fff').fontSize(20).font('Helvetica-Bold').text(estanciaName, 50, 20);
+      doc.fontSize(12).font('Helvetica').fill('#ccc').text(title, 50, 45);
+      if (subtitle) doc.fontSize(9).fill('#999').text(subtitle, 50, 62);
+      doc.fill('#000').font('Helvetica');
+      doc.moveDown(3);
+    }
+
+    function tableHeader(headers, widths, y) {
+      let x = 50;
+      doc.rect(50, y - 3, doc.page.width - 100, 18).fill('#f0f0f0');
+      doc.fill('#333').fontSize(8).font('Helvetica-Bold');
+      headers.forEach((h, i) => { doc.text(h, x, y, { width: widths[i], align: i > 1 ? 'right' : 'left' }); x += widths[i]; });
+      doc.font('Helvetica').fill('#000');
+      return y + 20;
+    }
+
+    function tableRow(cells, widths, y) {
+      if (y > doc.page.height - 60) { doc.addPage(); y = 50; }
+      let x = 50;
+      doc.fontSize(8).fill('#333');
+      cells.forEach((c, i) => { doc.text(String(c), x, y, { width: widths[i], align: i > 1 ? 'right' : 'left' }); x += widths[i]; });
+      return y + 14;
+    }
+
+    function footer() {
+      const y = doc.page.height - 30;
+      doc.fontSize(7).fill('#999').text('Generado por EstanciaPro · SG Bolivia · ' + new Date().toLocaleString('es-BO'), 50, y, { align: 'center', width: doc.page.width - 100 });
+    }
+
+    if (type === 'proforma') {
+      // ═══ PROFORMA DE VENTA ═══
+      const { animals, buyer, price_per_kg, notes, validity } = data || {};
+      pdfHeader('PROFORMA DE VENTA', 'Fecha: ' + new Date().toLocaleDateString('es-BO'));
+
+      if (buyer) { doc.fontSize(11).font('Helvetica-Bold').text('Comprador: ', 50, 110, { continued: true }).font('Helvetica').text(buyer); }
+      doc.moveDown(0.5);
+
+      const totalAnimals = (animals || []).length;
+      const totalKg = (animals || []).reduce((s, a) => s + (a.last_weight || 0), 0);
+      const priceKg = price_per_kg || 0;
+      const totalBs = Math.round(totalKg * priceKg);
+
+      // Summary box
+      doc.rect(50, doc.y, 250, 60).lineWidth(1).stroke(amber);
+      const boxY = doc.y + 8;
+      doc.fontSize(10).font('Helvetica-Bold')
+        .text('Cabezas: ' + totalAnimals, 60, boxY)
+        .text('Peso total: ' + totalKg.toLocaleString() + ' kg', 60, boxY + 15)
+        .text('Precio/kg: Bs. ' + priceKg, 60, boxY + 30);
+      doc.rect(310, doc.y - 60, 230, 60).fill(amber);
+      doc.fill('#fff').fontSize(14).font('Helvetica-Bold').text('TOTAL: Bs. ' + totalBs.toLocaleString(), 320, boxY + 10);
+      doc.fill('#000').font('Helvetica');
+      doc.y += 30;
+      doc.moveDown(1.5);
+
+      // Animal table
+      const w = [60, 80, 70, 70, 70, 80, 80];
+      let y = tableHeader(['ID', 'LOTE', 'RAZA', 'PESO KG', 'GMD', 'POTRERO', 'CATEGORÍA'], w, doc.y);
+      (animals || []).forEach(a => {
+        y = tableRow([a.animal_id, a.lot_code, a.breed || '-', a.last_weight || 0, a.gmd || '-', a.paddock || '-', a.category || '-'], w, y);
+      });
+
+      doc.moveDown(2);
+      if (notes) { doc.fontSize(9).text('Notas: ' + notes); }
+      doc.moveDown(1);
+      doc.fontSize(9).fill(gray).text('Validez: ' + (validity || '7 días') + ' · Precios sujetos a pesaje definitivo');
+      doc.moveDown(2);
+      doc.fontSize(9).fill('#000').text('_______________________________', 50);
+      doc.text(propietario || estanciaName);
+      doc.text('Propietario / Administrador');
+
+      footer();
+
+    } else if (type === 'animal_report') {
+      // ═══ INFORME DE ANIMAL INDIVIDUAL ═══
+      const animal = data?.animal || {};
+      pdfHeader('INFORME DE ANIMAL', 'ID: ' + (animal.animal_id || ''));
+
+      doc.fontSize(11).font('Helvetica-Bold').text('Datos del Animal', 50, 100);
+      doc.moveDown(0.3);
+      const fields = [
+        ['ID', animal.animal_id], ['Lote', animal.lot_code], ['Raza', animal.breed],
+        ['Categoría', animal.category], ['Potrero', animal.paddock],
+        ['Peso actual', (animal.last_weight || 0) + ' kg'], ['Peso inicial', (animal.first_weight || 0) + ' kg'],
+        ['GMD', (animal.gmd || 0) + ' kg/día'], ['Días en estancia', animal.days_in_estancia || 0]
+      ];
+      fields.forEach(([l, v]) => {
+        doc.fontSize(9).font('Helvetica-Bold').text(l + ': ', 50, doc.y, { continued: true }).font('Helvetica').text(String(v || '-'));
+      });
+
+      doc.moveDown(1);
+      doc.fontSize(11).font('Helvetica-Bold').text('Historial de Pesajes');
+      doc.moveDown(0.5);
+      if (animal.pesajes && animal.pesajes.length) {
+        const w2 = [120, 100, 100];
+        let y2 = tableHeader(['FECHA', 'PESO (KG)', 'VARIACIÓN'], w2, doc.y);
+        let prevPeso = 0;
+        animal.pesajes.forEach(p => {
+          const diff = prevPeso ? (p.peso - prevPeso) : 0;
+          y2 = tableRow([p.fecha || '-', p.peso || 0, prevPeso ? (diff > 0 ? '+' : '') + diff + ' kg' : '-'], w2, y2);
+          prevPeso = p.peso;
+        });
+      } else { doc.fontSize(9).text('Sin pesajes registrados'); }
+
+      doc.moveDown(1);
+      doc.fontSize(11).font('Helvetica-Bold').text('Curaciones Recibidas');
+      doc.moveDown(0.5);
+      if (animal.treatments && animal.treatments.length) {
+        const w3 = [120, 100, 80, 80, 120];
+        let y3 = tableHeader(['FECHA', 'PRODUCTO', 'DOSIS', 'TOTAL', 'DIAGNÓSTICO'], w3, doc.y);
+        animal.treatments.forEach(t => {
+          y3 = tableRow([t.applied_at || t.date || '-', t.product_name || '-', t.dose || '-', t.total || '-', t.diagnosis || '-'], w3, y3);
+        });
+      } else { doc.fontSize(9).text('Sin curaciones registradas'); }
+
+      footer();
+
+    } else if (type === 'lot_report') {
+      // ═══ INFORME DE LOTE ═══
+      const { lot_code, animals, summary } = data || {};
+      const lot = (Array.isArray(lots) ? lots : []).find(l => l.code === lot_code) || {};
+      pdfHeader('INFORME DE LOTE ' + (lot_code || ''), lot.category + ' · ' + lot.breed + ' · ' + lot.paddock);
+
+      doc.fontSize(11).font('Helvetica-Bold').text('Resumen del Lote', 50, 100);
+      doc.moveDown(0.3);
+      [['Código', lot_code], ['Categoría', lot.category], ['Raza', lot.breed], ['Potrero', lot.paddock],
+       ['Cabezas', summary?.count || lot.animal_count], ['Peso promedio', (summary?.avg_weight || lot.avg_weight || 0) + ' kg'],
+       ['Peso total', (summary?.total_kg || 0).toLocaleString() + ' kg']
+      ].forEach(([l, v]) => {
+        doc.fontSize(9).font('Helvetica-Bold').text(l + ': ', 50, doc.y, { continued: true }).font('Helvetica').text(String(v || '-'));
+      });
+
+      doc.moveDown(1);
+      doc.fontSize(11).font('Helvetica-Bold').text('Detalle de Animales');
+      doc.moveDown(0.5);
+      const w4 = [70, 80, 80, 60, 70, 70, 80];
+      let y4 = tableHeader(['ID', 'RAZA', 'PESO KG', 'GMD', 'PESAJES', 'ÚLT.PESAJE', 'POTRERO'], w4, doc.y);
+      (animals || []).forEach(a => {
+        y4 = tableRow([a.animal_id, a.breed || '-', a.last_weight || 0, a.gmd || '-', a.pesajes_count || 0, a.last_pesaje_date || '-', a.paddock || '-'], w4, y4);
+      });
+
+      footer();
+
+    } else if (type === 'weight_report') {
+      // ═══ INFORME POR RANGO DE PESO ═══
+      const { animals, filters, total, total_kg, avg_weight, by_lot } = data || {};
+      const rangeStr = (filters?.min_weight ? 'desde ' + filters.min_weight + 'kg' : '') + (filters?.max_weight ? ' hasta ' + filters.max_weight + 'kg' : '') || 'Todos';
+      pdfHeader('INFORME POR PESO', 'Rango: ' + rangeStr + ' · ' + new Date().toLocaleDateString('es-BO'));
+
+      doc.fontSize(11).font('Helvetica-Bold').text('Resumen', 50, 100);
+      doc.moveDown(0.3);
+      [['Total animales', total], ['Peso total', (total_kg || 0).toLocaleString() + ' kg'], ['Peso promedio', (avg_weight || 0) + ' kg'],
+       ['Filtro lote', filters?.lot_code || 'Todos'], ['Filtro raza', filters?.breed || 'Todas']
+      ].forEach(([l, v]) => {
+        doc.fontSize(9).font('Helvetica-Bold').text(l + ': ', 50, doc.y, { continued: true }).font('Helvetica').text(String(v || '-'));
+      });
+
+      // By lot summary
+      doc.moveDown(1);
+      (by_lot || []).forEach(g => {
+        doc.fontSize(10).font('Helvetica-Bold').text('Lote ' + g.lot_code + ' — ' + g.category + ' (' + g.count + ' cab, prom. ' + g.avg_weight + ' kg)');
+        doc.moveDown(0.3);
+        const w5 = [70, 80, 80, 60, 70, 80];
+        let y5 = tableHeader(['ID', 'RAZA', 'PESO KG', 'GMD', 'PESAJES', 'ÚLT.PESAJE'], w5, doc.y);
+        (g.animals || []).forEach(a => {
+          y5 = tableRow([a.animal_id, a.breed || '-', a.last_weight, a.gmd || '-', a.pesajes_count, a.last_pesaje_date || '-'], w5, y5);
+        });
+        doc.moveDown(1);
+      });
+
+      footer();
+
+    } else {
+      doc.fontSize(14).text('Tipo de informe no reconocido: ' + type);
+    }
+
+    doc.end();
+    const pdfBuffer = await promise;
+    const base64 = pdfBuffer.toString('base64');
+    console.log('[PDF]', req.tenantId, type, Math.round(base64.length / 1024) + 'KB');
+    res.json({ ok: true, base64: base64, size_kb: Math.round(base64.length / 1024), type: type });
+  } catch (e) {
+    console.error('[PDF Error]', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ── Tenant branding ──────────────────────────────────────────
@@ -485,6 +877,16 @@ app.post('/api/sync-push', auth, async (req, res) => {
       pushed.animals = 'ok';
     }
 
+    // Report params and diesel tank config (desktop only)
+    if (db.report_params && !isField && typeof db.report_params === 'object') {
+      await setTable(tenantId, 'report_params', db.report_params);
+      pushed.report_params = 'ok';
+    }
+    if (db.diesel_tank && !isField && typeof db.diesel_tank === 'object') {
+      await setTable(tenantId, 'diesel_tank', db.diesel_tank);
+      pushed.diesel_tank = 'ok';
+    }
+
     res.json({ ok: true, pushed, tenant: req.tenant.name, timestamp: new Date().toISOString() });
 
     // Backup silencioso cada 6 horas
@@ -532,12 +934,18 @@ app.get('/api/sync-pull', auth, async (req, res) => {
     });
 
     const branding = await getTable(tenantId, 'branding');
+    const report_params = await getTable(tenantId, 'report_params');
+    const diesel_tank = await getTable(tenantId, 'diesel_tank');
+    const inventory_counts = await getTable(tenantId, 'inventory_counts');
     res.json({
       lots: validLots, products, treatments, health_alerts, sales, purchases,
       employees, field_activities, tasks, pesajes, advances, maintenance,
       agua, sal, conteo, partos, alimento, animals, animal_movements,
       lluvias, diesel, aceite, cuentas, kardex, historial_sueldos, compras_ganado,
+      inventory_counts: Array.isArray(inventory_counts) ? inventory_counts : [],
       branding: Array.isArray(branding) ? {} : (branding || {}),
+      report_params: Array.isArray(report_params) ? {} : (report_params || {}),
+      diesel_tank: Array.isArray(diesel_tank) ? {} : (diesel_tank || {}),
       pwa_latest_version: PWA_VERSION, timestamp: new Date().toISOString(),
     });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -601,9 +1009,11 @@ app.post('/api/tasks/bulk', auth, async (req, res) => {
 app.post('/api/bulk-push', auth, async (req, res) => {
   try {
     const { table, records } = req.body;
-    if (!table || !Array.isArray(records)) return res.status(400).json({ error: 'table and records required' });
+    if (!table) return res.status(400).json({ error: 'table required' });
+    // Accept both arrays and objects (for report_params, diesel_tank, branding)
+    if (records === undefined || records === null) return res.status(400).json({ error: 'records required' });
     await setTable(req.tenantId, table, records);
-    res.json({ ok: true, table, count: records.length });
+    res.json({ ok: true, table, count: Array.isArray(records) ? records.length : 1 });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
