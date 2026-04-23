@@ -20,7 +20,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  app.quit();
 });
 
 app.on('activate', () => {
@@ -71,8 +71,8 @@ function createWindow() {
 
   mainWindow.on('close', (e) => {
     if (!app.isQuitting) {
-      e.preventDefault();
-      mainWindow.hide();
+      app.isQuitting = true;
+      app.quit();
     }
   });
 }
@@ -82,7 +82,7 @@ function createTray() {
   tray = new Tray(nativeImage.createEmpty());
 
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'Estancia 5M', enabled: false },
+    { label: 'EstanciaPro', enabled: false },
     { type: 'separator' },
     { label: 'Mostrar ventana', click: () => { mainWindow.show(); mainWindow.focus(); } },
     { label: 'Sincronizar ahora', click: () => triggerSync() },
@@ -90,7 +90,7 @@ function createTray() {
     { label: 'Salir', click: () => { app.isQuitting = true; app.quit(); } },
   ]);
 
-  tray.setToolTip('Estancia 5M');
+  tray.setToolTip('EstanciaPro');
   tray.setContextMenu(contextMenu);
   tray.on('click', () => { mainWindow.show(); mainWindow.focus(); });
 
@@ -98,7 +98,7 @@ function createTray() {
   if (process.platform === 'darwin') {
     const appMenu = Menu.buildFromTemplate([
       {
-        label: 'Estancia 5M',
+        label: 'EstanciaPro',
         submenu: [
           { label: 'Acerca de Estancia 5M', role: 'about' },
           { type: 'separator' },
@@ -178,14 +178,24 @@ async function checkOnline() {
 }
 
 // ── Auto updater ───────────────────────────────────────────────
+// Registrar listeners de progreso SIEMPRE (fuera de checkForUpdates)
+if (app.isPackaged) {
+  autoUpdater.on('download-progress', (progress) => {
+    console.log('[Updater] Progreso:', Math.round(progress.percent) + '%', Math.round(progress.bytesPerSecond/1024) + 'KB/s');
+    if (mainWindow) mainWindow.webContents.send('update:progress', { percent: Math.round(progress.percent), speed: progress.bytesPerSecond, transferred: progress.transferred, total: progress.total });
+  });
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('[Updater] Descarga completa:', info.version);
+    if (mainWindow) mainWindow.webContents.send('update:downloaded', { version: info.version });
+  });
+}
+
 function checkForUpdates() {
-  // El auto-updater solo funciona en app empaquetada, no en desarrollo
   if (!app.isPackaged) {
     console.log('[Updater] Modo desarrollo — update check omitido');
     return;
   }
 
-  // Token para repo privado de GitHub
   autoUpdater.requestHeaders = { 'Authorization': 'token 5vPUnndEawQejHCgIFq7lBe6YLjnMM2PzSBt' };
   autoUpdater.autoDownload = true;
   autoUpdater.logger = require('electron-log');
@@ -198,34 +208,13 @@ function checkForUpdates() {
   });
   autoUpdater.on('update-available', (info) => {
     console.log('[Updater] Actualización disponible:', info.version);
-    dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'Actualización disponible',
-      message: 'Hay una nueva versión de EstanciaPro (' + info.version + '). Se descargará en segundo plano.',
-      buttons: ['OK'],
-    });
   });
   autoUpdater.on('update-not-available', (info) => {
     console.log('[Updater] Sin actualizaciones. Versión más reciente:', info.version);
   });
   autoUpdater.on('error', (err) => {
     console.error('[Updater] Error:', err.message);
-  });
-  autoUpdater.on('update-downloaded', (info) => {
-    console.log('[Updater] Descarga completa:', info.version);
-    if (mainWindow) mainWindow.webContents.send('update:downloaded', { version: info.version });
-    dialog.showMessageBox(mainWindow, {
-      type: 'question',
-      title: 'Actualización lista',
-      message: 'La versión ' + info.version + ' está lista. ¿Reiniciar ahora para instalar?',
-      buttons: ['Reiniciar', 'Más tarde'],
-    }).then(result => {
-      if (result.response === 0) autoUpdater.quitAndInstall();
-    });
-  });
-
-  autoUpdater.on('download-progress', (progress) => {
-    if (mainWindow) mainWindow.webContents.send('update:progress', { percent: Math.round(progress.percent), speed: progress.bytesPerSecond, transferred: progress.transferred, total: progress.total });
+    if (mainWindow) mainWindow.webContents.send('update:error', { message: err.message });
   });
 
   autoUpdater.checkForUpdates();
@@ -296,6 +285,11 @@ ipcMain.handle('app:force-update', async () => {
 
 ipcMain.handle('app:quit-and-install', () => {
   autoUpdater.quitAndInstall(false, true);
+});
+
+ipcMain.handle('app:restart', () => {
+  app.relaunch();
+  app.exit(0);
 });
 
 ipcMain.handle('app:set-gh-token', (_, token) => {

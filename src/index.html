@@ -425,11 +425,10 @@ function publishTasksToPWA() {
 
 <!-- TOPBAR -->
 <header class="topbar">
-  <div class="logo">🐄 ESTANCIA <span>PRO</span></div>
+  <div class="logo" id="header-logo">🐄 ESTANCIA <span>PRO</span></div>
   <div class="topbar-right">
-    <span class="user-chip">Cesar <strong>Moreno</strong></span>
+    <span class="user-chip" id="header-user">Propietario</span>
     <span class="alert-count" id="alertCountBadge" onclick="showPage('alertas')">0 alertas</span>
-    <span class="user-chip">Cesar <strong>Moreno</strong></span>
     <button id="desktop-sync-btn" onclick="manualSync()" style="background:var(--sur2);border:1px solid var(--bor);color:var(--text);border-radius:8px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:Syne,sans-serif;font-weight:600;display:flex;align-items:center;gap:6px">
       <span id="desktop-sync-icon">↻</span> <span id="desktop-sync-label">Sync</span>
     </button>
@@ -1987,8 +1986,9 @@ function publishTasksToPWA() {
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-ghost" onclick="checkForAppUpdate()" style="font-size:12px;padding:8px 16px" id="btn-check-update">🔍 Verificar actualizaciones</button>
-          <button class="btn btn-primary" onclick="forceAppUpdate()" style="font-size:12px;padding:8px 16px" id="btn-force-update">⬇️ Actualizar ahora</button>
+          <button class="btn btn-ghost" onclick="forceAppUpdate()" style="font-size:12px;padding:8px 16px" id="btn-force-update">⬇️ Actualizar ahora</button>
           <button class="btn btn-ghost" onclick="quitAndInstallUpdate()" style="font-size:12px;padding:8px 16px;display:none;color:var(--green)" id="btn-install-update">🚀 Instalar y reiniciar</button>
+          <button class="btn btn-ghost" onclick="restartApp()" style="font-size:12px;padding:8px 16px;color:var(--blue)">🔄 Reiniciar app</button>
         </div>
         <div style="font-size:10px;color:var(--muted);margin-top:6px">Si el auto-updater no funciona, usa "Actualizar ahora" para forzar la descarga desde GitHub</div>
       </div>
@@ -3510,7 +3510,32 @@ function renderPage(name) {
 // ══════════════════════════════════════════════════
 // DASHBOARD
 // ══════════════════════════════════════════════════
+function updateHeaderBranding() {
+  var rp = (typeof getRp === 'function') ? getRp() : {};
+  var nombre = rp.nombre_estancia || 'EstanciaPro';
+  var propietario = rp.propietario || '';
+  var logoEl = document.getElementById('header-logo');
+  if (logoEl) {
+    var parts = nombre.split(' ');
+    if (parts.length > 1) {
+      logoEl.innerHTML = '🐄 ' + escH(parts[0].toUpperCase()) + ' <span>' + escH(parts.slice(1).join(' ').toUpperCase()) + '</span>';
+    } else {
+      logoEl.innerHTML = '🐄 ' + escH(nombre.toUpperCase());
+    }
+  }
+  var userEl = document.getElementById('header-user');
+  if (userEl && propietario) {
+    var nameParts = propietario.trim().split(' ');
+    if (nameParts.length > 1) {
+      userEl.innerHTML = nameParts[0] + ' <strong>' + nameParts.slice(1).join(' ') + '</strong>';
+    } else {
+      userEl.textContent = propietario;
+    }
+  }
+}
+
 function renderDashboard() {
+  updateHeaderBranding();
   const today = new Date();
   document.getElementById('dash-date').textContent = today.toLocaleDateString('es-BO',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 
@@ -7298,41 +7323,72 @@ function checkForAppUpdate() {
   }
 }
 
+// Set up update listeners ONCE at init
+(function initUpdateListeners() {
+  if (!window.estancia || !window.estancia.app) return;
+  if (window.estancia.app.onUpdateProgress) {
+    window.estancia.app.onUpdateProgress(function(p) {
+      setUpdateStatus('⬇️ Descargando: <strong>' + p.percent + '%</strong> (' + Math.round(p.transferred/1024/1024*10)/10 + ' / ' + Math.round(p.total/1024/1024*10)/10 + ' MB) · ' + Math.round(p.speed/1024) + ' KB/s', 'var(--blue)');
+      window._updateReceived = true;
+    });
+  }
+  if (window.estancia.app.onUpdateDownloaded) {
+    window.estancia.app.onUpdateDownloaded(function(info) {
+      window._updateReceived = true;
+      if (window._updateTimer) clearInterval(window._updateTimer);
+      setUpdateStatus('✅ <strong>v' + info.version + ' descargada.</strong> La app se actualizará al cerrar, o click "Instalar y reiniciar".', 'var(--green)');
+      var btn = document.getElementById('btn-force-update');
+      if (btn) { btn.disabled = false; btn.textContent = '⬇️ Actualizar ahora'; btn.style.animation = ''; }
+      var installBtn = document.getElementById('btn-install-update');
+      if (installBtn) { installBtn.style.display = 'inline-block'; installBtn.style.animation = 'pulse 1.5s infinite'; }
+    });
+  }
+  if (window.estancia.app.onUpdateError) {
+    window.estancia.app.onUpdateError(function(err) {
+      if (window._updateTimer) clearInterval(window._updateTimer);
+      setUpdateStatus('❌ Error: ' + err.message, 'var(--red)');
+      var btn = document.getElementById('btn-force-update');
+      if (btn) { btn.disabled = false; btn.textContent = '⬇️ Actualizar ahora'; }
+    });
+  }
+})();
+
 function forceAppUpdate() {
   var btn = document.getElementById('btn-force-update');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Descargando...'; }
-  setUpdateStatus('⬇️ Descargando actualización...', 'var(--blue)');
+  window._updateReceived = false;
+
+  // Timer animado como fallback si no llegan eventos de progreso
+  var dots = 0;
+  var elapsed = 0;
+  if (window._updateTimer) clearInterval(window._updateTimer);
+  window._updateTimer = setInterval(function() {
+    if (window._updateReceived) { clearInterval(window._updateTimer); return; }
+    dots = (dots + 1) % 4;
+    elapsed++;
+    var dotStr = '.'.repeat(dots + 1);
+    setUpdateStatus('⬇️ Descargando actualización' + dotStr + ' <span style="color:var(--muted)">(' + elapsed + 's)</span>', 'var(--blue)');
+  }, 1000);
 
   if (window.estancia && window.estancia.app && window.estancia.app.forceUpdate) {
-    // Listen for progress
-    if (window.estancia.app.onUpdateProgress) {
-      window.estancia.app.onUpdateProgress(function(p) {
-        setUpdateStatus('⬇️ Descargando: <strong>' + p.percent + '%</strong> (' + Math.round(p.transferred/1024/1024*10)/10 + ' / ' + Math.round(p.total/1024/1024*10)/10 + ' MB)', 'var(--blue)');
-      });
-    }
-    if (window.estancia.app.onUpdateDownloaded) {
-      window.estancia.app.onUpdateDownloaded(function(info) {
-        setUpdateStatus('✅ <strong>v' + info.version + ' descargada.</strong> Click "Instalar y reiniciar" para aplicar.', 'var(--green)');
-        if (btn) { btn.disabled = false; btn.textContent = '⬇️ Actualizar ahora'; btn.style.animation = ''; }
-        var installBtn = document.getElementById('btn-install-update');
-        if (installBtn) { installBtn.style.display = 'inline-block'; installBtn.style.animation = 'pulse 1.5s infinite'; }
-      });
-    }
     window.estancia.app.forceUpdate().then(function(res) {
       if (res.status === 'current') {
+        clearInterval(window._updateTimer);
         setUpdateStatus('✅ ' + res.message, 'var(--green)');
         if (btn) { btn.disabled = false; btn.textContent = '⬇️ Actualizar ahora'; }
       } else if (res.status === 'error') {
+        clearInterval(window._updateTimer);
         setUpdateStatus('❌ Error: ' + res.message, 'var(--red)');
         if (btn) { btn.disabled = false; btn.textContent = '⬇️ Actualizar ahora'; }
       }
-      // If downloading, the progress/downloaded events will handle the UI
+      // status 'downloading' → timer + listeners handle the UI
     }).catch(function(e) {
+      clearInterval(window._updateTimer);
       setUpdateStatus('❌ Error: ' + e.message, 'var(--red)');
       if (btn) { btn.disabled = false; btn.textContent = '⬇️ Actualizar ahora'; }
     });
   } else {
-    // Fallback: abrir releases en GitHub
+    clearInterval(window._updateTimer);
     var url = 'https://github.com/jasm91/estancia5m-electron/releases/latest';
     if (window.estancia && window.estancia.app) {
       window.estancia.app.openExternal(url);
@@ -7350,6 +7406,14 @@ function quitAndInstallUpdate() {
     setTimeout(function() { window.estancia.app.quitAndInstall(); }, 500);
   } else {
     toast('No hay actualización descargada para instalar', 'error');
+  }
+}
+
+function restartApp() {
+  if (window.estancia && window.estancia.app && window.estancia.app.restart) {
+    window.estancia.app.restart();
+  } else {
+    toast('Cierra y vuelve a abrir la app manualmente', 'info');
   }
 }
 
@@ -10095,8 +10159,8 @@ function renderPesajesFromAnimales(){
 <script>
 var RP_KEY = 'e5m_report_params';
 var RP_DEFAULTS = {
-  nombre_estancia: 'Estancia 5M',
-  propietario: 'Cesar Eduardo Moreno Jisunu',
+  nombre_estancia: 'EstanciaPro',
+  propietario: '',
   ubicacion: 'Beni, Bolivia',
   moneda: 'BOB',
   precio_frigorifico: 6.5,
@@ -10158,7 +10222,7 @@ function renderParamsReporte() {
 function saveReportParams() {
   var rp=getRp();
   function gv(id,def){ var el=document.getElementById(id); return el?(el.value||def):def; }
-  rp.nombre_estancia   = gv('rp-nombre-estancia','Estancia 5M');
+  rp.nombre_estancia   = gv('rp-nombre-estancia','EstanciaPro');
   rp.propietario       = gv('rp-propietario','');
   rp.ubicacion         = gv('rp-ubicacion','');
   rp.moneda            = gv('rp-moneda','BOB');
@@ -10685,7 +10749,7 @@ function renderReportesGerenciales() {
     '</div>'+
     '</div>'+ // /padding
     '<div style="background:'+cream+';border-top:1px solid '+border+';padding:14px 48px;display:flex;justify-content:space-between;font-family:DM Mono,monospace;font-size:9px;letter-spacing:.08em;color:'+muted+';text-transform:uppercase">'+
-      '<span>'+(rp.nombre_estancia||'Estancia 5M')+' - Sistema de Gestion Ganadera</span>'+
+      '<span>'+(rp.nombre_estancia||'EstanciaPro')+' - Sistema de Gestion Ganadera</span>'+
       '<span>Generado '+fechaRpt+' - Confidencial</span>'+
       '<span>SG Digital Solutions 2026</span>'+
     '</div>'+
