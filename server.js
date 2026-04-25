@@ -681,6 +681,8 @@ app.post('/api/generate-pdf', auth, async (req, res) => {
     const PDFDocument = require('pdfkit');
     const { type, data } = req.body;
     if (!type) return res.status(400).json({ error: 'type requerido' });
+    
+    console.log('[PDF] Generating:', type, 'animals:', (data?.animals||[]).length, 'buyer:', data?.buyer);
 
     const lots = await getTable(req.tenantId, 'lots');
     const branding = await getTable(req.tenantId, 'branding');
@@ -736,7 +738,12 @@ app.post('/api/generate-pdf', auth, async (req, res) => {
 
     if (type === 'proforma') {
       // ═══ PROFORMA DE VENTA ═══
-      const { animals, buyer, price_per_kg, notes, validity } = data || {};
+      const animals = data?.animals || [];
+      const buyer = data?.buyer || '';
+      const price_per_kg = data?.price_per_kg || 0;
+      const notes = data?.notes || '';
+      const validity = data?.validity || '7 dias';
+      console.log('[PDF Proforma] Animals:', animals.length, 'Buyer:', buyer, 'Price:', price_per_kg);
       pdfHeader('PROFORMA DE VENTA', 'Fecha: ' + new Date().toLocaleDateString('es-BO'));
 
       if (buyer) { doc.fontSize(11).font('Helvetica-Bold').text('Comprador: ', 50, 110, { continued: true }).font('Helvetica').text(buyer); }
@@ -887,8 +894,8 @@ app.post('/api/generate-pdf', auth, async (req, res) => {
     console.log('[PDF]', req.tenantId, type, Math.round(base64.length / 1024) + 'KB');
     res.json({ ok: true, base64: base64, size_kb: Math.round(base64.length / 1024), type: type });
   } catch (e) {
-    console.error('[PDF Error]', e.message);
-    res.status(500).json({ error: e.message });
+    console.error('[PDF Error]', e.message, e.stack);
+    res.status(500).json({ error: e.message, stack: e.stack?.split('\n').slice(0,3) });
   }
 });
 
