@@ -318,7 +318,7 @@ function renderActividadLote() {
   if (!filterType || filterType==='parto') {
     (d.partos||[]).forEach(function(r){
       if(filterLot && r.lot_code!==filterLot) return;
-      all.push({date:r.date,tag:'PAR',color:'var(--green)',
+      all.push({date:r.date,ca:r.created_at||r.date,tag:'PAR',color:'var(--green)',
         title:'Parto: '+(r.sexo==='macho'?'Macho':'Hembra')+(r.peso?' '+r.peso+' kg':'')+' - '+(r.estado||''),
         sub:(r.cria_id?'Arete: '+r.cria_id:'')+(r.obs?' '+r.obs:''),
         lot:r.lot_code,by:r.by||''});
@@ -377,7 +377,7 @@ function renderActividadLote() {
         (safeSub?'<div style="color:var(--muted);margin-top:2px">'+safeSub+'</div>':'')+
         '<div style="color:var(--muted);font-size:10px;margin-top:3px">'+
           (r.lot?'<span style="color:var(--amber2);background:rgba(212,160,23,.08);padding:1px 6px;border-radius:3px;margin-right:6px">'+r.lot+'</span>':'')+
-          (r.by||'')+(r.by?' - ':'')+fmtDT(r.created_at||r.date||'')+
+          (function(){var src=r.by||'';var sc={Desktop:'#6366F1',Campo:'#22C55E',Auto:'#9CA3AF'};var c=sc[src]||(src.indexOf('WhatsApp')===0?'#25D366':'#9CA3AF');return src?'<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:'+c+';color:#fff;font-weight:600;margin-right:4px">'+escH(src)+'</span>':'';})()+ fmtDT(r.created_at||r.date||'')+
         '</div>'+
       '</div>';
     el.appendChild(row);
@@ -412,6 +412,16 @@ function showLotesTab(tabId, btn) {
 }
 function today(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function localDate(d){d=d||new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function fmtDT(str) {
+  if (!str) return '-';
+  try {
+    if (str.length <= 10) return str;
+    var d = new Date(str);
+    if (isNaN(d.getTime())) return str.slice(0,10);
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  } catch(e) { return str.slice(0,16); }
+}
+
 
 function publishTasksToPWA() {
   var apiUrl = getApiUrl();
@@ -784,7 +794,7 @@ function publishTasksToPWA() {
     <div class="card">
       <div class="card-body" style="padding:0">
         <table class="tbl">
-          <thead><tr><th>Fecha</th><th>Animal</th><th>Lote</th><th>Raza</th><th>Último Peso</th><th>Causa</th><th>Obs.</th><th>📷</th><th></th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Animal</th><th>Lote</th><th>Raza</th><th>Último Peso</th><th>Causa</th><th>Obs.</th><th>📷</th><th>Reg.</th><th></th></tr></thead>
           <tbody id="bajas-tbody"></tbody>
         </table>
       </div>
@@ -2344,6 +2354,7 @@ function publishTasksToPWA() {
       <option value="conteo">🔢 Conteo</option>
       <option value="parto">🐄 Partos</option>
       <option value="alimento">🌿 Alimento</option>
+      <option value="baja">🪦 Bajas</option>
       <option value="movimiento">🔄 Movimientos</option>
     </select>
   </div>
@@ -4028,7 +4039,10 @@ function renderDashboard() {
   // Ordenar por fecha desc y tomar 6
   allActivities.sort(function(a,b){return (b.ca||b.date||'').localeCompare(a.ca||a.date||'');});
   act.innerHTML=allActivities.slice(0,6).map(function(a){
-    return '<div class="tl-item done"><div class="tl-date">'+escH(a.date||'')+(a.by?' · '+escH(a.by):'')+'</div><div class="tl-ttl">'+a.icon+' '+a.desc+'</div>'+(a.lot?'<div class="tl-sub">Lote '+escH(a.lot)+'</div>':'')+'</div>';
+    var srcColors = {Desktop:'#6366F1',Campo:'#22C55E',WhatsApp:'#25D366',Bot:'#25D366',Auto:'#9CA3AF'};
+    var srcLabel = a.by || 'Auto';
+    var srcColor = srcColors[srcLabel] || (srcLabel.indexOf('WhatsApp')===0?'#25D366':srcLabel.indexOf('Campo')===0?'#22C55E':'var(--muted)');
+    return '<div class="tl-item done"><div class="tl-date">'+fmtDT(a.ca||a.date)+' <span style="font-size:9px;padding:1px 6px;border-radius:4px;background:'+srcColor+';color:#fff;font-weight:600;margin-left:4px">'+escH(srcLabel)+'</span></div><div class="tl-ttl">'+a.icon+' '+a.desc+'</div>'+(a.lot?'<div class="tl-sub">Lote '+escH(a.lot)+'</div>':'')+'</div>';
   }).join('') || '<div style="color:var(--muted);font-size:12px;text-align:center;padding:12px">Sin actividad reciente</div>';
 
   // Stock
@@ -4717,7 +4731,7 @@ function renderVentas() {
         '<td>'+(kgTotal||0)+' kg</td>'+
         '<td style="font-family:DM Mono,monospace">Bs. '+priceKg+'</td>'+
         '<td style="color:var(--amber2);font-weight:600">Bs. '+(s.total||0).toLocaleString()+'</td>'+
-        '<td style="font-size:12px">'+escH(s.date||'')+'</td>'+
+        '<td style="font-size:12px">'+fmtDT(s.created_at||s.date)+'</td>'+
         '<td>'+traceBdg+'</td>'+
         '<td style="font-size:11px;color:var(--muted);max-width:180px">' +
           (hasIds
@@ -5154,7 +5168,7 @@ function renderCompras() {
     purTbody.innerHTML = '';
     db.purchases.slice().reverse().forEach(function(p) {
       var tr = document.createElement('tr');
-      tr.innerHTML = '<td>'+escH(p.desc)+'</td><td><span class="bdg bdg-blue">'+capFirst(p.type)+'</span></td><td>'+p.qty+'</td><td>$'+p.unit_price+'</td><td style="color:var(--amber2)">Bs. '+p.total.toLocaleString()+'</td><td>'+escH(p.supplier||'-')+'</td><td>'+p.date+'</td><td><span class="bdg '+(p.status==='paid'?'bdg-green':'bdg-amber')+'">'+(p.status==='paid'?'Pagado':'Pendiente')+'</span></td><td></td>';
+      tr.innerHTML = '<td>'+escH(p.desc)+'</td><td><span class="bdg bdg-blue">'+capFirst(p.type)+'</span></td><td>'+p.qty+'</td><td>$'+p.unit_price+'</td><td style="color:var(--amber2)">Bs. '+p.total.toLocaleString()+'</td><td>'+escH(p.supplier||'-')+'</td><td>'+fmtDT(p.created_at||p.date)+'</td><td><span class="bdg '+(p.status==='paid'?'bdg-green':'bdg-amber')+'">'+(p.status==='paid'?'Pagado':'Pendiente')+'</span></td><td></td>';
       // Boton cambiar estado
       var statusCell = tr.lastElementChild;
       // Botón ver imagen
@@ -5533,12 +5547,78 @@ function renderActivitiesDesktop() {
     (db.conteo||[]).forEach(function(c){
       if (filterEmp) return;
       all.push({
-        fecha: c.date||'', tipo:'conteo', tag:'CNT',
+        fecha: c.created_at||c.date||'', tipo:'conteo', tag:'CNT',
         titulo: 'Conteo lote '+c.lot_code+' — '+c.counted+' cabezas',
         sub: c.diff!==0?'Diferencia: '+c.diff+' vs sistema':'', lote: c.lot_code||'',
-        empleado:'', color:'var(--purple)',
+        empleado:c.by||'', color:'var(--purple)',
         id: c.id, fuente:'conteo'
       });
+    });
+  }
+  // Agua
+  if (!filterType || filterType==='agua') {
+    (db.agua||[]).forEach(function(r){
+      if (filterEmp) return;
+      all.push({ fecha:r.created_at||r.date||'', tipo:'agua', tag:'H2O', titulo:'💧 Agua lote '+r.lot_code+' — '+(r.estado||r.nivel||''), sub:r.obs||'', lote:r.lot_code||'', empleado:r.by||'', color:'var(--blue)', id:r.id, fuente:'agua' });
+    });
+  }
+  // Sal
+  if (!filterType || filterType==='sal') {
+    (db.sal||[]).forEach(function(r){
+      if (filterEmp) return;
+      all.push({ fecha:r.created_at||r.date||'', tipo:'sal', tag:'SAL', titulo:'🧂 Sal lote '+r.lot_code+' — '+(r.qty||0)+' kg', sub:(r.tipo||'')+(r.obs?' — '+r.obs:''), lote:r.lot_code||'', empleado:r.by||'', color:'var(--amber2)', id:r.id, fuente:'sal' });
+    });
+  }
+  // Partos
+  if (!filterType || filterType==='parto') {
+    (db.partos||[]).forEach(function(r){
+      if (filterEmp) return;
+      all.push({ fecha:r.created_at||r.date||'', tipo:'parto', tag:'PAR', titulo:'🐣 Parto lote '+r.lot_code+' — '+(r.sexo==='macho'?'Torillo':'Ternera')+(r.estado==='muerto'?' ❌ Mortinato':''), sub:(r.peso?r.peso+' kg':'')+(r.notes?' — '+r.notes:''), lote:r.lot_code||'', empleado:r.by||'', color:'var(--green)', id:r.id, fuente:'partos' });
+    });
+  }
+  // Alimento
+  if (!filterType || filterType==='alimento') {
+    (db.alimento||[]).forEach(function(r){
+      if (filterEmp) return;
+      all.push({ fecha:r.created_at||r.date||'', tipo:'alimento', tag:'ALI', titulo:'🌿 Alimento lote '+r.lot_code+' — '+(r.qty||0)+' kg', sub:r.obs||'', lote:r.lot_code||'', empleado:r.by||'', color:'var(--green)', id:r.id, fuente:'alimento' });
+    });
+  }
+  // Bajas
+  if (!filterType || filterType==='baja') {
+    (db.bajas||[]).forEach(function(r){
+      if (filterEmp) return;
+      var ventaInfo = r.venta_registrada ? ' — Vendido Bs.'+(r.venta_total||0) : r.venta_carne ? ' — Venta carne pendiente' : '';
+      all.push({ fecha:r.created_at||r.fecha||'', tipo:'baja', tag:'BAJA', titulo:'🪦 Baja #'+(r.animal_id||'?')+' — '+(r.causa||'desconocida')+(r.ultimo_peso?' — '+r.ultimo_peso+' kg':''), sub:(r.obs||'')+ventaInfo, lote:r.lot_code||'', empleado:r.by||'', color:'var(--red)', id:r.id, fuente:'bajas' });
+    });
+  }
+  // Diesel
+  if (!filterType || filterType==='diesel') {
+    (db.diesel||[]).forEach(function(r){
+      if (filterEmp) return;
+      var desc = r.type==='recarga' ? '🔄 Recarga diesel: '+(r.litros||0)+' L'+(r.proveedor?' — '+r.proveedor:'') : '⛽ Despacho: '+(r.litros||0)+' L'+(r.vehiculo?' — '+r.vehiculo:'');
+      all.push({ fecha:r.created_at||r.fecha||'', tipo:'diesel', tag:r.type==='recarga'?'REC':'DSP', titulo:desc, sub:r.obs||'', lote:'', empleado:r.by||'', color:'var(--blue)', id:r.id, fuente:'diesel' });
+    });
+  }
+  // Compras
+  if (!filterType || filterType==='compra') {
+    (db.purchases||[]).forEach(function(r){
+      if (filterEmp) return;
+      all.push({ fecha:r.created_at||r.date||'', tipo:'compra', tag:'COM', titulo:'🛒 Compra: '+(r.desc||'')+(r.qty?' x'+r.qty:''), sub:'Bs. '+(r.total||0)+(r.supplier?' — '+r.supplier:''), lote:'', empleado:r.by||'', color:'var(--purple)', id:r.id, fuente:'purchases' });
+    });
+  }
+  // Ventas
+  if (!filterType || filterType==='venta') {
+    (db.sales||[]).forEach(function(r){
+      if (filterEmp) return;
+      var isCarne = r.type==='carne_baja';
+      all.push({ fecha:r.created_at||r.date||'', tipo:'venta', tag:isCarne?'V-CR':'VTA', titulo:(isCarne?'🪦':'💰')+' Venta: '+(r.buyer||'')+(r.lot_code?' — Lote '+r.lot_code:''), sub:(r.animals||r.animal_count||0)+' cab — '+(r.kg||r.total_kg||0)+' kg — Bs. '+(r.total||0), lote:r.lot_code||'', empleado:r.by||'', color:'var(--green)', id:r.id, fuente:'sales' });
+    });
+  }
+  // Adelantos
+  if (!filterType || filterType==='adelanto') {
+    (db.advances||[]).forEach(function(r){
+      if (filterEmp && r.employee!==filterEmp) return;
+      all.push({ fecha:r.created_at||r.date||'', tipo:'adelanto', tag:'ADL', titulo:'💵 Adelanto: '+(r.employee||'')+' — Bs. '+(r.amount||0), sub:r.reason||'', lote:'', empleado:r.employee||r.by||'', color:'var(--amber2)', id:r.id, fuente:'advances' });
     });
   }
 
@@ -5572,8 +5652,13 @@ function renderActivitiesDesktop() {
 
     var topRow = '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">';
     topRow += '<span style="font-size:10px;font-weight:700;color:'+a.color+';background:rgba(0,0,0,.15);padding:1px 6px;border-radius:4px">'+a.tag+'</span>';
-    topRow += '<span style="font-size:11px;color:var(--muted);font-family:DM Mono,monospace">'+escH(a.fecha.slice(0,16).replace('T',' '))+'</span>';
-    if (a.empleado) topRow += '<span style="font-size:11px;color:var(--muted)">· '+escH(a.empleado)+'</span>';
+    topRow += '<span style="font-size:11px;color:var(--muted);font-family:DM Mono,monospace">'+fmtDT(a.fecha)+'</span>';
+    if (a.empleado) {
+      var _srcC2 = {Desktop:'#6366F1',Campo:'#22C55E',Auto:'#9CA3AF'};
+      var _c2 = _srcC2[a.empleado] || (a.empleado.indexOf('WhatsApp')===0?'#25D366':'');
+      if (_c2) topRow += '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:'+_c2+';color:#fff;font-weight:600;margin-left:2px">'+escH(a.empleado)+'</span>';
+      else topRow += '<span style="font-size:11px;color:var(--muted)">· '+escH(a.empleado)+'</span>';
+    }
     if (a.lote) topRow += '<span style="font-size:11px;color:var(--amber2)">· Lote '+escH(a.lote)+'</span>';
     topRow += '</div>';
 
@@ -6937,7 +7022,7 @@ function renderActividades() {
   if (!filterType || filterType==='parto') {
     (db.partos||[]).forEach(function(r){
       if(filterLot && r.lot_code!==filterLot) return;
-      all.push({date:r.date,tag:'PAR',color:'var(--green)',
+      all.push({date:r.date,ca:r.created_at||r.date,tag:'PAR',color:'var(--green)',
         title:'Parto: '+(r.sexo==='macho'?'Macho':'Hembra')+(r.peso?' '+r.peso+' kg':'')+' - '+(r.estado||''),
         sub:(r.cria_id?'Arete: '+r.cria_id:'')+(r.obs?' '+r.obs:''),lot:r.lot_code,by:r.by||''});
     });
@@ -6948,6 +7033,15 @@ function renderActividades() {
       all.push({date:r.date,created_at:r.created_at||'',tag:'ALI',color:'var(--green)',
         title:'Alimento: '+((r.tipo||'').replace(/_/g,' '))+' - '+(r.qty||0)+' kg',
         sub:r.obs||'',lot:r.lot_code,by:r.by||''});
+    });
+  }
+  if (!filterType || filterType==='baja') {
+    (db.bajas||[]).forEach(function(r){
+      if(filterLot && r.lot_code!==filterLot) return;
+      var ventaInfo = r.venta_registrada ? ' — ✓ Vendido Bs.'+(r.venta_total||0) : r.venta_carne ? ' — Venta carne pendiente' : '';
+      all.push({date:r.fecha,created_at:r.created_at||'',tag:'BAJA',color:'var(--red)',
+        title:'🪦 Baja: #'+(r.animal_id||'?')+' — '+(r.causa||'desconocida')+(r.ultimo_peso?' — '+r.ultimo_peso+' kg':''),
+        sub:(r.obs||'')+ventaInfo,lot:r.lot_code,by:r.by||''});
     });
   }
   if (!filterType || filterType==='movimiento') {
@@ -6978,7 +7072,7 @@ function renderActividades() {
         (safeSub?'<div style="color:var(--muted);margin-top:2px">'+safeSub+'</div>':'')+
         '<div style="color:var(--muted);font-size:10px;margin-top:3px">'+
           (r.lot?'<span style="color:var(--amber2);background:rgba(212,160,23,.08);padding:1px 6px;border-radius:3px;margin-right:6px">'+r.lot+'</span>':'')+
-          (r.by||'')+(r.by?' - ':'')+fmtDT(r.created_at||r.date||'')+
+          (function(){var src=r.by||'';var sc={Desktop:'#6366F1',Campo:'#22C55E',Auto:'#9CA3AF'};var c=sc[src]||(src.indexOf('WhatsApp')===0?'#25D366':'#9CA3AF');return src?'<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:'+c+';color:#fff;font-weight:600;margin-right:4px">'+escH(src)+'</span>':'';})()+ fmtDT(r.created_at||r.date||'')+
         '</div>'+
       '</div>';
     el.appendChild(row);
@@ -8228,7 +8322,7 @@ function renderDashWithPeriod() {
         row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(48,54,61,.4)';
         var info = document.createElement('div');
         var name = document.createElement('div'); name.style.cssText='font-size:12px;color:var(--text)'; name.textContent=s.buyer;
-        var meta = document.createElement('div'); meta.style.cssText='font-size:10px;color:var(--muted);font-family:"DM Mono",monospace'; meta.textContent='Lote '+s.lot_code+' · '+s.date;
+        var meta = document.createElement('div'); meta.style.cssText='font-size:10px;color:var(--muted);font-family:"DM Mono",monospace'; meta.textContent='Lote '+s.lot_code+' · '+fmtDT(s.created_at||s.date);
         info.appendChild(name); info.appendChild(meta);
         var amt = document.createElement('div'); amt.style.cssText='font-family:"DM Mono",monospace;font-size:12px;color:var(--green);font-weight:600'; amt.textContent='Bs. '+(s.total||0).toLocaleString();
         row.appendChild(info); row.appendChild(amt);
@@ -8250,7 +8344,7 @@ function renderDashWithPeriod() {
     } else {
       filteredActs.slice(-5).reverse().forEach(function(a){
         var div = document.createElement('div'); div.className='tl-item done';
-        var dateEl = document.createElement('div'); dateEl.className='tl-date'; dateEl.textContent=(a.date||'').slice(0,16)+' · '+escH(a.employee);
+        var dateEl = document.createElement('div'); dateEl.className='tl-date'; dateEl.textContent=fmtDT(a.created_at||a.date)+' · '+escH(a.employee);
         var ttl = document.createElement('div'); ttl.className='tl-ttl'; ttl.textContent=escH(a.desc);
         div.appendChild(dateEl); div.appendChild(ttl);
         if(a.lot){var sub=document.createElement('div');sub.className='tl-sub';sub.textContent='Lote '+escH(a.lot);div.appendChild(sub);}
@@ -8561,7 +8655,7 @@ function renderContabilidad() {
       var tr = document.createElement('tr');
       var cuentaColors = {COSTOS:'var(--amber2)',INGRESOS:'var(--green)',GASTOS:'var(--red)',INVERSIONES:'var(--blue)'};
       var byLabel = r.by || (r.origen==='auto'?'Auto':'');
-      tr.innerHTML='<td style="font-family:DM Mono,monospace;font-size:11px">'+escH(r.fecha||'')+'</td>'+
+      tr.innerHTML='<td style="font-family:DM Mono,monospace;font-size:11px">'+fmtDT(r.created_at||r.fecha)+'</td>'+
         '<td><span style="font-weight:600;color:'+(cuentaColors[r.cuenta]||'var(--muted)')+'">'+escH(r.cuenta||'')+'</span></td>'+
         '<td style="font-size:12px">'+escH(r.subcuenta||'-')+'</td>'+
         '<td><span class="bdg '+(r.tipo==='FIJO'?'bdg-blue':'bdg-amber')+'">'+escH(r.tipo||'')+'</span></td>'+
@@ -8917,7 +9011,7 @@ function renderHistorialSueldos() {
       '<td>Bs. '+((r.salario||0).toLocaleString())+'</td>'+
       '<td style="color:var(--amber2)">Bs. '+((r.adelantos||0).toLocaleString())+'</td>'+
       '<td style="font-weight:700;color:var(--green)">Bs. '+((r.pago_neto||0).toLocaleString())+'</td>'+
-      '<td style="font-size:12px;color:var(--muted)">'+escH(r.fecha_pago||'-')+'</td>'+
+      '<td style="font-size:12px;color:var(--muted)">'+fmtDT(r.fecha_pago||'-')+'</td>'+
       '<td>'+badge+'</td><td></td>';
     tr.lastElementChild.appendChild(delBtn);
     tbody.appendChild(tr);
@@ -9287,16 +9381,16 @@ function viewMaqHistorial(maqId) {
 
   var items = [];
   diesel.filter(function(d){return d.type==='despacho'&&matchMaq(d.vehiculo,maq);}).forEach(function(d){
-    items.push({date:d.fecha,icon:'⛽',color:'var(--amber2)',title:'Despacho: '+(parseFloat(d.litros)||0)+' L',sub:d.obs||''});
+    items.push({date:d.created_at||d.fecha,icon:'⛽',color:'var(--amber2)',title:'Despacho: '+(parseFloat(d.litros)||0)+' L',sub:d.obs||''});
   });
   diesel.filter(function(d){return d.type==='recarga'&&matchMaq(d.proveedor,maq);}).forEach(function(d){
-    items.push({date:d.fecha,icon:'🔄',color:'var(--green)',title:'Recarga: '+(parseFloat(d.litros)||0)+' L — Bs.'+(d.total||0),sub:d.proveedor||''});
+    items.push({date:d.created_at||d.fecha,icon:'🔄',color:'var(--green)',title:'Recarga: '+(parseFloat(d.litros)||0)+' L — Bs.'+(d.total||0),sub:d.proveedor||''});
   });
   aceite.filter(function(a){return matchMaq(a.vehiculo||a.equipo,maq);}).forEach(function(a){
-    items.push({date:a.fecha,icon:'🛢',color:'var(--blue)',title:'Cambio aceite'+(a.tipo?' — '+a.tipo:''),sub:(a.kmhr?a.kmhr+' hrs/km':'')+(a.costo?' Bs.'+a.costo:'')});
+    items.push({date:a.created_at||a.fecha,icon:'🛢',color:'var(--blue)',title:'Cambio aceite'+(a.tipo?' — '+a.tipo:''),sub:(a.kmhr?a.kmhr+' hrs/km':'')+(a.costo?' Bs.'+a.costo:'')});
   });
   maint.filter(function(r){return matchMaq(r.equipo||r.title||r.desc,maq);}).forEach(function(r){
-    items.push({date:r.date,icon:'🔧',color:'var(--red)',title:(r.title||r.desc||'Mantenimiento'),sub:(r.cost?'Bs.'+r.cost:'')+(r.status?' — '+r.status:'')});
+    items.push({date:r.created_at||r.date,icon:'🔧',color:'var(--red)',title:(r.title||r.desc||'Mantenimiento'),sub:(r.cost?'Bs.'+r.cost:'')+(r.status?' — '+r.status:'')});
   });
   items.sort(function(a,b){return (b.date||'').localeCompare(a.date||'');});
 
@@ -9311,7 +9405,7 @@ function viewMaqHistorial(maqId) {
     content.innerHTML = items.map(function(i){
       return '<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid rgba(48,54,61,.3)">'+
         '<div style="width:28px;height:28px;border-radius:6px;background:var(--sur2);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">'+i.icon+'</div>'+
-        '<div style="flex:1"><div style="display:flex;justify-content:space-between"><span style="font-weight:600;font-size:12px;color:'+i.color+'">'+escH(i.title)+'</span><span style="font-size:10px;color:var(--muted);font-family:DM Mono,monospace">'+(i.date||'')+'</span></div>'+(i.sub?'<div style="font-size:10px;color:var(--muted)">'+escH(i.sub)+'</div>':'')+'</div>'+
+        '<div style="flex:1"><div style="display:flex;justify-content:space-between"><span style="font-weight:600;font-size:12px;color:'+i.color+'">'+escH(i.title)+'</span><span style="font-size:10px;color:var(--muted);font-family:DM Mono,monospace">'+fmtDT(i.date)+'</span></div>'+(i.sub?'<div style="font-size:10px;color:var(--muted)">'+escH(i.sub)+'</div>':'')+'</div>'+
       '</div>';
     }).join('');
   }
@@ -9418,7 +9512,7 @@ function renderDieselDesktop() {
         var typeColor = type==='recarga'?'var(--green)':type==='ajuste'?(r.ajuste_direccion==='merma'?'var(--red)':'var(--green)'):'var(--blue)';
         var litrosSign = type==='recarga'?'+':'-';
         var tr = document.createElement('tr');
-        tr.innerHTML = '<td>'+escH(r.fecha||'')+'</td>'+
+        tr.innerHTML = '<td>'+fmtDT(r.created_at||r.fecha)+'</td>'+
           '<td style="font-weight:600;color:'+typeColor+'">'+typeLabel+'</td>'+
           '<td style="font-family:DM Mono,monospace;color:'+typeColor+';font-weight:600">'+litrosSign+((parseFloat(r.litros)||0).toFixed(1))+' L</td>'+
           '<td style="font-size:12px">'+escH(type==='ajuste'?(r.motivo||'-'):(r.vehiculo||'-'))+'</td>'+
@@ -9441,7 +9535,7 @@ function renderDieselDesktop() {
       aceite_tbody.innerHTML = '';
       aceiteReg.forEach(function(r){
         var tr = document.createElement('tr');
-        tr.innerHTML = '<td>'+escH(r.fecha||'')+'</td>'+
+        tr.innerHTML = '<td>'+fmtDT(r.created_at||r.fecha)+'</td>'+
           '<td style="font-weight:500">'+escH(r.vehiculo||'-')+'</td>'+
           '<td style="font-family:DM Mono,monospace">'+escH((r.kmhr||'-').toString())+'</td>'+
           '<td>'+escH(r.tipo||'-')+'</td>'+
@@ -9966,7 +10060,7 @@ function renderLluviasDesktop() {
         function mmCell(v,col){ var color = v===0?'var(--muted)':col||'var(--blue)'; return '<td style="font-family:DM Mono,monospace;font-weight:600;color:'+color+';text-align:center">'+(v>0?v.toFixed(1):'-')+'</td>'; }
         var tr = document.createElement('tr');
         var pluvioCells = PLUVIOS.map(function(p){ return mmCell(getLluviaMm(r,p.key),p.color); }).join('');
-        tr.innerHTML = '<td>'+escH(r.fecha||'')+'</td>'+pluvioCells+
+        tr.innerHTML = '<td>'+fmtDT(r.created_at||r.fecha)+'</td>'+pluvioCells+
           '<td style="font-family:DM Mono,monospace;font-weight:700;color:var(--amber2);text-align:center">'+avg.toFixed(1)+'</td>'+
           '<td style="color:var(--muted);font-size:11px">'+escH(r.obs||'-')+'</td>'+
           '<td><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteLluvia(\'' + r.id + '\')">x</button></td>';
@@ -10135,7 +10229,7 @@ function renderMantenimiento() {
     var meta = document.createElement('div');
     meta.style.cssText = 'display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);padding:8px 0;border-top:1px solid var(--bor);border-bottom:1px solid var(--bor);margin-bottom:10px';
     if (m.who) { var w=document.createElement('span'); w.innerHTML='👷 <strong style="color:var(--text)">'+escH(m.who)+'</strong>'; meta.appendChild(w); }
-    if (m.date) { var d=document.createElement('span'); d.innerHTML='📅 '+m.date; meta.appendChild(d); }
+    if (m.date) { var d=document.createElement('span'); d.innerHTML='📅 '+fmtDT(m.created_at||m.date); meta.appendChild(d); }
     if (m.location) { var l=document.createElement('span'); l.innerHTML='📍 '+escH(m.location); meta.appendChild(l); }
     card.appendChild(meta);
 
@@ -10415,13 +10509,21 @@ function renderParams() {
       if (key==='potreros' && item.capacity) {
         var cap = document.createElement('span');
         cap.style.cssText='font-size:10px;color:var(--muted);margin-left:8px';
-        cap.textContent = 'Cap. '+item.capacity+' animales';
+        var curInP = (db.lots||[]).filter(function(l){return (l.paddock||'').toLowerCase()===(item.name||'').toLowerCase();}).reduce(function(s,l){return s+(l.animal_count||0);},0);
+        cap.textContent = curInP + '/' + item.capacity + ' cab';
+        if (curInP >= item.capacity) cap.style.color = 'var(--red)';
         left.appendChild(cap);
       }
+      var btns = document.createElement('div');
+      btns.style.cssText='display:flex;gap:4px';
+      var edit = document.createElement('button');
+      edit.className='btn btn-ghost btn-sm'; edit.style.cssText='color:var(--blue);font-size:11px'; edit.textContent='✎';
+      edit.onclick=(function(k2,i){ return function(){ editParam(k2,i); }; })(key,idx);
       var del = document.createElement('button');
       del.className='btn btn-ghost btn-sm'; del.style.color='var(--red)'; del.textContent='✕';
       del.onclick=(function(k2,i){ return function(){ deleteParam(k2,i); }; })(key,idx);
-      row.appendChild(left); row.appendChild(del);
+      btns.appendChild(edit); btns.appendChild(del);
+      row.appendChild(left); row.appendChild(btns);
       el.appendChild(row);
     });
   });
@@ -10452,11 +10554,65 @@ function addParam(key, item) {
 function deleteParam(key, idx) {
   var params = getParams();
   var name = params[key][idx].name;
-  if (!confirm('00bfEliminar ' + name + '?')) return;
+  if (!confirm('Eliminar ' + name + '?')) return;
   params[key].splice(idx, 1);
   saveParams(params);
   renderParams();
   toast(name+' eliminado', 'success');
+}
+
+function editParam(key, idx) {
+  var params = getParams();
+  var item = params[key][idx];
+  if (!item) return;
+  var labels = {potreros:'Potrero',categorias:'Categoria',razas:'Raza',actividades:'Actividad'};
+  var overlay = document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;display:flex;align-items:center;justify-content:center';
+  var modal = document.createElement('div');
+  modal.style.cssText='background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:20px;width:360px';
+  var html = '<div style="font-size:15px;font-weight:700;margin-bottom:14px">Editar '+(labels[key]||key)+'</div>';
+  html += '<div style="margin-bottom:10px"><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Nombre</label><input class="form-input" id="edit-param-name" value="'+escH(item.name)+'" style="width:100%"></div>';
+  if (key === 'potreros') {
+    html += '<div style="margin-bottom:10px"><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Capacidad (animales)</label><input class="form-input" type="number" id="edit-param-cap" value="'+(item.capacity||'')+'" placeholder="Sin limite" style="width:100%"></div>';
+  }
+  html += '<div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-ghost" id="edit-param-cancel" style="flex:1">Cancelar</button><button class="btn btn-primary" id="edit-param-save" style="flex:1">Guardar</button></div>';
+  modal.innerHTML = html;
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', function(e){ if(e.target===overlay){document.body.removeChild(overlay);} });
+  document.getElementById('edit-param-cancel').addEventListener('click', function(){ document.body.removeChild(overlay); });
+  document.getElementById('edit-param-save').addEventListener('click', function(){
+    var newName = (document.getElementById('edit-param-name').value||'').trim();
+    if (!newName) { toast('El nombre no puede estar vacio','error'); return; }
+    var oldName = item.name;
+    item.name = newName;
+    if (key === 'potreros') {
+      item.capacity = parseInt(document.getElementById('edit-param-cap').value) || 0;
+      if (oldName !== newName) {
+        (db.lots||[]).forEach(function(l){
+          if ((l.paddock||'').toLowerCase() === oldName.toLowerCase()) l.paddock = newName;
+        });
+        saveDB();
+      }
+    }
+    if (key === 'categorias' && oldName !== newName) {
+      (db.lots||[]).forEach(function(l){
+        if ((l.category||'').toLowerCase() === oldName.toLowerCase()) l.category = newName;
+      });
+      saveDB();
+    }
+    if (key === 'razas' && oldName !== newName) {
+      (db.lots||[]).forEach(function(l){
+        if ((l.breed||'').toLowerCase() === oldName.toLowerCase()) l.breed = newName;
+      });
+      saveDB();
+    }
+    saveParams(params);
+    renderParams();
+    document.body.removeChild(overlay);
+    toast((labels[key]||key)+' actualizado: '+newName, 'success');
+  });
+  document.getElementById('edit-param-name').focus();
 }
 
 function updateParamSelects() {
@@ -11513,13 +11669,13 @@ function renderBajasDesktop() {
   var tbody = document.getElementById('bajas-tbody');
   if (tbody) {
     if (!registros.length) {
-      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">Sin bajas registradas en ' + selYear + '</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--muted)">Sin bajas registradas en ' + selYear + '</td></tr>';
     } else {
       tbody.innerHTML = '';
       registros.slice().sort(function(a,b){ return (b.fecha||'').localeCompare(a.fecha||''); }).forEach(function(b){
         var causaColors = {enfermedad:'var(--red)',accidente:'var(--amber2)',depredador:'var(--red)',rayo:'var(--blue)',intoxicacion:'var(--red)',desconocida:'var(--muted)'};
         var tr = document.createElement('tr');
-        tr.innerHTML = '<td>'+escH(b.fecha||'')+'</td>'+
+        tr.innerHTML = '<td style="font-family:DM Mono,monospace;font-size:11px">'+fmtDT(b.created_at||b.fecha)+'</td>'+
           '<td style="font-family:DM Mono,monospace;font-weight:700;color:var(--amber2)">#'+escH(b.animal_id||'')+'</td>'+
           '<td>'+escH(b.lot_code||'')+'</td>'+
           '<td style="font-size:11px">'+escH(b.raza||'-')+'</td>'+
@@ -11527,9 +11683,10 @@ function renderBajasDesktop() {
           '<td style="color:'+(causaColors[b.causa]||'var(--muted)')+'">'+escH(b.causa||'-')+'</td>'+
           '<td style="font-size:11px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis">'+escH(b.obs||'-')+'</td>'+
           '<td>'+(b.has_photo?'<span style="cursor:pointer" onclick="viewBajaPhoto(\'baja_'+b.id+'\')">📷</span>':'-')+'</td>'+
+          '<td style="font-size:10px;color:var(--muted)">'+escH(b.by||'Desktop')+'</td>'+
           '<td style="display:flex;gap:3px;flex-wrap:wrap">'+
-            (b.venta_carne && !b.venta_registrada ? '<button class="btn btn-ghost btn-sm" style="font-size:10px;color:var(--green)" onclick="openVentaCarne('+b.id+')">💰 Vender carne</button>' : b.venta_registrada ? '<span style="font-size:10px;color:var(--green)">✓ Vendido</span>' : '') +
-            '<button class="btn btn-ghost btn-sm" style="color:var(--red);font-size:10px" onclick="deleteBaja('+b.id+')">x</button>'+
+            (b.venta_carne && !b.venta_registrada ? '<button class="btn btn-ghost btn-sm" style="font-size:10px;color:var(--green)" onclick="openVentaCarne(\''+b.id+'\')">💰 Vender carne</button>' : b.venta_registrada ? '<span style="font-size:10px;color:var(--green)">✓ Vendido</span>' : '') +
+            '<button class="btn btn-ghost btn-sm" style="color:var(--red);font-size:10px" onclick="deleteBaja(\''+b.id+'\')">x</button>'+
           '</td>';
         tbody.appendChild(tr);
       });
@@ -11538,7 +11695,7 @@ function renderBajasDesktop() {
 }
 
 function openVentaCarne(bajaId) {
-  var baja = (db.bajas||[]).find(function(b){ return b.id === bajaId; });
+  var baja = (db.bajas||[]).find(function(b){ return String(b.id) === String(bajaId); });
   if (!baja) { toast('Baja no encontrada','error'); return; }
   document.getElementById('vc-baja-id').value = bajaId;
   document.getElementById('vc-animal-info').innerHTML =
@@ -11564,15 +11721,15 @@ function calcVentaCarne() {
 }
 
 function saveVentaCarne() {
-  var bajaId = parseInt((document.getElementById('vc-baja-id')||{}).value) || 0;
+  var bajaId = ((document.getElementById('vc-baja-id')||{}).value||'').trim();
   var fecha = (document.getElementById('vc-fecha')||{}).value || '';
   var comprador = ((document.getElementById('vc-comprador')||{}).value || '').trim();
   var kg = parseFloat((document.getElementById('vc-kg')||{}).value) || 0;
   var precio = parseFloat((document.getElementById('vc-precio')||{}).value) || 0;
   var obs = ((document.getElementById('vc-obs')||{}).value || '').trim();
   if (!fecha || !kg || !precio) { toast('Completa fecha, kg y precio','error'); return; }
-  var baja = (db.bajas||[]).find(function(b){ return b.id === bajaId; });
-  if (!baja) { toast('Baja no encontrada','error'); return; }
+  var baja = (db.bajas||[]).find(function(b){ return String(b.id) === String(bajaId); });
+  if (!baja) { toast('Baja no encontrada (ID: '+bajaId+')','error'); return; }
   var total = Math.round(kg * precio * 100) / 100;
   // Register as sale
   if (!db.sales) db.sales = [];
@@ -11610,10 +11767,11 @@ function viewBajaPhoto(txId) {
   fetch(apiUrl + '/transaction-image/' + txId, { headers: { 'Authorization': 'Bearer ' + token } })
     .then(function(r){ return r.json(); })
     .then(function(d){
-      if (d.image) {
+      var imgSrc = d.image || (d.base64 ? 'data:' + (d.mime_type||'image/jpeg') + ';base64,' + d.base64 : null);
+      if (imgSrc) {
         var lb = document.getElementById('photo-lightbox');
         var img = document.getElementById('photo-lightbox-img');
-        if (lb && img) { img.src = d.image; lb.style.display = 'flex'; }
+        if (lb && img) { img.src = imgSrc; lb.style.display = 'flex'; }
       } else { toast('Foto no disponible','error'); }
     })
     .catch(function(){ toast('Error al cargar foto','error'); });
@@ -11622,7 +11780,7 @@ function viewBajaPhoto(txId) {
 function deleteBaja(id) {
   if (!confirm('¿Eliminar este registro de baja?')) return;
   trackDeletion(id, 'bajas');
-  db.bajas = (db.bajas||[]).filter(function(b){ return b.id !== id; });
+  db.bajas = (db.bajas||[]).filter(function(b){ return String(b.id) !== String(id); });
   saveDB();
   replaceTableInRailway('bajas', db.bajas || []);
   renderBajasDesktop();
@@ -11784,7 +11942,7 @@ function confirmarBajaAnimal() {
     fetch(apiUrl + '/transaction-image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-      body: JSON.stringify({ tx_id: 'baja_' + bajaRecord.id, tx_type: 'bajas', image: _bajaPhotoBase64 })
+      body: JSON.stringify({ transaction_id: 'baja_' + bajaRecord.id, transaction_type: 'bajas', base64: _bajaPhotoBase64.replace(/^data:image\/\w+;base64,/, ''), mime_type: 'image/jpeg', uploaded_by: 'Desktop' })
     }).catch(function() {});
   }
 
@@ -12554,7 +12712,7 @@ function renderReportesGerenciales() {
   }).join('')||'<tr><td colspan="3" style="color:'+green+';text-align:center;padding:12px">Sin alertas activas</td></tr>';
 
   var maintRows=(db.maintenance||[]).slice().reverse().slice(0,5).map(function(m){
-    return '<tr><td '+TD+'>'+(m.category||'')+'</td><td '+TD+'>'+(m.desc||'').slice(0,40)+'</td><td '+TD+' style="font-family:DM Mono,monospace">'+(m.date||'')+'</td><td '+TD+' style="font-family:DM Mono,monospace;color:'+gold+'">'+km(m.cost||0)+'</td></tr>';
+    return '<tr><td '+TD+'>'+(m.category||'')+'</td><td '+TD+'>'+(m.desc||'').slice(0,40)+'</td><td '+TD+' style="font-family:DM Mono,monospace">'+fmtDT(m.created_at||m.date)+'</td><td '+TD+' style="font-family:DM Mono,monospace;color:'+gold+'">'+km(m.cost||0)+'</td></tr>';
   }).join('')||'<tr><td colspan="4" style="color:'+muted+';text-align:center;padding:12px">Sin registros</td></tr>';
 
   function kpiBox(val,lbl,sub,color){

@@ -1,4 +1,5 @@
 require('dotenv').config();
+const PDFDocument = require('pdfkit');
 const express = require('express');
 const cors    = require('cors');
 const crypto  = require('crypto');
@@ -502,7 +503,7 @@ app.post('/api/send-whatsapp-pdf', auth, async (req, res) => {
     const fullBody = Buffer.concat([Buffer.from(parts[0]), Buffer.from(parts[1]), pdfBuffer, Buffer.from(bodyEnd)]);
 
     // 1. Upload media
-    const fetch = (await import('node-fetch')).default;
+    // Node 18+ has built-in fetch, no need for node-fetch
     const uploadRes = await fetch(`https://graph.facebook.com/v21.0/${phoneId}/media`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': `multipart/form-data; boundary=${boundary}` },
@@ -678,7 +679,6 @@ app.get('/api/animal/:animalId', auth, async (req, res) => {
 // ── PDF Generation ──────────────────────────────────────────
 app.post('/api/generate-pdf', auth, async (req, res) => {
   try {
-    const PDFDocument = require('pdfkit');
     const { type, data } = req.body;
     if (!type) return res.status(400).json({ error: 'type requerido' });
     
@@ -1113,7 +1113,7 @@ app.get('/api/sync-pull', auth, async (req, res) => {
       inventory_counts: Array.isArray(inventory_counts) ? inventory_counts : [],
       branding: Array.isArray(branding) ? {} : (branding || {}),
       report_params: Array.isArray(report_params) ? {} : (report_params || {}),
-      diesel_tank: Array.isArray(diesel_tank) ? {} : (diesel_tank || {}),
+      diesel_tank: diesel_tank || [],
       pluvios_config: Array.isArray(pluvios_config) ? pluvios_config : [],
       pwa_latest_version: PWA_VERSION, timestamp: new Date().toISOString(),
     });

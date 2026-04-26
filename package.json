@@ -1,7 +1,7 @@
 {
   "name": "estancia5m",
-  "version": "1.1.51",
-  "description": "Sistema de Gesti\u00f3n Ganadera \u2014 Estancia 5M",
+  "version": "1.2.1",
+  "description": "Sistema de Gestión Ganadera — Estancia 5M",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -18,7 +18,8 @@
     "version:patch": "node scripts/bump-version.js patch",
     "version:minor": "node scripts/bump-version.js minor",
     "version:major": "node scripts/bump-version.js major",
-    "release:patch": "node scripts/bump-version.js patch && git add package.json && git commit -m \"bump version\" && node -e \"const p=require('./package.json');require('child_process').execSync('git tag v'+p.version+' && git push origin main --tags')\""
+    "release:patch": "node scripts/bump-version.js patch && git add package.json && git commit -m \"bump version\" && node -e \"const p=require('./package.json');require('child_process').execSync('git tag v'+p.version+' && git push origin main --tags')\"",
+    "build": "npm install pdfkit"
   },
   "build": {
     "appId": "com.sgbolivia.estancia5m",
@@ -117,7 +118,10 @@
     "electron-store": "^8.1.0",
     "electron-updater": "5.3.0",
     "node-fetch": "^3.3.2",
-    "pdfkit": "^0.16.0"
+    "pdfkit": "^0.16.0",
+    "express": "^4.18.2",
+    "pg": "^8.11.3",
+    "cors": "^2.8.5"
   },
   "devDependencies": {
     "electron": "22.3.27",
