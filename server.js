@@ -986,7 +986,7 @@ app.post('/api/sync-push', auth, async (req, res) => {
       agua:'agua', sal:'sal', conteo:'conteo', partos:'partos', alimento:'alimento',
       lluvias:'lluvias', diesel:'diesel', aceite:'aceite',
       cuentas:'cuentas', kardex:'kardex', historial_sueldos:'historial_sueldos',
-      compras_ganado:'compras_ganado',
+      compras_ganado:'compras_ganado', bajas:'bajas', maquinaria:'maquinaria',
     };
     for (const [dbKey, tableKey] of Object.entries(FIELD_TABLES)) {
       if (Array.isArray(db[dbKey]) && db[dbKey].length > 0) {

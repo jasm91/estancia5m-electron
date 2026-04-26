@@ -3593,6 +3593,8 @@ function pullFromRailwayDesktop(thenPush) {
       }
 
       localStorage.setItem(DB_KEY, JSON.stringify(db));
+      if (typeof renderBajasDesktop === 'function') try { renderBajasDesktop(); } catch(e){}
+      if (typeof renderActividades === 'function') try { renderActividades(); } catch(e){}
 
       // Aplicar branding si viene en el pull
       // Sincronizar animales desde Railway
@@ -14298,6 +14300,153 @@ function sendAiMsg() {
     addAiMsg('assistant', 'Error: ' + e.message);
   });
 }
+
+// ══════════════════════════════════════════════════
+// CLIMA — Open-Meteo (sin API key)
+// ══════════════════════════════════════════════════
+var WEATHER_COORDS = { lat: -16.8696, lon: -60.7774 }; // Default: Propiedad César
+var _weatherData = null;
+var _weatherInterval = null;
+
+function getWeatherCoords() {
+  try {
+    var rp = JSON.parse(localStorage.getItem('e5m_report_params')||'{}');
+    if (rp.lat && rp.lon) return { lat: rp.lat, lon: rp.lon };
+  } catch(e){}
+  return WEATHER_COORDS;
+}
+
+function fetchWeather() {
+  if (!navigator.onLine) return;
+  var coords = getWeatherCoords();
+  var url = 'https://api.open-meteo.com/v1/forecast?latitude='+coords.lat+'&longitude='+coords.lon+
+    '&hourly=temperature_2m,relative_humidity_2m,precipitation_probability,wind_speed_10m'+
+    '&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,uv_index_max'+
+    '&current=temperature_2m,relative_humidity_2m,wind_speed_10m,apparent_temperature,precipitation,weather_code'+
+    '&timezone=America/La_Paz&forecast_days=7';
+  fetch(url).then(function(r){return r.json();}).then(function(d){
+    _weatherData = d;
+    localStorage.setItem('e5m_weather_cache', JSON.stringify({data:d, ts:Date.now()}));
+    renderWeatherWidget();
+    checkWeatherAlerts(d);
+  }).catch(function(e){ console.warn('[Weather] Error:', e.message); });
+}
+
+function getWeatherIcon(code) {
+  if (!code && code !== 0) return '🌡️';
+  if (code === 0) return '☀️';
+  if (code <= 3) return '⛅';
+  if (code <= 48) return '🌫️';
+  if (code <= 57) return '🌧️';
+  if (code <= 67) return '🌧️';
+  if (code <= 77) return '❄️';
+  if (code <= 82) return '🌧️';
+  if (code <= 86) return '❄️';
+  if (code >= 95) return '⛈️';
+  return '🌡️';
+}
+
+function renderWeatherWidget() {
+  var el = document.getElementById('weather-widget');
+  if (!el || !_weatherData) return;
+  var c = _weatherData.current || {};
+  var d = _weatherData.daily || {};
+  var icon = getWeatherIcon(c.weather_code);
+  var temp = Math.round(c.temperature_2m || 0);
+  var feels = Math.round(c.apparent_temperature || 0);
+  var hum = c.relative_humidity_2m || 0;
+  var wind = Math.round(c.wind_speed_10m || 0);
+  // THI (Temperature Humidity Index) for cattle stress
+  var thi = Math.round(temp - (0.55 - 0.0055 * hum) * (temp - 14.5));
+  var thiColor = thi >= 79 ? 'var(--red)' : thi >= 72 ? 'var(--amber2)' : 'var(--green)';
+  var thiLabel = thi >= 79 ? 'PELIGRO' : thi >= 72 ? 'ESTRES' : 'NORMAL';
+
+  var html = '<div style="display:flex;align-items:center;gap:16px;margin-bottom:10px">';
+  html += '<div style="font-size:36px">'+icon+'</div>';
+  html += '<div><div style="font-size:28px;font-weight:700">'+temp+'°C</div>';
+  html += '<div style="font-size:11px;color:var(--muted)">Sensación '+feels+'°C</div></div>';
+  html += '<div style="margin-left:auto;text-align:right">';
+  html += '<div style="font-size:11px">💧 '+hum+'% hum</div>';
+  html += '<div style="font-size:11px">💨 '+wind+' km/h</div>';
+  html += '<div style="font-size:10px;font-weight:700;color:'+thiColor+';margin-top:2px">THI '+thi+' '+thiLabel+'</div>';
+  html += '</div></div>';
+
+  // 7-day forecast
+  html += '<div style="display:flex;gap:4px;overflow-x:auto;padding:6px 0">';
+  var dias = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  for (var i = 0; i < Math.min(7, (d.time||[]).length); i++) {
+    var dt = new Date(d.time[i]+'T12:00:00');
+    var dia = dias[dt.getDay()];
+    var mn = Math.round(d.temperature_2m_min[i]);
+    var mx = Math.round(d.temperature_2m_max[i]);
+    var lluvia = Math.round(d.precipitation_probability_max[i]||0);
+    var precip = (d.precipitation_sum[i]||0).toFixed(0);
+    html += '<div style="flex:0 0 auto;text-align:center;padding:4px 6px;border-radius:6px;background:var(--sur2);border:1px solid var(--bor);min-width:56px">';
+    html += '<div style="font-size:10px;font-weight:700;color:var(--muted)">'+(i===0?'Hoy':dia)+'</div>';
+    html += '<div style="font-size:11px;font-weight:700">'+mn+'°/'+mx+'°</div>';
+    if (lluvia > 20) html += '<div style="font-size:9px;color:var(--blue)">🌧️'+lluvia+'%</div>';
+    if (parseFloat(precip) > 0) html += '<div style="font-size:9px;color:var(--blue)">'+precip+'mm</div>';
+    html += '</div>';
+  }
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function checkWeatherAlerts(d) {
+  if (!d || !d.current) return;
+  var c = d.current;
+  var temp = c.temperature_2m || 0;
+  var hum = c.relative_humidity_2m || 0;
+  var wind = c.wind_speed_10m || 0;
+  var thi = Math.round(temp - (0.55 - 0.0055 * hum) * (temp - 14.5));
+  var alerts = [];
+  if (temp >= 38) alerts.push({level:'critico', msg:'🔴 CALOR EXTREMO: '+Math.round(temp)+'°C — Riesgo de golpe de calor. Asegurar acceso a agua y sombra.'});
+  else if (temp >= 35) alerts.push({level:'alto', msg:'🟡 CALOR: '+Math.round(temp)+'°C — Monitorear consumo de agua.'});
+  if (temp <= 2) alerts.push({level:'critico', msg:'🔴 HELADA: '+Math.round(temp)+'°C — Proteger terneros y animales débiles.'});
+  else if (temp <= 5) alerts.push({level:'alto', msg:'🟡 FRÍO: '+Math.round(temp)+'°C — Vigilar terneros recién nacidos.'});
+  if (thi >= 79) alerts.push({level:'critico', msg:'🔴 THI '+thi+' PELIGRO — Estrés calórico severo. Reducir movimientos y asegurar agua.'});
+  else if (thi >= 72) alerts.push({level:'alto', msg:'🟡 THI '+thi+' ESTRÉS — Los animales podrían reducir consumo de alimento.'});
+  if (wind >= 60) alerts.push({level:'critico', msg:'🔴 VIENTO: '+Math.round(wind)+' km/h — Riesgo para techos e infraestructura.'});
+  // Check daily for heavy rain
+  if (d.daily && d.daily.precipitation_sum) {
+    for (var i = 0; i < Math.min(3, d.daily.precipitation_sum.length); i++) {
+      if (d.daily.precipitation_sum[i] >= 50) {
+        var dia = i === 0 ? 'HOY' : i === 1 ? 'MAÑANA' : d.daily.time[i];
+        alerts.push({level:'alto', msg:'🟡 LLUVIA INTENSA '+dia+': '+d.daily.precipitation_sum[i]+'mm — Riesgo de inundación en potreros bajos.'});
+      }
+    }
+  }
+  var alertEl = document.getElementById('weather-alerts');
+  if (alertEl && alerts.length) {
+    alertEl.innerHTML = alerts.map(function(a){
+      var bg = a.level==='critico' ? 'rgba(239,68,68,.12)' : 'rgba(245,166,35,.1)';
+      var bor = a.level==='critico' ? 'rgba(239,68,68,.3)' : 'rgba(245,166,35,.3)';
+      return '<div style="padding:8px 12px;border-radius:8px;background:'+bg+';border:1px solid '+bor+';font-size:12px;margin-bottom:4px">'+a.msg+'</div>';
+    }).join('');
+  } else if (alertEl) { alertEl.innerHTML = ''; }
+  // Store for bot context
+  localStorage.setItem('e5m_weather_alerts', JSON.stringify(alerts.map(function(a){return a.msg;})));
+}
+
+// Auto-fetch every 30 min
+function initWeather() {
+  try {
+    var cache = JSON.parse(localStorage.getItem('e5m_weather_cache')||'{}');
+    if (cache.data && cache.ts && Date.now() - cache.ts < 1800000) { _weatherData = cache.data; renderWeatherWidget(); checkWeatherAlerts(cache.data); }
+  } catch(e){}
+  fetchWeather();
+  if (_weatherInterval) clearInterval(_weatherInterval);
+  _weatherInterval = setInterval(fetchWeather, 1800000);
+}
+setTimeout(initWeather, 2000);
+
+// Auto-pull from Railway every 5 minutes
+setInterval(function() {
+  if (navigator.onLine && typeof pullFromRailwayDesktop === 'function') {
+    pullFromRailwayDesktop(false);
+  }
+}, 300000);
+
 </script>
 
 </body>
