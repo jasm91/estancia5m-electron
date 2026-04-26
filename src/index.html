@@ -556,6 +556,7 @@ function publishTasksToPWA() {
     <div class="nav-lbl">Equipo</div>
     <button class="nav-btn" onclick="showPage('tareas',this)"><span class="nav-icon">📋</span>Tareas <span class="nav-badge nb-red" id="nb-tareas" style="display:none"></span></button>
     <button class="nav-btn" onclick="showPage('actividades',this)"><span class="nav-icon">📝</span>Actividades</button>
+    <!-- <button class="nav-btn" onclick="showPage('inteligencia',this);initInteligencia()"><span class="nav-icon">📡</span>Inteligencia</button> -->
   </div>
   <div class="nav-sec">
     <div class="nav-lbl">Sistema</div>
@@ -841,6 +842,9 @@ function publishTasksToPWA() {
           <option value="baja">🪦 Bajas</option>
           <option value="mantenimiento">🔧 Mantenimiento</option>
           <option value="movimiento">🔄 Movimientos</option>
+      <option value="lluvia">🌧️ Lluvias</option>
+      <option value="aceite">🛢️ Aceite</option>
+      <option value="tarea">✅ Tareas</option>
         </select>
       </div>
     </div>
@@ -1164,10 +1168,8 @@ function publishTasksToPWA() {
     </div>
     <div class="form-group"><label class="form-label">Tipo</label>
       <select class="form-select" id="kx-tipo" onchange="onKxTipoChange()">
-        <option value="compra">Compra</option>
-        <option value="venta">Venta</option>
-        <option value="ajuste">Ajuste de valor</option>
-        <option value="muerte">Muerte / Baja</option>
+        <option value="ajuste">Ajuste de inventario</option>
+        <option value="nota">Nota / Observacion</option>
       </select>
     </div>
   </div>
@@ -2085,6 +2087,37 @@ function publishTasksToPWA() {
   <div id="crea-content"></div>
 </div>
 
+
+<!-- INTELIGENCIA -->
+<div id="page-inteligencia" class="page">
+  <div class="ph" style="margin-bottom:0">
+    <div><div class="ph-title">📡 Inteligencia</div><div class="ph-sub" id="int-coords">Datos estrategicos en tiempo real</div></div>
+  </div>
+  <div style="display:flex;gap:6px;padding:10px 20px;background:var(--bg);border-bottom:1px solid var(--bor);overflow-x:auto">
+    <button class="btn btn-sm" id="int-btn-clima" onclick="showIntTab('clima')" style="border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;border:1px solid var(--bor)">🌤️ Clima</button>
+    
+    <button class="btn btn-sm" id="int-btn-faena" onclick="showIntTab('faena')" style="border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;border:1px solid var(--bor)">💰 Simulador</button>
+    <button class="btn btn-sm" id="int-btn-precios" onclick="showIntTab('precios')" style="border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;border:1px solid var(--bor)">📊 Precios</button>
+  </div>
+  <div style="padding:16px 20px">
+    <div id="int-tab-clima">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="card" style="padding:14px">
+          <div style="font-size:12px;color:var(--muted);font-weight:700;margin-bottom:8px">🌤️ CLIMA ACTUAL</div>
+          <div id="weather-widget-int"><div style="color:var(--muted);font-size:12px">Cargando clima...</div></div>
+        </div>
+        <div class="card" style="padding:14px">
+          <div style="font-size:12px;color:var(--muted);font-weight:700;margin-bottom:8px">⚠️ ALERTAS CLIMATICAS</div>
+          <div id="weather-alerts-int"><div style="color:var(--muted);font-size:12px">Sin alertas</div></div>
+        </div>
+      </div>
+    </div>
+    
+    <div id="int-tab-faena" style="display:none"></div>
+    <div id="int-tab-precios" style="display:none"></div>
+  </div>
+</div>
+
 <div id="page-config" class="page">
   <div class="ph"><div><div class="pt">⚙️ Configuracion</div><div class="ps">Identidad · Sincronizacion · API · Estado</div></div></div>
 
@@ -2356,6 +2389,9 @@ function publishTasksToPWA() {
       <option value="alimento">🌿 Alimento</option>
       <option value="baja">🪦 Bajas</option>
       <option value="movimiento">🔄 Movimientos</option>
+      <option value="lluvia">🌧️ Lluvias</option>
+      <option value="aceite">🛢️ Aceite</option>
+      <option value="tarea">✅ Tareas</option>
     </select>
   </div>
   <div class="card"><div class="card-body" style="padding:0"><div id="act-page-list"></div></div></div>
@@ -5154,6 +5190,9 @@ function saveSale() {
   }
 
   db.sales.push(sale);
+  // Auto-Kardex
+  if (!db.kardex) db.kardex = [];
+  db.kardex.push({id:Date.now(),lote:lot_code,tipo:'venta',fecha:sale.date,cabezas:sale.animals||0,precio:sale.price_per_kg||0,total:sale.total||0,desc:'Venta a '+(buyer||'')+ ' — '+((sale.kg||0))+' kg',by:'Desktop',created_at:new Date().toISOString(),auto:true});
   addActivity('Sistema','otro',lot_code,'Venta: '+sale.animals+' animales a '+buyer+' - Bs. '+sale.total.toLocaleString());
   saveDB(); closeModal('modal-sale'); renderVentas(); renderLotes(); renderDashboard();
   replaceTableInRailway('sales', db.sales || []);
@@ -6840,6 +6879,9 @@ function saveCompraGanado() {
     notes: notas,
     created_at: new Date().toISOString()
   });
+  // Auto-Kardex
+  if (!db.kardex) db.kardex = [];
+  db.kardex.push({id:Date.now()+1,lote:lote,tipo:'compra',fecha:fecha,cabezas:_cgAnimals.length,precio:parseFloat(precioKg)||0,total:total,desc:'Compra de '+(proveedor||'')+' — '+_cgAnimals.length+' cab',by:'Desktop',created_at:new Date().toISOString(),auto:true});
 
   // Registrar en costos
   if (!db.cuentas) db.cuentas = [];
@@ -7052,6 +7094,36 @@ function renderActividades() {
       all.push({date:r.date,created_at:r.created_at||r.date||'',tag:'MOV',color:'var(--amber2)',
         title:r.desc||'Movimiento de lote',sub:'',lot:r.lot||'',by:r.employee||''});
     });
+  // Lluvias
+  if (!filterType || filterType==='lluvia') {
+    (db.lluvias||[]).forEach(function(r){
+      if(filterLot) return;
+      var mm = parseFloat(r.campamento_mm||r.mm||0);
+      all.push({fecha:r.created_at||r.fecha||'', tipo:'lluvia', tag:'LLU', color:'var(--blue)',
+        titulo:'🌧️ Lluvia: '+mm+' mm'+(r.lote4_mm?' | Lote4: '+r.lote4_mm+'mm':''),
+        sub:r.obs||'', lote:'', empleado:r.by||'', id:r.id, fuente:'lluvias'});
+    });
+  }
+  // Aceite
+  if (!filterType || filterType==='aceite') {
+    (db.aceite||[]).forEach(function(r){
+      if(filterLot) return;
+      all.push({fecha:r.created_at||r.fecha||'', tipo:'aceite', tag:'ACE', color:'var(--muted)',
+        titulo:'🛢️ Aceite: '+(r.vehiculo||r.equipo||'')+(r.litros?' '+r.litros+'L':''),
+        sub:(r.tipo||'')+(r.obs?' — '+r.obs:''), lote:'', empleado:r.by||'', id:r.id, fuente:'aceite'});
+    });
+  }
+  // Tareas completadas
+  if (!filterType || filterType==='tarea') {
+    var _tkList = [];
+    try { _tkList = JSON.parse(localStorage.getItem('e5m_tasks')||'[]'); } catch(e){}
+    _tkList.filter(function(t){return t.status==='completada'||t.status==='completed';}).forEach(function(t){
+      all.push({fecha:t.completed_at||t.updated_at||'', tipo:'tarea', tag:'TSK', color:'var(--green)',
+        titulo:'✅ Tarea: '+t.title,
+        sub:(t.assignee?t.assignee:'')+(t.comment?' — '+t.comment:''), lote:t.lot||'', empleado:t.completed_by||t.by||'', id:t.id, fuente:'tasks'});
+    });
+  }
+
   }
   all.sort(function(a,b){ return (b.created_at||b.date||'').localeCompare(a.created_at||a.date||''); });
   var el = document.getElementById('act-page-list');
@@ -8813,10 +8885,9 @@ function openModalKardex() {
 }
 
 function onKxTipoChange() {
-  var tipo=(document.getElementById('kx-tipo')||{}).value||'compra';
+  var tipo=(document.getElementById('kx-tipo')||{}).value||'ajuste';
   var sec=document.getElementById('kx-compra-section');
-  if(sec)sec.style.display=tipo==='compra'?'block':'none';
-  if(tipo==='compra')kxGenerarFilasIDs();
+  if(sec)sec.style.display='none';
 }
 
 function kxGenerarFilasIDs() {
@@ -11165,6 +11236,17 @@ function saveSubmodule(type) {
         existingAlert.message = alertMsg;
         existingAlert.created_at = new Date().toISOString();
       }
+      // Auto-crear tarea para investigar
+      var tasks = JSON.parse(localStorage.getItem('e5m_tasks')||'[]');
+      var existTask = tasks.find(function(t){return t.status==='pendiente' && t.title.indexOf('Faltante Lote '+lot) >= 0;});
+      if (!existTask) {
+        var faltantes = Math.abs(record.diff);
+        var newTask = {id:'task_'+Date.now(),title:'Investigar faltante Lote '+lot+' ('+faltantes+' cab)',desc:'Conteo del '+date+': '+counted+' contadas vs '+ref+' en sistema. Faltan '+faltantes+'. Revisar potrero, alambrados, movimientos no registrados.',assignee:'',priority:'alta',due:date,lot:lot,status:'pendiente',created_at:new Date().toISOString(),by:'Auto'};
+        tasks.push(newTask);
+        localStorage.setItem('e5m_tasks', JSON.stringify(tasks));
+        replaceTableInRailway('tasks', tasks);
+        toast('⚠ Tarea creada: Investigar faltante en '+lot,'error');
+      }
     } else if (record.diff === 0) {
       // Resolver alerta si el conteo cuadra
       db.alerts = (db.alerts||[]).map(function(a){
@@ -11925,6 +12007,9 @@ function confirmarBajaAnimal() {
     created_at: new Date().toISOString()
   };
   db.bajas.push(bajaRecord);
+  // Auto-Kardex
+  if (!db.kardex) db.kardex = [];
+  db.kardex.push({id:Date.now()+2,lote:bajaRecord.lot_code||'',tipo:'muerte',fecha:bajaRecord.fecha||localDate(),cabezas:1,precio:0,total:0,desc:'Baja: '+(bajaRecord.causa||'')+ ' — Animal #'+(bajaRecord.animal_id||'?'),by:'Desktop',created_at:new Date().toISOString(),auto:true});
 
   // 3. Remove from animales DB
   adb[_bajaFromLot] = animals.filter(function(a) { return (a.id || a.animal_id || '').toString() !== _bajaAnimalId.toString(); });
@@ -12424,6 +12509,11 @@ function renderReporteCREA() {
   var kgVendidos = ventasPeriodo.reduce(function(s, v) { return s + (v.kg || v.total_kg || 0); }, 0);
   var cabVendidas = ventasPeriodo.reduce(function(s, v) { return s + (v.animals || v.animal_count || 0); }, 0);
   var ingresoVentas = ventasPeriodo.reduce(function(s, v) { return s + (v.total || 0); }, 0);
+  // Incluir ventas de carne de bajas
+  var ventasCarne = ventasPeriodo.filter(function(v) { return v.type === 'carne_baja'; });
+  var ingresoVentasCarne = ventasCarne.reduce(function(s, v) { return s + (v.total || 0); }, 0);
+  var ventasGanado = ventasPeriodo.filter(function(v) { return v.type !== 'carne_baja'; });
+  var ingresoVentasGanado = ventasGanado.reduce(function(s, v) { return s + (v.total || 0); }, 0);
 
   // Kg comprados en periodo (compras de ganado)
   var comprasGanadoPeriodo = (db.compras_ganado || []).filter(function(c) { return (c.fecha || '') >= desdeStr; });
@@ -12478,12 +12568,39 @@ function renderReporteCREA() {
   var gastSanidad = (db.treatments || []).filter(function(t) { return (t.applied_at || '') >= desdeStr; }).reduce(function(s, t) { return s + (t.cost || 0); }, 0);
   var gastPersonal = (db.employees || []).reduce(function(s, e) { return s + (e.salary || 0); }, 0) * meses;
   var gastAdelantos = (db.advances || []).filter(function(a) { return (a.date || '') >= desdeStr; }).reduce(function(s, a) { return s + (a.amount || 0); }, 0);
-  var gastDiesel = (db.diesel || []).filter(function(d) { return (d.fecha || '') >= desdeStr; }).reduce(function(s, d) { return s + (d.total || d.litros * (d.precio || 0) || 0); }, 0);
+  var gastDiesel = (db.diesel || []).filter(function(d) { return d.type === 'recarga' && (d.fecha || '') >= desdeStr; }).reduce(function(s, d) { return s + (d.total || (parseFloat(d.litros)||0) * (parseFloat(d.precio)||0)); }, 0);
+  // Merma diesel como costo adicional
+  var dieselRecargas = (db.diesel || []).filter(function(d) { return d.type === 'recarga' && (d.fecha || '') >= desdeStr; }).reduce(function(s,d){ return s + (parseFloat(d.litros)||0); }, 0);
+  var dieselDespachos = (db.diesel || []).filter(function(d) { return d.type === 'despacho' && (d.fecha || '') >= desdeStr; }).reduce(function(s,d){ return s + (parseFloat(d.litros)||0); }, 0);
+  var mermaDiesel = Math.max(0, dieselRecargas - dieselDespachos);
+  var precioPromDiesel = dieselRecargas > 0 ? gastDiesel / dieselRecargas : 0;
+  var costoMermaDiesel = Math.round(mermaDiesel * precioPromDiesel * 100) / 100;
   var gastMaint = (db.maintenance || []).filter(function(m) { return (m.date || '') >= desdeStr; }).reduce(function(s, m) { return s + (m.cost || 0); }, 0);
   var gastCompras = (db.purchases || []).filter(function(p) { return (p.date || '') >= desdeStr; }).reduce(function(s, p) { return s + (p.total || 0); }, 0);
-  var gastAlimento = (db.sal || []).filter(function(r) { return (r.fecha || '') >= desdeStr; }).reduce(function(s, r) { return s + (r.costo || 0); }, 0) + (db.alimento || []).filter(function(r) { return (r.fecha || '') >= desdeStr; }).reduce(function(s, r) { return s + (r.costo || 0); }, 0);
+  var gastAlimento = (db.sal || []).filter(function(r) { return (r.date || r.fecha || '') >= desdeStr; }).reduce(function(s, r) {
+    var cost = r.costo || 0;
+    if (!cost && r.qty && r.product_id) {
+      var prod = (db.products||[]).find(function(p){return p.id === r.product_id;});
+      if (prod && prod.unit_price) cost = r.qty * prod.unit_price;
+    }
+    return s + cost;
+  }, 0) + (db.alimento || []).filter(function(r) { return (r.date || r.fecha || '') >= desdeStr; }).reduce(function(s, r) {
+    var cost = r.costo || 0;
+    if (!cost && r.qty && r.product_id) {
+      var prod = (db.products||[]).find(function(p){return p.id === r.product_id;});
+      if (prod && prod.unit_price) cost = r.qty * prod.unit_price;
+    }
+    return s + cost;
+  }, 0);
   var gastAceite = (db.aceite || []).filter(function(r) { return (r.fecha || '') >= desdeStr; }).reduce(function(s, r) { return s + (r.total || r.costo || 0); }, 0);
-  var gastDirectos = gastSanidad + gastPersonal + gastAdelantos + gastDiesel + gastAceite + gastMaint + gastCompras + gastAlimento;
+  // Merma stock veterinario (productos vencidos o perdidos)
+  var mermaVet = 0;
+  (db.products || []).forEach(function(p) {
+    if (p.stock_loss && p.stock_loss > 0) {
+      mermaVet += (p.stock_loss || 0) * (p.unit_price || 0);
+    }
+  });
+  var gastDirectos = gastSanidad + gastPersonal + gastAdelantos + gastDiesel + costoMermaDiesel + gastAceite + gastMaint + gastCompras + gastAlimento + mermaVet;
   var gastTotales = gastDirectos + gastoAdmin + gastoEstructura + inversionCompras;
 
   // INDICADORES PRODUCTIVOS
@@ -12561,6 +12678,43 @@ function renderReporteCREA() {
   html += '</div>';
 
   // DETALLE POR LOTE
+  // Desglose de costos
+  html += '<div style="font-size:14px;font-weight:700;color:var(--amber2);margin:16px 0 10px;border-bottom:1px solid var(--bor);padding-bottom:6px">📝 Desglose de Costos e Ingresos</div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">';
+
+  // Costos
+  html += '<div class="card" style="padding:14px"><div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:8px">EGRESOS — Bs. ' + Math.round(gastTotales).toLocaleString() + '</div>';
+  var costos = [
+    {n:'Personal (salarios)', v:gastPersonal},
+    {n:'Diesel (recargas)', v:gastDiesel},
+    {n:'Mantenimiento', v:gastMaint},
+    {n:'Compras insumos', v:gastCompras},
+    {n:'Sanidad', v:gastSanidad},
+    {n:'Alimentacion (sal + alimento)', v:gastAlimento},
+    {n:'Aceite', v:gastAceite},
+    {n:'Adelantos personal', v:gastAdelantos},
+    {n:'Compra ganado', v:inversionCompras},
+    {n:'Admin + Estructura', v:gastoAdmin + gastoEstructura}
+  ];
+  if (costoMermaDiesel > 0) costos.push({n:'⚠️ Merma diesel (' + Math.round(mermaDiesel) + 'L)', v:costoMermaDiesel});
+  if (mermaVet > 0) costos.push({n:'⚠️ Merma stock vet', v:mermaVet});
+  costos.sort(function(a,b){return b.v - a.v;});
+  costos.forEach(function(c) {
+    if (c.v > 0) {
+      var pct = gastTotales > 0 ? Math.round(c.v / gastTotales * 100) : 0;
+      html += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid rgba(48,54,61,.15)"><span style="color:var(--muted)">' + c.n + '</span><span style="font-weight:600">Bs. ' + Math.round(c.v).toLocaleString() + ' <span style="font-size:9px;color:var(--muted)">(' + pct + '%)</span></span></div>';
+    }
+  });
+  html += '</div>';
+
+  // Ingresos
+  html += '<div class="card" style="padding:14px"><div style="font-size:12px;font-weight:700;color:var(--green);margin-bottom:8px">INGRESOS — Bs. ' + Math.round(ingresoVentas).toLocaleString() + '</div>';
+  if (ingresoVentasGanado > 0) html += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid rgba(48,54,61,.15)"><span style="color:var(--muted)">Venta ganado (' + ventasGanado.length + ' ops)</span><span style="font-weight:600;color:var(--green)">Bs. ' + Math.round(ingresoVentasGanado).toLocaleString() + '</span></div>';
+  if (ingresoVentasCarne > 0) html += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid rgba(48,54,61,.15)"><span style="color:var(--muted)">Venta carne (bajas) (' + ventasCarne.length + ' ops)</span><span style="font-weight:600;color:var(--green)">Bs. ' + Math.round(ingresoVentasCarne).toLocaleString() + '</span></div>';
+  var balance = ingresoVentas - gastTotales;
+  html += '<div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 0;margin-top:6px;border-top:2px solid var(--bor)"><span style="font-weight:700">BALANCE</span><span style="font-weight:800;color:' + (balance >= 0 ? 'var(--green)' : 'var(--red)') + '">Bs. ' + Math.round(balance).toLocaleString() + '</span></div>';
+  html += '</div></div>';
+
   html += '<div style="font-size:14px;font-weight:700;color:var(--amber2);margin:16px 0 10px;border-bottom:1px solid var(--bor);padding-bottom:6px">📋 Detalle por Lote</div>';
   html += '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Lote</th><th>Categoría</th><th>Cabezas</th><th>Peso Prom.</th><th>GDPV</th><th>Prod. kg/ha</th><th>Estado</th></tr></thead><tbody>';
   activeLots.forEach(function(lot) {
@@ -14348,6 +14502,11 @@ function getWeatherIcon(code) {
 
 function renderWeatherWidget() {
   var el = document.getElementById('weather-widget');
+  renderWeatherTo(el);
+  var el2 = document.getElementById('weather-widget-int');
+  renderWeatherTo(el2);
+}
+function renderWeatherTo(el) {
   if (!el || !_weatherData) return;
   var c = _weatherData.current || {};
   var d = _weatherData.daily || {};
@@ -14417,6 +14576,11 @@ function checkWeatherAlerts(d) {
     }
   }
   var alertEl = document.getElementById('weather-alerts');
+  renderWeatherAlertsTo(alertEl, alerts);
+  var alertEl2 = document.getElementById('weather-alerts-int');
+  renderWeatherAlertsTo(alertEl2, alerts);
+}
+function renderWeatherAlertsTo(alertEl, alerts) {
   if (alertEl && alerts.length) {
     alertEl.innerHTML = alerts.map(function(a){
       var bg = a.level==='critico' ? 'rgba(239,68,68,.12)' : 'rgba(245,166,35,.1)';
@@ -14446,6 +14610,664 @@ setInterval(function() {
     pullFromRailwayDesktop(false);
   }
 }, 300000);
+
+
+// ══════════════════════════════════════════════════
+// PESTAÑA INTELIGENCIA — Sub-tabs
+// ══════════════════════════════════════════════════
+var _intTab = 'clima';
+
+function initInteligencia() {
+  showIntTab(_intTab);
+  fetchWeather();
+  var c = getWeatherCoords();
+  var el = document.getElementById('int-coords');
+  if (el) el.innerHTML = '📍 Coordenadas: ' + c.lat.toFixed(4) + ', ' + c.lon.toFixed(4) + ' <button class="btn btn-ghost btn-sm" onclick="editCoords()" style="font-size:10px;padding:2px 6px;margin-left:4px">✎ Cambiar</button>';
+}
+
+function editCoords() {
+  var c = getWeatherCoords();
+  var overlay = document.createElement('div');
+  overlay.id = 'coords-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;display:flex;align-items:center;justify-content:center';
+  var modal = document.createElement('div');
+  modal.style.cssText = 'background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:20px;width:360px';
+  modal.innerHTML = '<div style="font-size:15px;font-weight:700;margin-bottom:14px">📍 Coordenadas de la Propiedad</div>' +
+    '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5">Estas coordenadas se usan para el clima, alertas y vision satelital NDVI.<br>Puedes copiarlas desde Google Maps (click derecho en tu propiedad).</div>' +
+    '<div style="display:flex;gap:8px;margin-bottom:12px"><div style="flex:1"><label style="font-size:11px;color:var(--muted)">Latitud</label><input class="form-input" id="edit-lat" value="'+c.lat+'" type="number" step="0.0001" style="width:100%"></div>' +
+    '<div style="flex:1"><label style="font-size:11px;color:var(--muted)">Longitud</label><input class="form-input" id="edit-lon" value="'+c.lon+'" type="number" step="0.0001" style="width:100%"></div></div>' +
+    '<div style="display:flex;gap:8px"><button class="btn btn-ghost" style="flex:1" onclick="document.getElementById(\'coords-overlay\').remove()">Cancelar</button>' +
+    '<button class="btn btn-primary" style="flex:1" onclick="saveCoords()">Guardar</button></div>';
+  overlay.appendChild(modal);
+  overlay.addEventListener('click', function(e){if(e.target===overlay)overlay.remove();});
+  document.body.appendChild(overlay);
+}
+
+function saveCoords() {
+  var lat = parseFloat((document.getElementById('edit-lat')||{}).value) || 0;
+  var lon = parseFloat((document.getElementById('edit-lon')||{}).value) || 0;
+  if (!lat || !lon) { toast('Coordenadas invalidas','error'); return; }
+  var rp = JSON.parse(localStorage.getItem('e5m_report_params')||'{}');
+  rp.lat = lat; rp.lon = lon;
+  localStorage.setItem('e5m_report_params', JSON.stringify(rp));
+  // Clear cached NDVI polygon
+  localStorage.removeItem('e5m_agro_poly_id');
+  document.getElementById('coords-overlay').remove();
+  toast('Coordenadas actualizadas: '+lat.toFixed(4)+', '+lon.toFixed(4),'success');
+  initInteligencia();
+  fetchWeather();
+}
+
+function showIntTab(tab) {
+  _intTab = tab;
+  ['clima','faena','precios'].forEach(function(t) {
+    var el = document.getElementById('int-tab-'+t);
+    var btn = document.getElementById('int-btn-'+t);
+    if (el) el.style.display = t === tab ? 'block' : 'none';
+    if (btn) {
+      btn.style.background = t === tab ? 'var(--amber2)' : 'var(--sur2)';
+      btn.style.color = t === tab ? '#000' : 'var(--text)';
+    }
+  });
+  if (tab === 'faena') renderSimuladorFaena();
+  if (tab === 'ndvi') renderNDVI();
+  if (tab === 'precios') renderPrecios();
+}
+
+// ═══════════════════════════════════════
+// 1. CLIMA Y ALERTAS (ya implementado, se muestra aquí también)
+// ═══════════════════════════════════════
+// (uses existing fetchWeather, renderWeatherWidget, checkWeatherAlerts)
+
+// ═══════════════════════════════════════
+// 2. NDVI SATELITAL
+// ═══════════════════════════════════════
+var AGRO_API_KEY = '4d43e0a91593ebcb193565247feb113d'; // User needs to get free key from agromonitoring.com
+var _ndviPolyId = '';
+
+
+function switchNdviView(view) {
+  var coords = getWeatherCoords();
+  var iframe = document.getElementById('ndvi-iframe');
+  var btn1 = document.getElementById('ndvi-btn-onesoil');
+  var btn2 = document.getElementById('ndvi-btn-satellite');
+  if (!iframe) return;
+  if (view === 'onesoil') {
+    iframe.src = 'https://map.onesoil.ai/2023/BOL#' + coords.lat.toFixed(4) + ',' + coords.lon.toFixed(4) + ',14z';
+    if(btn1){btn1.style.background='var(--amber2)';btn1.style.color='#000';}
+    if(btn2){btn2.style.background='var(--sur2)';btn2.style.color='var(--text)';}
+  } else {
+    iframe.src = 'https://www.openstreetmap.org/export/embed.html?bbox=' + (coords.lon-0.03) + ',' + (coords.lat-0.02) + ',' + (coords.lon+0.03) + ',' + (coords.lat+0.02) + '&layer=mapnik&marker=' + coords.lat + ',' + coords.lon;
+    if(btn2){btn2.style.background='var(--amber2)';btn2.style.color='#000';}
+    if(btn1){btn1.style.background='var(--sur2)';btn1.style.color='var(--text)';}
+  }
+}
+function ndviIframeError() {
+  var container = document.getElementById('ndvi-map-container');
+  if (container) container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;background:var(--sur2)"><div style="text-align:center;color:var(--muted)"><div style="font-size:28px;margin-bottom:8px">🛰️</div><div style="font-size:13px">No se pudo cargar el mapa</div><button class="btn btn-primary btn-sm" onclick="var c=getWeatherCoords();window.open(\'https://map.onesoil.ai/2023/BOL#\'+c.lat+\',\'+c.lon+\',14z\',\'_blank\')" style="margin-top:8px">Abrir OneSoil en navegador</button></div></div>';
+}
+
+function renderNDVI() {
+  var el = document.getElementById('int-tab-ndvi');
+  if (!el) return;
+  var coords = getWeatherCoords();
+
+  var zoom = 14;
+  var onesoilUrl = 'https://map.onesoil.ai/2023/BOL#' + coords.lat.toFixed(4) + ',' + coords.lon.toFixed(4) + ',' + zoom + 'z';
+  var googleUrl = 'https://www.google.com/maps/@' + coords.lat + ',' + coords.lon + ',2000m/data=!3m1!1e3';
+
+  el.innerHTML = '<div class="card" style="padding:16px">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+    '<div><div style="font-size:15px;font-weight:700">🛰️ Vision Satelital de Pasturas</div>' +
+    '<div style="font-size:11px;color:var(--muted);margin-top:2px">📍 ' + coords.lat.toFixed(4) + ', ' + coords.lon.toFixed(4) + '</div></div>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;margin-bottom:12px">' +
+    '<button class="btn btn-primary btn-sm" onclick="window.open(\'' + onesoilUrl + '\',\'_blank\')" style="font-size:12px;padding:10px 18px">🛰️ Abrir OneSoil NDVI</button>' +
+    '<button class="btn btn-ghost btn-sm" onclick="window.open(\'https://app.onesoil.ai\',\'_blank\')" style="font-size:12px;padding:10px 18px">📱 OneSoil Pro App</button>' +
+    '</div>' +
+    '<div style="padding:12px;background:var(--sur2);border-radius:8px;font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:12px">' +
+    '🛰️ <b>OneSoil</b> muestra imagenes NDVI gratuitas de Sentinel-2 (res. 10m, cada 3-5 dias). Se abre en el navegador externo porque no permite embed.<br>' +
+    'Busca tu propiedad en el mapa → activa la capa NDVI → ve la salud del pasto por zona.' +
+    '</div>' +
+    '<div id="ndvi-map-container" style="border-radius:10px;overflow:hidden;border:1px solid var(--bor);height:400px">' +
+    '<iframe id="ndvi-iframe" src="' + googleUrl + '" style="width:100%;height:100%;border:none" allow="geolocation" loading="lazy"></iframe>' +
+    '</div>' +
+    '<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+    '<div style="padding:10px 14px;background:var(--sur2);border-radius:8px">' +
+    '<div style="font-size:12px;font-weight:700;color:var(--amber2);margin-bottom:6px">Escala NDVI</div>' +
+    '<div style="height:14px;background:linear-gradient(to right,#8B0000,#FF4500,#FFD700,#90EE90,#228B22,#006400);border-radius:4px"></div>' +
+    '<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:3px"><span>0 — Suelo/Agua</span><span>0.3 — Escaso</span><span>0.6 — Moderado</span><span>1.0 — Excelente</span></div>' +
+    '</div>' +
+    '<div style="padding:10px 14px;background:var(--sur2);border-radius:8px">' +
+    '<div style="font-size:12px;font-weight:700;color:var(--amber2);margin-bottom:6px">Recomendaciones ganaderas</div>' +
+    '<div style="font-size:11px;color:var(--muted);line-height:1.6">' +
+    '🟢 <b>NDVI >0.6:</b> Pasto optimo, mantener carga actual<br>' +
+    '🟡 <b>NDVI 0.3-0.6:</b> Monitorear, planificar rotacion<br>' +
+    '🔴 <b>NDVI <0.3:</b> Sobrepastoreo o sequia, rotar lotes y suplementar' +
+    '</div></div></div></div>';
+
+  return; // Skip old Agromonitoring code below
+
+  var apiKey = localStorage.getItem('e5m_agro_key') || AGRO_API_KEY || '';
+
+  if (!apiKey) {
+    el.innerHTML = '<div class="card" style="padding:20px">' +
+      '<div style="font-size:15px;font-weight:700;margin-bottom:12px">🛰️ Vision Satelital de Pasturas</div>' +
+      '<p style="color:var(--muted);font-size:13px;line-height:1.6">Para activar las imagenes satelitales NDVI necesitas una API key gratuita de Agromonitoring (OpenWeatherMap).</p>' +
+      '<ol style="font-size:13px;line-height:2;color:var(--muted)">' +
+      '<li>Registrate en <a href="https://agromonitoring.com/" target="_blank" style="color:var(--amber2)">agromonitoring.com</a></li>' +
+      '<li>Ve a tu perfil y copia tu API key</li>' +
+      '<li>Pegala aqui abajo:</li></ol>' +
+      '<div style="display:flex;gap:8px;margin-top:12px"><input class="form-input" id="ndvi-api-key" placeholder="Pega tu API key aqui..." style="flex:1">' +
+      '<button class="btn btn-primary" onclick="saveAgroKey()">Guardar</button></div>' +
+      '<div style="margin-top:16px;padding:12px;background:var(--sur2);border-radius:8px">' +
+      '<div style="font-size:12px;font-weight:700;color:var(--amber2);margin-bottom:6px">¿Que es NDVI?</div>' +
+      '<div style="font-size:11px;color:var(--muted);line-height:1.5">El Indice de Vegetacion de Diferencia Normalizada mide la salud del pasto desde el espacio.<br>' +
+      '🟢 <b>0.6-1.0</b> Pasto excelente | 🟡 <b>0.3-0.6</b> Moderado | 🔴 <b>0-0.3</b> Suelo o pasto seco</div></div>' +
+      '</div>';
+    return;
+  }
+
+  el.innerHTML = '<div class="card" style="padding:20px">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+    '<div style="font-size:15px;font-weight:700">🛰️ Vision Satelital NDVI</div>' +
+    '<button class="btn btn-ghost btn-sm" onclick="fetchNDVI()" style="font-size:11px">🔄 Actualizar</button></div>' +
+    '<div id="ndvi-content"><div style="color:var(--muted);font-size:12px">Cargando datos satelitales...</div></div>' +
+    '<div id="ndvi-map" style="margin-top:12px;border-radius:8px;overflow:hidden;height:300px;background:var(--sur2)"></div>' +
+    '<div id="ndvi-history" style="margin-top:12px"></div>' +
+    '</div>';
+  fetchNDVI();
+}
+
+function saveAgroKey() {
+  var key = (document.getElementById('ndvi-api-key')||{}).value || '';
+  if (!key) { toast('Ingresa la API key','error'); return; }
+  localStorage.setItem('e5m_agro_key', key);
+  toast('API key guardada','success');
+  renderNDVI();
+}
+
+function fetchNDVI() {
+  var apiKey = localStorage.getItem('e5m_agro_key') || AGRO_API_KEY || '';
+  if (!apiKey) return;
+  var coords = getWeatherCoords();
+  var polyId = localStorage.getItem('e5m_agro_poly_id') || '';
+
+  if (!polyId) {
+    // Check if polygon already exists
+    fetch('https://api.agromonitoring.com/agro/1.0/polygons?appid=' + apiKey)
+    .then(function(r){return r.json();})
+    .then(function(polys){
+      if (Array.isArray(polys) && polys.length > 0) {
+        var poly = polys[0];
+        localStorage.setItem('e5m_agro_poly_id', poly.id);
+        fetchNDVIData(apiKey, poly.id);
+        return;
+      }
+      createNDVIPolygon(apiKey, coords);
+    }).catch(function(e){
+      document.getElementById('ndvi-content').innerHTML = '<div style="color:var(--red);font-size:12px">Error conectando con Agromonitoring: '+e.message+'</div>';
+    });
+    return;
+  }
+  fetchNDVIData(apiKey, polyId);
+}
+
+function createNDVIPolygon(apiKey, coords) {
+  // Create polygon first
+    var size = 0.02; // ~2km around center
+    var polygon = {
+      name: 'EstanciaPro',
+      geo_json: {
+        type: 'Feature',
+        properties: {},
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[
+            [coords.lon - size, coords.lat - size],
+            [coords.lon + size, coords.lat - size],
+            [coords.lon + size, coords.lat + size],
+            [coords.lon - size, coords.lat + size],
+            [coords.lon - size, coords.lat - size]
+          ]]
+        }
+      }
+    };
+    fetch('https://api.agromonitoring.com/agro/1.0/polygons?appid=' + apiKey, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(polygon)
+    }).then(function(r){return r.json();}).then(function(d){
+      if (d.id) {
+        localStorage.setItem('e5m_agro_poly_id', d.id);
+        _ndviPolyId = d.id;
+        fetchNDVIData(apiKey, d.id);
+      } else {
+        document.getElementById('ndvi-content').innerHTML = '<div style="color:var(--red);font-size:12px">Error creando poligono: '+(d.message||JSON.stringify(d))+'</div>';
+      }
+    }).catch(function(e){
+      document.getElementById('ndvi-content').innerHTML = '<div style="color:var(--red);font-size:12px">Error: '+e.message+'</div>';
+    });
+}
+
+function fetchNDVIData(apiKey, polyId) {
+  var end = Math.floor(Date.now() / 1000);
+  var start = end - (30 * 86400); // Last 30 days
+  fetch('https://api.agromonitoring.com/agro/1.0/image/search?start='+start+'&end='+end+'&polyid='+polyId+'&appid='+apiKey)
+  .then(function(r){return r.json();})
+  .then(function(images){
+    if (!images.length) {
+      document.getElementById('ndvi-content').innerHTML = '<div style="color:var(--muted);font-size:12px">No hay imagenes satelitales disponibles para los ultimos 30 dias.</div>';
+      return;
+    }
+    // Get latest image with NDVI
+    var latest = images[images.length - 1];
+    var toHttps = function(u) { return u ? u.replace('http://','https://') : null; };
+    var ndviUrl = latest.image ? toHttps(latest.image.ndvi) : null;
+    var trueColorUrl = latest.image ? toHttps(latest.image.truecolor) : null;
+    var statsUrl = latest.stats ? toHttps(latest.stats.ndvi) : null;
+    var dt = new Date(latest.dt * 1000);
+
+    var html = '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">Ultima imagen: '+dt.toLocaleDateString()+' ('+latest.type+')</div>';
+
+    if (statsUrl) {
+      fetch(statsUrl).then(function(r){return r.json();}).then(function(stats){
+        var mean = (stats.mean || 0).toFixed(3);
+        var min = (stats.min || 0).toFixed(3);
+        var max = (stats.max || 0).toFixed(3);
+        var color = mean >= 0.6 ? 'var(--green)' : mean >= 0.3 ? 'var(--amber2)' : 'var(--red)';
+        var label = mean >= 0.6 ? 'EXCELENTE' : mean >= 0.4 ? 'BUENO' : mean >= 0.3 ? 'MODERADO' : mean >= 0.2 ? 'DEGRADADO' : 'CRITICO';
+        html += '<div style="display:flex;gap:16px;align-items:center">';
+        html += '<div style="text-align:center"><div style="font-size:36px;font-weight:700;color:'+color+'">'+mean+'</div><div style="font-size:11px;color:var(--muted)">NDVI Promedio</div><div style="font-size:10px;font-weight:700;color:'+color+'">'+label+'</div></div>';
+        html += '<div style="flex:1"><div style="font-size:11px;margin-bottom:4px">Min: '+min+' | Max: '+max+'</div>';
+        html += '<div style="height:12px;background:linear-gradient(to right,#8B0000,#FF4500,#FFD700,#90EE90,#006400);border-radius:6px;position:relative">';
+        html += '<div style="position:absolute;left:'+(mean*100)+'%;top:-2px;width:3px;height:16px;background:#fff;border:1px solid #000;border-radius:1px"></div>';
+        html += '</div><div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted)"><span>0 Suelo</span><span>0.5</span><span>1.0 Verde</span></div></div>';
+        html += '</div>';
+
+        // Recommendations
+        if (parseFloat(mean) < 0.3) {
+          html += '<div style="margin-top:10px;padding:8px 12px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;font-size:12px">🔴 <b>Pasto degradado.</b> Considerar rotacion de lotes o suplementacion con alimento.</div>';
+        } else if (parseFloat(mean) < 0.5) {
+          html += '<div style="margin-top:10px;padding:8px 12px;background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.3);border-radius:8px;font-size:12px">🟡 <b>Pasto moderado.</b> Monitorear y planificar rotacion si la tendencia baja.</div>';
+        } else {
+          html += '<div style="margin-top:10px;padding:8px 12px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);border-radius:8px;font-size:12px">🟢 <b>Pasto en buen estado.</b> Condiciones optimas para pastoreo.</div>';
+        }
+
+        document.getElementById('ndvi-content').innerHTML = html;
+      });
+    }
+
+    // Show NDVI image
+    var mapEl = document.getElementById('ndvi-images');
+    if (mapEl && ndviUrl) {
+      mapEl.innerHTML = '<div style="display:flex;gap:8px;height:100%">' +
+        (trueColorUrl ? '<div style="flex:1;position:relative"><img src="'+trueColorUrl+'" style="width:100%;height:100%;object-fit:cover;border-radius:6px"><div style="position:absolute;bottom:4px;left:4px;font-size:9px;color:#fff;background:rgba(0,0,0,.6);padding:2px 6px;border-radius:3px">Color real</div></div>' : '') +
+        '<div style="flex:1;position:relative"><img src="'+ndviUrl+'" style="width:100%;height:100%;object-fit:cover;border-radius:6px"><div style="position:absolute;bottom:4px;left:4px;font-size:9px;color:#fff;background:rgba(0,0,0,.6);padding:2px 6px;border-radius:3px">NDVI</div></div>' +
+        '</div>';
+    }
+
+    // NDVI history chart
+    fetchNDVIHistory(apiKey, polyId);
+  })
+  .catch(function(e){
+    document.getElementById('ndvi-content').innerHTML = '<div style="color:var(--red);font-size:12px">Error: '+e.message+'</div>';
+  });
+}
+
+function fetchNDVIHistory(apiKey, polyId) {
+  var end = Math.floor(Date.now() / 1000);
+  var start = end - (180 * 86400); // 6 months
+  fetch('https://api.agromonitoring.com/agro/1.0/ndvi/history?start='+start+'&end='+end+'&polyid='+polyId+'&appid='+apiKey)
+  .then(function(r){return r.json();})
+  .then(function(history){
+    if (!history.length) return;
+    var histEl = document.getElementById('ndvi-history');
+    if (!histEl) return;
+    var maxH = 120;
+    var w = Math.max(400, history.length * 8);
+    var vals = history.map(function(h){return h.data ? h.data.mean : 0;});
+    var maxV = Math.max.apply(null, vals) || 1;
+    var svg = '<svg viewBox="0 0 '+w+' '+(maxH+30)+'" style="width:100%;height:150px">';
+    svg += '<text x="4" y="12" fill="var(--muted)" font-size="10">NDVI ultimos 6 meses</text>';
+    var path = '';
+    vals.forEach(function(v, i) {
+      var x = i * (w / vals.length) + 10;
+      var y = maxH - (v / maxV * (maxH - 20)) + 15;
+      path += (i === 0 ? 'M' : 'L') + x + ',' + y;
+    });
+    svg += '<path d="'+path+'" fill="none" stroke="var(--green)" stroke-width="2"/>';
+    // Add month labels
+    history.forEach(function(h, i) {
+      if (i % Math.ceil(history.length / 6) === 0) {
+        var dt = new Date(h.dt * 1000);
+        var x = i * (w / vals.length) + 10;
+        svg += '<text x="'+x+'" y="'+(maxH+28)+'" fill="var(--muted)" font-size="9">'+dt.toLocaleDateString('es',{month:'short'})+'</text>';
+      }
+    });
+    svg += '</svg>';
+    histEl.innerHTML = '<div class="card" style="padding:12px">'+svg+'</div>';
+  }).catch(function(){});
+}
+
+// ═══════════════════════════════════════
+// 3. SIMULADOR DE FAENA
+// ═══════════════════════════════════════
+function renderSimuladorFaena() {
+  var el = document.getElementById('int-tab-faena');
+  if (!el) return;
+  var lots = (db.lots || []).filter(function(l){return l.status !== 'sold' && l.animal_count > 0;});
+  var animDB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
+
+  var html = '<div class="card" style="padding:20px">';
+  html += '<div style="font-size:15px;font-weight:700;margin-bottom:14px">💰 Simulador de Faena</div>';
+  html += '<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">';
+  html += '<div><label style="font-size:11px;color:var(--muted)">Lote</label><select class="form-select" id="sim-lote" onchange="runSimulador()" style="min-width:120px">';
+  html += '<option value="">Todos</option>';
+  lots.forEach(function(l){html += '<option value="'+l.code+'">'+l.code+' ('+l.animal_count+' cab)</option>';});
+  html += '</select></div>';
+  html += '<div><label style="font-size:11px;color:var(--muted)">Precio Bs/kg</label><input class="form-input" id="sim-precio" type="number" value="34" step="0.5" onchange="runSimulador()" style="width:80px"></div>';
+  html += '<div><label style="font-size:11px;color:var(--muted)">Peso min (kg)</label><input class="form-input" id="sim-peso-min" type="number" value="380" onchange="runSimulador()" style="width:80px"></div>';
+  html += '<div><label style="font-size:11px;color:var(--muted)">Peso max (kg)</label><input class="form-input" id="sim-peso-max" type="number" value="500" onchange="runSimulador()" style="width:80px"></div>';
+  html += '</div>';
+  html += '<div id="sim-result"></div>';
+  html += '</div>';
+  el.innerHTML = html;
+  runSimulador();
+}
+
+function runSimulador() {
+  var lotCode = ((document.getElementById('sim-lote')||{}).value||'').trim();
+  var precio = parseFloat((document.getElementById('sim-precio')||{}).value) || 34;
+  var pesoMin = parseFloat((document.getElementById('sim-peso-min')||{}).value) || 0;
+  var pesoMax = parseFloat((document.getElementById('sim-peso-max')||{}).value) || 9999;
+  var animDB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
+  var lots = db.lots || [];
+
+  // Collect eligible animals
+  var eligible = [];
+  var lotCodes = lotCode ? [lotCode] : Object.keys(animDB);
+  lotCodes.forEach(function(lc) {
+    (animDB[lc]||[]).forEach(function(a) {
+      var ps = a.pesajes || [];
+      var last = ps.length ? ps[ps.length-1] : null;
+      var peso = last ? last.peso : 0;
+      if (peso >= pesoMin && peso <= pesoMax) {
+        // Calculate GMD
+        var gmd = 0;
+        if (ps.length >= 2) {
+          var first = ps[0]; var lastP = ps[ps.length-1];
+          var days = Math.max(1, Math.round((new Date(lastP.fecha) - new Date(first.fecha)) / 86400000));
+          gmd = Math.round((lastP.peso - first.peso) / days * 1000) / 1000;
+        }
+        eligible.push({id: a.id || a.animal_id, lot: lc, peso: peso, gmd: gmd, raza: a.raza || a.breed || ''});
+      }
+    });
+  });
+
+  if (!eligible.length) {
+    document.getElementById('sim-result').innerHTML = '<div style="color:var(--muted);font-size:13px;padding:20px;text-align:center">No hay animales en el rango de peso seleccionado.</div>';
+    return;
+  }
+
+  var totalKg = eligible.reduce(function(s,a){return s+a.peso;},0);
+  var avgPeso = Math.round(totalKg / eligible.length);
+  var avgGmd = eligible.filter(function(a){return a.gmd>0;});
+  var gmdProm = avgGmd.length ? Math.round(avgGmd.reduce(function(s,a){return s+a.gmd;},0)/avgGmd.length*1000)/1000 : 0;
+
+  // Calculate costs per day
+  var mp = new Date().toISOString().slice(0,7);
+  var dieselMes = (db.diesel||[]).filter(function(d){return d.type==='despacho'&&(d.fecha||'').startsWith(mp);}).reduce(function(s,d){return s+(parseFloat(d.litros)||0);},0);
+  var salMes = (db.sal||[]).filter(function(s){return (s.date||'').startsWith(mp);}).reduce(function(s2,r){return s2+(r.qty||0);},0);
+  var totalAnimals = lots.reduce(function(s,l){return s+(l.animal_count||0);},0);
+  var mantMes = (db.maintenance||[]).filter(function(m){return (m.date||'').startsWith(mp);}).reduce(function(s,m){return s+(m.cost||0);},0);
+  var persTotal = (db.employees||[]).reduce(function(s,e){return s+(e.salary||0);},0);
+  var costoMesTot = (dieselMes * 7.5) + mantMes + persTotal; // diesel at ~7.5 Bs/L estimate
+  var costoDiaPorCab = totalAnimals > 0 ? Math.round(costoMesTot / 30 / totalAnimals * 100) / 100 : 0;
+
+  // Scenarios
+  var scenarios = [
+    {label: 'Vender HOY', days: 0},
+    {label: 'Esperar 30 dias', days: 30},
+    {label: 'Esperar 60 dias', days: 60},
+    {label: 'Esperar 90 dias', days: 90}
+  ];
+
+  var html = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">';
+  html += '<div class="kpi-card"><div class="kpi-val" style="color:var(--amber2)">'+eligible.length+'</div><div class="kpi-lbl">Animales</div></div>';
+  html += '<div class="kpi-card"><div class="kpi-val">'+avgPeso+' kg</div><div class="kpi-lbl">Peso promedio</div></div>';
+  html += '<div class="kpi-card"><div class="kpi-val">'+(totalKg/1000).toFixed(1)+' ton</div><div class="kpi-lbl">Kg totales</div></div>';
+  html += '<div class="kpi-card"><div class="kpi-val">'+gmdProm+'</div><div class="kpi-lbl">GMD prom (kg/dia)</div></div>';
+  html += '</div>';
+
+  html += '<table class="tbl" style="font-size:12px"><thead><tr><th>Escenario</th><th>Peso prom.</th><th>Kg totales</th><th>Ingreso bruto</th><th>Costo mantener</th><th>Ingreso neto</th><th>Diferencia</th></tr></thead><tbody>';
+
+  var baseNeto = 0;
+  scenarios.forEach(function(sc, i) {
+    var projPeso = avgPeso + (gmdProm * sc.days);
+    var projTotalKg = Math.round(projPeso * eligible.length);
+    var ingresoBruto = Math.round(projTotalKg * precio);
+    var costoMantener = Math.round(costoDiaPorCab * eligible.length * sc.days);
+    var ingresoNeto = ingresoBruto - costoMantener;
+    if (i === 0) baseNeto = ingresoNeto;
+    var diff = ingresoNeto - baseNeto;
+    var diffColor = diff > 0 ? 'var(--green)' : diff < 0 ? 'var(--red)' : 'var(--muted)';
+    var best = i > 0 && diff > 0 ? 'background:rgba(34,197,94,.08)' : '';
+    html += '<tr style="'+best+'"><td style="font-weight:700">'+sc.label+'</td>';
+    html += '<td>'+Math.round(projPeso)+' kg</td>';
+    html += '<td>'+projTotalKg.toLocaleString()+' kg</td>';
+    html += '<td style="color:var(--green)">Bs. '+ingresoBruto.toLocaleString()+'</td>';
+    html += '<td style="color:var(--red)">'+(costoMantener?'Bs. '+costoMantener.toLocaleString():'-')+'</td>';
+    html += '<td style="font-weight:700">Bs. '+ingresoNeto.toLocaleString()+'</td>';
+    html += '<td style="color:'+diffColor+';font-weight:700">'+(diff>0?'+':'')+diff.toLocaleString()+'</td></tr>';
+  });
+  html += '</tbody></table>';
+
+  html += '<div style="margin-top:12px;padding:10px 14px;background:var(--sur2);border-radius:8px;font-size:11px;color:var(--muted);line-height:1.6">';
+  html += '<b>Supuestos:</b> GMD constante '+gmdProm+' kg/dia · Costo/dia/cabeza: Bs. '+costoDiaPorCab+' (diesel, personal, mantenimiento) · Precio constante '+precio+' Bs/kg. Los costos reales pueden variar.';
+  html += '</div>';
+
+  document.getElementById('sim-result').innerHTML = html;
+}
+
+// ═══════════════════════════════════════
+// 4. PRECIOS DE MERCADO
+// ═══════════════════════════════════════
+
+function searchPreciosOnline() {
+  var el = document.getElementById('int-tab-precios');
+  if (!el) return;
+  var searchDiv = document.getElementById('precios-search-result');
+  if (!searchDiv) {
+    searchDiv = document.createElement('div');
+    searchDiv.id = 'precios-search-result';
+    searchDiv.style.cssText = 'margin-bottom:14px';
+    var firstCard = el.querySelector('.card');
+    if (firstCard) firstCard.insertBefore(searchDiv, firstCard.children[1]);
+  }
+  searchDiv.innerHTML = '<div style="padding:12px;background:var(--sur2);border-radius:8px;font-size:12px"><div class="spinner" style="width:20px;height:20px;display:inline-block;vertical-align:middle;margin-right:8px"></div> Buscando precios actuales en Bolivia...</div>';
+
+  var apiUrl = getApiUrl();
+  var token = localStorage.getItem('e5m_api_token') || '';
+  fetch(apiUrl + '/market-prices-search', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json', 'Authorization':'Bearer '+token},
+    body: JSON.stringify({query: 'precios ganado bovino Santa Cruz Bolivia'})
+  }).then(function(r){return r.json();})
+  .then(function(d){
+    if (d.error) throw new Error(d.error);
+    var text = d.text || 'No se encontraron resultados.';
+    var sources = '';
+    if (d.sources && d.sources.length) {
+      sources = '<div style="margin-top:8px;font-size:10px;color:var(--muted)">Fuentes: ';
+      d.sources.forEach(function(s){
+        sources += '<a href="'+s.url+'" target="_blank" style="color:var(--amber2);margin-right:8px">'+escH(s.title)+'</a>';
+      });
+      sources += '</div>';
+    }
+    searchDiv.innerHTML = '<div style="padding:14px;background:rgba(245,166,35,.06);border:1px solid rgba(245,166,35,.15);border-radius:8px">' +
+      '<div style="font-size:12px;font-weight:700;color:var(--amber2);margin-bottom:6px">🔍 Referencia de mercado (IA + Google Search)</div>' +
+      '<div style="font-size:12px;color:var(--text);line-height:1.6;white-space:pre-wrap">' + escH(text).replace(/\n/g,'<br>').replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>') + '</div>' +
+      sources +
+      '<div style="margin-top:8px;font-size:10px;color:var(--muted)">Consultado: '+new Date().toLocaleString()+' — Los precios son referenciales</div></div>';
+  }).catch(function(e){
+    searchDiv.innerHTML = '<div style="padding:12px;background:rgba(239,68,68,.1);border-radius:8px;font-size:12px;color:var(--red)">Error buscando precios: '+e.message+'</div>';
+  });
+}
+
+function renderPrecios() {
+  var el = document.getElementById('int-tab-precios');
+  if (!el) return;
+  var precios = JSON.parse(localStorage.getItem('e5m_market_prices') || '[]');
+
+  var html = '<div class="card" style="padding:20px">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">';
+  html += '<div style="font-size:15px;font-weight:700">📊 Precios de Mercado</div>';
+  html += '<button class="btn btn-ghost btn-sm" onclick="searchPreciosOnline()" style="margin-right:6px;font-size:11px">🔍 Buscar precios</button><button class="btn btn-primary btn-sm" onclick="openAddPrecio()">+ Registrar precio</button></div>';
+
+  // Reference info
+  html += '<div style="padding:10px 14px;background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.2);border-radius:8px;margin-bottom:14px;font-size:11px;color:var(--muted);line-height:1.6">';
+  html += '📡 <b>Fuentes de referencia Bolivia:</b><br>';
+  html += '• <a href="https://fegasacruz.org" target="_blank" style="color:var(--amber2)">FEGASACRUZ</a> — Precios semanales de remate (El Marucho, FERCOGAN)<br>';
+  html += '• <a href="https://siip.produccion.gob.bo" target="_blank" style="color:var(--amber2)">SIIP</a> — Sistema de Info del Min. de Produccion<br>';
+  html += '• Registra los precios que escuches de frigorificos, remates y vecinos para llevar tu propio historico.';
+  html += '</div>';
+
+  if (precios.length) {
+    // Summary
+    var latest = precios[precios.length - 1];
+    var avg30 = precios.filter(function(p){return Date.now() - new Date(p.fecha).getTime() < 2592000000;});
+    var avg30Val = avg30.length ? Math.round(avg30.reduce(function(s,p){return s+p.precio;},0)/avg30.length*100)/100 : 0;
+    var trend = precios.length >= 2 ? precios[precios.length-1].precio - precios[precios.length-2].precio : 0;
+
+    html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">';
+    html += '<div class="kpi-card"><div class="kpi-val" style="color:var(--amber2)">'+latest.precio+' Bs/kg</div><div class="kpi-lbl">Ultimo registrado ('+latest.fecha+')</div></div>';
+    html += '<div class="kpi-card"><div class="kpi-val">'+avg30Val+' Bs/kg</div><div class="kpi-lbl">Promedio 30 dias</div></div>';
+    html += '<div class="kpi-card"><div class="kpi-val" style="color:'+(trend>=0?'var(--green)':'var(--red)')+'">'+
+      (trend>=0?'↑':'↓')+' '+Math.abs(trend).toFixed(1)+' Bs/kg</div><div class="kpi-lbl">Tendencia</div></div>';
+    html += '</div>';
+
+    // Price chart (simple SVG)
+    var maxP = Math.max.apply(null, precios.map(function(p){return p.precio;}));
+    var minP = Math.min.apply(null, precios.map(function(p){return p.precio;}));
+    var range = maxP - minP || 1;
+    var chartW = 500, chartH = 120;
+    var path = '';
+    precios.forEach(function(p, i) {
+      var x = i * (chartW / Math.max(1,precios.length-1)) + 10;
+      var y = chartH - ((p.precio - minP) / range * (chartH - 30)) + 15;
+      path += (i===0?'M':'L')+x+','+y;
+    });
+    html += '<div style="margin-bottom:14px"><svg viewBox="0 0 '+(chartW+20)+' '+(chartH+25)+'" style="width:100%;height:160px">';
+    html += '<text x="4" y="12" fill="var(--muted)" font-size="10">Historial de precios (Bs/kg)</text>';
+    html += '<path d="'+path+'" fill="none" stroke="var(--amber2)" stroke-width="2"/>';
+    precios.forEach(function(p, i) {
+      var x = i * (chartW / Math.max(1,precios.length-1)) + 10;
+      var y = chartH - ((p.precio - minP) / range * (chartH - 30)) + 15;
+      html += '<circle cx="'+x+'" cy="'+y+'" r="3" fill="var(--amber2)"/>';
+      if (i % Math.ceil(precios.length/8) === 0) {
+        html += '<text x="'+x+'" y="'+(chartH+22)+'" fill="var(--muted)" font-size="8" text-anchor="middle">'+p.fecha.slice(5)+'</text>';
+      }
+    });
+    html += '<text x="2" y="20" fill="var(--green)" font-size="9">'+maxP+'</text>';
+    html += '<text x="2" y="'+chartH+'" fill="var(--red)" font-size="9">'+minP+'</text>';
+    html += '</svg></div>';
+
+    // Table
+    html += '<table class="tbl" style="font-size:12px"><thead><tr><th>Fecha</th><th>Precio Bs/kg</th><th>Fuente</th><th>Tipo</th><th>Notas</th><th></th></tr></thead><tbody>';
+    precios.slice().reverse().slice(0,20).forEach(function(p) {
+      html += '<tr><td>'+p.fecha+'</td><td style="font-weight:700;color:var(--amber2)">'+p.precio+' Bs/kg</td><td>'+escH(p.fuente||'-')+'</td><td>'+escH(p.tipo||'gancho')+'</td><td style="font-size:11px;color:var(--muted)">'+escH(p.notas||'-')+'</td>';
+      html += '<td><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deletePrecio(\''+p.id+'\')">✕</button></td></tr>';
+    });
+    html += '</tbody></table>';
+  } else {
+    html += '<div style="text-align:center;padding:30px;color:var(--muted)"><div style="font-size:28px;margin-bottom:8px">📊</div>Sin precios registrados. Agrega el primer precio de referencia.</div>';
+  }
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function openAddPrecio() {
+  var overlay = document.createElement('div');
+  overlay.id = 'precio-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;display:flex;align-items:center;justify-content:center';
+  var modal = document.createElement('div');
+  modal.style.cssText='background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:20px;width:380px';
+  modal.innerHTML = '<div style="font-size:15px;font-weight:700;margin-bottom:14px">+ Registrar Precio de Mercado</div>'+
+    '<div style="margin-bottom:8px"><label style="font-size:11px;color:var(--muted)">Fecha</label><input class="form-input" type="date" id="precio-fecha" value="'+today()+'" style="width:100%"></div>'+
+    '<div style="margin-bottom:8px"><label style="font-size:11px;color:var(--muted)">Precio Bs/kg</label><input class="form-input" type="number" id="precio-valor" step="0.5" placeholder="34" style="width:100%"></div>'+
+    '<div style="margin-bottom:8px"><label style="font-size:11px;color:var(--muted)">Tipo</label><select class="form-select" id="precio-tipo" style="width:100%">'+
+    '<option value="gancho">Gancho (frigorificos)</option><option value="pie">En pie (remate)</option><option value="carne">Carne al consumidor</option></select></div>'+
+    '<div style="margin-bottom:8px"><label style="font-size:11px;color:var(--muted)">Fuente</label><input class="form-input" id="precio-fuente" placeholder="Ej: Frigorifico Guaracachi, Remate Marucho" style="width:100%"></div>'+
+    '<div style="margin-bottom:8px"><label style="font-size:11px;color:var(--muted)">Notas</label><input class="form-input" id="precio-notas" placeholder="Ej: Novillo Brangus 400+ kg" style="width:100%"></div>'+
+    '<div style="display:flex;gap:8px;margin-top:14px"><button class="btn btn-ghost" style="flex:1" onclick="document.getElementById(\'precio-overlay\').remove()">Cancelar</button>'+
+    '<button class="btn btn-primary" style="flex:1" onclick="savePrecio()">Guardar</button></div>';
+  overlay.appendChild(modal);
+  overlay.addEventListener('click', function(e){if(e.target===overlay)overlay.remove();});
+  document.body.appendChild(overlay);
+}
+
+function savePrecio() {
+  var fecha = (document.getElementById('precio-fecha')||{}).value || today();
+  var valor = parseFloat((document.getElementById('precio-valor')||{}).value) || 0;
+  if (!valor) { toast('Ingresa el precio','error'); return; }
+  var precios = JSON.parse(localStorage.getItem('e5m_market_prices') || '[]');
+  precios.push({
+    id: 'p_'+Date.now(), fecha: fecha, precio: valor,
+    tipo: (document.getElementById('precio-tipo')||{}).value || 'gancho',
+    fuente: ((document.getElementById('precio-fuente')||{}).value||'').trim(),
+    notas: ((document.getElementById('precio-notas')||{}).value||'').trim()
+  });
+  precios.sort(function(a,b){return a.fecha.localeCompare(b.fecha);});
+  localStorage.setItem('e5m_market_prices', JSON.stringify(precios));
+  replaceTableInRailway('market_prices', precios);
+  document.getElementById('precio-overlay').remove();
+  renderPrecios();
+  toast('Precio registrado: '+valor+' Bs/kg','success');
+}
+
+function deletePrecio(id) {
+  if (!confirm('Eliminar este registro de precio?')) return;
+  var precios = JSON.parse(localStorage.getItem('e5m_market_prices') || '[]');
+  precios = precios.filter(function(p){return p.id !== id;});
+  localStorage.setItem('e5m_market_prices', JSON.stringify(precios));
+  replaceTableInRailway('market_prices', precios);
+  renderPrecios();
+  toast('Precio eliminado','success');
+}
+
+
+function saveReportPhone() {
+  var phone = (document.getElementById('cfg-report-phone')||{}).value || '';
+  var rp = JSON.parse(localStorage.getItem('e5m_report_params')||'{}');
+  rp.report_phone = phone;
+  localStorage.setItem('e5m_report_params', JSON.stringify(rp));
+  replaceTableInRailway('report_params', rp);
+  toast('Telefono guardado: ' + phone, 'success');
+}
+
+function loadReportPhone() {
+  var rp = JSON.parse(localStorage.getItem('e5m_report_params')||'{}');
+  var el = document.getElementById('cfg-report-phone');
+  if (el && rp.report_phone) el.value = rp.report_phone;
+}
+setTimeout(loadReportPhone, 1500);
+
+function testReport(type) {
+  var phone = (document.getElementById('cfg-report-phone')||{}).value || '';
+  if (!phone) { toast('Configura el telefono primero','error'); return; }
+  var api = getApiUrl();
+  var token = localStorage.getItem('e5m_api_token') || '';
+  toast('Enviando reporte ' + type + '...', 'success');
+  fetch(api + '/send-report', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json', 'Authorization':'Bearer '+token},
+    body: JSON.stringify({type: type, phone: phone})
+  }).then(function(r){return r.json();})
+  .then(function(d){
+    if (d.ok) toast('Reporte enviado a ' + phone, 'success');
+    else toast('Error: ' + (d.error||''), 'error');
+  }).catch(function(e){ toast('Error: ' + e.message, 'error'); });
+}
 
 </script>
 
