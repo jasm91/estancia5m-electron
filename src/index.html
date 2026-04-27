@@ -3630,6 +3630,11 @@ function pullFromRailwayDesktop(thenPush) {
         { local: 'maquinaria', remote: remote.maquinaria },
         { local: 'sales',      remote: remote.sales },
         { local: 'inventory_counts', remote: remote.inventory_counts },
+        { local: 'compras_ganado', remote: remote.compras_ganado },
+        { local: 'kardex',         remote: remote.kardex },
+        { local: 'cuentas',        remote: remote.cuentas },
+        { local: 'historial_sueldos', remote: remote.historial_sueldos },
+        { local: 'health_alerts',  remote: remote.health_alerts },
       ];
       fieldTables.forEach(function(t) {
         if (t.remote && t.remote.length) {
@@ -3793,6 +3798,8 @@ function pushDesktopRecords() {
       compras_ganado:   db.compras_ganado || [],
       bajas:            db.bajas || [],
       maquinaria:       db.maquinaria || [],
+      rotation_history: db.rotation_history || [],
+      pasture_evals:    db.pasture_evals || [],
       tasks_list:       tasks,
     },
     preserve_lots: true
@@ -3853,6 +3860,8 @@ function pushToRailway() {
       compras_ganado:   db.compras_ganado || [],
       bajas:            db.bajas || [],
       maquinaria:       db.maquinaria || [],
+      rotation_history: db.rotation_history || [],
+      pasture_evals:    db.pasture_evals || [],
       tasks_list:       tasks,
       animals: (function(){
         try {
@@ -7563,9 +7572,9 @@ function fmtDT(str) {
   if (s.length >= 16 && s[10] === ' ') return s.slice(0,16);
   return s.slice(0,10);
 }
-var _API_TOKEN = 'estancia5m-2026-secreto';
+var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.2.32'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.2.34'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -7573,7 +7582,7 @@ if (window.estancia && window.estancia.app && window.estancia.app.version) {
 
 // Solo establecer defaults si no hay valores guardados
 if (!localStorage.getItem('apiUrl'))   localStorage.setItem('apiUrl',   _API_URL);
-if (!localStorage.getItem('apiToken')) localStorage.setItem('apiToken', _API_TOKEN);
+if (!localStorage.getItem('apiToken') && _API_TOKEN) localStorage.setItem('apiToken', _API_TOKEN);
 
 // ══════════════════════════════════════════════════
 // ACTIVACIÓN Y RESTAURACIÓN
@@ -7581,9 +7590,8 @@ if (!localStorage.getItem('apiToken')) localStorage.setItem('apiToken', _API_TOK
 
 function checkActivation() {
   var token = localStorage.getItem('e5m_api_token');
-  var defaultToken = 'estancia5m-2026-secreto';
-  // Si no hay token o es el default hardcodeado sin datos locales
-  var hasToken = token && token !== defaultToken && token !== '';
+  // Si no hay token
+  var hasToken = token && token.length > 5;
   var hasData  = (function(){
     try { var db = JSON.parse(localStorage.getItem('estancia5m_v1')||'{}'); return (db.lots||[]).length > 0; } catch(e){ return false; }
   })();
@@ -7724,14 +7732,28 @@ function startRestoreWithData(data) {
         historial_sueldos: data.historial_sueldos || [],
         health_alerts: data.health_alerts || [],
         activities: data.field_activities || [],
+        maquinaria: data.maquinaria || [],
+        bajas:     data.bajas      || [],
+        compras_ganado: data.compras_ganado || [],
+        rotation_history: data.rotation_history || [],
+        pasture_evals: data.pasture_evals || [],
+        alerts:    data.alerts     || data.health_alerts || [],
+        animal_movements: data.animal_movements || [],
         trace_records: [],
         next_ids: { lot:1000, product:1000, treatment:1000, alert:1000, sale:1000, purchase:1000, employee:1000, activity:1000, trace:1000, pesaje:1000, maint:1000 }
       };
       localStorage.setItem('estancia5m_v1', JSON.stringify(newDb));
       if (data.animals) localStorage.setItem('e5m_animals', JSON.stringify(data.animals));
       if (data.tasks)   localStorage.setItem('e5m_tasks', JSON.stringify(data.tasks));
-
-      // Guardar branding si existe
+      if (data.report_params && typeof data.report_params === 'object' && Object.keys(data.report_params).length) {
+        localStorage.setItem('e5m_report_params', JSON.stringify(data.report_params));
+        if (data.report_params.gemini_key) localStorage.setItem('e5m_gemini_key', data.report_params.gemini_key);
+      }
+      if (data.estancia_params && typeof data.estancia_params === 'object' && Object.keys(data.estancia_params).length) {
+        localStorage.setItem('e5m_params', JSON.stringify(data.estancia_params));
+      }
+      if (data.diesel_tank) localStorage.setItem('e5m_diesel_tank', JSON.stringify(data.diesel_tank));
+      if (data.pluvios_config && Array.isArray(data.pluvios_config)) localStorage.setItem('e5m_pluvios', JSON.stringify(data.pluvios_config));
       if (data.branding && data.branding.name) {
         localStorage.setItem('e5m_branding', JSON.stringify(data.branding));
       }
@@ -7892,9 +7914,16 @@ function saveServerConfig() {
         localStorage.removeItem('estancia5m_v1');
         localStorage.removeItem('e5m_animals');
         localStorage.removeItem('e5m_tasks');
-  localStorage.removeItem('e5m_pluvios');
-  localStorage.removeItem('e5m_maquinaria');
+        localStorage.removeItem('e5m_pluvios');
+        localStorage.removeItem('e5m_maquinaria');
         localStorage.removeItem('e5m_deleted_ids');
+        localStorage.removeItem('e5m_report_params');
+        localStorage.removeItem('e5m_params');
+        localStorage.removeItem('e5m_branding');
+        localStorage.removeItem('e5m_gemini_key');
+        localStorage.removeItem('e5m_diesel_tank');
+        localStorage.removeItem('e5m_pasture_evals');
+        localStorage.removeItem('e5m_local_photos');
         toast('Cambiando a nuevo tenant...', 'success');
         setTimeout(function(){ location.reload(); }, 1000);
       };
@@ -7908,9 +7937,16 @@ function saveServerConfig() {
       localStorage.removeItem('estancia5m_v1');
       localStorage.removeItem('e5m_animals');
       localStorage.removeItem('e5m_tasks');
-  localStorage.removeItem('e5m_pluvios');
-  localStorage.removeItem('e5m_maquinaria');
+      localStorage.removeItem('e5m_pluvios');
+      localStorage.removeItem('e5m_maquinaria');
       localStorage.removeItem('e5m_deleted_ids');
+      localStorage.removeItem('e5m_report_params');
+      localStorage.removeItem('e5m_params');
+      localStorage.removeItem('e5m_branding');
+      localStorage.removeItem('e5m_gemini_key');
+      localStorage.removeItem('e5m_diesel_tank');
+      localStorage.removeItem('e5m_pasture_evals');
+      localStorage.removeItem('e5m_local_photos');
       setTimeout(function(){ location.reload(); }, 500);
     });
   } else {
