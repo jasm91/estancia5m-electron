@@ -385,7 +385,7 @@ function renderActividadLote() {
 }
 
 function showLotesTab(tabId, btn) {
-  var allTabs = ['lotes-tab-list','lotes-tab-pesajes','lotes-tab-agua','lotes-tab-sal','lotes-tab-conteo','lotes-tab-partos','lotes-tab-alimento','lotes-tab-animales','lotes-tab-bajas','lotes-tab-historial','lotes-tab-actividad','lotes-tab-params'];
+  var allTabs = ['lotes-tab-list','lotes-tab-pesajes','lotes-tab-agua','lotes-tab-sal','lotes-tab-conteo','lotes-tab-partos','lotes-tab-alimento','lotes-tab-animales','lotes-tab-bajas','lotes-tab-historial','lotes-tab-rotacion','lotes-tab-actividad','lotes-tab-params'];
   allTabs.forEach(function(id){
     var el=document.getElementById(id);
     if(el) el.style.display = id===tabId ? 'block' : 'none';
@@ -545,6 +545,7 @@ function publishTasksToPWA() {
   <div class="nav-sec">
     <div class="nav-lbl">Reportes</div>
     <button class="nav-btn" onclick="showPage('kardex',this)"><span class="nav-icon">📒</span>Kardex</button>
+    <!-- Rotacion moved to Lotes tab -->
     <button class="nav-btn" onclick="showPage('contabilidad',this)"><span class="nav-icon">📊</span>Contabilidad</button>
     <button class="nav-btn" onclick="showPage('costos',this)"><span class="nav-icon">💰</span>Costos</button>
     <button class="nav-btn" onclick="showPage('trazabilidad',this)"><span class="nav-icon">🔖</span>Trazabilidad</button>
@@ -638,6 +639,7 @@ function publishTasksToPWA() {
     <button class="tab-btn" id="lotes-tab-partos-btn"         onclick="showLotesTab('lotes-tab-partos',this)">🐄 Partos</button>
     <button class="tab-btn" id="lotes-tab-alimento-btn"       onclick="showLotesTab('lotes-tab-alimento',this)">🌿 Alimento</button>
     <button class="tab-btn" id="lotes-tab-animales-btn"       onclick="showLotesTab('lotes-tab-animales',this)">🐂 Animales</button>
+    <button class="tab-btn" id="lotes-tab-rotacion-btn"      onclick="showLotesTab('lotes-tab-rotacion',this);renderRotacion()">🔄 Rotación</button>
     <button class="tab-btn" id="lotes-tab-bajas-btn"          onclick="showLotesTab('lotes-tab-bajas',this)">🪦 Bajas</button>
     <button class="tab-btn" id="lotes-tab-historial-btn"      onclick="showLotesTab('lotes-tab-historial',this)">📋 Historial Animales</button>
     <button class="tab-btn" id="lotes-tab-actividad-btn"      onclick="showLotesTab('lotes-tab-actividad',this)">📅 Actividad</button>
@@ -819,6 +821,11 @@ function publishTasksToPWA() {
     <div class="card"><div class="card-body" style="padding:0"><div id="historial-list"></div></div></div>
   </div>
 
+  <!-- ROTACION TAB -->
+  <div id="lotes-tab-rotacion" class="tab-pane" style="display:none">
+    <div id="rotacion-content"></div>
+  </div>
+
   <!-- ACTIVIDAD TAB -->
   <div id="lotes-tab-actividad" class="tab-pane" style="display:none">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
@@ -845,6 +852,7 @@ function publishTasksToPWA() {
       <option value="lluvia">🌧️ Lluvias</option>
       <option value="aceite">🛢️ Aceite</option>
       <option value="tarea">✅ Tareas</option>
+      <option value="eval_pasto">🌿 Eval. Pasto</option>
         </select>
       </div>
     </div>
@@ -860,10 +868,25 @@ function publishTasksToPWA() {
         <div class="card-hd"><div class="card-title">📍 Potreros</div></div>
         <div class="card-body" style="padding:0">
           <div id="params-potreros-list"></div>
-          <div style="padding:12px;border-top:1px solid var(--bor);display:flex;gap:8px">
-            <input class="form-input" id="param-potrero-name" placeholder="Nombre del potrero" style="flex:1">
-            <input class="form-input" id="param-potrero-cap" placeholder="Cap. animales" style="width:120px" type="number">
-            <button class="btn btn-primary btn-sm" onclick="addParam('potreros',{name:document.getElementById('param-potrero-name').value,capacity:parseInt(document.getElementById('param-potrero-cap').value)||0})">+</button>
+          <div style="padding:12px;border-top:1px solid var(--bor)">
+            <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+              <input class="form-input" id="param-potrero-name" placeholder="Nombre" style="flex:1;min-width:100px">
+              <input class="form-input" id="param-potrero-cap" placeholder="Cap. cab." style="width:80px" type="number">
+              <input class="form-input" id="param-potrero-ha" placeholder="Hectáreas" style="width:80px" type="number" step="0.1">
+            </div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <select class="form-select" id="param-potrero-pasto" style="flex:1;font-size:11px">
+                <option value="">Tipo de pasto</option>
+                <option value="Brachiaria">Brachiaria</option>
+                <option value="Mombaça">Mombaça</option>
+                <option value="Tanzania">Tanzania</option>
+                <option value="Pasto natural">Pasto natural</option>
+                <option value="Otro">Otro</option>
+              </select>
+              <input class="form-input" id="param-potrero-occ" placeholder="Días ocup." style="width:75px" type="number" title="Días máx. de ocupación">
+              <input class="form-input" id="param-potrero-rest" placeholder="Días desc." style="width:75px" type="number" title="Días mín. de descanso">
+              <button class="btn btn-primary btn-sm" onclick="addPotreroParam()">+</button>
+            </div>
           </div>
         </div>
       </div>
@@ -2088,6 +2111,15 @@ function publishTasksToPWA() {
 </div>
 
 
+<!-- ROTACION DE POTREROS -->
+<div id="page-rotacion" class="page">
+  <div class="ph">
+    <div><div class="ph-title">🔄 Rotacion de Potreros</div><div class="ph-sub">Estado actual y historial de rotacion</div></div>
+  </div>
+  <div id="rotation-alerts" style="padding:0 20px"></div>
+  <div id="rotacion-content" style="padding:16px 20px"></div>
+</div>
+
 <!-- INTELIGENCIA -->
 <div id="page-inteligencia" class="page">
   <div class="ph" style="margin-bottom:0">
@@ -2392,7 +2424,8 @@ function publishTasksToPWA() {
       <option value="lluvia">🌧️ Lluvias</option>
       <option value="aceite">🛢️ Aceite</option>
       <option value="tarea">✅ Tareas</option>
-    </select>
+      <option value="eval_pasto">🌿 Eval. Pasto</option>
+          </select>
   </div>
   <div class="card"><div class="card-body" style="padding:0"><div id="act-page-list"></div></div></div>
 </div>
@@ -3064,21 +3097,30 @@ function publishTasksToPWA() {
 
 <!-- Move Lot -->
 <div class="modal-overlay" id="modal-move">
-<div class="modal"><h2>🔄 Mover Lote</h2>
+<div class="modal" style="max-width:480px"><h2>🔄 Rotación de Lote</h2>
 <div class="form-group"><label class="form-label">Lote</label>
   <input class="form-input" id="move-lot-code" readonly style="background:var(--sur2);color:var(--amber2)">
 </div>
 <div class="form-group"><label class="form-label">Potrero destino</label>
-  <select class="form-select" id="move-paddock">
+  <div id="move-paddock-suggestions-d" style="margin-bottom:6px"></div>
+  <select class="form-select" id="move-paddock" onchange="checkMoveWarningDesktop()">
     <option value="">Seleccionar potrero...</option>
   </select>
+  <div id="move-paddock-warning-d" style="margin-top:4px"></div>
 </div>
-<div class="form-group"><label class="form-label">Motivo (opcional)</label>
-  <input class="form-input" id="move-reason" placeholder="Ej: Rotacion programada">
+<div class="form-group"><label class="form-label">Motivo de rotación</label>
+  <select class="form-select" id="move-reason">
+    <option value="Rotación planificada">Rotación planificada</option>
+    <option value="Pasto degradado">Pasto degradado</option>
+    <option value="Días máximos cumplidos">Días máximos cumplidos</option>
+    <option value="Sobre-ocupación">Sobre-ocupación</option>
+    <option value="Cambio de categoría">Cambio de categoría</option>
+    <option value="Otro">Otro</option>
+  </select>
 </div>
 <div class="form-actions">
   <button class="btn btn-ghost" onclick="closeModal('modal-move')">Cancelar</button>
-  <button class="btn btn-primary" onclick="moveLot()">Confirmar movimiento</button>
+  <button class="btn btn-primary" onclick="moveLot()">Confirmar rotación</button>
 </div></div></div>
 
 <!-- Trazabilidad -->
@@ -3583,6 +3625,8 @@ function pullFromRailwayDesktop(thenPush) {
         { local: 'purchases',  remote: remote.purchases },
         { local: 'aceite',     remote: remote.aceite },
         { local: 'bajas',      remote: remote.bajas },
+        { local: 'rotation_history', remote: remote.rotation_history },
+        { local: 'pasture_evals', remote: remote.pasture_evals },
         { local: 'maquinaria', remote: remote.maquinaria },
         { local: 'sales',      remote: remote.sales },
         { local: 'inventory_counts', remote: remote.inventory_counts },
@@ -3590,8 +3634,11 @@ function pullFromRailwayDesktop(thenPush) {
       fieldTables.forEach(function(t) {
         if (t.remote && t.remote.length) {
           db[t.local] = mergeArrays(db[t.local] || [], t.remote, 'id', t.local);
+          if (t.local === 'pasture_evals') console.log('[Sync] Pasture evals received:', t.remote.length, '-> merged:', db.pasture_evals.length);
         }
       });
+      // Force init pasture_evals if not exist
+      if (!db.pasture_evals) db.pasture_evals = [];
 
       // Products: sincronizar stock_qty desde Railway (bot/PWA pueden descontar)
       if (remote.products && remote.products.length) {
@@ -3936,6 +3983,7 @@ function renderPage(name) {
     maquinaria: renderMaquinaria,
     reportes: renderReportesGerenciales,
     'reporte-crea': renderReporteCREA,
+    'rotacion': renderRotacion,
     'params-reporte': renderParamsReporte,
     lluvias: renderLluviasDesktop,
     contabilidad: renderContabilidad,
@@ -4171,7 +4219,49 @@ function openMoveLot(id) {
       sel.appendChild(o);
     });
   }
+  // Populate suggestions
+  var sugEl = document.getElementById('move-paddock-suggestions-d');
+  if (sugEl) {
+    var params2 = getParams();
+    var potreros2 = params2.potreros || [];
+    var history2 = db.rotation_history || [];
+    var lots2 = db.lots || [];
+    var today2 = new Date();
+    var readyPots = [];
+    potreros2.forEach(function(p) {
+      var occ = lots2.filter(function(l){return (l.paddock||'').toLowerCase()===p.name.toLowerCase()&&l.status!=='sold'&&(l.animal_count||0)>0;});
+      if (occ.length > 0) return;
+      var exits = history2.filter(function(r){return r.potrero===p.name&&r.exit_date;}).sort(function(a,b){return (b.exit_date||'').localeCompare(a.exit_date||'');});
+      var daysRest = exits.length ? Math.round((today2-new Date(exits[0].exit_date))/86400000) : 999;
+      var ready = p.rest_days ? daysRest >= p.rest_days : true;
+      if (ready) readyPots.push({name:p.name, daysRest:daysRest});
+    });
+    readyPots.sort(function(a,b){return b.daysRest-a.daysRest;});
+    if (readyPots.length) {
+      sugEl.innerHTML = '<div style="font-size:10px;color:var(--green);margin-bottom:4px">✅ Sugeridos:</div>' +
+        readyPots.slice(0,3).map(function(p){return '<button class="btn btn-ghost btn-sm" onclick="document.getElementById(\'move-paddock\').value=\''+p.name+'\';checkMoveWarningDesktop()" style="font-size:10px;border:1px solid rgba(34,197,94,.3);color:var(--green);margin-right:4px">'+p.name+' ('+p.daysRest+'d)</button>';}).join('');
+    } else {
+      sugEl.innerHTML = '<div style="font-size:10px;color:var(--amber2)">⚠️ Ningun potrero con descanso suficiente</div>';
+    }
+  }
   openModal('modal-move');
+}
+
+function checkMoveWarningDesktop() {
+  var newP = (document.getElementById('move-paddock')||{}).value||'';
+  var warnEl = document.getElementById('move-paddock-warning-d');
+  if (!warnEl || !newP) { if(warnEl) warnEl.innerHTML=''; return; }
+  var params2 = getParams();
+  var pot = (params2.potreros||[]).find(function(p){return p.name===newP;});
+  if (!pot) { warnEl.innerHTML=''; return; }
+  var occ = db.lots.filter(function(l){return (l.paddock||'').toLowerCase()===newP.toLowerCase()&&l.status!=='sold'&&(l.animal_count||0)>0;});
+  if (occ.length) { warnEl.innerHTML='<div style="padding:6px 10px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:6px;font-size:11px;color:var(--red)">🔴 Ocupado con '+occ.reduce(function(s,l){return s+l.animal_count;},0)+' cabezas</div>'; return; }
+  var exits = (db.rotation_history||[]).filter(function(r){return r.potrero===newP&&r.exit_date;}).sort(function(a,b){return (b.exit_date||'').localeCompare(a.exit_date||'');});
+  if (exits.length && pot.rest_days) {
+    var dr = Math.round((new Date()-new Date(exits[0].exit_date))/86400000);
+    if (dr < pot.rest_days) { warnEl.innerHTML='<div style="padding:6px 10px;background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.3);border-radius:6px;font-size:11px;color:var(--amber2)">⚠️ Solo '+dr+' dias de descanso (min '+pot.rest_days+')</div>'; return; }
+  }
+  warnEl.innerHTML='<div style="padding:6px 10px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.15);border-radius:6px;font-size:11px;color:var(--green)">✅ Potrero listo</div>';
 }
 
 function moveLot() {
@@ -4186,10 +4276,31 @@ function moveLot() {
   }
   const old = lot.paddock;
   lot.paddock = newPaddock;
+  // Record rotation history
+  if (!db.rotation_history) db.rotation_history = [];
+if (!db.pasture_evals) db.pasture_evals = [];
+  // Close previous occupation
+  if (old) {
+    var prevEntry = db.rotation_history.filter(function(r){return r.lot_code===lot.code && r.potrero===old && !r.exit_date;});
+    prevEntry.forEach(function(r){ r.exit_date=localDate(); r.exit_at=new Date().toISOString(); var d1=new Date(r.entry_date); var d2=new Date(); r.days_occupied=Math.max(1,Math.round((d2-d1)/86400000)); });
+  }
+  // Open new occupation
+  db.rotation_history.push({
+    id: Date.now(), lot_code: lot.code, potrero: newPaddock, from_potrero: old||'',
+    entry_date: localDate(), entry_at: new Date().toISOString(),
+    exit_date: null, exit_at: null, days_occupied: 0,
+    cabezas: lot.animal_count||0, reason: reason||'', by: 'Desktop'
+  });
   addActivity('Sistema', 'movimiento', lot.code, 'Lote '+(lot.code)+' movido de '+(old)+' a '+(newPaddock)+'. '+(reason)+'');
+  // Auto-Kardex
+  if (!db.kardex) db.kardex = [];
+  db.kardex.push({id:Date.now()+3,lote:lot.code,tipo:'movimiento',fecha:localDate(),cabezas:lot.animal_count||0,precio:0,total:0,desc:'Rotacion: '+(old||'?')+' → '+newPaddock+(reason?' ('+reason+')':''),by:'Desktop',created_at:new Date().toISOString(),auto:true});
   saveDB(true);
   closeModal('modal-move');
   renderLotes();
+  renderRotacion();
+  replaceTableInRailway('rotation_history', db.rotation_history || []);
+  replaceTableInRailway('lots', db.lots || []);
   toast('Lote '+lot.code+' movido a '+newPaddock,'success');
 }
 
@@ -7094,6 +7205,7 @@ function renderActividades() {
       all.push({date:r.date,created_at:r.created_at||r.date||'',tag:'MOV',color:'var(--amber2)',
         title:r.desc||'Movimiento de lote',sub:'',lot:r.lot||'',by:r.employee||''});
     });
+  }
   // Lluvias
   if (!filterType || filterType==='lluvia') {
     (db.lluvias||[]).forEach(function(r){
@@ -7113,6 +7225,19 @@ function renderActividades() {
         sub:(r.tipo||'')+(r.obs?' — '+r.obs:''), lote:'', empleado:r.by||'', id:r.id, fuente:'aceite'});
     });
   }
+  // Evaluaciones de pasto
+  if (!filterType || filterType==='eval_pasto') {
+    (db.pasture_evals||[]).forEach(function(ev){
+
+      var status = ev.type==='pending'?'⏳ Pendiente':ev.type==='completed'?'✅ Evaluado':'✅';
+      var evalDate = ev.evaluated_at || ev.date || '';
+      all.push({fecha:evalDate, date:evalDate, created_at:evalDate, tag:'PAS', color:'var(--green)',
+        titulo:'🌿 Eval. Pasto — '+(ev.potrero||ev.lot||''),
+        title:'🌿 Eval. Pasto — '+(ev.potrero||ev.lot||''),
+        sub:status+' '+(ev.result||'').slice(0,100)+(ev.result&&ev.result.length>100?'...':''),
+        lote:ev.lot||'', lot:ev.lot||'', empleado:ev.by||'Campo', by:ev.by||'Campo', id:ev.id});
+    });
+  }
   // Tareas completadas
   if (!filterType || filterType==='tarea') {
     var _tkList = [];
@@ -7124,7 +7249,6 @@ function renderActividades() {
     });
   }
 
-  }
   all.sort(function(a,b){ return (b.created_at||b.date||'').localeCompare(a.created_at||a.date||''); });
   var el = document.getElementById('act-page-list');
   if (!el) return;
@@ -7437,7 +7561,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = 'estancia5m-2026-secreto';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.1.25'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.2.31'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -7861,7 +7985,7 @@ function forcePullFromToken() {
         alimento:d.alimento||[], lluvias:d.lluvias||[], diesel:d.diesel||[],
         aceite:d.aceite||[], cuentas:d.cuentas||[], kardex:d.kardex||[],
         historial_sueldos:d.historial_sueldos||[], compras_ganado:d.compras_ganado||[],
-        bajas:d.bajas||[], next_ids:{lot:100,product:100,treatment:100,sale:100,purchase:100,employee:100,activity:100,diesel:100,pesaje:100,bajas:100}
+        bajas:d.bajas||[], rotation_history:d.rotation_history||[], pasture_evals:d.pasture_evals||[], next_ids:{lot:100,product:100,treatment:100,sale:100,purchase:100,employee:100,activity:100,diesel:100,pesaje:100,bajas:100}
       };
       localStorage.setItem('estancia5m_v1', JSON.stringify(newDb));
       if(d.animals) localStorage.setItem('e5m_animals', JSON.stringify(d.animals));
@@ -10522,7 +10646,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // ══════════════════════════════════════════════════
 
 var PARAM_DEFAULTS = {
-  potreros:    [{name:'Potrero Norte',capacity:100},{name:'Potrero Sur',capacity:80},{name:'Potrero Este',capacity:120},{name:'Potrero Oeste',capacity:90},{name:'Potrero Central',capacity:150}],
+  potreros:    [{name:'Potrero Norte',capacity:100,hectares:50,pasture_type:'Brachiaria',max_days:30,rest_days:25},{name:'Potrero Sur',capacity:80,hectares:40,pasture_type:'Brachiaria',max_days:30,rest_days:25},{name:'Potrero Este',capacity:120,hectares:60,pasture_type:'Brachiaria',max_days:30,rest_days:25},{name:'Potrero Oeste',capacity:90,hectares:45,pasture_type:'Brachiaria',max_days:30,rest_days:25},{name:'Potrero Central',capacity:150,hectares:70,pasture_type:'Brachiaria',max_days:30,rest_days:25}],
   categorias:  [{name:'Novillo'},{name:'Ternero'},{name:'Vaquillona'},{name:'Recria mixta'},{name:'Toro'},{name:'Vaca'}],
   razas:       [{name:'Nelore'},{name:'Brahman'},{name:'Criollo'},{name:'Angus'},{name:'Hereford'}],
   actividades: [{name:'Curacion'},{name:'Pesaje'},{name:'Movimiento de lote'},{name:'Vacunacion'},{name:'Alimentacion'},{name:'Inspeccion de potrero'},{name:'Cavado de pozo'},{name:'Otro'}],
@@ -10579,13 +10703,21 @@ function renderParams() {
       var left = document.createElement('div');
       left.style.flex='1';
       left.textContent = item.name;
-      if (key==='potreros' && item.capacity) {
+      if (key==='potreros') {
+        var extraInfo = [];
+        if (item.capacity) extraInfo.push(item.capacity + ' cab');
+        if (item.hectares) extraInfo.push(item.hectares + ' ha');
+        if (item.grass_type) extraInfo.push(item.grass_type);
+        if (item.max_occupation_days) extraInfo.push('Ocup: ' + item.max_occupation_days + 'd');
+        if (item.rest_days) extraInfo.push('Desc: ' + item.rest_days + 'd');
+        if (extraInfo.length) {
         var cap = document.createElement('span');
         cap.style.cssText='font-size:10px;color:var(--muted);margin-left:8px';
         var curInP = (db.lots||[]).filter(function(l){return (l.paddock||'').toLowerCase()===(item.name||'').toLowerCase();}).reduce(function(s,l){return s+(l.animal_count||0);},0);
-        cap.textContent = curInP + '/' + item.capacity + ' cab';
-        if (curInP >= item.capacity) cap.style.color = 'var(--red)';
+        cap.textContent = (item.capacity ? curInP+'/'+item.capacity+' cab' : '') + (extraInfo.length > 1 ? ' · '+extraInfo.slice(1).join(' · ') : '');
+        if (item.capacity && curInP >= item.capacity) cap.style.color = 'var(--red)';
         left.appendChild(cap);
+      }
       }
       var btns = document.createElement('div');
       btns.style.cssText='display:flex;gap:4px';
@@ -10646,7 +10778,15 @@ function editParam(key, idx) {
   var html = '<div style="font-size:15px;font-weight:700;margin-bottom:14px">Editar '+(labels[key]||key)+'</div>';
   html += '<div style="margin-bottom:10px"><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Nombre</label><input class="form-input" id="edit-param-name" value="'+escH(item.name)+'" style="width:100%"></div>';
   if (key === 'potreros') {
-    html += '<div style="margin-bottom:10px"><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Capacidad (animales)</label><input class="form-input" type="number" id="edit-param-cap" value="'+(item.capacity||'')+'" placeholder="Sin limite" style="width:100%"></div>';
+    html += '<div style="margin-bottom:10px"><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Capacidad (cabezas)</label><input class="form-input" type="number" id="edit-param-cap" value="'+(item.capacity||'')+'" placeholder="Sin limite" style="width:100%"></div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">';
+    html += '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Hectareas</label><input class="form-input" type="number" id="edit-param-ha" value="'+(item.hectares||'')+'" step="0.5" style="width:100%"></div>';
+    html += '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Tipo de pasto</label><input class="form-input" id="edit-param-pasture" value="'+escH(item.pasture_type||'')+'" placeholder="Ej: Brachiaria" style="width:100%"></div>';
+    html += '</div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">';
+    html += '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Dias max ocupacion</label><input class="form-input" type="number" id="edit-param-maxdays" value="'+(item.max_days||30)+'" style="width:100%"></div>';
+    html += '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Dias descanso</label><input class="form-input" type="number" id="edit-param-restdays" value="'+(item.rest_days||25)+'" style="width:100%"></div>';
+    html += '</div>';
   }
   html += '<div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-ghost" id="edit-param-cancel" style="flex:1">Cancelar</button><button class="btn btn-primary" id="edit-param-save" style="flex:1">Guardar</button></div>';
   modal.innerHTML = html;
@@ -10661,6 +10801,10 @@ function editParam(key, idx) {
     item.name = newName;
     if (key === 'potreros') {
       item.capacity = parseInt(document.getElementById('edit-param-cap').value) || 0;
+      item.hectares = parseFloat(document.getElementById('edit-param-ha').value) || 0;
+      item.pasture_type = (document.getElementById('edit-param-pasture').value||'').trim();
+      item.max_days = parseInt(document.getElementById('edit-param-maxdays').value) || 30;
+      item.rest_days = parseInt(document.getElementById('edit-param-restdays').value) || 25;
       if (oldName !== newName) {
         (db.lots||[]).forEach(function(l){
           if ((l.paddock||'').toLowerCase() === oldName.toLowerCase()) l.paddock = newName;
@@ -11141,7 +11285,7 @@ var SUBMODULE_CONFIG = {
   alimento: { table:'alimento',id_prefix:'alimento',modal:'modal-alimento',fields:['lot','date','tipo','qty','obs','by'] },
 };
 
-var SUBMODULE_TABS = ['lotes-tab-list','lotes-tab-pesajes','lotes-tab-agua','lotes-tab-sal','lotes-tab-conteo','lotes-tab-partos','lotes-tab-alimento','lotes-tab-animales','lotes-tab-historial','lotes-tab-actividad','lotes-tab-params'];
+var SUBMODULE_TABS = ['lotes-tab-list','lotes-tab-pesajes','lotes-tab-agua','lotes-tab-sal','lotes-tab-conteo','lotes-tab-partos','lotes-tab-alimento','lotes-tab-animales','lotes-tab-historial','lotes-tab-rotacion','lotes-tab-actividad','lotes-tab-params'];
 
 function populateSubmoduleLots(prefix) {
   var activeLots = db.lots.filter(function(l){return !l.status||l.status==='activo'||l.status==='active';});
@@ -14026,7 +14170,7 @@ function renderHistorialAnimales() {
 var _aiHistory = [];
 var _aiOpen = false;
 
-function getGeminiKey() { return localStorage.getItem('e5m_gemini_key') || 'AIzaSyAopnYaGY8tyFySdw4AwVoE3uALEJDVtWw'; }
+function getGeminiKey() { return localStorage.getItem('e5m_gemini_key') || 'AIzaSyBH5jZgccPg-Am00fJ4qDOQTrryUmARjaI'; }
 function guardarGeminiKey() {
   var key = ((document.getElementById('cfg-gemini-key')||{}).value||'').trim();
   if (!key) { toast('Ingresa la API key','error'); return; }
@@ -14288,60 +14432,72 @@ var _AI_PROMPT = 'Eres el asistente inteligente de EstanciaPro, sistema ganadero
 var _tourStep = -1;
 var _TOUR_STEPS = [
   {
-    page: 'dashboard', title: '📊 Dashboard — Vista General',
-    text: 'Esta es la pantalla principal. Acá ves de un vistazo:\n• **Total de cabezas** y peso promedio\n• **KPIs del mes**: ventas, compras, diesel, lluvia\n• **Alertas activas** que requieren atención\n• **Gráficos** de peso y actividad reciente\n\nEs tu punto de partida cada vez que abrís la app.',
+    page: 'dashboard', title: '📊 Dashboard',
+    text: 'Pantalla principal con vista completa:\n• **Total de cabezas** y peso promedio\n• **KPIs del mes**: ventas, compras, diesel, lluvia\n• **🌤️ Clima en tiempo real**: temperatura, humedad, THI (estrés calórico), pronóstico 7 días\n• **Alertas climáticas** automáticas (calor, helada, viento, lluvia intensa)\n• Gráficos de peso y actividad reciente\n• Auto-sync cada 5 minutos con el servidor',
   },
   {
-    page: 'lotes/list', title: '🐄 Lotes — Gestión de Lotes',
-    text: 'Acá gestionás todos tus lotes ganaderos:\n• **Crear lote** con código, categoría, raza y potrero\n• **Mover lote** a otro potrero (valida capacidad)\n• **Ver estado**: animales, peso promedio, GMD\n\nCada lote tiene sub-pestañas: Pesajes, Agua, Sal, Conteo, Partos, Alimento, Animales, Bajas, Historial y Actividad.',
+    page: 'lotes/list', title: '🐄 Lotes',
+    text: 'Gestión de lotes ganaderos:\n• **Crear lote** con código, categoría, raza y potrero\n• **Mover lote** con foto obligatoria del pasto, sugerencia de destino y motivo\n• **Ver estado**: animales, peso promedio, GMD\n\nSub-pestañas: Pesajes, Agua, Sal, Conteo, Partos, Alimento, Animales, Bajas, Historial, **🔄 Rotación** y Actividad.',
   },
   {
-    page: 'lotes/animales', title: '🐄 Animales — IDs Individuales',
-    text: 'Vista de **todos los animales** por ID individual:\n• **Filtrar** por lote, buscar por ID o raza\n• **Filtro de peso**: Min/Max kg para encontrar animales en rango\n• **Acciones** por animal: Pesaje, Editar ID, Mover, Baja\n• **Historial** completo de cada animal\n\nPodés ver "Todos los lotes" o filtrar por uno específico.',
+    page: 'lotes/rotacion', title: '🔄 Rotación de Potreros',
+    text: 'Control de rotación estilo JetBov (Brasil):\n• **Tarjetas por potrero**: estado (ocupado/descansando/listo), días, capacidad\n• **Barras visuales**: ocupación y días con semáforo (verde/amarillo/rojo)\n• **Alertas automáticas**: potrero excedido, sobre-ocupación, listo para recibir\n• **Historial completo**: quién estuvo dónde, cuántos días, motivo\n• Al mover un lote se registra automáticamente acá',
   },
   {
-    page: 'lotes/bajas', title: '🪦 Bajas — Mortandad',
-    text: 'Registro de muertes y venta de carne post-baja:\n• **Registrar baja** con causa, foto y observaciones\n• **Venta de carne**: botón 💰 para registrar kg, precio y comprador\n• **KPIs**: % mortandad, causa principal, kg perdidos\n\n⚠️ La venta de carne se hace SOLO desde acá, no desde Ventas.',
+    page: 'lotes/animales', title: '🐂 Animales',
+    text: 'Vista individual por ID:\n• **Filtrar** por lote, buscar por ID o raza\n• **Filtro de peso**: Min/Max kg\n• **Acciones**: Pesaje, Editar ID, Mover entre lotes, Baja con foto\n• **Paginación**: 50 animales por página',
   },
   {
-    page: 'sanidad', title: '💉 Sanidad — Tratamientos',
-    text: 'Aplicación de tratamientos veterinarios:\n• Seleccionar **producto**, lote y cantidad\n• **Descuenta automáticamente** del stock veterinario\n• Registra costo en contabilidad\n• Historial de tratamientos por producto y lote',
+    page: 'lotes/bajas', title: '🪦 Bajas',
+    text: 'Mortandad y venta de carne:\n• **Registrar baja** con causa, foto y observaciones\n• **Venta de carne**: botón 💰 para kg, precio y comprador\n• Se genera automáticamente entrada en **Kardex**\n• KPIs: % mortandad, causa principal, kg perdidos',
+  },
+  {
+    page: 'sanidad', title: '💉 Sanidad',
+    text: 'Tratamientos veterinarios:\n• Seleccionar **producto**, lote y cantidad\n• **Descuenta automáticamente** del stock\n• Registra costo en contabilidad\n• El **bot WhatsApp** también puede registrar tratamientos por voz',
   },
   {
     page: 'stock', title: '💊 Stock Veterinario',
-    text: 'Inventario de productos veterinarios:\n• **Agregar productos** con stock mínimo\n• **Alertas** cuando un producto baja del mínimo\n• **Conteo de inventario** físico con ajuste automático\n• La merma se registra como costo en contabilidad',
+    text: 'Inventario de insumos:\n• **Agregar productos** con stock mínimo\n• **Alertas automáticas** cuando baja del mínimo\n• **Conteo de inventario** con ajuste automático\n• La merma se contabiliza como costo en CREA',
   },
   {
-    page: 'ventas', title: '💰 Ventas',
-    text: 'Comercialización de ganado:\n• **Venta por lote** o **por animal individual**\n• Tipos: frigorífico, feria, particular\n• Trazabilidad y selección de IDs\n• KPI de **Kg carne por baja** separado\n\nRecordá que la venta de carne post-muerte se hace desde Bajas, no acá.',
+    page: 'ventas', title: '💰 Ventas y Compras',
+    text: 'Comercialización de ganado:\n• **Venta por lote** o por animal individual\n• **Compra de ganado** con IDs y registro automático en Kardex\n• Tipos: frigorífico, feria, particular\n• Las ventas y compras generan movimientos automáticos en el Kardex',
   },
   {
     page: 'diesel', title: '⛽ Combustible',
-    text: 'Control de combustible multi-tanque:\n• **Tanques configurables**: nombre, capacidad, nivel\n• **Recarga**: valida que no exceda capacidad\n• **Despacho**: seleccionar equipo del catálogo de maquinaria\n• **Ajuste de inventario**: detecta merma con costo estimado\n• Cambios de aceite por equipo',
+    text: 'Control multi-tanque:\n• **Tanques configurables** con nivel visual\n• **Recarga**: valida que no exceda capacidad\n• **Despacho**: seleccionar equipo de maquinaria\n• **Merma**: recargas vs despachos, se contabiliza como costo\n• Cambios de aceite por equipo',
   },
   {
     page: 'maquinaria', title: '🚜 Maquinaria',
-    text: 'Hub central de equipos y activos:\n• **Registrar equipos** con foto, modelo, valor del activo\n• **KPIs por máquina**: diesel consumido, último aceite, costo mantenimiento\n• **Historial unificado**: despachos + aceite + mantenimientos\n• Los dropdowns de diesel y mantenimiento se alimentan de acá',
+    text: 'Hub de equipos y activos:\n• **Registrar equipos** con foto, modelo, valor\n• **KPIs por máquina**: diesel, último aceite, costo mantenimiento\n• **Historial unificado**: despachos + aceite + mantenimientos\n• Los dropdowns de diesel y mantenimiento se alimentan de acá',
   },
   {
     page: 'lluvias', title: '🌧 Lluvias',
-    text: 'Pluviometría con pluviómetros configurables:\n• **Agregar/eliminar pluviómetros** desde ⚙️ Config\n• **Lectura diaria** con comparativo entre zonas\n• **Gráfico anual** y tabla por período\n• Dato importante: diferencias grandes entre pluviómetros puede indicar problemas de drenaje',
+    text: 'Pluviometría con pluviómetros configurables:\n• **Lectura diaria** con comparativo entre zonas\n• **Gráfico anual** y tabla por período\n• También registrable desde el **bot WhatsApp**',
   },
   {
     page: 'mantenimiento', title: '🔧 Mantenimiento',
-    text: 'Registro de trabajos de mantenimiento:\n• **Asociar a equipo** del catálogo de maquinaria\n• Categorías: maquinaria, corrales, pozos, alambrado, infraestructura\n• **Fotos** de evidencia\n• Se refleja en **contabilidad** y **actividades**',
+    text: 'Trabajos de mantenimiento:\n• **Asociar a equipo** del catálogo\n• Categorías: maquinaria, corrales, pozos, alambrado\n• **Fotos** de evidencia\n• Se refleja en contabilidad y actividades',
   },
   {
     page: 'personal', title: '👷 Personal',
-    text: 'Gestión de empleados:\n• **Salarios** y pagos mensuales\n• **Adelantos** con control por empleado\n• Historial de pagos\n• Los adelantos se reflejan en contabilidad como costo',
+    text: 'Gestión de empleados:\n• **Salarios** y pagos mensuales\n• **Adelantos** con control por empleado\n• Historial de pagos\n• Los adelantos se reflejan en contabilidad',
+  },
+  {
+    page: 'actividades', title: '📝 Actividades',
+    text: 'Timeline de **18 tipos de transacciones**:\n• Curaciones, pesajes, agua, sal, conteo, partos, alimento, mantenimiento, compras, ventas, bajas, diesel, **lluvias, aceite, movimientos, tareas completadas**\n• **Filtro por tipo** y por período\n• **Badge de origen**: Desktop, Campo, WhatsApp\n• Fecha y hora de cada registro',
+  },
+  {
+    page: 'reporte-crea', title: '📊 Indicadores CREA',
+    text: 'Indicadores productivos y económicos:\n• **Costo por kg producido** por lote\n• **Desglose de egresos vs ingresos** con % por categoría\n• Solo recargas de diesel como costo (no despachos)\n• **Merma diesel y stock vet** contabilizadas\n• **Venta de carne de baja** como ingreso separado\n• Sal/alimento con fallback a precio unitario del producto',
   },
   {
     page: 'contabilidad', title: '📒 Contabilidad',
-    text: 'Vista financiera integrada:\n• Se alimenta **automáticamente** de ventas, compras, diesel, sueldos, tratamientos, mantenimiento y mermas\n• **Filtro por rango de fechas** y tipo de cuenta\n• Subcuentas separadas: "Venta carne (baja)", "Merma combustible", "Merma stock vet"\n• Columna "Reg." muestra quién registró cada movimiento\n• Export a CSV',
+    text: 'Vista financiera integrada:\n• Se alimenta **automáticamente** de todas las operaciones\n• **Filtro por fechas** y tipo de cuenta\n• Export a CSV',
   },
   {
     page: 'config', title: '⚙️ Configuración',
-    text: 'Configuración del sistema:\n• **🏠 Identidad**: Nombre de la estancia y propietario\n• **🔗 Servidor**: Token de sincronización + Forzar carga\n• **🤖 Gemini**: API key para este asistente\n• **💾 Backups**: Cloud + restaurar\n• **📋 Parámetros**: Potreros, categorías, razas',
+    text: 'Configuración del sistema:\n• **🏠 Identidad**: Nombre de la estancia y propietario\n• **🔗 Servidor**: Token de sincronización\n• **📡 Reportes automáticos**: Número WhatsApp destino + botones de prueba (matutino 6AM, semanal lunes 9AM, mensual 1ro 9AM)\n• **📍 Coordenadas**: Para clima y visión satelital\n• **📋 Parámetros**: Potreros (con hectáreas, capacidad, días máx/descanso), categorías, razas\n• **💾 Backups**: Cloud + restaurar',
   },
 ];
 
@@ -14602,6 +14758,24 @@ function initWeather() {
   if (_weatherInterval) clearInterval(_weatherInterval);
   _weatherInterval = setInterval(fetchWeather, 1800000);
 }
+
+// Init rotation_history for existing lots that don't have entries
+if (!db.rotation_history) db.rotation_history = [];
+if (db.rotation_history.length === 0 && db.lots && db.lots.length > 0) {
+  db.lots.forEach(function(l) {
+    if (l.paddock && l.status !== 'sold' && (l.animal_count||0) > 0) {
+      db.rotation_history.push({
+        id: Date.now() + Math.random()*1000,
+        lot_code: l.code, potrero: l.paddock, from_potrero: '',
+        entry_date: l.entry_date || localDate(), entry_at: new Date().toISOString(),
+        exit_date: null, exit_at: null, days_occupied: 0,
+        cabezas: l.animal_count||0, reason: 'Registro inicial', by: 'Sistema'
+      });
+    }
+  });
+  if (db.rotation_history.length > 0) saveDB();
+}
+
 setTimeout(initWeather, 2000);
 
 // Auto-pull from Railway every 5 minutes
@@ -15269,8 +15443,424 @@ function testReport(type) {
   }).catch(function(e){ toast('Error: ' + e.message, 'error'); });
 }
 
+
+// ══════════════════════════════════════════════════
+// ROTACIÓN DE POTREROS
+// ══════════════════════════════════════════════════
+
+function showEvalDetail(evalId) {
+  var evals = db.pasture_evals || [];
+  var ev = evals.find(function(e){return e.id === evalId;});
+  if (!ev) { toast('Evaluación no encontrada','error'); return; }
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px';
+  var modal = document.createElement('div');
+  modal.style.cssText = 'background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:20px;max-width:500px;width:100%;max-height:80vh;overflow-y:auto';
+  var statusIcon = ev.type==='pending' ? '⏳ Pendiente' : '✅ Evaluado';
+  modal.innerHTML = '<div style="font-size:15px;font-weight:700;margin-bottom:10px">🌿 Evaluación de Pasto</div>' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:12px">' + (ev.potrero||'') + ' | ' + (ev.lot||'') + ' | ' + (ev.date||'').slice(0,10) + ' | ' + statusIcon + '</div>' +
+    '<div style="font-size:13px;line-height:1.7;white-space:pre-wrap">' + escH(ev.result||'Sin resultado').replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>') + '</div>' +
+    (ev.evaluated_at ? '<div style="font-size:10px;color:var(--muted);margin-top:8px">Evaluado: '+ev.evaluated_at+'</div>' : '') +
+    '<div style="text-align:right;margin-top:12px"><button class="btn btn-ghost" onclick="this.closest(\'div[style*=fixed]\').remove()">Cerrar</button></div>';
+  overlay.appendChild(modal);
+  overlay.addEventListener('click', function(e){if(e.target===overlay)overlay.remove();});
+  document.body.appendChild(overlay);
+}
+
+function renderRotacion() {
+  var el = document.getElementById('rotacion-content');
+  if (!el) return;
+  var params = getParams();
+  var potreros = params.potreros || [];
+  var history = db.rotation_history || [];
+  var lots = db.lots || [];
+  var today = new Date();
+
+  var html = '';
+
+  // Alerts section
+  var alerts = [];
+  potreros.forEach(function(p) {
+    var activeLots = lots.filter(function(l){return (l.paddock||'').toLowerCase() === (p.name||'').toLowerCase() && l.status !== 'sold';});
+    var totalCab = activeLots.reduce(function(s,l){return s+(l.animal_count||0);},0);
+    
+    // Find when this potrero was occupied
+    var activeEntry = history.filter(function(r){return r.potrero===p.name && !r.exit_date;});
+    var daysOccupied = 0;
+    if (activeEntry.length) {
+      var oldest = activeEntry.reduce(function(a,b){return a.entry_date < b.entry_date ? a : b;});
+      daysOccupied = Math.max(1, Math.round((today - new Date(oldest.entry_date)) / 86400000));
+    }
+
+    if (totalCab > 0 && p.max_days && daysOccupied > p.max_days) {
+      alerts.push({level:'critico', msg:'🔴 <b>'+p.name+'</b>: '+daysOccupied+' dias ocupado (max '+p.max_days+'). Rotar lotes para evitar degradacion.'});
+    } else if (totalCab > 0 && p.max_days && daysOccupied > p.max_days * 0.8) {
+      alerts.push({level:'alto', msg:'🟡 <b>'+p.name+'</b>: '+daysOccupied+'/'+p.max_days+' dias. Planificar rotacion pronto.'});
+    }
+    if (p.capacity && totalCab > p.capacity) {
+      alerts.push({level:'critico', msg:'🔴 <b>'+p.name+'</b>: Sobre-ocupacion '+totalCab+'/'+p.capacity+' cabezas.'});
+    }
+
+    // Check rested potreros ready
+    if (totalCab === 0 && p.rest_days) {
+      var lastExit = history.filter(function(r){return r.potrero===p.name && r.exit_date;}).sort(function(a,b){return b.exit_date.localeCompare(a.exit_date);});
+      if (lastExit.length) {
+        var daysSinceExit = Math.round((today - new Date(lastExit[0].exit_date)) / 86400000);
+        if (daysSinceExit >= p.rest_days) {
+          alerts.push({level:'info', msg:'🟢 <b>'+p.name+'</b>: '+daysSinceExit+' dias de descanso (min '+p.rest_days+'). Listo para recibir ganado.'});
+        }
+      }
+    }
+  });
+
+  if (alerts.length) {
+    html += '<div style="margin-bottom:14px">';
+    alerts.forEach(function(a) {
+      var bg = a.level==='critico' ? 'rgba(239,68,68,.1)' : a.level==='alto' ? 'rgba(245,166,35,.1)' : 'rgba(34,197,94,.08)';
+      var bor = a.level==='critico' ? 'rgba(239,68,68,.3)' : a.level==='alto' ? 'rgba(245,166,35,.3)' : 'rgba(34,197,94,.2)';
+      html += '<div style="padding:8px 12px;border-radius:8px;background:'+bg+';border:1px solid '+bor+';font-size:12px;margin-bottom:4px">'+a.msg+'</div>';
+    });
+    html += '</div>';
+  }
+
+  // Potrero cards grid
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:16px">';
+  potreros.forEach(function(p) {
+    var activeLots = lots.filter(function(l){return (l.paddock||'').toLowerCase() === (p.name||'').toLowerCase() && l.status !== 'sold';});
+    var totalCab = activeLots.reduce(function(s,l){return s+(l.animal_count||0);},0);
+    var isOccupied = totalCab > 0;
+    var pctCap = p.capacity ? Math.round(totalCab / p.capacity * 100) : 0;
+    var capColor = pctCap > 100 ? 'var(--red)' : pctCap > 80 ? 'var(--amber2)' : 'var(--green)';
+
+    // Days occupied
+    var activeEntry = history.filter(function(r){return r.potrero===p.name && !r.exit_date;});
+    var daysOcc = 0;
+    if (activeEntry.length) {
+      var oldest = activeEntry.reduce(function(a,b){return a.entry_date < b.entry_date ? a : b;});
+      daysOcc = Math.max(1, Math.round((today - new Date(oldest.entry_date)) / 86400000));
+    }
+    var daysPct = p.max_days ? Math.round(daysOcc / p.max_days * 100) : 0;
+    var daysColor = daysPct > 100 ? 'var(--red)' : daysPct > 80 ? 'var(--amber2)' : 'var(--green)';
+
+    // Days resting (if empty)
+    var daysRest = 0;
+    if (!isOccupied) {
+      var lastExits = history.filter(function(r){return r.potrero===p.name && r.exit_date;}).sort(function(a,b){return b.exit_date.localeCompare(a.exit_date);});
+      if (lastExits.length) daysRest = Math.round((today - new Date(lastExits[0].exit_date)) / 86400000);
+    }
+    var restPct = p.rest_days ? Math.min(100, Math.round(daysRest / p.rest_days * 100)) : 0;
+    var restReady = p.rest_days && daysRest >= p.rest_days;
+
+    // Status
+    var statusIcon = isOccupied ? (daysPct > 100 ? '🔴' : daysPct > 80 ? '🟡' : '🟢') : (restReady ? '🟢' : '⏳');
+    var statusText = isOccupied ? 'OCUPADO' : (restReady ? 'LISTO' : 'DESCANSANDO');
+    var statusBg = isOccupied ? (daysPct > 100 ? 'rgba(239,68,68,.12)' : 'rgba(245,166,35,.08)') : (restReady ? 'rgba(34,197,94,.08)' : 'rgba(148,163,184,.08)');
+    var statusBor = isOccupied ? (daysPct > 100 ? 'rgba(239,68,68,.3)' : 'rgba(245,166,35,.2)') : (restReady ? 'rgba(34,197,94,.2)' : 'rgba(148,163,184,.15)');
+
+    html += '<div class="card" style="padding:14px;background:'+statusBg+';border:1px solid '+statusBor+'">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+    html += '<div style="font-size:14px;font-weight:700">'+statusIcon+' '+escH(p.name)+'</div>';
+    html += '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:'+statusBor+';color:var(--text)">'+statusText+'</span>';
+    html += '</div>';
+
+    // Info line
+    html += '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">';
+    if (p.hectares) html += p.hectares+' ha · ';
+    if (p.pasture_type) html += p.pasture_type+' · ';
+    if (p.capacity) html += 'Cap: '+p.capacity+' cab';
+    html += '</div>';
+
+    if (isOccupied) {
+      // Occupation bar
+      html += '<div style="margin-bottom:6px"><div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px"><span>Cabezas</span><span style="font-weight:700;color:'+capColor+'">'+totalCab+(p.capacity?'/'+p.capacity:'')+'</span></div>';
+      html += '<div style="height:6px;background:var(--sur2);border-radius:3px;overflow:hidden"><div style="height:100%;width:'+Math.min(100,pctCap)+'%;background:'+capColor+';border-radius:3px"></div></div></div>';
+
+      // Days bar
+      html += '<div style="margin-bottom:6px"><div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px"><span>Dias ocupado</span><span style="font-weight:700;color:'+daysColor+'">'+daysOcc+(p.max_days?'/'+p.max_days+' d':'')+'</span></div>';
+      html += '<div style="height:6px;background:var(--sur2);border-radius:3px;overflow:hidden"><div style="height:100%;width:'+Math.min(100,daysPct)+'%;background:'+daysColor+';border-radius:3px"></div></div></div>';
+
+      // Lots in this potrero
+      html += '<div style="font-size:11px;color:var(--muted)">';
+      activeLots.forEach(function(l) { html += '🐄 '+l.code+' ('+l.animal_count+' cab) '; });
+      html += '</div>';
+      // Latest pasture eval
+      var evals = db.pasture_evals || [];
+      var lotCodes = activeLots.map(function(l){return l.code;});
+      var potEvals = evals.filter(function(e){return e.potrero===p.name || lotCodes.indexOf(e.lot)>=0;}).sort(function(a,b){return (b.date||'').localeCompare(a.date||'');});
+      if (potEvals.length) {
+        var lastEval = potEvals[0];
+        var evalDate = lastEval.date ? new Date(lastEval.date).toLocaleDateString() : '';
+        html += '<div style="margin-top:6px;padding:6px 8px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.1);border-radius:6px;font-size:10px;line-height:1.4">';
+        html += '<span style="color:var(--green);font-weight:700">🌿 Eval '+evalDate+':</span> ';
+        html += escH((lastEval.result||'').slice(0,120)) + (lastEval.result&&lastEval.result.length>120?'...':'');
+        html += '</div>';
+      }
+    } else {
+      // Rest bar
+      html += '<div style="margin-bottom:6px"><div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px"><span>Dias descansando</span><span style="font-weight:700;color:'+(restReady?'var(--green)':'var(--muted)')+'">'+daysRest+(p.rest_days?'/'+p.rest_days+' d':'')+(restReady?' ✅':'')+'</span></div>';
+      html += '<div style="height:6px;background:var(--sur2);border-radius:3px;overflow:hidden"><div style="height:100%;width:'+restPct+'%;background:'+(restReady?'var(--green)':'var(--muted)')+';border-radius:3px"></div></div></div>';
+      html += '<div style="font-size:11px;color:var(--muted)">Sin animales</div>';
+      // Show last eval for empty potrero too
+      var evals2 = db.pasture_evals || [];
+      var potEvals2 = evals2.filter(function(e){return e.potrero===p.name;}).sort(function(a,b){return (b.date||'').localeCompare(a.date||'');});
+      if (potEvals2.length) {
+        var le = potEvals2[0];
+        html += '<div style="margin-top:6px;padding:6px 8px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.1);border-radius:6px;font-size:10px;line-height:1.4">';
+        html += '<span style="color:var(--green);font-weight:700">🌿 Eval '+(le.date?new Date(le.date).toLocaleDateString():'')+':</span> ';
+        html += escH((le.result||'').slice(0,120)) + (le.result&&le.result.length>120?'...':'');
+        html += '</div>';
+      }
+    }
+    html += '</div>';
+  });
+  html += '</div>';
+
+  // Pasture evaluations
+  var evals = db.pasture_evals || [];
+  var recentEvals = evals.slice().sort(function(a,b){return (b.date||'').localeCompare(a.date||'');}).slice(0,10);
+  if (recentEvals.length) {
+    html += '<div style="font-size:14px;font-weight:700;margin-bottom:10px">🌿 Evaluaciones de Pasto</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px;margin-bottom:16px">';
+    recentEvals.forEach(function(ev) {
+      var isPending = ev.type === 'pending';
+      var statusIcon = isPending ? '⏳' : '✅';
+      var statusColor = isPending ? 'rgba(245,166,35,.08)' : 'rgba(34,197,94,.06)';
+      var statusBorder = isPending ? 'rgba(245,166,35,.2)' : 'rgba(34,197,94,.15)';
+      html += '<div class="card" style="padding:12px;background:'+statusColor+';border:1px solid '+statusBorder+'">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+      html += '<div style="font-size:12px;font-weight:700">'+statusIcon+' '+escH(ev.potrero||'?')+'</div>';
+      html += '<div style="font-size:10px;color:var(--muted)">'+fmtDT(ev.date||'')+'</div></div>';
+      if (ev.result && ev.result !== 'Pendiente — sin internet') {
+        html += '<div style="font-size:11px;color:var(--text);line-height:1.5;max-height:80px;overflow:hidden">'+escH(ev.result).replace(/\n/g,'<br>').replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').slice(0,300)+'</div>';
+      } else {
+        html += '<div style="font-size:11px;color:var(--muted)">Pendiente de evaluación</div>';
+      }
+      if (ev.lot) html += '<div style="font-size:10px;color:var(--muted);margin-top:4px">Lote: '+ev.lot+'</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Rotation history table
+  html += '<div style="font-size:14px;font-weight:700;margin-bottom:10px">📋 Historial de Rotaciones</div>';
+  var sortedHistory = history.slice().sort(function(a,b){return (b.entry_at||b.entry_date||'').localeCompare(a.entry_at||a.entry_date||'');});
+  if (sortedHistory.length) {
+    html += '<table class="tbl" style="font-size:12px"><thead><tr><th>Fecha entrada</th><th>Lote</th><th>Potrero</th><th>Desde</th><th>Cab</th><th>Dias</th><th>Salida</th><th>Motivo</th></tr></thead><tbody>';
+    sortedHistory.slice(0,30).forEach(function(r) {
+      var isActive = !r.exit_date;
+      var days = r.days_occupied || (isActive ? Math.max(1, Math.round((today - new Date(r.entry_date)) / 86400000)) : 0);
+      var params2 = getParams();
+      var pot = (params2.potreros||[]).find(function(p){return p.name===r.potrero;});
+      var maxD = pot ? pot.max_days : 0;
+      var overdue = maxD && days > maxD;
+      html += '<tr style="'+(isActive?'background:rgba(245,166,35,.05)':'')+'">';
+      html += '<td>'+r.entry_date+'</td>';
+      html += '<td style="font-weight:700">'+r.lot_code+'</td>';
+      html += '<td>'+escH(r.potrero)+'</td>';
+      html += '<td style="color:var(--muted)">'+escH(r.from_potrero||'-')+'</td>';
+      html += '<td>'+r.cabezas+'</td>';
+      html += '<td style="font-weight:700;color:'+(overdue?'var(--red)':isActive?'var(--amber2)':'var(--muted)')+'">'+days+'d'+(isActive?' ⏱':'')+'</td>';
+      html += '<td>'+(r.exit_date||'<span style="color:var(--amber2)">Activo</span>')+'</td>';
+      html += '<td style="font-size:11px;color:var(--muted)">'+escH(r.reason||'-')+'</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+  } else {
+    html += '<div style="text-align:center;padding:30px;color:var(--muted)"><div style="font-size:28px;margin-bottom:8px">🔄</div>Sin historial de rotaciones. Al mover un lote a otro potrero, se registrara automaticamente.</div>';
+  }
+
+  el.innerHTML = html;
+}
+
+
+function addPotreroParam() {
+  var name = (document.getElementById('param-potrero-name').value||'').trim();
+  if (!name) { toast('Ingresa el nombre','error'); return; }
+  var item = {
+    name: name,
+    capacity: parseInt(document.getElementById('param-potrero-cap').value) || 0,
+    hectares: parseFloat(document.getElementById('param-potrero-ha').value) || 0,
+    grass_type: (document.getElementById('param-potrero-pasto').value||''),
+    max_occupation_days: parseInt(document.getElementById('param-potrero-occ').value) || 30,
+    rest_days: parseInt(document.getElementById('param-potrero-rest').value) || 30
+  };
+  addParam('potreros', item);
+  ['param-potrero-name','param-potrero-cap','param-potrero-ha','param-potrero-occ','param-potrero-rest'].forEach(function(id){
+    var el=document.getElementById(id); if(el)el.value='';
+  });
+  var sel=document.getElementById('param-potrero-pasto'); if(sel)sel.value='';
+}
+
+// ══════════════════════════════════════════════════
+// ROTACIÓN DE POTREROS
+// ══════════════════════════════════════════════════
+
+function showEvalDetail(evalId) {
+  var evals = db.pasture_evals || [];
+  var ev = evals.find(function(e){return e.id === evalId;});
+  if (!ev) { toast('Evaluación no encontrada','error'); return; }
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px';
+  var modal = document.createElement('div');
+  modal.style.cssText = 'background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:20px;max-width:500px;width:100%;max-height:80vh;overflow-y:auto';
+  var statusIcon = ev.type==='pending' ? '⏳ Pendiente' : '✅ Evaluado';
+  modal.innerHTML = '<div style="font-size:15px;font-weight:700;margin-bottom:10px">🌿 Evaluación de Pasto</div>' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:12px">' + (ev.potrero||'') + ' | ' + (ev.lot||'') + ' | ' + (ev.date||'').slice(0,10) + ' | ' + statusIcon + '</div>' +
+    '<div style="font-size:13px;line-height:1.7;white-space:pre-wrap">' + escH(ev.result||'Sin resultado').replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>') + '</div>' +
+    (ev.evaluated_at ? '<div style="font-size:10px;color:var(--muted);margin-top:8px">Evaluado: '+ev.evaluated_at+'</div>' : '') +
+    '<div style="text-align:right;margin-top:12px"><button class="btn btn-ghost" onclick="this.closest(\'div[style*=fixed]\').remove()">Cerrar</button></div>';
+  overlay.appendChild(modal);
+  overlay.addEventListener('click', function(e){if(e.target===overlay)overlay.remove();});
+  document.body.appendChild(overlay);
+}
+
+function renderRotacion() {
+  var el = document.getElementById('rotacion-content');
+  if (!el) return;
+  var params = typeof getParams==='function' ? getParams() : {potreros:[]};
+  var potreros = params.potreros || [];
+  if (!potreros.length) {
+    el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted)"><div style="font-size:28px;margin-bottom:8px">📍</div>No hay potreros configurados. Ve a Config > Parámetros para agregarlos.</div>';
+    return;
+  }
+  var history = db.rotation_history || [];
+  var lots = db.lots || [];
+  var today = new Date();
+
+  var html = '';
+
+  // Status cards for each potrero
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:16px">';
+  potreros.forEach(function(p) {
+    // Find current occupation
+    var activeEntry = history.find(function(r) { return r.potrero === p.name && !r.exit_date; });
+    var isOccupied = !!activeEntry;
+    var currentLot = isOccupied ? activeEntry.lot_code : null;
+    var currentCab = isOccupied ? activeEntry.cabezas : 0;
+    // Recalculate from actual lot data
+    if (currentLot) {
+      var lotObj = lots.find(function(l){return l.code === currentLot;});
+      if (lotObj) currentCab = lotObj.animal_count || currentCab;
+    }
+    var daysOccupied = 0;
+    if (isOccupied && activeEntry.entry_date) {
+      daysOccupied = Math.max(1, Math.round((today - new Date(activeEntry.entry_date)) / 86400000));
+    }
+    var maxOcc = p.max_occupation_days || 30;
+    var occPct = Math.min(100, Math.round(daysOccupied / maxOcc * 100));
+
+    // Find last exit (for rest days calculation)
+    var lastExit = null;
+    if (!isOccupied) {
+      var exits = history.filter(function(r) { return r.potrero === p.name && r.exit_date; });
+      if (exits.length) {
+        exits.sort(function(a,b) { return (b.exit_date||'').localeCompare(a.exit_date||''); });
+        lastExit = exits[0];
+      }
+    }
+    var daysResting = 0;
+    if (!isOccupied && lastExit && lastExit.exit_date) {
+      daysResting = Math.max(0, Math.round((today - new Date(lastExit.exit_date)) / 86400000));
+    }
+    var minRest = p.rest_days || 30;
+    var isReady = !isOccupied && daysResting >= minRest;
+    var isOverdue = isOccupied && daysOccupied > maxOcc;
+    var capPct = p.capacity ? Math.round(currentCab / p.capacity * 100) : 0;
+    var isOverCap = p.capacity && currentCab > p.capacity;
+
+    // Card color
+    var borderColor = isOverdue ? 'var(--red)' : isOccupied ? 'var(--amber2)' : isReady ? 'var(--green)' : 'var(--bor)';
+    var statusIcon = isOverdue ? '🔴' : isOccupied ? '🟡' : isReady ? '🟢' : '⚪';
+    var statusText = isOverdue ? 'ROTAR YA' : isOccupied ? 'OCUPADO' : isReady ? 'LISTO' : 'DESCANSANDO';
+
+    html += '<div class="card" style="padding:14px;border-left:4px solid '+borderColor+'">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+    html += '<div><div style="font-size:14px;font-weight:700">'+statusIcon+' '+escH(p.name)+'</div>';
+    html += '<div style="font-size:10px;color:var(--muted)">'+(p.hectares?p.hectares+' ha · ':'')+escH(p.grass_type||'')+'</div></div>';
+    html += '<div style="text-align:right"><div style="font-size:11px;font-weight:700;color:'+borderColor+'">'+statusText+'</div>';
+    html += '<div style="font-size:10px;color:var(--muted)">'+(p.capacity?'Cap: '+p.capacity+' cab':'')+'</div></div>';
+    html += '</div>';
+
+    if (isOccupied) {
+      html += '<div style="font-size:12px;margin-bottom:6px">🐄 <b>'+escH(currentLot)+'</b> — '+currentCab+' cabezas</div>';
+      // Occupation progress bar
+      var barColor = isOverdue ? 'var(--red)' : occPct > 80 ? 'var(--amber2)' : 'var(--green)';
+      html += '<div style="font-size:10px;color:var(--muted);margin-bottom:3px">Ocupación: '+daysOccupied+'/'+maxOcc+' días</div>';
+      html += '<div style="height:8px;background:var(--sur2);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+Math.min(100,occPct)+'%;background:'+barColor+';border-radius:4px;transition:width .3s"></div></div>';
+      if (isOverdue) html += '<div style="font-size:10px;color:var(--red);font-weight:700;margin-top:4px">⚠️ Excedido por '+(daysOccupied-maxOcc)+' días — rotar para evitar degradación del pasto</div>';
+      if (isOverCap) html += '<div style="font-size:10px;color:var(--red);font-weight:700;margin-top:4px">⚠️ Sobrecarga: '+currentCab+'/'+p.capacity+' cabezas ('+capPct+'%)</div>';
+    } else {
+      // Rest progress bar
+      var restPct = Math.min(100, Math.round(daysResting / minRest * 100));
+      var restColor = isReady ? 'var(--green)' : 'var(--amber2)';
+      html += '<div style="font-size:10px;color:var(--muted);margin-bottom:3px">Descanso: '+daysResting+'/'+minRest+' días</div>';
+      html += '<div style="height:8px;background:var(--sur2);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+restPct+'%;background:'+restColor+';border-radius:4px;transition:width .3s"></div></div>';
+      if (isReady) html += '<div style="font-size:10px;color:var(--green);font-weight:700;margin-top:4px">✅ Pasto recuperado — puede recibir ganado</div>';
+      else html += '<div style="font-size:10px;color:var(--amber2);margin-top:4px">Faltan '+(minRest - daysResting)+' días de descanso</div>';
+    }
+    html += '</div>';
+  });
+  html += '</div>';
+
+  // Rotation history table
+  var recent = history.slice().sort(function(a,b){return (b.entry_date||'').localeCompare(a.entry_date||'');}).slice(0,20);
+  if (recent.length) {
+    html += '<div class="card" style="padding:14px"><div style="font-size:13px;font-weight:700;margin-bottom:10px">📋 Historial de Rotación</div>';
+    html += '<table class="tbl" style="font-size:11px"><thead><tr><th>Fecha entrada</th><th>Potrero</th><th>Lote</th><th>Cab.</th><th>Días</th><th>Fecha salida</th><th>Motivo</th></tr></thead><tbody>';
+    recent.forEach(function(r) {
+      var rowColor = r.exit_date ? '' : 'background:rgba(245,166,35,.06)';
+      html += '<tr style="'+rowColor+'">';
+      html += '<td>'+escH(r.entry_date||'')+'</td>';
+      html += '<td style="font-weight:700">'+escH(r.potrero||'')+'</td>';
+      html += '<td>'+escH(r.lot_code||'')+'</td>';
+      html += '<td>'+escH(r.cabezas||'')+'</td>';
+      html += '<td>'+(r.exit_date ? (r.days_occupied||'?')+' d' : '<span style="color:var(--amber2);font-weight:700">'+Math.max(1,Math.round((new Date()-new Date(r.entry_date))/86400000))+' d ▶</span>')+'</td>';
+      html += '<td>'+(r.exit_date||'<span style="color:var(--amber2)">En curso</span>')+'</td>';
+      html += '<td style="font-size:10px;color:var(--muted)">'+escH(r.reason||'')+'</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+  }
+
+  el.innerHTML = html;
+}
+
+function checkRotationAlerts() {
+  var params = typeof getParams==='function' ? getParams() : {potreros:[]};
+  var potreros = params.potreros || [];
+  var history = db.rotation_history || [];
+  var today = new Date();
+  var alerts = [];
+
+  potreros.forEach(function(p) {
+    var activeEntry = history.find(function(r) { return r.potrero === p.name && !r.exit_date; });
+    if (activeEntry) {
+      var days = Math.max(1, Math.round((today - new Date(activeEntry.entry_date)) / 86400000));
+      var maxOcc = p.max_occupation_days || 30;
+      if (days > maxOcc) {
+        alerts.push({type:'rotation_overdue', potrero:p.name, lot:activeEntry.lot_code, days:days, max:maxOcc,
+          msg:'🔴 '+p.name+': Lote '+activeEntry.lot_code+' lleva '+days+' días (máx: '+maxOcc+'). Rotar para evitar degradación.'});
+      } else if (days >= maxOcc - 3) {
+        alerts.push({type:'rotation_soon', potrero:p.name, lot:activeEntry.lot_code, days:days, max:maxOcc,
+          msg:'🟡 '+p.name+': Lote '+activeEntry.lot_code+' debe rotar en '+(maxOcc-days)+' días.'});
+      }
+    }
+  });
+
+  // Show in dashboard if there are alerts
+  var rotAlertEl = document.getElementById('rotation-alerts');
+  if (rotAlertEl && alerts.length) {
+    rotAlertEl.innerHTML = alerts.map(function(a) {
+      var bg = a.type==='rotation_overdue' ? 'rgba(239,68,68,.1)' : 'rgba(245,166,35,.1)';
+      var bor = a.type==='rotation_overdue' ? 'rgba(239,68,68,.3)' : 'rgba(245,166,35,.3)';
+      return '<div style="padding:6px 10px;border-radius:6px;background:'+bg+';border:1px solid '+bor+';font-size:11px;margin-bottom:4px">'+a.msg+'</div>';
+    }).join('');
+  } else if (rotAlertEl) { rotAlertEl.innerHTML = ''; }
+  return alerts;
+}
+setTimeout(checkRotationAlerts, 3000);
+
 </script>
 
 </body>
-</html
->
+</html>

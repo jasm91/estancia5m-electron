@@ -1035,7 +1035,8 @@ app.post('/api/sync-push', auth, async (req, res) => {
       agua:'agua', sal:'sal', conteo:'conteo', partos:'partos', alimento:'alimento',
       lluvias:'lluvias', diesel:'diesel', aceite:'aceite',
       cuentas:'cuentas', kardex:'kardex', historial_sueldos:'historial_sueldos',
-      compras_ganado:'compras_ganado', bajas:'bajas', maquinaria:'maquinaria',
+      compras_ganado:'compras_ganado', bajas:'bajas', maquinaria:'maquinaria', pasture_evals:'pasture_evals',
+      rotation_history:'rotation_history',
     };
     for (const [dbKey, tableKey] of Object.entries(FIELD_TABLES)) {
       if (Array.isArray(db[dbKey]) && db[dbKey].length > 0) {
@@ -1129,7 +1130,7 @@ app.get('/api/sync-pull', auth, async (req, res) => {
            employees, field_activities, tasks, pesajes, advances, maintenance,
            agua, sal, conteo, partos, alimento, animals, animal_movements,
            lluvias, diesel, aceite, cuentas, kardex, historial_sueldos, compras_ganado,
-           bajas, maquinaria] = await Promise.all([
+           bajas, maquinaria, rotation_history, pasture_evals] = await Promise.all([
       getTable(tenantId,'lots'), getTable(tenantId,'vet_products'), getTable(tenantId,'treatments'),
       getTable(tenantId,'health_alerts'), getTable(tenantId,'sales'), getTable(tenantId,'purchases'),
       getTable(tenantId,'employees'), getTable(tenantId,'field_activities'), getTable(tenantId,'tasks'),
@@ -1140,6 +1141,8 @@ app.get('/api/sync-pull', auth, async (req, res) => {
       getTable(tenantId,'aceite'), getTable(tenantId,'cuentas'), getTable(tenantId,'kardex'),
       getTable(tenantId,'historial_sueldos'), getTable(tenantId,'compras_ganado'),
       getTable(tenantId,'bajas'), getTable(tenantId,'maquinaria'),
+      getTable(tenantId,'rotation_history'),
+      getTable(tenantId,'pasture_evals'),
     ]);
 
     const validLots = lots.filter(l => {
@@ -1159,6 +1162,8 @@ app.get('/api/sync-pull', auth, async (req, res) => {
       employees, field_activities, tasks, pesajes, advances, maintenance,
       agua, sal, conteo, partos, alimento, animals, animal_movements,
       lluvias, diesel, aceite, cuentas, kardex, historial_sueldos, compras_ganado, bajas, maquinaria,
+      rotation_history: rotation_history || [],
+      pasture_evals: pasture_evals || [],
       inventory_counts: Array.isArray(inventory_counts) ? inventory_counts : [],
       branding: Array.isArray(branding) ? {} : (branding || {}),
       report_params: Array.isArray(report_params) ? {} : (report_params || {}),
@@ -1173,7 +1178,7 @@ app.get('/api/sync-pull', auth, async (req, res) => {
 // ── Market prices search (Gemini + Google Search) ─────────────
 app.post('/api/market-prices-search', auth, async (req, res) => {
   try {
-    const GEMINI_KEY = 'AIzaSyAopnYaGY8tyFySdw4AwVoE3uALEJDVtWw';
+    const GEMINI_KEY = 'AIzaSyBH5jZgccPg-Am00fJ4qDOQTrryUmARjaI';
     const prompt = 'Busca los precios ACTUALES de ganado bovino en Santa Cruz, Bolivia. ' +
       'Incluye: 1) Precio de ganado en pie (Bs/kg) para novillo, vaca y ternero, ' +
       '2) Precio de carne de gancho en frigorifico (Bs/kg), ' +
@@ -1251,6 +1256,88 @@ app.post('/api/market-prices-search', auth, async (req, res) => {
     } catch(e2) {}
     res.status(500).json({error: e.message});
   }
+});
+
+
+// ── Pasture evaluation (Gemini Vision) ─────────────
+app.post('/api/pasture-eval', auth, async (req, res) => {
+  try {
+    const { potrero, lot_code, base64, date, by } = req.body;
+    if (!base64) return res.status(400).json({error: 'base64 image required'});
+    
+    const GEMINI_KEY = 'AIzaSyBH5jZgccPg-Am00fJ4qDOQTrryUmARjaI';
+    
+    // Get lot info for context
+    let context = '';
+    try {
+      const lots = await getTable(req.tenantId, 'lots');
+      const lot = lots.find(l => l.code === lot_code);
+      if (lot) context = 'Lote: '+lot.code+', Potrero: '+(lot.paddock||potrero||'?')+', Cabezas: '+(lot.animal_count||0)+'. ';
+    } catch(e) {}
+
+    const prompt = 'Eres un agronomo experto en pasturas tropicales del oriente boliviano (Chiquitania). ' +
+      'Analiza esta foto y responde EN FORMATO EXACTO (sin cambiar las etiquetas):\n' +
+      'ESPECIE: [nombre]\nALTURA: [cm]\nCOBERTURA: [%]\nESTADO: [Excelente/Bueno/Regular/Degradado/Critico]\n' +
+      'NDVI_EST: [0.0-1.0]\nCARGA: [UA/ha]\nAPTO: [Si/No]\nDESCANSO: [dias necesarios o No]\n' +
+      'ROTAR: [Si/No]\nALERTA: [texto o Ninguna]\nRESUMEN: [1 linea de recomendacion]\n\n' + context;
+
+    const geminiRes = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + GEMINI_KEY, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        contents: [{parts: [
+          {inline_data: {mime_type: 'image/jpeg', data: base64}},
+          {text: prompt}
+        ]}],
+        generationConfig: {maxOutputTokens: 1024, temperature: 0.2}
+      })
+    });
+    const geminiData = await geminiRes.json();
+    
+    let evalText = '';
+    try { evalText = geminiData.candidates[0].content.parts[0].text; } catch(e) {
+      return res.status(500).json({error: 'Gemini no pudo analizar la imagen'});
+    }
+
+    // Parse structured response
+    const parsed = {};
+    const fieldMap = {ESPECIE:'especie',ALTURA:'altura',COBERTURA:'cobertura',ESTADO:'estado',NDVI_EST:'ndvi',CARGA:'carga',APTO:'apto',DESCANSO:'descanso',ROTAR:'rotar',ALERTA:'alerta',RESUMEN:'resumen'};
+    evalText.split('\n').forEach(line => {
+      const [key, ...val] = line.split(':');
+      const k = (key||'').trim().toUpperCase();
+      if (fieldMap[k]) parsed[fieldMap[k]] = val.join(':').trim();
+    });
+
+    const evalRecord = {
+      id: 'eval_' + Date.now(),
+      date: date || new Date().toISOString().slice(0,10),
+      created_at: new Date().toISOString(),
+      potrero: potrero || '',
+      lot_code: lot_code || '',
+      by: by || 'Campo',
+      raw_text: evalText,
+      ...parsed,
+      has_photo: true
+    };
+
+    // Save to pasture_evals table
+    const evals = await getTable(req.tenantId, 'pasture_evals');
+    const evalList = Array.isArray(evals) ? evals : [];
+    evalList.push(evalRecord);
+    await setTable(req.tenantId, 'pasture_evals', evalList);
+
+    // Save photo
+    const imgList = await getTable(req.tenantId, 'transaction_images');
+    const images = Array.isArray(imgList) ? imgList : [];
+    images.push({
+      id: 'img_' + Date.now(), transaction_id: evalRecord.id, transaction_type: 'pasture_eval',
+      base64, mime_type: 'image/jpeg', size_kb: Math.round(base64.length / 1024),
+      created_at: new Date().toISOString(), uploaded_by: by || 'Campo'
+    });
+    await setTable(req.tenantId, 'transaction_images', images);
+
+    res.json({ok: true, eval: evalRecord});
+  } catch(e) { res.status(500).json({error: e.message}); }
 });
 
 // ── Delete lot by code ────────────────────────────────────────
