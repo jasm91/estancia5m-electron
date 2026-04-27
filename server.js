@@ -1089,6 +1089,10 @@ app.post('/api/sync-push', auth, async (req, res) => {
       await setTable(tenantId, 'report_params', db.report_params);
       pushed.report_params = 'ok';
     }
+    if (db.estancia_params && typeof db.estancia_params === 'object' && Object.keys(db.estancia_params).length) {
+      await setTable(tenantId, 'estancia_params', db.estancia_params);
+      pushed.estancia_params = 'ok';
+    }
     if (db.maquinaria && !isField) {
       await setTable(tenantId, 'maquinaria', db.maquinaria);
       pushed.maquinaria = 'ok';
@@ -1156,6 +1160,7 @@ app.get('/api/sync-pull', auth, async (req, res) => {
     const report_params = await getTable(tenantId, 'report_params');
     const diesel_tank = await getTable(tenantId, 'diesel_tank');
     const pluvios_config = await getTable(tenantId, 'pluvios_config');
+    const estancia_params = await getTable(tenantId, 'estancia_params');
     const inventory_counts = await getTable(tenantId, 'inventory_counts');
     res.json({
       lots: validLots, products, treatments, health_alerts, sales, purchases,
@@ -1168,6 +1173,7 @@ app.get('/api/sync-pull', auth, async (req, res) => {
       branding: Array.isArray(branding) ? {} : (branding || {}),
       report_params: Array.isArray(report_params) ? {} : (report_params || {}),
       diesel_tank: diesel_tank || [],
+      estancia_params: estancia_params || {},
       pluvios_config: Array.isArray(pluvios_config) ? pluvios_config : [],
       pwa_latest_version: PWA_VERSION, timestamp: new Date().toISOString(),
     });
@@ -1178,7 +1184,8 @@ app.get('/api/sync-pull', auth, async (req, res) => {
 // ── Market prices search (Gemini + Google Search) ─────────────
 app.post('/api/market-prices-search', auth, async (req, res) => {
   try {
-    const GEMINI_KEY = 'AIzaSyBH5jZgccPg-Am00fJ4qDOQTrryUmARjaI';
+    const rp_config = await getTable(req.tenantId, 'report_params') || {};
+    const GEMINI_KEY = rp_config.gemini_key || process.env.GEMINI_KEY || '';
     const prompt = 'Busca los precios ACTUALES de ganado bovino en Santa Cruz, Bolivia. ' +
       'Incluye: 1) Precio de ganado en pie (Bs/kg) para novillo, vaca y ternero, ' +
       '2) Precio de carne de gancho en frigorifico (Bs/kg), ' +
@@ -1265,7 +1272,8 @@ app.post('/api/pasture-eval', auth, async (req, res) => {
     const { potrero, lot_code, base64, date, by } = req.body;
     if (!base64) return res.status(400).json({error: 'base64 image required'});
     
-    const GEMINI_KEY = 'AIzaSyBH5jZgccPg-Am00fJ4qDOQTrryUmARjaI';
+    const rp_config = await getTable(req.tenantId, 'report_params') || {};
+    const GEMINI_KEY = rp_config.gemini_key || process.env.GEMINI_KEY || '';
     
     // Get lot info for context
     let context = '';
@@ -1548,6 +1556,35 @@ setInterval(async () => {
 
 // ── Start ─────────────────────────────────────────────────────
 initDB().then(() => {
+
+// ── UPDATE GEMINI KEY FOR ALL TENANTS (admin only)
+app.post('/api/admin/set-gemini-key', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const token = authHeader && authHeader.replace('Bearer ', '');
+    if (token !== ADMIN_TOKEN) {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+    const { gemini_key } = req.body;
+    if (!gemini_key) return res.status(400).json({ error: 'gemini_key required' });
+
+    const { rows: tenants } = await pool.query(
+      "SELECT DISTINCT tenant_id FROM store WHERE key = 'report_params'"
+    );
+    let updated = 0;
+    for (const t of tenants) {
+      const rp = await getTable(t.tenant_id, 'report_params') || {};
+      rp.gemini_key = gemini_key;
+      await setTable(t.tenant_id, 'report_params', rp);
+      updated++;
+    }
+    res.json({ ok: true, tenants_updated: updated });
+  } catch (err) {
+    console.error('set-gemini-key error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
   app.listen(PORT, () => { console.log(`[API] EstanciaPro v4.1 — Multi-tenant + Bot TX — Puerto ${PORT}`); });
 }).catch(err => { console.error('[DB] Error:', err.message); process.exit(1); });
 

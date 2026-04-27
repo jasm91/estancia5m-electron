@@ -356,7 +356,7 @@ function renderActividadLote() {
         sub:(r.cost?'Bs.'+r.cost+' ':'')+(r.who?'('+r.who+') ':'')+(r.status||'')+(r.location?' · '+r.location:''),lot:r.location||'',by:r.who||r.by||''});
     });
   }
-  all.sort(function(a,b){ return (b.created_at||b.date||'').localeCompare(a.created_at||a.date||''); });
+  all.sort(function(a,b){ return (b.created_at||b.fecha||b.date||'').localeCompare(a.created_at||a.fecha||a.date||''); });
   var el = document.getElementById('actividad-lote-list');
   if (!el) return;
   if (!all.length) {
@@ -368,16 +368,16 @@ function renderActividadLote() {
     var row = document.createElement('div');
     row.style.cssText = 'display:flex;gap:12px;padding:10px 16px;border-bottom:1px solid rgba(48,54,61,.3);font-size:12px;align-items:flex-start';
     var diffStyle = (r.diff !== undefined) ? (r.diff < 0 ? ';color:var(--red)' : r.diff > 0 ? ';color:var(--blue)' : '') : '';
-    var safeTitle = r.title.replace(/&/g,'&amp;').replace(/</g,'&lt;');
-    var safeSub = r.sub ? r.sub.replace(/&/g,'&amp;').replace(/</g,'&lt;') : '';
+    var safeTitle = (r.title||r.titulo||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    var safeSub = (r.sub||'') ? (r.sub||'').replace(/&/g,'&amp;').replace(/</g,'&lt;') : '';
     row.innerHTML =
       '<div style="font-size:9px;font-weight:700;color:'+r.color+';background:rgba(0,0,0,.2);padding:2px 5px;border-radius:4px;flex-shrink:0;margin-top:2px;font-family:DM Mono,monospace">'+r.tag+'</div>'+
       '<div style="flex:1;min-width:0">'+
         '<div style="font-weight:500;color:var(--text)'+diffStyle+'">'+safeTitle+'</div>'+
         (safeSub?'<div style="color:var(--muted);margin-top:2px">'+safeSub+'</div>':'')+
         '<div style="color:var(--muted);font-size:10px;margin-top:3px">'+
-          (r.lot?'<span style="color:var(--amber2);background:rgba(212,160,23,.08);padding:1px 6px;border-radius:3px;margin-right:6px">'+r.lot+'</span>':'')+
-          (function(){var src=r.by||'';var sc={Desktop:'#6366F1',Campo:'#22C55E',Auto:'#9CA3AF'};var c=sc[src]||(src.indexOf('WhatsApp')===0?'#25D366':'#9CA3AF');return src?'<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:'+c+';color:#fff;font-weight:600;margin-right:4px">'+escH(src)+'</span>':'';})()+ fmtDT(r.created_at||r.date||'')+
+          ((r.lot||r.lote)?'<span style="color:var(--amber2);background:rgba(212,160,23,.08);padding:1px 6px;border-radius:3px;margin-right:6px">'+r.lot+'</span>':'')+
+          (function(){var src=r.by||r.empleado||'';var sc={Desktop:'#6366F1',Campo:'#22C55E',Auto:'#9CA3AF'};var c=sc[src]||(src.indexOf('WhatsApp')===0?'#25D366':'#9CA3AF');return src?'<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:'+c+';color:#fff;font-weight:600;margin-right:4px">'+escH(src)+'</span>':'';})()+ fmtDT(r.created_at||r.date||'')+
         '</div>'+
       '</div>';
     el.appendChild(row);
@@ -3708,6 +3708,9 @@ function pullFromRailwayDesktop(thenPush) {
       if (remote.diesel_tank && ((Array.isArray(remote.diesel_tank) && remote.diesel_tank.length) || remote.diesel_tank.capacity)) {
         localStorage.setItem('e5m_diesel_tank', JSON.stringify(remote.diesel_tank));
       }
+      if (remote.estancia_params && typeof remote.estancia_params === 'object' && !Array.isArray(remote.estancia_params) && Object.keys(remote.estancia_params).length) {
+        localStorage.setItem('e5m_params', JSON.stringify(remote.estancia_params));
+      }
       if (remote.report_params && typeof remote.report_params === 'object' && !Array.isArray(remote.report_params) && Object.keys(remote.report_params).length) {
         localStorage.setItem('e5m_report_params', JSON.stringify(remote.report_params));
       }
@@ -3869,6 +3872,7 @@ function pushToRailway() {
         } catch(e) { return {}; }
       })(),
       report_params: (function(){ try { return JSON.parse(localStorage.getItem('e5m_report_params')||'{}'); } catch(e){ return {}; } })(),
+      estancia_params: (function(){ try { return JSON.parse(localStorage.getItem('e5m_params')||'{}'); } catch(e){ return {}; } })(),
       diesel_tank: (function(){ try { return JSON.parse(localStorage.getItem('e5m_diesel_tank')||'[]'); } catch(e){ return []; } })(),
       pluvios_config: (function(){ try { return JSON.parse(localStorage.getItem('e5m_pluvios')||'[]'); } catch(e){ return []; } })(),
     },
@@ -7249,7 +7253,7 @@ function renderActividades() {
     });
   }
 
-  all.sort(function(a,b){ return (b.created_at||b.date||'').localeCompare(a.created_at||a.date||''); });
+  all.sort(function(a,b){ return (b.created_at||b.fecha||b.date||'').localeCompare(a.created_at||a.fecha||a.date||''); });
   var el = document.getElementById('act-page-list');
   if (!el) return;
   if (!all.length) {
@@ -7262,7 +7266,7 @@ function renderActividades() {
     row.style.cssText = 'display:flex;gap:12px;padding:10px 16px;border-bottom:1px solid rgba(48,54,61,.3);font-size:12px;align-items:flex-start';
     var diffStyle = (r.diff !== undefined) ? (r.diff < 0 ? ';color:var(--red)' : r.diff > 0 ? ';color:var(--blue)' : '') : '';
     var safeTitle = (r.title||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
-    var safeSub = r.sub ? r.sub.replace(/&/g,'&amp;').replace(/</g,'&lt;') : '';
+    var safeSub = (r.sub||'') ? (r.sub||'').replace(/&/g,'&amp;').replace(/</g,'&lt;') : '';
     row.innerHTML =
       '<div style="font-size:9px;font-weight:700;color:'+r.color+';background:rgba(0,0,0,.2);padding:2px 5px;border-radius:4px;flex-shrink:0;margin-top:2px;font-family:DM Mono,monospace">'+r.tag+'</div>'+
       '<div style="flex:1;min-width:0">'+
@@ -7561,7 +7565,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = 'estancia5m-2026-secreto';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.2.31'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.2.32'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -8290,7 +8294,11 @@ function renderConfig() {
     window.estancia.settings.get('gh_token').then(function(t){ if(t) ghTokenEl.value = t; });
   }
   var geminiEl = document.getElementById('cfg-gemini-key');
-  if (geminiEl) { var gk = localStorage.getItem('e5m_gemini_key'); if (gk) geminiEl.value = gk; }
+  if (geminiEl) {
+    var gk = localStorage.getItem('e5m_gemini_key');
+    if (!gk) { try { var rp2 = JSON.parse(localStorage.getItem('e5m_report_params')||'{}'); gk = rp2.gemini_key || ''; if(gk) localStorage.setItem('e5m_gemini_key', gk); } catch(e){} }
+    if (gk) geminiEl.value = gk;
+  }
   // Populate estancia identity from report_params
   var _rp = (typeof getRp === 'function') ? getRp() : {};
   var cfgNombre = document.getElementById('cfg-nombre-estancia');
@@ -14170,11 +14178,31 @@ function renderHistorialAnimales() {
 var _aiHistory = [];
 var _aiOpen = false;
 
-function getGeminiKey() { return localStorage.getItem('e5m_gemini_key') || 'AIzaSyBH5jZgccPg-Am00fJ4qDOQTrryUmARjaI'; }
+function getGeminiKey() { return localStorage.getItem('e5m_gemini_key') || ''; }
 function guardarGeminiKey() {
   var key = ((document.getElementById('cfg-gemini-key')||{}).value||'').trim();
   if (!key) { toast('Ingresa la API key','error'); return; }
   localStorage.setItem('e5m_gemini_key', key);
+  // Propagate to report_params → current tenant
+  try {
+    var rp = JSON.parse(localStorage.getItem('e5m_report_params')||'{}');
+    rp.gemini_key = key;
+    localStorage.setItem('e5m_report_params', JSON.stringify(rp));
+    replaceTableInRailway('report_params', rp);
+  } catch(e){ console.warn('Error syncing Gemini key:', e); }
+  // Propagate to ALL tenants via admin endpoint
+  var _apiUrl = localStorage.getItem('e5m_api_url') || 'https://estancia5m-api-production.up.railway.app/api';
+  fetch(_apiUrl + '/admin/set-gemini-key', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer jisunu-admin-2026-sgbolivia' },
+    body: JSON.stringify({ gemini_key: key })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    if (d.ok) toast('API Key guardada para todos los tenants (' + d.tenants_updated + ')','ok');
+    else toast('Guardada local. Error servidor: ' + (d.error||''),'warn');
+  })
+  .catch(function(e){ toast('Guardada local. Sin conexión al servidor','warn'); });
   toast('Gemini API Key guardada','success');
 }
 
