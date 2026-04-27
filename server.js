@@ -288,6 +288,31 @@ app.post('/api/bot-transaction', auth, async (req, res) => {
     if (type !== 'tasks' && type !== 'animal_movements' && type !== 'tasks_complete') {
       list.push(data);
       await setTable(req.tenantId, table, list);
+
+      // If bot sent a photo, save it to transaction_images
+      if (data.photo_base64 || req.body.photo_base64) {
+        try {
+          const photoB64 = data.photo_base64 || req.body.photo_base64;
+          const txId = table.slice(0,4) + '_' + data.id;
+          const imgList = await getTable(req.tenantId, 'transaction_images');
+          const images = Array.isArray(imgList) ? imgList : [];
+          images.push({
+            id: 'img_' + Date.now(),
+            transaction_id: txId,
+            transaction_type: table,
+            base64: photoB64.replace(/^data:image\/\w+;base64,/, ''),
+            mime_type: 'image/jpeg',
+            size_kb: Math.round(photoB64.length / 1024),
+            created_at: new Date().toISOString(),
+            uploaded_by: 'WhatsApp'
+          });
+          await setTable(req.tenantId, 'transaction_images', images);
+          data.has_photo = true;
+          // Re-save record with has_photo flag
+          await setTable(req.tenantId, table, list);
+          console.log('[Bot] Photo saved for', txId, Math.round(photoB64.length/1024)+'KB');
+        } catch(e) { console.error('[Bot] Photo save error:', e.message); }
+      }
     }
 
     // Si es mover animal entre lotes
@@ -433,22 +458,36 @@ app.post('/api/bot-transaction', auth, async (req, res) => {
     // Si es baja (muerte), descontar del lote y eliminar del kardex de animales
     if (type === 'bajas' && data.animal_id && data.lot_code) {
       try {
-        // Descontar animal_count del lote
         const lots = await getTable(req.tenantId, 'lots');
         const lot = lots.find(l => l.code === data.lot_code);
-        if (lot && lot.animal_count > 0) {
+        if (!lot) {
+          return res.status(400).json({ ok: false, error: 'Lote ' + data.lot_code + ' no encontrado' });
+        }
+        // Validar que el animal existe
+        const animals = await getTable(req.tenantId, 'animals');
+        const lotAnimals = (animals && animals[data.lot_code]) ? animals[data.lot_code] : [];
+        const animal = lotAnimals.find(a => 
+          String(a.id || a.animal_id || '') === String(data.animal_id)
+        );
+        if (!animal) {
+          return res.status(400).json({ ok: false, error: 'Animal #' + data.animal_id + ' no encontrado en lote ' + data.lot_code + '. Verifica el ID.' });
+        }
+        // Guardar último peso del animal
+        if (animal.pesajes && animal.pesajes.length) {
+          data.ultimo_peso = animal.pesajes[animal.pesajes.length - 1].peso || 0;
+        }
+        data.raza = animal.breed || animal.raza || '';
+        // Descontar animal_count del lote
+        if (lot.animal_count > 0) {
           lot.animal_count--;
           await setTable(req.tenantId, 'lots', lots);
         }
         // Eliminar del kardex de animales
-        const animals = await getTable(req.tenantId, 'animals');
-        if (animals && animals[data.lot_code]) {
-          animals[data.lot_code] = animals[data.lot_code].filter(a => 
-            String(a.id || a.animal_id || '') !== String(data.animal_id)
-          );
-          await setTable(req.tenantId, 'animals', animals);
-        }
-        stockMsg = '. Animal #' + data.animal_id + ' dado de baja del lote ' + data.lot_code;
+        animals[data.lot_code] = lotAnimals.filter(a => 
+          String(a.id || a.animal_id || '') !== String(data.animal_id)
+        );
+        await setTable(req.tenantId, 'animals', animals);
+        stockMsg = '. Animal #' + data.animal_id + ' (' + (data.raza||'') + ', ' + (data.ultimo_peso||0) + 'kg) dado de baja del lote ' + data.lot_code;
       } catch(e) { console.error('[Baja] Error:', e.message); }
     }
 
@@ -511,6 +550,21 @@ app.post('/api/transaction-image', auth, async (req, res) => {
     list.push(record);
     await setTable(req.tenantId, 'transaction_images', list);
     console.log('[Image]', req.tenantId, record.id, record.size_kb + 'KB for', transaction_id);
+    // Update has_photo on source record
+    if (transaction_type && transaction_type !== 'unknown') {
+      try {
+        const sourceTable = transaction_type;
+        const sourceRecords = await getTable(req.tenantId, sourceTable);
+        if (Array.isArray(sourceRecords)) {
+          const srcRec = sourceRecords.find(r => String(r.id) === String(transaction_id));
+          if (srcRec) {
+            srcRec.has_photo = true;
+            await setTable(req.tenantId, sourceTable, sourceRecords);
+            console.log('[Image] Updated has_photo on', sourceTable, transaction_id);
+          }
+        }
+      } catch(e) { console.log('[Image] Could not update has_photo:', e.message); }
+    }
     res.json({ ok: true, id: record.id, size_kb: record.size_kb });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });

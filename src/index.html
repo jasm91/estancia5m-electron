@@ -7574,7 +7574,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.2.34'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.2.37'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -11954,7 +11954,7 @@ function renderBajasDesktop() {
           '<td style="font-family:DM Mono,monospace">'+(b.ultimo_peso?b.ultimo_peso+' kg':'-')+'</td>'+
           '<td style="color:'+(causaColors[b.causa]||'var(--muted)')+'">'+escH(b.causa||'-')+'</td>'+
           '<td style="font-size:11px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis">'+escH(b.obs||'-')+'</td>'+
-          '<td>'+(b.has_photo?'<span style="cursor:pointer" onclick="viewBajaPhoto(\'baja_'+b.id+'\')">📷</span>':'-')+'</td>'+
+          '<td>'+(b.has_photo?'<span style="cursor:pointer" onclick="viewBajaPhoto(\''+b.id+'\')">📷</span>':'-')+'</td>'+
           '<td style="font-size:10px;color:var(--muted)">'+escH(b.by||'Desktop')+'</td>'+
           '<td style="display:flex;gap:3px;flex-wrap:wrap">'+
             (b.venta_carne && !b.venta_registrada ? '<button class="btn btn-ghost btn-sm" style="font-size:10px;color:var(--green)" onclick="openVentaCarne(\''+b.id+'\')">💰 Vender carne</button>' : b.venta_registrada ? '<span style="font-size:10px;color:var(--green)">✓ Vendido</span>' : '') +
@@ -12034,6 +12034,20 @@ function saveVentaCarne() {
 }
 
 function viewBajaPhoto(txId) {
+  // Check local photos first (try multiple ID formats)
+  var tryIds = [txId, 'baja_'+txId];
+  try {
+    var localPhotos = JSON.parse(localStorage.getItem('e5m_local_photos')||'{}');
+    for (var i=0; i<tryIds.length; i++) {
+      if (localPhotos[tryIds[i]]) {
+        var lb = document.getElementById('photo-lightbox');
+        var img = document.getElementById('photo-lightbox-img');
+        if (lb && img) { img.src = localPhotos[tryIds[i]]; lb.style.display = 'flex'; }
+        return;
+      }
+    }
+  } catch(e) {}
+  // Fallback to server — try txId first, then baja_txId
   var apiUrl = getApiUrl();
   var token = localStorage.getItem('e5m_api_token') || '';
   fetch(apiUrl + '/transaction-image/' + txId, { headers: { 'Authorization': 'Bearer ' + token } })
@@ -12044,9 +12058,24 @@ function viewBajaPhoto(txId) {
         var lb = document.getElementById('photo-lightbox');
         var img = document.getElementById('photo-lightbox-img');
         if (lb && img) { img.src = imgSrc; lb.style.display = 'flex'; }
+        // Cache locally
+        try { var lp = JSON.parse(localStorage.getItem('e5m_local_photos')||'{}'); lp[txId] = imgSrc; localStorage.setItem('e5m_local_photos', JSON.stringify(lp)); } catch(e){}
       } else { toast('Foto no disponible','error'); }
     })
-    .catch(function(){ toast('Error al cargar foto','error'); });
+    .catch(function(){ 
+      // Try with baja_ prefix
+      fetch(apiUrl + '/transaction-image/baja_' + txId, { headers: { 'Authorization': 'Bearer ' + token } })
+      .then(function(r2){ return r2.json(); })
+      .then(function(d2){
+        var imgSrc2 = d2.image || (d2.base64 ? 'data:' + (d2.mime_type||'image/jpeg') + ';base64,' + d2.base64 : null);
+        if (imgSrc2) {
+          var lb2 = document.getElementById('photo-lightbox');
+          var img2 = document.getElementById('photo-lightbox-img');
+          if (lb2 && img2) { img2.src = imgSrc2; lb2.style.display = 'flex'; }
+        } else { toast('Foto no disponible','error'); }
+      })
+      .catch(function(){ toast('Error al cargar foto','error'); });
+    });
 }
 
 function deleteBaja(id) {
@@ -12210,15 +12239,26 @@ function confirmarBajaAnimal() {
   // 5. Register activity
   addActivity('Sistema', 'baja', _bajaFromLot, '🪦 Baja Animal #' + _bajaAnimalId + ' - ' + causa + (lastWeight ? ' (' + lastWeight + ' kg)' : '') + ' - ' + obs, fecha);
 
-  // 6. Upload photo if exists
+  // 6. Upload photo if exists — save locally + upload
   if (_bajaPhotoBase64) {
+    var txId = String(bajaRecord.id);
+    // Save locally for instant viewing
+    try {
+      var localPhotos = JSON.parse(localStorage.getItem('e5m_local_photos')||'{}');
+      localPhotos[txId] = _bajaPhotoBase64;
+      localPhotos['baja_'+bajaRecord.id] = _bajaPhotoBase64;
+      localStorage.setItem('e5m_local_photos', JSON.stringify(localPhotos));
+    } catch(e) { console.warn('Error saving local photo:', e.message); }
+    // Upload to server
     var apiUrl = getApiUrl();
     var token = localStorage.getItem('e5m_api_token') || '';
     fetch(apiUrl + '/transaction-image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-      body: JSON.stringify({ transaction_id: 'baja_' + bajaRecord.id, transaction_type: 'bajas', base64: _bajaPhotoBase64.replace(/^data:image\/\w+;base64,/, ''), mime_type: 'image/jpeg', uploaded_by: 'Desktop' })
-    }).catch(function() {});
+      body: JSON.stringify({ transaction_id: txId, transaction_type: 'bajas', base64: _bajaPhotoBase64.replace(/^data:image\/\w+;base64,/, ''), mime_type: 'image/jpeg', uploaded_by: 'Desktop' })
+    }).then(function(r){ return r.json(); })
+    .then(function(d){ if(d.ok) console.log('[Baja] Photo uploaded:', txId); else console.error('[Baja] Upload failed:', d); })
+    .catch(function(e) { console.error('[Baja] Upload error:', e.message); });
   }
 
   // 7. Save and sync
@@ -13673,6 +13713,16 @@ function confirmBulkAnimals() {
 // VER IMAGEN DE TRANSACCIÓN
 // ══════════════════════════════════════════════════
 function viewTransactionImage(txId) {
+  // Check local photos first
+  try {
+    var localPhotos = JSON.parse(localStorage.getItem('e5m_local_photos')||'{}');
+    if (localPhotos[String(txId)]) {
+      var lb = document.getElementById('photo-lightbox');
+      var img = document.getElementById('photo-lightbox-img');
+      if (lb && img) { img.src = localPhotos[String(txId)]; lb.style.display = 'flex'; }
+      return;
+    }
+  } catch(e) {}
   var apiUrl = getApiUrl();
   var token = localStorage.getItem('e5m_api_token') || '';
   var old = document.getElementById('overlay-tx-image');
