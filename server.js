@@ -648,8 +648,16 @@ app.get('/api/bot-session/:phone', auth, async (req, res) => {
 app.post('/api/bot-session/:phone', auth, async (req, res) => {
   try {
     const { phone } = req.params;
-    const { history, pending_transaction, pending_image_for, pending_image_type } = req.body;
-    await setTable(req.tenantId, 'bot_session_' + phone, { history: history || [], pending_transaction: pending_transaction || null, pending_image_for: pending_image_for || null, pending_image_type: pending_image_type || null, updated_at: new Date().toISOString() });
+    const sessionData = {
+      history: req.body.history || [],
+      pending_transaction: req.body.pending_transaction || null,
+      pending_image_for: req.body.pending_image_for || null,
+      pending_image_type: req.body.pending_image_type || null,
+      purchase_state: req.body.purchase_state || null,
+      pending_purchase: req.body.pending_purchase || null,
+      updated_at: new Date().toISOString()
+    };
+    await setTable(req.tenantId, 'bot_session_' + phone, sessionData);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
