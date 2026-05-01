@@ -2941,7 +2941,7 @@ function publishTasksToPWA() {
 <div class="modal-overlay" id="modal-compra-ganado">
 <div class="modal" style="max-width:800px;max-height:90vh;overflow-y:auto"><h2>🐂 Registrar Compra de Ganado</h2>
 <div class="form-row">
-  <div class="form-group"><label class="form-label">Proveedor / Vendedor</label>
+  <div class="form-group"><label class="form-label">Proveedor / Vendedor (origen)</label>
     <input class="form-input" id="cg-proveedor" placeholder="Ej: Estancia San Jose - Pedro Lopez">
   </div>
   <div class="form-group"><label class="form-label">Fecha de compra</label>
@@ -2949,7 +2949,9 @@ function publishTasksToPWA() {
   </div>
 </div>
 <div class="form-row">
-  <div class="form-group"><label class="form-label">Lote destino</label>
+  <div class="form-group"><label class="form-label">Lote destino
+    <span style="color:var(--muted);font-size:10px;font-weight:400" id="cg-lote-help"></span>
+  </label>
     <select class="form-select" id="cg-lote"><option value="">Seleccionar lote...</option></select>
   </div>
   <div class="form-group"><label class="form-label">Categoria</label>
@@ -2973,7 +2975,38 @@ function publishTasksToPWA() {
   </div>
 </div>
 
-<div style="background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.2);border-radius:8px;padding:14px;margin:12px 0">
+<!-- Toggle modo: cuarentena vs marcaje inmediato -->
+<div style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:12px;margin:12px 0">
+  <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
+    <input type="checkbox" id="cg-marcar-ahora" onchange="onCGToggleMarcar()" style="margin-top:2px;cursor:pointer">
+    <div>
+      <div style="font-size:12px;font-weight:700;color:var(--amber2)">📝 Marcar animales ahora</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:3px">
+        Si NO está marcado: los animales entran a un lote temporal de <strong>Cuarentena</strong> sin IDs.
+        Después de los días de adaptación, podrás marcarlos uno por uno desde la pestaña Lotes.
+      </div>
+    </div>
+  </label>
+</div>
+
+<!-- Bloque CUARENTENA: solo cantidad y peso prom estimado -->
+<div id="cg-block-cuarentena" style="background:rgba(168,85,247,.06);border:1px solid rgba(168,85,247,.25);border-radius:8px;padding:14px;margin:12px 0">
+  <div style="font-size:12px;font-weight:700;color:#A855F7;margin-bottom:10px">🚧 Datos del lote en cuarentena</div>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Cantidad de cabezas</label>
+      <input class="form-input" type="number" id="cg-cuarentena-count" min="1" placeholder="150" oninput="calcCGCuarentenaTotal()">
+    </div>
+    <div class="form-group"><label class="form-label">Peso promedio estimado (kg)</label>
+      <input class="form-input" type="number" id="cg-cuarentena-peso-prom" step="0.1" min="0" placeholder="380" oninput="calcCGCuarentenaTotal()">
+    </div>
+  </div>
+  <div style="font-size:11px;color:var(--muted);margin-top:6px">
+    Más adelante, al marcar cada animal, podrás corregir peso y categoría individuales.
+  </div>
+</div>
+
+<!-- Bloque MARCAJE INMEDIATO: tabla de animales individuales (lo que ya había) -->
+<div id="cg-block-individual" style="display:none;background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.2);border-radius:8px;padding:14px;margin:12px 0">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
     <div style="font-size:12px;font-weight:700;color:var(--blue)">🐄 Animales a ingresar</div>
     <button class="btn btn-ghost btn-sm" onclick="addCGAnimal()">+ Agregar animal</button>
@@ -3003,6 +3036,56 @@ function publishTasksToPWA() {
   <button class="btn btn-ghost" onclick="closeModal('modal-compra-ganado')">Cancelar</button>
   <button class="btn btn-primary" onclick="saveCompraGanado()">Registrar compra</button>
 </div></div></div>
+
+<!-- Modal: Marcar animales de cuarentena -->
+<div class="modal-overlay" id="modal-marcar-cuarentena">
+<div class="modal" style="max-width:900px;max-height:90vh;overflow-y:auto">
+  <h2>📝 Marcar animales — <span id="mc-lote-code" style="color:#A855F7"></span></h2>
+  <div style="background:rgba(168,85,247,.06);border:1px solid rgba(168,85,247,.25);border-radius:8px;padding:12px;margin-bottom:14px;font-size:12px">
+    <div id="mc-info" style="color:var(--muted)"></div>
+  </div>
+
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Lote destino real
+      <span style="color:var(--muted);font-size:10px;font-weight:400">donde se moverán al marcarlos</span>
+    </label>
+      <select class="form-select" id="mc-lote-destino"><option value="">Seleccionar lote activo...</option></select>
+    </div>
+    <div class="form-group"><label class="form-label">Fecha de marcaje</label>
+      <input class="form-input" type="date" id="mc-fecha">
+    </div>
+  </div>
+
+  <div style="background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.2);border-radius:8px;padding:14px;margin:12px 0">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div style="font-size:12px;font-weight:700;color:var(--blue)">🐄 Animales marcados <span style="color:var(--muted);font-weight:400" id="mc-progreso"></span></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="addMCAnimal()">+ Agregar</button>
+        <button class="btn btn-ghost btn-sm" onclick="addMCAnimalsBatch()">+ Agregar todos</button>
+      </div>
+    </div>
+    <div style="max-height:300px;overflow-y:auto">
+      <table class="tbl" style="font-size:11px">
+        <thead><tr><th>#</th><th>ID / Caravana</th><th>Peso real (kg)</th><th>Categoría</th><th>Raza</th><th></th></tr></thead>
+        <tbody id="mc-animals-tbody"></tbody>
+      </table>
+    </div>
+    <div style="margin-top:8px;display:flex;gap:16px;font-size:12px;color:var(--muted)">
+      <span>Marcados: <strong id="mc-count" style="color:var(--amber2)">0</strong></span>
+      <span>Peso total: <strong id="mc-peso-total" style="color:var(--text)">0 kg</strong></span>
+      <span>Peso prom: <strong id="mc-peso-prom" style="color:var(--text)">0 kg</strong></span>
+    </div>
+  </div>
+
+  <div style="font-size:11px;color:var(--muted);margin-bottom:10px">
+    💡 Podés guardar parcialmente — los animales que falten quedan en cuarentena para marcar después.
+  </div>
+
+  <div class="form-actions">
+    <button class="btn btn-ghost" onclick="closeModal('modal-marcar-cuarentena')">Cancelar</button>
+    <button class="btn btn-primary" onclick="saveMarcaje()">Guardar marcaje</button>
+  </div>
+</div></div>
 
 <!-- New Purchase -->
 <div class="modal-overlay" id="modal-purchase">
@@ -3882,31 +3965,38 @@ function pullFromRailwayDesktop(thenPush) {
           }
         });
 
-        // Reconciliación: borrar lotes locales que el server ya no tiene
-        // (huérfanos del cache de cuando se cambió de tenant, seed inicial, o push fallido)
+        // Reconciliación: borrar lotes locales SOLO si el server explícitamente los marcó como borrados
+        // (vía _deleted_ids). Si solo no están en server.lots pero tampoco en deleted_ids,
+        // probablemente es un lote local que aún no se pusheó — preservar.
         var serverLotIds = {};
         var serverLotCodes = {};
         remote.lots.forEach(function(rl){
           if (rl.id != null) serverLotIds[String(rl.id)] = true;
           if (rl.code) serverLotCodes[rl.code] = true;
         });
+        // Mapa de IDs que el server marcó explícitamente como borrados
+        var serverDeletedLotIds = {};
+        try {
+          var _serverDel = remote._deleted_ids || remote.deleted_ids || {};
+          Object.keys(_serverDel).forEach(function(k){
+            if (k.indexOf('lots:') === 0) serverDeletedLotIds[k.substring(5)] = true;
+          });
+        } catch(e) {}
         var beforeLen = (db.lots || []).length;
         db.lots = (db.lots || []).filter(function(l){
+          // Mantener si está en server
           if (serverLotIds[String(l.id)] || serverLotCodes[l.code]) return true;
-          // Mantener si fue creado offline muy recientemente (<5 min) — gracia para sync pendiente
-          var createdAt = l.created_at ? new Date(l.created_at).getTime() : 0;
-          if (createdAt && (Date.now() - createdAt) < 5 * 60 * 1000) return true;
-          // Sino, borrar (huérfano)
-          console.log('[Sync] Removiendo lote huérfano local: ' + l.code + ' (id ' + l.id + ', status ' + (l.status||'?') + ', count ' + (l.animal_count||0) + ')');
-          // También limpiar sus animales del cache
-          try {
-            var _anim = JSON.parse(localStorage.getItem('e5m_animals') || '{}');
-            if (_anim[l.code]) {
-              delete _anim[l.code];
-              localStorage.setItem('e5m_animals', JSON.stringify(_anim));
-            }
-          } catch(e) {}
-          return false;
+          // BORRAR solo si server explícitamente marcó como borrado
+          if (serverDeletedLotIds[String(l.id)]) {
+            console.log('[Sync] Server marcó como borrado el lote: ' + l.code + ' (id ' + l.id + ')');
+            try {
+              var _anim = JSON.parse(localStorage.getItem('e5m_animals') || '{}');
+              if (_anim[l.code]) { delete _anim[l.code]; localStorage.setItem('e5m_animals', JSON.stringify(_anim)); }
+            } catch(e) {}
+            return false;
+          }
+          // Sino, mantener (probablemente push pendiente)
+          return true;
         });
         if (beforeLen !== (db.lots || []).length) {
           console.log('[Sync] Reconciliación de lotes: ' + beforeLen + ' → ' + (db.lots || []).length);
@@ -4128,6 +4218,8 @@ function pullThenPush() {
 function pushDesktopRecords() {
   // Push solo los registros que maneja el desktop, sin sobreescribir lotes del campo
   if (!navigator.onLine) return;
+  if (window._restoreInProgress) { console.log('[PushDesktop] Bloqueado por restore en progreso'); return; }
+  if (sessionStorage.getItem('_post_restore') === '1') { console.log('[PushDesktop] Bloqueado por post-restore'); return; }
   var apiUrl = getApiUrl();
   var token  = localStorage.getItem('e5m_api_token') || '';
   var tasks  = JSON.parse(localStorage.getItem('e5m_tasks') || '[]');
@@ -4180,6 +4272,9 @@ function pushDesktopRecords() {
 
 function pushToRailway() {
   if (!navigator.onLine) return;
+  // Bloquear durante restore en progreso o post-restore (primeros 30 seg después del reload)
+  if (window._restoreInProgress) { console.log('[Push] Bloqueado por restore en progreso'); return; }
+  if (sessionStorage.getItem('_post_restore') === '1') { console.log('[Push] Bloqueado por post-restore'); return; }
   var apiUrl = getApiUrl();
   var token  = localStorage.getItem('e5m_api_token') || '';
   var tasks  = JSON.parse(localStorage.getItem('e5m_tasks') || '[]');
@@ -4549,11 +4644,18 @@ function renderLotes() {
   });
 
   const active = db.lots.filter(l=>!l.status||l.status==='activo'||l.status==='active');
-  document.getElementById('lotes-sub').textContent = active.length+' lotes activos · '+active.reduce((s,l)=>s+l.animal_count,0)+' animales';
+  const cuarentena = db.lots.filter(l=>l.status==='cuarentena');
+  var subtitle = active.length+' lotes activos · '+active.reduce((s,l)=>s+l.animal_count,0)+' animales';
+  if (cuarentena.length) subtitle += ' · 🚧 ' + cuarentena.length + ' en cuarentena (' + cuarentena.reduce((s,l)=>s+(l.animal_count||0),0) + ' cab.)';
+  document.getElementById('lotes-sub').textContent = subtitle;
   const tbody = document.getElementById('lotes-tbody');
   tbody.innerHTML = db.lots.map(function(lot){
-    return '<tr>'+
-      '<td><span style="font-family:DM Mono,monospace;background:var(--sur2);padding:3px 8px;border-radius:5px;color:var(--amber2);border:1px solid var(--bor)">'+escH(lot.code)+'</span></td>'+
+    var isCuarentena = lot.status === 'cuarentena';
+    var btnMover = isCuarentena
+      ? '<button class="btn btn-primary btn-sm" onclick="openMarcarCuarentena('+lot.id+')" style="background:#A855F7;border-color:#A855F7" title="Marcar IDs y pesos individuales">📝 Marcar</button>'
+      : '<button class="btn btn-ghost btn-sm" onclick="openMoveLot('+lot.id+')">Mover</button>';
+    return '<tr'+(isCuarentena?' style="background:rgba(168,85,247,.04)"':'')+'>'+
+      '<td><span style="font-family:DM Mono,monospace;background:var(--sur2);padding:3px 8px;border-radius:5px;color:'+(isCuarentena?'#A855F7':'var(--amber2)')+';border:1px solid var(--bor)">'+escH(lot.code)+'</span></td>'+
       '<td>'+capFirst(lot.category)+'</td>'+
       '<td style="color:var(--muted);font-size:12px">'+escH(lot.breed||'-')+'</td>'+
       '<td>'+escH(lot.paddock||'-')+'</td>'+
@@ -4561,7 +4663,7 @@ function renderLotes() {
       '<td>'+(lot.avg_weight?lot.avg_weight+' kg':'-')+'</td>'+
       '<td>'+lotStatusBadge(lot)+'</td>'+
       '<td style="display:flex;gap:6px">'+
-        '<button class="btn btn-ghost btn-sm" onclick="openMoveLot('+lot.id+')">Mover</button>'+
+        btnMover +
         '<button class="btn btn-danger btn-sm" onclick="deleteLot('+lot.id+')">X</button>'+
       '</td>'+
     '</tr>';
@@ -4569,7 +4671,8 @@ function renderLotes() {
 }
 
 function lotStatusBadge(lot) {
-  if(lot.status==='sold') return'<span class="bdg bdg-purple">Vendido</span>';
+  if(lot.status==='sold' || lot.status==='vendido') return'<span class="bdg bdg-purple">Vendido</span>';
+  if(lot.status==='cuarentena') return'<span class="bdg" style="background:rgba(168,85,247,.15);color:#A855F7;border:1px solid #A855F7">🚧 Cuarentena</span>';
   const alerts = db.alerts.filter(a=>!a.resolved&&a.lot_code===lot.code);
   if(alerts.length) return'<span class="bdg bdg-amber">⚠ Alerta</span>';
   return'<span class="bdg bdg-green">✓ Activo</span>';
@@ -7874,6 +7977,13 @@ function openModalCompraGanado() {
   document.getElementById('cg-precio-kg').value = '';
   document.getElementById('cg-total').value = '';
   document.getElementById('cg-notas').value = '';
+  // Reset cuarentena fields
+  var ccEl = document.getElementById('cg-cuarentena-count'); if (ccEl) ccEl.value = '';
+  var cpEl = document.getElementById('cg-cuarentena-peso-prom'); if (cpEl) cpEl.value = '';
+  // Default: modo cuarentena (desmarcado)
+  var marcarEl = document.getElementById('cg-marcar-ahora');
+  if (marcarEl) marcarEl.checked = false;
+  onCGToggleMarcar();
   // Poblar lotes con conteo real
   var sel = document.getElementById('cg-lote');
   sel.innerHTML = '<option value="">Seleccionar lote...</option>';
@@ -7899,6 +8009,38 @@ function openModalCompraGanado() {
   });
   renderCGAnimalsTable();
   openModal('modal-compra-ganado');
+}
+
+// Toggle entre modo cuarentena (default) y marcaje individual
+function onCGToggleMarcar() {
+  var marcar = !!(document.getElementById('cg-marcar-ahora') || {}).checked;
+  var blockCuarentena = document.getElementById('cg-block-cuarentena');
+  var blockIndividual = document.getElementById('cg-block-individual');
+  var loteSel = document.getElementById('cg-lote');
+  var loteHelp = document.getElementById('cg-lote-help');
+  if (blockCuarentena) blockCuarentena.style.display = marcar ? 'none' : 'block';
+  if (blockIndividual) blockIndividual.style.display = marcar ? 'block' : 'none';
+  if (loteSel) loteSel.disabled = !marcar;
+  if (loteHelp) {
+    loteHelp.textContent = marcar ? '' : '(se creará un lote temporal automáticamente)';
+    loteHelp.style.color = marcar ? 'var(--muted)' : 'var(--amber2)';
+  }
+  // Si pasa a cuarentena, limpiar lista de animales individuales
+  if (!marcar) {
+    _cgAnimals = [];
+    renderCGAnimalsTable();
+  }
+}
+
+// Cálculo de total para modo cuarentena
+function calcCGCuarentenaTotal() {
+  var precioKg = parseFloat(document.getElementById('cg-precio-kg').value) || 0;
+  var count = parseInt((document.getElementById('cg-cuarentena-count')||{}).value) || 0;
+  var pesoProm = parseFloat((document.getElementById('cg-cuarentena-peso-prom')||{}).value) || 0;
+  var pesoTotal = count * pesoProm;
+  var total = Math.round(pesoTotal * precioKg * 100) / 100;
+  var totalEl = document.getElementById('cg-total');
+  if (totalEl) totalEl.value = total ? 'Bs. ' + total.toLocaleString() : '';
 }
 
 function addCGAnimal() {
@@ -7935,6 +8077,9 @@ function renderCGAnimalsTable() {
 }
 
 function calcCGTotal() {
+  // Si estamos en modo cuarentena, delegar
+  var marcar = !!(document.getElementById('cg-marcar-ahora') || {}).checked;
+  if (!marcar) { calcCGCuarentenaTotal(); return; }
   var precioKg = parseFloat(document.getElementById('cg-precio-kg').value) || 0;
   var pesoTotal = _cgAnimals.reduce(function(s,a) { return s + (a.peso||0); }, 0);
   var count = _cgAnimals.length;
@@ -7952,14 +8097,96 @@ function saveCompraGanado() {
   var fecha = document.getElementById('cg-fecha').value;
   var lote = document.getElementById('cg-lote').value;
   var categoria = document.getElementById('cg-categoria').value;
+  var raza = document.getElementById('cg-raza').value;
   var precioKg = parseFloat(document.getElementById('cg-precio-kg').value) || 0;
   var notas = document.getElementById('cg-notas').value.trim();
+  var marcarAhora = !!(document.getElementById('cg-marcar-ahora') || {}).checked;
 
   if (!proveedor) { toast('Ingresa el proveedor', 'error'); return; }
   if (!fecha) { toast('Ingresa la fecha', 'error'); return; }
+  if (!precioKg) { toast('Ingresa el precio por kg', 'error'); return; }
+
+  // ────── MODO CUARENTENA (animales sin ID, lote temporal) ──────
+  if (!marcarAhora) {
+    var cantCuar = parseInt((document.getElementById('cg-cuarentena-count')||{}).value) || 0;
+    var pesoPromCuar = parseFloat((document.getElementById('cg-cuarentena-peso-prom')||{}).value) || 0;
+    if (!cantCuar) { toast('Ingresa la cantidad de cabezas', 'error'); return; }
+    if (!pesoPromCuar) { toast('Ingresa el peso promedio estimado', 'error'); return; }
+
+    var pesoTotalCuar = Math.round(cantCuar * pesoPromCuar * 10) / 10;
+    var totalCuar = Math.round(pesoTotalCuar * precioKg * 100) / 100;
+
+    // Generar código único de cuarentena: CUAR-001, CUAR-002, ...
+    var existingCuar = (db.lots || []).filter(function(l){ return /^CUAR-\d+$/.test(l.code); });
+    var maxN = 0;
+    existingCuar.forEach(function(l){ var n = parseInt(l.code.replace('CUAR-','')) || 0; if (n > maxN) maxN = n; });
+    var nuevoCode = 'CUAR-' + String(maxN + 1).padStart(3, '0');
+
+    // Crear lote temporal de cuarentena
+    if (!db.next_ids) db.next_ids = {};
+    if (!db.next_ids.lot) db.next_ids.lot = (db.lots||[]).reduce(function(m,l){return Math.max(m, l.id||0);},0) + 1;
+    var nuevoLote = {
+      id: db.next_ids.lot++,
+      code: nuevoCode,
+      breed: raza,
+      status: 'cuarentena',
+      paddock: 'Cuarentena',
+      category: categoria,
+      avg_weight: pesoPromCuar,
+      entry_date: fecha,
+      animal_count: cantCuar,
+      notes: 'Cuarentena de compra de ' + proveedor + (notas ? ' — ' + notas : ''),
+      cuarentena_origen: proveedor,
+      cuarentena_fecha_compra: fecha,
+      created_at: new Date().toISOString()
+    };
+    db.lots.push(nuevoLote);
+
+    // Registrar la compra (sin animales individuales)
+    if (!db.compras_ganado) db.compras_ganado = [];
+    db.compras_ganado.push({
+      id: 'cg_' + Date.now(),
+      proveedor: proveedor,
+      fecha: fecha,
+      lot_code: nuevoCode,
+      categoria: categoria,
+      raza: raza,
+      animal_count: cantCuar,
+      total_kg: pesoTotalCuar,
+      price_per_kg: precioKg,
+      total: totalCuar,
+      animales: [],   // sin IDs todavía
+      cuarentena: true,
+      marcaje_progreso: 0,
+      notes: notas,
+      created_at: new Date().toISOString()
+    });
+    // Auto-Kardex
+    if (!db.kardex) db.kardex = [];
+    db.kardex.push({
+      id: Date.now()+1, lote: nuevoCode, tipo: 'compra', fecha: fecha,
+      cabezas: cantCuar, precio: precioKg, total: totalCuar,
+      desc: 'Compra de ' + proveedor + ' — ' + cantCuar + ' cab. (cuarentena)',
+      by: 'Desktop', created_at: new Date().toISOString(), auto: true
+    });
+
+    localStorage.setItem(DB_KEY, JSON.stringify(db));
+    closeModal('modal-compra-ganado');
+    renderComprasGanado();
+    renderLotes();
+    renderDashboard();
+    toast('Compra registrada en cuarentena: ' + nuevoCode + ' (' + cantCuar + ' animales)', 'success');
+
+    replaceTableInRailway('lots', db.lots);
+    replaceTableInRailway('compras_ganado', db.compras_ganado);
+    replaceTableInRailway('kardex', db.kardex);
+    try { auditLog('create', 'compras_ganado', 'cg_'+Date.now(), 'Compra cuarentena: ' + cantCuar + ' cab. de ' + proveedor); } catch(e){}
+    return;
+  }
+
+  // ────── MODO MARCAJE INMEDIATO (animales con ID y peso individuales) ──────
   if (!lote) { toast('Selecciona el lote destino', 'error'); return; }
   if (!_cgAnimals.length) { toast('Agrega al menos un animal', 'error'); return; }
-  if (!precioKg) { toast('Ingresa el precio por kg', 'error'); return; }
 
   var pesoTotal = _cgAnimals.reduce(function(s,a) { return s + (a.peso||0); }, 0);
   var total = Math.round(pesoTotal * precioKg * 100) / 100;
@@ -8055,6 +8282,227 @@ function saveCompraGanado() {
   // Push después de renderizar (sin pull que sobreescriba)
   clearTimeout(window._syncTimer);
   window._syncTimer = setTimeout(function() { pushDesktopRecords(); }, 2000);
+}
+
+// ══════════════════════════════════════════════════
+// MARCAJE de cuarentena (asignar IDs a animales)
+// ══════════════════════════════════════════════════
+
+var _mcAnimals = [];        // animales que se están marcando
+var _mcLoteCuarentena = null;
+
+function openMarcarCuarentena(lotId) {
+  var lot = (db.lots || []).find(function(l) { return l.id === lotId; });
+  if (!lot) { toast('Lote no encontrado', 'error'); return; }
+  if (lot.status !== 'cuarentena') { toast('Este lote no está en cuarentena', 'error'); return; }
+  _mcLoteCuarentena = lot;
+  _mcAnimals = [];
+
+  // Pre-cargar animales ya marcados (si los hay) — viven en e5m_animals[lot.code]
+  var animDB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
+  var existing = animDB[lot.code] || [];
+  existing.forEach(function(a) {
+    _mcAnimals.push({
+      id: a.id || a.animal_id || '',
+      peso: (a.pesajes && a.pesajes.length) ? a.pesajes[a.pesajes.length-1].peso : 0,
+      categoria: a.categoria || lot.category || '',
+      raza: a.raza || a.breed || lot.breed || ''
+    });
+  });
+
+  // UI labels
+  document.getElementById('mc-lote-code').textContent = lot.code;
+  var info = '<strong>' + lot.animal_count + ' cabezas</strong> de cuarentena · ';
+  info += 'Origen: <strong>' + (lot.cuarentena_origen || '—') + '</strong> · ';
+  info += 'Compra: ' + (lot.cuarentena_fecha_compra || lot.entry_date || '—') + ' · ';
+  info += 'Peso prom estimado: <strong>' + (lot.avg_weight || 0) + ' kg</strong>';
+  document.getElementById('mc-info').innerHTML = info;
+  document.getElementById('mc-fecha').value = (typeof localDate === 'function') ? localDate() : new Date().toISOString().slice(0,10);
+
+  // Poblar dropdown lotes destino (activos solamente)
+  var sel = document.getElementById('mc-lote-destino');
+  sel.innerHTML = '<option value="">Seleccionar lote activo...</option>';
+  (db.lots || []).forEach(function(l) {
+    if (l.id === lot.id) return; // no incluir el mismo lote de cuarentena
+    if (l.status === 'activo' || l.status === 'active' || !l.status) {
+      sel.innerHTML += '<option value="' + l.code + '">' + l.code + ' - ' + l.category + ' (' + (l.animal_count||0) + ' cab.)</option>';
+    }
+  });
+
+  renderMCAnimals();
+  openModal('modal-marcar-cuarentena');
+}
+
+function addMCAnimal() {
+  if (_mcAnimals.length >= (_mcLoteCuarentena ? _mcLoteCuarentena.animal_count : 9999)) {
+    toast('Ya alcanzaste la cantidad de la compra', 'warning');
+    return;
+  }
+  _mcAnimals.push({
+    id: '',
+    peso: _mcLoteCuarentena ? _mcLoteCuarentena.avg_weight || 0 : 0,
+    categoria: _mcLoteCuarentena ? _mcLoteCuarentena.category : '',
+    raza: _mcLoteCuarentena ? _mcLoteCuarentena.breed : ''
+  });
+  renderMCAnimals();
+}
+
+function addMCAnimalsBatch() {
+  if (!_mcLoteCuarentena) return;
+  var faltan = (_mcLoteCuarentena.animal_count || 0) - _mcAnimals.length;
+  if (faltan <= 0) { toast('Ya están todos agregados', 'info'); return; }
+  for (var i = 0; i < faltan; i++) {
+    _mcAnimals.push({
+      id: '',
+      peso: _mcLoteCuarentena.avg_weight || 0,
+      categoria: _mcLoteCuarentena.category || '',
+      raza: _mcLoteCuarentena.breed || ''
+    });
+  }
+  renderMCAnimals();
+}
+
+function removeMCAnimal(idx) {
+  _mcAnimals.splice(idx, 1);
+  renderMCAnimals();
+}
+
+function renderMCAnimals() {
+  var tbody = document.getElementById('mc-animals-tbody');
+  if (!tbody) return;
+  var params = (typeof getParams === 'function') ? getParams() : { categorias: [], razas: [] };
+  var catOptions = (params.categorias || []).map(function(c) { return c.name; });
+  var razOptions = (params.razas || []).map(function(r) { return r.name; });
+  tbody.innerHTML = _mcAnimals.map(function(a, i) {
+    var catSel = '<select class="form-select" style="width:90px;padding:4px 6px;font-size:11px" oninput="_mcAnimals['+i+'].categoria=this.value">' +
+      catOptions.map(function(c){ return '<option value="'+c+'"'+(a.categoria===c?' selected':'')+'>'+c+'</option>'; }).join('') + '</select>';
+    var razSel = '<select class="form-select" style="width:80px;padding:4px 6px;font-size:11px" oninput="_mcAnimals['+i+'].raza=this.value">' +
+      razOptions.map(function(r){ return '<option value="'+r+'"'+(a.raza===r?' selected':'')+'>'+r+'</option>'; }).join('') + '</select>';
+    return '<tr>' +
+      '<td style="color:var(--muted);font-size:10px">'+(i+1)+'</td>' +
+      '<td><input class="form-input" style="width:110px;padding:4px 8px;font-size:11px" value="' + escH(String(a.id||'')) + '" placeholder="ej: '+(_mcLoteCuarentena?_mcLoteCuarentena.code:'C')+'-'+String(i+1).padStart(4,'0')+'" oninput="_mcAnimals['+i+'].id=this.value"></td>' +
+      '<td><input class="form-input" type="number" step="0.1" style="width:80px;padding:4px 8px;font-size:11px" value="' + (a.peso||'') + '" placeholder="kg" oninput="_mcAnimals['+i+'].peso=parseFloat(this.value)||0;updateMCStats()"></td>' +
+      '<td>' + catSel + '</td>' +
+      '<td>' + razSel + '</td>' +
+      '<td><button class="btn btn-ghost btn-sm" onclick="removeMCAnimal('+i+')" style="padding:2px 6px;color:var(--red)">✕</button></td>' +
+      '</tr>';
+  }).join('');
+  updateMCStats();
+}
+
+function updateMCStats() {
+  var n = _mcAnimals.length;
+  var pesoTotal = _mcAnimals.reduce(function(s, a) { return s + (a.peso || 0); }, 0);
+  var pesoProm = n > 0 ? Math.round(pesoTotal / n * 10) / 10 : 0;
+  var totalCuar = _mcLoteCuarentena ? (_mcLoteCuarentena.animal_count || 0) : 0;
+  var elCount = document.getElementById('mc-count');
+  var elTotal = document.getElementById('mc-peso-total');
+  var elProm = document.getElementById('mc-peso-prom');
+  var elProgreso = document.getElementById('mc-progreso');
+  if (elCount) elCount.textContent = n;
+  if (elTotal) elTotal.textContent = Math.round(pesoTotal) + ' kg';
+  if (elProm) elProm.textContent = pesoProm + ' kg';
+  if (elProgreso) elProgreso.textContent = '(' + n + ' / ' + totalCuar + ')';
+}
+
+function saveMarcaje() {
+  if (!_mcLoteCuarentena) { toast('Sin lote de cuarentena', 'error'); return; }
+  var loteDest = document.getElementById('mc-lote-destino').value;
+  var fecha = document.getElementById('mc-fecha').value;
+  if (!loteDest) { toast('Seleccioná el lote destino', 'error'); return; }
+  if (!fecha) { toast('Ingresá fecha de marcaje', 'error'); return; }
+
+  // Validar: todos deben tener ID y peso
+  var sinId = _mcAnimals.filter(function(a) { return !String(a.id || '').trim(); });
+  var sinPeso = _mcAnimals.filter(function(a) { return !a.peso || a.peso <= 0; });
+  if (sinId.length) { toast(sinId.length + ' animales sin ID', 'error'); return; }
+  if (sinPeso.length) { toast(sinPeso.length + ' animales sin peso', 'error'); return; }
+  if (!_mcAnimals.length) { toast('Marcá al menos 1 animal', 'error'); return; }
+
+  // Validar IDs únicos dentro del marcaje
+  var idsSet = {};
+  var dup = '';
+  _mcAnimals.some(function(a) {
+    var id = String(a.id).trim();
+    if (idsSet[id]) { dup = id; return true; }
+    idsSet[id] = true;
+    return false;
+  });
+  if (dup) { toast('ID duplicado: ' + dup, 'error'); return; }
+
+  var totalCuar = _mcLoteCuarentena.animal_count || 0;
+  var n = _mcAnimals.length;
+  var esCompleto = n >= totalCuar;
+
+  // Cargar animales al lote destino
+  var animDB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
+  var rawAnim = JSON.parse(localStorage.getItem('e5m_animals') || '{}');
+  if (!rawAnim[loteDest]) rawAnim[loteDest] = [];
+
+  _mcAnimals.forEach(function(a) {
+    rawAnim[loteDest].push({
+      id: String(a.id),
+      raza: a.raza || _mcLoteCuarentena.breed || '',
+      categoria: a.categoria || _mcLoteCuarentena.category || '',
+      pesajes: [{ fecha: fecha, peso: a.peso, tipo: 'marcaje', nota: 'Marcaje desde ' + _mcLoteCuarentena.code }]
+    });
+  });
+  localStorage.setItem('e5m_animals', JSON.stringify(rawAnim));
+
+  // Actualizar lote destino: animal_count + avg_weight
+  var loteDestObj = db.lots.find(function(l) { return l.code === loteDest; });
+  if (loteDestObj) {
+    loteDestObj.animal_count = (loteDestObj.animal_count || 0) + n;
+    var pesos = rawAnim[loteDest].map(function(a) {
+      return (a.pesajes && a.pesajes.length) ? a.pesajes[a.pesajes.length-1].peso : 0;
+    }).filter(function(p) { return p > 0; });
+    if (pesos.length) loteDestObj.avg_weight = Math.round(pesos.reduce(function(s,p){return s+p;},0) / pesos.length * 10) / 10;
+  }
+
+  // Actualizar lote de cuarentena: descontar animales marcados
+  _mcLoteCuarentena.animal_count = Math.max(0, totalCuar - n);
+
+  if (esCompleto || _mcLoteCuarentena.animal_count === 0) {
+    // Marcaje completo → cerrar la cuarentena
+    _mcLoteCuarentena.status = 'marcado_completo';
+    _mcLoteCuarentena.animal_count = 0;
+    _mcLoteCuarentena.marcaje_completo_at = new Date().toISOString();
+    _mcLoteCuarentena.marcaje_lot_destino = loteDest;
+    // Opcional: borrar el lote de cuarentena del listado para no acumular?
+    // Por ahora se queda con status 'marcado_completo' como historial.
+  } else {
+    // Marcaje parcial — actualizar progreso pero sigue en cuarentena
+    _mcLoteCuarentena.marcaje_progreso = (_mcLoteCuarentena.marcaje_progreso || 0) + n;
+  }
+
+  // Actualizar la compra correspondiente
+  var compra = (db.compras_ganado || []).find(function(c) { return c.lot_code === _mcLoteCuarentena.code; });
+  if (compra) {
+    compra.marcaje_progreso = (compra.marcaje_progreso || 0) + n;
+    if (esCompleto) compra.marcaje_completo_at = new Date().toISOString();
+    if (!compra.lote_destinos) compra.lote_destinos = [];
+    if (compra.lote_destinos.indexOf(loteDest) < 0) compra.lote_destinos.push(loteDest);
+  }
+
+  // Persistir + sync
+  saveDB();
+  closeModal('modal-marcar-cuarentena');
+  renderLotes();
+  renderDashboard();
+  if (typeof renderComprasGanado === 'function') renderComprasGanado();
+  if (typeof renderAnimalesLote === 'function') renderAnimalesLote();
+  toast(esCompleto
+    ? 'Marcaje completo: ' + n + ' animales movidos a ' + loteDest
+    : n + ' animales marcados (faltan ' + _mcLoteCuarentena.animal_count + ' en cuarentena)', 'success');
+
+  replaceTableInRailway('lots', db.lots);
+  replaceTableInRailway('animals', rawAnim);
+  if (db.compras_ganado) replaceTableInRailway('compras_ganado', db.compras_ganado);
+  try { auditLog('update', 'compras_ganado', compra ? compra.id : _mcLoteCuarentena.code, 'Marcaje: ' + n + ' animales en ' + loteDest); } catch(e){}
+
+  // Reset state
+  _mcAnimals = [];
+  _mcLoteCuarentena = null;
 }
 
 function renderComprasGanado() {
@@ -8785,7 +9233,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.2.93'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.2.97'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -12458,6 +12906,99 @@ document.addEventListener('DOMContentLoaded', function(){
   if (camIn) camIn.addEventListener('change', function(e){ if(this.files[0]) _evpHandleFile(this.files[0]); });
   if (galIn) galIn.addEventListener('change', function(e){ if(this.files[0]) _evpHandleFile(this.files[0]); });
 });
+
+// Handler post-restore: cuando la app reinicia después de un restore,
+// el localStorage está vacío. Hay que hacer pull forzado del server (que ya tiene
+// los datos restaurados) ANTES que cualquier push automático se dispare.
+(function handlePostRestore() {
+  if (sessionStorage.getItem('_post_restore') !== '1') return;
+  console.log('[PostRestore] Detectado, haciendo pull forzado del server...');
+  toast('Sincronizando datos restaurados desde server...', 'info');
+
+  // Esperar 1s para que la app cargue lo básico
+  setTimeout(function() {
+    var apiUrl = (typeof getApiUrl === 'function') ? getApiUrl() : 'https://estancia5m-api-production.up.railway.app/api';
+    var token = localStorage.getItem('e5m_api_token') || '';
+    if (!token) {
+      sessionStorage.removeItem('_post_restore');
+      return;
+    }
+    fetch(apiUrl + '/sync-pull', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(remote) {
+      if (!remote || remote.error) {
+        toast('Error trayendo datos restaurados', 'error');
+        sessionStorage.removeItem('_post_restore');
+        return;
+      }
+      // Aplicar TODO al localStorage
+      try {
+        // Tablas array → db.[name]
+        var arrayTables = ['lots','sales','purchases','employees','products','treatments',
+          'health_alerts','field_activities','tasks','pesajes','advances','maintenance',
+          'agua','sal','conteo','partos','alimento','animal_movements','lluvias',
+          'diesel','aceite','cuentas','kardex','historial_sueldos','compras_ganado',
+          'bajas','maquinaria','rotation_history','pasture_evals','inventory_counts'];
+        if (typeof db === 'undefined' || !db) window.db = {};
+        arrayTables.forEach(function(t) {
+          if (Array.isArray(remote[t])) db[t] = remote[t];
+        });
+        // Mapeos especiales: server usa 'products', desktop usa 'products'/'vet_products'
+        if (Array.isArray(remote.products)) db.products = remote.products;
+        if (Array.isArray(remote.health_alerts)) db.alerts = remote.health_alerts;
+        if (Array.isArray(remote.field_activities)) db.activities = remote.field_activities;
+
+        // Animals → e5m_animals
+        var animals = remote.animals || remote.animals_data || {};
+        if (animals && typeof animals === 'object') {
+          localStorage.setItem('e5m_animals', JSON.stringify(animals));
+        }
+        // Tablas-objeto → keys propias
+        if (remote.estancia_params && typeof remote.estancia_params === 'object' && Object.keys(remote.estancia_params).length) {
+          localStorage.setItem('e5m_params', JSON.stringify(remote.estancia_params));
+        }
+        if (remote.branding && typeof remote.branding === 'object' && Object.keys(remote.branding).length) {
+          localStorage.setItem('e5m_branding', JSON.stringify(remote.branding));
+        }
+        if (remote.report_params && typeof remote.report_params === 'object' && Object.keys(remote.report_params).length) {
+          localStorage.setItem('e5m_report_params', JSON.stringify(remote.report_params));
+        }
+        if (remote.diesel_tank) {
+          localStorage.setItem('e5m_diesel_tank', JSON.stringify(remote.diesel_tank));
+        }
+        if (remote.pluvios_config) {
+          localStorage.setItem('e5m_pluvios', JSON.stringify(remote.pluvios_config));
+        }
+        // Tasks
+        if (Array.isArray(remote.tasks)) {
+          localStorage.setItem('e5m_tasks', JSON.stringify(remote.tasks));
+        }
+
+        // Persistir db
+        var DB_KEY_LOCAL = (typeof DB_KEY !== 'undefined') ? DB_KEY : 'estancia5m_db';
+        localStorage.setItem(DB_KEY_LOCAL, JSON.stringify(db));
+
+        console.log('[PostRestore] Datos sincronizados desde server. Liberando flag.');
+        sessionStorage.removeItem('_post_restore');
+        toast('Datos restaurados sincronizados ✓', 'success');
+
+        // Recargar UI
+        setTimeout(function() { location.reload(); }, 1000);
+      } catch(err) {
+        console.error('[PostRestore] Error aplicando datos:', err);
+        sessionStorage.removeItem('_post_restore');
+        toast('Error aplicando datos: ' + err.message, 'error');
+      }
+    })
+    .catch(function(err) {
+      console.error('[PostRestore] Error de red:', err);
+      sessionStorage.removeItem('_post_restore');
+      toast('Error de red: ' + err.message, 'error');
+    });
+  }, 1500);
+})();
 
 // helper para escapar atributos (si no existe)
 if (typeof escAttr !== 'function') {
@@ -16730,21 +17271,60 @@ function restoreCloudSnapshot(snapshotId, dateLabel) {
   var apiUrl = getApiUrl();
   var token = localStorage.getItem('e5m_api_token') || '';
   toast('Restaurando snapshot del ' + dateLabel + '...', 'info');
+
+  // CRÍTICO: marcar restore en progreso para que ningún push automático se dispare
+  window._restoreInProgress = true;
+
   fetch(apiUrl + '/cloud-backup/' + snapshotId + '/restore', {
     method: 'POST',
     headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
   })
   .then(function(r) { return r.json(); })
   .then(function(d) {
-    if (d.ok) {
-      toast('Railway restaurado (' + d.restored_tables + ' tablas). Recargando...', 'success');
-      setTimeout(function() {
-        pullFromRailwayDesktop(false);
-        setTimeout(function() { location.reload(); }, 3000);
-      }, 1000);
-    } else { toast('Error: ' + (d.error || 'desconocido'), 'error'); }
+    if (!d.ok) {
+      window._restoreInProgress = false;
+      toast('Error: ' + (d.error || 'desconocido'), 'error');
+      return;
+    }
+    toast('Server restaurado (' + d.restored_tables + ' tablas). Limpiando local...', 'success');
+
+    // Esperar 1 segundo para que el server termine de escribir todas las tablas
+    setTimeout(function() {
+      try {
+        // Wipear TODO localStorage relevante.
+        // Al recargar, sync-pull traerá los datos del server (que ya está restaurado).
+        // Preservamos solo cosas que NO son datos: token API, preferencias UI, etc.
+        var preserveKeys = {};
+        var keysToPreserve = ['e5m_api_token', 'e5m_dark_mode', 'e5m_active_tenant', 'e5m_settings'];
+        keysToPreserve.forEach(function(k) {
+          var v = localStorage.getItem(k);
+          if (v !== null) preserveKeys[k] = v;
+        });
+
+        // Limpiar todo
+        localStorage.clear();
+
+        // Restaurar las claves que preservamos
+        Object.keys(preserveKeys).forEach(function(k) {
+          localStorage.setItem(k, preserveKeys[k]);
+        });
+
+        console.log('[Restore] localStorage wipeado. Token preservado:', !!preserveKeys.e5m_api_token);
+      } catch(err) {
+        console.error('[Restore] Error limpiando localStorage:', err);
+      }
+
+      toast('Recargando para sincronizar desde server...', 'success');
+      // Marcador para que al iniciar haga pull forzado y NO push
+      sessionStorage.setItem('_post_restore', '1');
+      setTimeout(function() { location.reload(); }, 1500);
+    }, 1000);
   })
-  .catch(function() { toast('Error de conexión al restaurar', 'error'); });
+  .catch(function(err) {
+    window._restoreInProgress = false;
+    console.error('[Restore] Error de red:', err);
+    toast('Error de conexión al restaurar', 'error');
+  });
 }
 
 // Auto-backup local al iniciar (guarda últimos 3 días en localStorage)
