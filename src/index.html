@@ -9233,7 +9233,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.2.97'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.2.99'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -10359,6 +10359,9 @@ function setContDate(range) {
   }
   var dEl = document.getElementById('cont-f-desde'); if(dEl) dEl.value = desde;
   var hEl = document.getElementById('cont-f-hasta'); if(hEl) hEl.value = hasta;
+  // Marcar que el usuario eligió un período explícitamente para que renderContabilidad
+  // no lo pise con su default
+  window._contDateUserChoice = true;
   renderContabilidad();
 }
 
@@ -10662,11 +10665,21 @@ function renderContabilidad() {
   var now = new Date();
   var curYear = now.getFullYear();
 
-  // Date range defaults: current month
+  // Date range defaults: últimos 30 días (más útil que "mes actual" cuando es día 1).
+  // Si el usuario eligió un filtro rápido (botón Hoy/Semana/Mes/Año/Todo), respetar su elección
+  // (incluso si vacío para "Todo").
   var desdeEl = document.getElementById('cont-f-desde');
   var hastaEl = document.getElementById('cont-f-hasta');
-  if (desdeEl && !desdeEl.value) desdeEl.value = curYear + '-' + String(now.getMonth()+1).padStart(2,'0') + '-01';
-  if (hastaEl && !hastaEl.value) hastaEl.value = localDate();
+  var userChose = window._contDateUserChoice === true;
+  if (!userChose) {
+    if (desdeEl && !desdeEl.value) {
+      var d30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      desdeEl.value = d30.getFullYear() + '-' + String(d30.getMonth()+1).padStart(2,'0') + '-' + String(d30.getDate()).padStart(2,'0');
+    }
+    if (hastaEl && !hastaEl.value) hastaEl.value = localDate();
+  }
+  // Reset flag para próximas llamadas (si el usuario edita manualmente las fechas, queremos que esos
+  // cambios se respeten también — el onchange del input dispara renderContabilidad sin tocar la flag)
 
   var selDesde = (desdeEl||{}).value || '';
   var selHasta = (hastaEl||{}).value || '';
