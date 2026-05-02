@@ -49,5 +49,7 @@ contextBridge.exposeInMainWorld('estancia', {
   backup: {
     auto: (data, filename) => ipcRenderer.invoke('backup:auto', { data, filename }),
     getDir: () => ipcRenderer.invoke('backup:getDir'),
+    onShutdownRequest: (cb) => ipcRenderer.on('backup:shutdown-request', () => cb()),
+    shutdownDone: () => ipcRenderer.send('backup:shutdown-done'),
   },
 });

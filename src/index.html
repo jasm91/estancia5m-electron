@@ -2419,8 +2419,8 @@ function publishTasksToPWA() {
       <div style="background:var(--sur2);border:1px solid var(--bor);border-radius:10px;padding:14px;margin-bottom:10px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
           <div>
-            <div style="font-size:13px;font-weight:600">Backup automatico local</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px">Guarda en Documentos/EstanciaPro_Backups</div>
+            <div style="font-size:13px;font-weight:600">Backup automático local</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">Al arrancar y al cerrar la app · Documentos/EstanciaPro_Backups · Últimos 30</div>
           </div>
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
             <input type="checkbox" id="auto-backup-enabled" onchange="toggleAutoBackup(this.checked)" style="width:16px;height:16px;cursor:pointer">
@@ -2429,7 +2429,7 @@ function publishTasksToPWA() {
         </div>
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
           <div style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:12px;color:var(--muted)">Cada</span>
+            <span style="font-size:12px;color:var(--muted)">Backup adicional cada</span>
             <select id="auto-backup-freq" class="form-select" style="width:100px;padding:5px 8px;font-size:12px" onchange="saveAutoBackupConfig()">
               <option value="1">1 dia</option>
               <option value="3">3 dias</option>
@@ -2447,6 +2447,22 @@ function publishTasksToPWA() {
         <button class="btn btn-ghost btn-sm" onclick="openBackupFolder()" style="font-size:11px">Abrir carpeta</button>
       </div>
       <div id="backup-status" style="font-family:DM Mono,monospace;font-size:11px;color:var(--muted);display:none;margin-top:8px;padding:8px 12px;border-radius:6px;background:var(--sur2)"></div>
+    </div>
+  </div>
+
+  <!-- Mantenimiento de datos -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-hd">
+      <div class="card-title">🧹 Mantenimiento de datos</div>
+    </div>
+    <div class="card-body">
+      <div style="background:rgba(212,160,23,.06);border:1px solid rgba(212,160,23,.2);border-radius:8px;padding:12px;margin-bottom:16px;font-family:DM Mono,monospace;font-size:11px;color:var(--amber2);line-height:1.6">
+        Limpia lotes huérfanos: lotes vendidos con animales fantasmas, lotes que el servidor ya borró pero quedaron localmente, y referencias a animales sin lote padre. Antes de aplicar, te muestra exactamente qué va a borrar.
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-ghost" onclick="cleanupOrphanLots()" style="font-size:12px">🧹 Limpiar lotes huérfanos</button>
+      </div>
+      <div id="cleanup-result" style="font-family:DM Mono,monospace;font-size:11px;color:var(--muted);display:none;margin-top:10px;padding:10px;border-radius:6px;background:var(--sur2);white-space:pre-wrap"></div>
     </div>
   </div>
 
@@ -9364,7 +9380,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.3.1'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.3.3'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -10135,8 +10151,9 @@ function renderConfig() {
   var lbl=document.getElementById('cfg-last-backup');
   var lastBackup=localStorage.getItem('e5m_last_backup');
   if(lbl) lbl.textContent=lastBackup?'Ultimo backup: '+lastBackup:'Sin backup reciente';
-  // Estado del auto-backup
-  var autoEnabled = localStorage.getItem('e5m_auto_backup_enabled') === '1';
+  // Estado del auto-backup — default ON: si nunca se configuró, asumir activado
+  var rawAutoEnabled = localStorage.getItem('e5m_auto_backup_enabled');
+  var autoEnabled = rawAutoEnabled === null || rawAutoEnabled === '1';
   var autoChk = document.getElementById('auto-backup-enabled');
   var autoLbl = document.getElementById('auto-backup-status-lbl');
   var autoFreq = document.getElementById('auto-backup-freq');
@@ -17278,6 +17295,132 @@ function getBackupData() {
   };
 }
 
+// ── LIMPIEZA DE LOTES HUÉRFANOS ────────────────────────────
+// Detecta y limpia inconsistencias entre db.lots y e5m_animals
+async function cleanupOrphanLots() {
+  var resultEl = document.getElementById('cleanup-result');
+  if (resultEl) { resultEl.style.display = 'none'; resultEl.textContent = ''; }
+
+  var rawAnim = JSON.parse(localStorage.getItem('e5m_animals') || '{}');
+  var lots = db.lots || [];
+  var lotCodes = {};
+  lots.forEach(function(l) { lotCodes[l.code] = l; });
+
+  // Plan de limpieza
+  var soldWithGhosts = [];      // lotes vendidos con animales en cache
+  var lotsZeroAnimals = [];     // lotes con animal_count > 0 pero cache vacío Y status 'vendido'
+  var orphanCacheKeys = [];     // claves de e5m_animals sin lote padre en db.lots
+  var inconsistentCount = [];   // animal_count distinto de cache.length (en lotes activos)
+
+  lots.forEach(function(l) {
+    var cacheCount = (rawAnim[l.code] || []).length;
+    var isVendido = l.status === 'vendido' || l.status === 'sold';
+    if (isVendido && cacheCount > 0) {
+      soldWithGhosts.push({ code: l.code, ghosts: cacheCount });
+    }
+    if (isVendido && (l.animal_count || 0) > 0) {
+      lotsZeroAnimals.push({ code: l.code, claimedCount: l.animal_count, willBe: 0 });
+    }
+    if (!isVendido && (l.animal_count || 0) !== cacheCount && cacheCount > 0) {
+      // Solo reportamos si la diferencia es real (no por anims pendientes de pull)
+      if (Math.abs((l.animal_count || 0) - cacheCount) >= 1) {
+        inconsistentCount.push({ code: l.code, claimedCount: l.animal_count || 0, realCount: cacheCount });
+      }
+    }
+  });
+
+  Object.keys(rawAnim).forEach(function(code) {
+    if (!lotCodes[code] && (rawAnim[code] || []).length > 0) {
+      orphanCacheKeys.push({ code: code, count: rawAnim[code].length });
+    }
+  });
+
+  var totalProblems = soldWithGhosts.length + lotsZeroAnimals.length + orphanCacheKeys.length + inconsistentCount.length;
+
+  if (totalProblems === 0) {
+    toast('✓ No hay lotes huérfanos. Todo está consistente.', 'success');
+    if (resultEl) {
+      resultEl.style.display = 'block';
+      resultEl.textContent = '✓ Sin inconsistencias. Lotes: ' + lots.length + ' · Cache: ' + Object.keys(rawAnim).length + ' claves.';
+    }
+    return;
+  }
+
+  // Construir mensaje de confirmación
+  var msg = 'Se detectaron ' + totalProblems + ' inconsistencia(s):\n\n';
+  if (soldWithGhosts.length) {
+    msg += '🪦 ' + soldWithGhosts.length + ' lote(s) vendidos con animales fantasma:\n';
+    soldWithGhosts.forEach(function(x) { msg += '   • ' + x.code + ' → eliminar ' + x.ghosts + ' animal(es) del cache\n'; });
+    msg += '\n';
+  }
+  if (lotsZeroAnimals.length) {
+    msg += '📊 ' + lotsZeroAnimals.length + ' lote(s) vendidos con animal_count > 0:\n';
+    lotsZeroAnimals.forEach(function(x) { msg += '   • ' + x.code + ' → animal_count: ' + x.claimedCount + ' → 0\n'; });
+    msg += '\n';
+  }
+  if (orphanCacheKeys.length) {
+    msg += '🗑️ ' + orphanCacheKeys.length + ' clave(s) en cache sin lote padre:\n';
+    orphanCacheKeys.forEach(function(x) { msg += '   • "' + x.code + '" → eliminar ' + x.count + ' animal(es)\n'; });
+    msg += '\n';
+  }
+  if (inconsistentCount.length) {
+    msg += '⚠️ ' + inconsistentCount.length + ' lote(s) con conteo desincronizado:\n';
+    inconsistentCount.forEach(function(x) { msg += '   • ' + x.code + ' → animal_count: ' + x.claimedCount + ' → ' + x.realCount + '\n'; });
+    msg += '\n';
+  }
+  msg += '¿Aplicar limpieza? Esta acción NO se puede deshacer.';
+
+  if (!confirm(msg)) {
+    toast('Limpieza cancelada', 'success');
+    return;
+  }
+
+  // Aplicar limpieza
+  var changes = 0;
+  soldWithGhosts.forEach(function(x) {
+    rawAnim[x.code] = [];
+    changes++;
+  });
+  lotsZeroAnimals.forEach(function(x) {
+    var l = lotCodes[x.code];
+    if (l) {
+      l.animal_count = 0;
+      changes++;
+    }
+  });
+  orphanCacheKeys.forEach(function(x) {
+    delete rawAnim[x.code];
+    changes++;
+  });
+  inconsistentCount.forEach(function(x) {
+    var l = lotCodes[x.code];
+    if (l) {
+      l.animal_count = x.realCount;
+      changes++;
+    }
+  });
+
+  // Persistir
+  localStorage.setItem('e5m_animals', JSON.stringify(rawAnim));
+  saveDB(true);
+
+  // Push al server
+  try { replaceTableInRailway('lots', db.lots); } catch(e){}
+  try { replaceTableInRailway('animals', rawAnim); } catch(e){}
+
+  // Re-render
+  if (typeof renderLotes === 'function') renderLotes();
+  if (typeof renderDashboard === 'function') renderDashboard();
+  if (typeof renderAnimalesLote === 'function') renderAnimalesLote();
+
+  toast('✓ Limpieza aplicada: ' + changes + ' cambio(s)', 'success');
+  if (resultEl) {
+    resultEl.style.display = 'block';
+    resultEl.textContent = '✓ Limpieza aplicada — ' + changes + ' cambio(s).\nServidor sincronizado.\nÚltima ejecución: ' + new Date().toLocaleString('es-BO');
+  }
+  try { auditLog('cleanup', 'lots', null, 'Limpieza de lotes huérfanos: ' + changes + ' cambios'); } catch(e){}
+}
+
 function toggleAutoBackup(enabled) {
   localStorage.setItem('e5m_auto_backup_enabled', enabled ? '1' : '0');
   var lbl = document.getElementById('auto-backup-status-lbl');
@@ -17321,37 +17464,66 @@ function updateAutoBackupNextLabel() {
   }
 }
 
-async function runAutoBackupIfDue() {
-  var enabled = localStorage.getItem('e5m_auto_backup_enabled') === '1';
-  if(!enabled) return;
-  var nextStr = localStorage.getItem('e5m_auto_backup_next');
-  if(!nextStr) return;
-  var next = new Date(nextStr);
-  if(new Date() < next) return; // Aun no es momento
-  // Es momento de hacer backup
+// Backup forzado: siempre escribe, con debounce de 60s para evitar duplicados
+// (caso de arranque + cierre rápido, o múltiples disparadores en simultáneo)
+async function runBackupNow(reason) {
+  // Debounce: si hay un backup hace menos de 60s, saltear
+  var lastTs = parseInt(localStorage.getItem('e5m_last_backup_ts') || '0');
+  if (lastTs && (Date.now() - lastTs) < 60000) {
+    console.log('[Backup] Skip — backup hace menos de 60s');
+    return false;
+  }
   try {
     var backup = getBackupData();
     var json = JSON.stringify(backup, null, 2);
     var fecha = localDate();
-    var filename = 'backup_estanciapro_' + fecha + '.json';
-    if(window.estancia && window.estancia.backup) {
+    // Sufijo con hora+minutos para no pisar backups del mismo día
+    var d = new Date();
+    var hhmm = String(d.getHours()).padStart(2,'0') + String(d.getMinutes()).padStart(2,'0');
+    var filename = 'backup_estanciapro_' + fecha + '_' + hhmm + (reason ? '_' + reason : '') + '.json';
+    if (window.estancia && window.estancia.backup) {
       var result = await window.estancia.backup.auto(json, filename);
-      if(result.success) {
+      if (result && result.success) {
         var now = new Date().toLocaleString('es-BO');
         localStorage.setItem('e5m_last_backup', now);
-        // Programar proximo backup
-        var freq = parseInt(localStorage.getItem('e5m_auto_backup_freq') || '7');
-        var nextDate = new Date();
-        nextDate.setDate(nextDate.getDate() + freq);
-        localStorage.setItem('e5m_auto_backup_next', nextDate.toISOString());
+        localStorage.setItem('e5m_last_backup_ts', String(Date.now()));
+        // Re-programar próximo (mantengo compat con UI vieja del schedule semanal)
+        var enabled = localStorage.getItem('e5m_auto_backup_enabled') !== '0'; // default ON
+        if (enabled) {
+          var freq = parseInt(localStorage.getItem('e5m_auto_backup_freq') || '7');
+          var nextDate = new Date();
+          nextDate.setDate(nextDate.getDate() + freq);
+          localStorage.setItem('e5m_auto_backup_next', nextDate.toISOString());
+        }
         var lbl = document.getElementById('cfg-last-backup');
-        if(lbl) lbl.textContent = 'Ultimo backup auto: ' + now;
-        // console.log('[Backup] Auto backup guardado:', result.path);
+        if (lbl) lbl.textContent = 'Último backup: ' + now;
+        console.log('[Backup] OK (' + (reason||'auto') + '):', result.path);
+        return true;
+      } else {
+        console.warn('[Backup] Falló:', result && result.error);
       }
     }
   } catch(e) {
-    console.warn('[Backup] Error en auto backup:', e);
+    console.warn('[Backup] Error:', e);
   }
+  return false;
+}
+
+// Wrapper de compat: runAutoBackupIfDue (mantiene el flujo viejo del schedule semanal
+// pero ya no es la fuente principal — backup ahora corre al arranque y al cierre)
+async function runAutoBackupIfDue() {
+  // Default ON: si nunca se configuró, asumimos activado
+  var rawEnabled = localStorage.getItem('e5m_auto_backup_enabled');
+  var enabled = rawEnabled === null || rawEnabled === '1';
+  if(!enabled) return;
+  var nextStr = localStorage.getItem('e5m_auto_backup_next');
+  // Si nunca corrió, programar para ahora (forzar backup en este tick)
+  if(!nextStr) {
+    return runBackupNow('inicio');
+  }
+  var next = new Date(nextStr);
+  if(new Date() < next) return; // Aun no es momento
+  return runBackupNow('schedule');
 }
 
 function triggerCloudBackup() {
@@ -17972,9 +18144,24 @@ function renderConteoHistory() {
   }).join('');
 }
 
-// Verificar backup al inicio (con delay para no bloquear carga)
-setTimeout(function() { runAutoBackupIfDue(); }, 10000);
-// Y cada hora
+// ── BACKUP AL ARRANQUE Y AL CIERRE ────────────────────────────
+// Backup al arrancar (delay 10s para que termine de cargar todo)
+setTimeout(function() { runBackupNow('arranque'); }, 10000);
+
+// Backup al cierre: el main.js intercepta el close y nos pide hacer backup primero
+if (window.estancia && window.estancia.backup && window.estancia.backup.onShutdownRequest) {
+  window.estancia.backup.onShutdownRequest(function() {
+    console.log('[Backup] Shutdown request recibido — guardando backup...');
+    runBackupNow('cierre').then(function() {
+      try { window.estancia.backup.shutdownDone(); } catch(_) {}
+    }).catch(function() {
+      try { window.estancia.backup.shutdownDone(); } catch(_) {}
+    });
+  });
+}
+
+// Schedule legacy (compat con UI vieja del backup semanal): chequeo diario
+// si pasó el "next", también dispara. Pero ya con arranque + cierre, esto es safety net.
 setInterval(function() { runAutoBackupIfDue(); }, 60 * 60 * 1000);
 
 // Push completo en background: al inicio + cada 2 horas

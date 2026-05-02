@@ -71,8 +71,27 @@ function createWindow() {
 
   mainWindow.on('close', (e) => {
     if (!app.isQuitting) {
+      // Interceptar primer close: pedir backup al renderer y luego quitear
+      e.preventDefault();
       app.isQuitting = true;
-      app.quit();
+      // Timeout de seguridad: si renderer no responde en 4s, salimos igual
+      const forceQuitTimer = setTimeout(() => {
+        try { mainWindow.removeAllListeners('close'); } catch(_) {}
+        app.quit();
+      }, 4000);
+      // Pedir al renderer que ejecute backup pre-cierre
+      try {
+        ipcMain.once('backup:shutdown-done', () => {
+          clearTimeout(forceQuitTimer);
+          try { mainWindow.removeAllListeners('close'); } catch(_) {}
+          app.quit();
+        });
+        mainWindow.webContents.send('backup:shutdown-request');
+      } catch(_) {
+        clearTimeout(forceQuitTimer);
+        try { mainWindow.removeAllListeners('close'); } catch(_) {}
+        app.quit();
+      }
     }
   });
 }
@@ -355,14 +374,37 @@ ipcMain.handle('export:openFolder', (_, filePath) => {
 });
 
 // ── Auto backup silencioso ──────────────────────────────────
+function getBackupDir() {
+  const path = require('path');
+  return path.join(app.getPath('documents'), 'EstanciaPro_Backups');
+}
+
+function getLegacyBackupDir() {
+  const path = require('path');
+  return path.join(app.getPath('documents'), 'Jisunu5M_Backups');
+}
+
 ipcMain.handle('backup:auto', async (_, { data, filename }) => {
   try {
     const fs = require('fs');
     const path = require('path');
-    // Carpeta de backups: Documents/Jisunu5M_Backups
-    const docsPath = app.getPath('documents');
-    const backupDir = path.join(docsPath, 'Jisunu5M_Backups');
+    const backupDir = getBackupDir();
+    const legacyDir = getLegacyBackupDir();
     if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+    // Migración one-time: si existe la carpeta vieja, mover sus backups a la nueva
+    try {
+      if (fs.existsSync(legacyDir) && legacyDir !== backupDir) {
+        const oldFiles = fs.readdirSync(legacyDir).filter(f => f.endsWith('.json'));
+        oldFiles.forEach(f => {
+          const dest = path.join(backupDir, f);
+          if (!fs.existsSync(dest)) {
+            try { fs.renameSync(path.join(legacyDir, f), dest); } catch(e) {}
+          }
+        });
+        // Borrar carpeta vieja si quedó vacía
+        try { if (fs.readdirSync(legacyDir).length === 0) fs.rmdirSync(legacyDir); } catch(e) {}
+      }
+    } catch(e) { /* migración best-effort */ }
     const filePath = path.join(backupDir, filename);
     fs.writeFileSync(filePath, data, 'utf8');
     // Mantener solo los ultimos 30 backups
@@ -381,6 +423,5 @@ ipcMain.handle('backup:auto', async (_, { data, filename }) => {
 });
 
 ipcMain.handle('backup:getDir', () => {
-  const path = require('path');
-  return path.join(app.getPath('documents'), 'Jisunu5M_Backups');
+  return getBackupDir();
 });
