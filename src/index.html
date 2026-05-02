@@ -7440,6 +7440,8 @@ function saveEmployee() {
   var h2 = document.querySelector('#modal-employee h2');
   if(h2) h2.textContent = 'Nuevo Empleado';
   saveDB(); closeModal('modal-employee'); renderPersonal();
+  // Push al server (faltaba — la PWA con cache vieja podía pisar la lista del server)
+  replaceTableInRailway('employees', db.employees || []);
 }
 
 function saveActivity() {
@@ -9611,7 +9613,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.3'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.5'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
