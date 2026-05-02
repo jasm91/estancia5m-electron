@@ -3056,6 +3056,34 @@ function publishTasksToPWA() {
     </div>
   </div>
 
+  <!-- Sub-form: crear lote nuevo en caliente -->
+  <div id="mc-new-lot-box" style="display:none;background:rgba(168,85,247,.08);border:1px solid rgba(168,85,247,.3);border-radius:8px;padding:12px;margin-bottom:14px">
+    <div style="font-size:12px;font-weight:700;color:#A855F7;margin-bottom:10px">➕ Datos del lote nuevo</div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Código del lote *</label>
+        <input class="form-input" type="text" id="mc-new-code" placeholder="Ej: A-04" style="text-transform:uppercase">
+      </div>
+      <div class="form-group"><label class="form-label">Categoría</label>
+        <select class="form-select" id="mc-new-category">
+          <option value="novillo">Novillo</option>
+          <option value="vaca">Vaca</option>
+          <option value="ternero">Ternero</option>
+          <option value="ternera">Ternera</option>
+          <option value="vaquillona">Vaquillona</option>
+          <option value="toro">Toro</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Raza</label>
+        <input class="form-input" type="text" id="mc-new-breed" placeholder="Ej: F1, Nelore, NE">
+      </div>
+      <div class="form-group"><label class="form-label">Potrero</label>
+        <select class="form-select" id="mc-new-paddock"><option value="">Sin asignar</option></select>
+      </div>
+    </div>
+  </div>
+
   <div style="background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.2);border-radius:8px;padding:14px;margin:12px 0">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <div style="font-size:12px;font-weight:700;color:var(--blue)">🐄 Animales marcados <span style="color:var(--muted);font-weight:400" id="mc-progreso"></span></div>
@@ -4013,15 +4041,15 @@ function pullFromRailwayDesktop(thenPush) {
         }
         var anims = _syncAnim[lt.code];
         if (anims && anims.length > 0) {
-          // Si server dice un count específico (>0), preferir el server (caso de venta parcial)
-          // Solo usar MAX si el server no tiene info clara
+          // FUENTE DE VERDAD: cuenta de animales en e5m_animals[code]
+          // El server puede tener animal_count desactualizado (por ej. si un push viejo
+          // mandó un valor menor que la cantidad real de animales). Nunca aceptar un valor
+          // del server menor que la cantidad real de animales en cache.
           var serverLot = (remote.lots || []).find(function(rl){ return rl.code === lt.code; });
-          if (serverLot && typeof serverLot.animal_count === 'number') {
-            // Server tiene la verdad — preservar venta reciente
-            lt.animal_count = serverLot.animal_count;
-          } else {
-            lt.animal_count = Math.max(lt.animal_count || 0, anims.length);
-          }
+          var serverCount = (serverLot && typeof serverLot.animal_count === 'number') ? serverLot.animal_count : 0;
+          // Si server dice MÁS que el cache (caso de venta parcial registrada en otro device), preferir server
+          // Si server dice MENOS, usar cache (cache tiene la verdad de los animales reales)
+          lt.animal_count = Math.max(serverCount, anims.length);
           var ws = anims.map(function(a){ return a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length-1].peso : 0; }).filter(function(w){ return w > 0; });
           if (ws.length) lt.avg_weight = Math.round(ws.reduce(function(s,w){return s+w;},0)/ws.length*10)/10;
         }
@@ -4278,6 +4306,17 @@ function pushToRailway() {
   var apiUrl = getApiUrl();
   var token  = localStorage.getItem('e5m_api_token') || '';
   var tasks  = JSON.parse(localStorage.getItem('e5m_tasks') || '[]');
+  // FIX continuidad: reconciliar animal_count desde e5m_animals ANTES de armar el push.
+  // e5m_animals[code] es la fuente de verdad. Si difiere de lot.animal_count, el cache gana.
+  var _reconcAnim = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
+  db.lots.forEach(function(lt){
+    if (lt.status === 'vendido' || lt.status === 'sold') return;
+    var anims = _reconcAnim[lt.code];
+    if (anims && anims.length > 0 && anims.length !== (lt.animal_count || 0)) {
+      console.log('[Push] Reconciliando '+lt.code+': animal_count '+(lt.animal_count||0)+' → '+anims.length);
+      lt.animal_count = anims.length;
+    }
+  });
   // Para lotes: el desktop solo gestiona metadata (codigo, categoria, raza, notas, status)
   // paddock y animal_count son propiedad del campo (PWA) - no sobreescribir
   var lotsForPush = db.lots.map(function(l) {
@@ -4885,6 +4924,9 @@ function saveLot() {
       return { id:a.id, raza:a.raza, pesajes:a.pesajes||[] };
     });
     saveAnimalesDB(animalesDB);
+    // FIX continuidad: forzar animal_count = animales reales antes del push
+    // (defensivo contra cualquier race entre saveAnimalesDB y bulk-push)
+    newLot.animal_count = animalesDB[code].length;
     // Pushear animales normalizados a Railway
     var animalesNorm = {};
     animalesNorm[code] = animalesDB[code].map(function(a){
@@ -8321,16 +8363,58 @@ function openMarcarCuarentena(lotId) {
 
   // Poblar dropdown lotes destino (activos solamente)
   var sel = document.getElementById('mc-lote-destino');
-  sel.innerHTML = '<option value="">Seleccionar lote activo...</option>';
+  sel.innerHTML = '<option value="">Seleccionar lote activo...</option>' +
+                  '<option value="__NEW__" style="color:#A855F7;font-weight:600">➕ Crear lote nuevo...</option>';
   (db.lots || []).forEach(function(l) {
     if (l.id === lot.id) return; // no incluir el mismo lote de cuarentena
     if (l.status === 'activo' || l.status === 'active' || !l.status) {
       sel.innerHTML += '<option value="' + l.code + '">' + l.code + ' - ' + l.category + ' (' + (l.animal_count||0) + ' cab.)</option>';
     }
   });
+  sel.onchange = function() { onMcLoteDestinoChange(this.value); };
+  // Reset campos de creación si están abiertos
+  var newBox = document.getElementById('mc-new-lot-box');
+  if (newBox) newBox.style.display = 'none';
 
   renderMCAnimals();
   openModal('modal-marcar-cuarentena');
+}
+
+// Toggle del sub-form de creación de lote nuevo cuando elige "➕ Crear lote nuevo"
+function onMcLoteDestinoChange(value) {
+  var box = document.getElementById('mc-new-lot-box');
+  if (!box) return;
+  if (value === '__NEW__') {
+    box.style.display = 'block';
+    // Defaults heredados del lote de cuarentena
+    var codeInput = document.getElementById('mc-new-code');
+    var catSel = document.getElementById('mc-new-category');
+    var breedInput = document.getElementById('mc-new-breed');
+    var paddockSel = document.getElementById('mc-new-paddock');
+    if (codeInput) codeInput.value = '';
+    if (catSel && _mcLoteCuarentena && _mcLoteCuarentena.category) {
+      // Buscar opción que matchee, si no existe dejar primera
+      for (var i=0; i<catSel.options.length; i++) {
+        if (catSel.options[i].value === _mcLoteCuarentena.category) { catSel.selectedIndex = i; break; }
+      }
+    }
+    if (breedInput && _mcLoteCuarentena) breedInput.value = _mcLoteCuarentena.breed || '';
+    // Poblar potreros desde estancia_params (si existen)
+    if (paddockSel) {
+      paddockSel.innerHTML = '<option value="">Sin asignar</option>';
+      try {
+        var params = JSON.parse(localStorage.getItem('e5m_params') || '{}');
+        var potreros = params.potreros || [];
+        potreros.forEach(function(p){
+          var nombre = (typeof p === 'string') ? p : (p.name || p.nombre || '');
+          if (nombre) paddockSel.innerHTML += '<option value="' + nombre + '">' + nombre + '</option>';
+        });
+      } catch(e){}
+    }
+    if (codeInput) setTimeout(function(){ codeInput.focus(); }, 100);
+  } else {
+    box.style.display = 'none';
+  }
 }
 
 function addMCAnimal() {
@@ -8430,12 +8514,51 @@ function saveMarcaje() {
   });
   if (dup) { toast('ID duplicado: ' + dup, 'error'); return; }
 
+  // ── Crear lote nuevo en caliente, si corresponde
+  var creandoNuevo = false;
+  if (loteDest === '__NEW__') {
+    var newCode = (document.getElementById('mc-new-code').value || '').trim().toUpperCase();
+    if (!newCode) { toast('Ingresá el código del lote nuevo', 'error'); return; }
+    if (db.lots.find(function(l){ return (l.code||'').toUpperCase() === newCode; })) {
+      toast('Ya existe un lote con código ' + newCode, 'error'); return;
+    }
+    var newCat = (document.getElementById('mc-new-category').value) || _mcLoteCuarentena.category || 'novillo';
+    var newBreed = (document.getElementById('mc-new-breed').value || '').trim() || _mcLoteCuarentena.breed || '';
+    var newPaddock = (document.getElementById('mc-new-paddock').value || '').trim();
+    // Validar capacidad del potrero si se asignó
+    if (newPaddock && typeof getPotreroCapacity === 'function') {
+      var cap = getPotreroCapacity(newPaddock);
+      if (cap && _mcAnimals.length > cap) {
+        toast('Potrero "' + newPaddock + '" tiene capacidad para ' + cap + ' animales. Querés cargar ' + _mcAnimals.length, 'error');
+        return;
+      }
+    }
+    if (!db.next_ids) db.next_ids = {};
+    if (!db.next_ids.lot) db.next_ids.lot = ((db.lots||[]).reduce(function(m,l){return Math.max(m,l.id||0);},0)) + 1;
+    var nuevoLote = {
+      id: db.next_ids.lot++,
+      code: newCode,
+      category: newCat,
+      breed: newBreed,
+      paddock: newPaddock,
+      animal_count: 0,    // se incrementa abajo
+      avg_weight: null,
+      entry_date: fecha,
+      status: 'active',
+      notes: 'Creado desde marcaje de cuarentena ' + _mcLoteCuarentena.code,
+      created_at: new Date().toISOString()
+    };
+    db.lots.push(nuevoLote);
+    loteDest = newCode;
+    creandoNuevo = true;
+    try { auditLog('create', 'lots', nuevoLote.id, _summarizeRecord('lots', nuevoLote)); } catch(e){}
+  }
+
   var totalCuar = _mcLoteCuarentena.animal_count || 0;
   var n = _mcAnimals.length;
   var esCompleto = n >= totalCuar;
 
   // Cargar animales al lote destino
-  var animDB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
   var rawAnim = JSON.parse(localStorage.getItem('e5m_animals') || '{}');
   if (!rawAnim[loteDest]) rawAnim[loteDest] = [];
 
@@ -8451,13 +8574,19 @@ function saveMarcaje() {
 
   // Actualizar lote destino: animal_count + avg_weight
   var loteDestObj = db.lots.find(function(l) { return l.code === loteDest; });
-  if (loteDestObj) {
-    loteDestObj.animal_count = (loteDestObj.animal_count || 0) + n;
-    var pesos = rawAnim[loteDest].map(function(a) {
-      return (a.pesajes && a.pesajes.length) ? a.pesajes[a.pesajes.length-1].peso : 0;
-    }).filter(function(p) { return p > 0; });
-    if (pesos.length) loteDestObj.avg_weight = Math.round(pesos.reduce(function(s,p){return s+p;},0) / pesos.length * 10) / 10;
+  if (!loteDestObj) {
+    // Defensivo: no debería pasar nunca, pero si pasa, error claro (no silencioso)
+    toast('Error interno: lote destino "' + loteDest + '" no encontrado en db.lots. Revertí los cambios.', 'error');
+    rawAnim[loteDest] = (rawAnim[loteDest] || []).slice(0, -n);
+    if (!rawAnim[loteDest].length) delete rawAnim[loteDest];
+    localStorage.setItem('e5m_animals', JSON.stringify(rawAnim));
+    return;
   }
+  loteDestObj.animal_count = (loteDestObj.animal_count || 0) + n;
+  var pesos = rawAnim[loteDest].map(function(a) {
+    return (a.pesajes && a.pesajes.length) ? a.pesajes[a.pesajes.length-1].peso : 0;
+  }).filter(function(p) { return p > 0; });
+  if (pesos.length) loteDestObj.avg_weight = Math.round(pesos.reduce(function(s,p){return s+p;},0) / pesos.length * 10) / 10;
 
   // Actualizar lote de cuarentena: descontar animales marcados
   _mcLoteCuarentena.animal_count = Math.max(0, totalCuar - n);
@@ -8468,8 +8597,6 @@ function saveMarcaje() {
     _mcLoteCuarentena.animal_count = 0;
     _mcLoteCuarentena.marcaje_completo_at = new Date().toISOString();
     _mcLoteCuarentena.marcaje_lot_destino = loteDest;
-    // Opcional: borrar el lote de cuarentena del listado para no acumular?
-    // Por ahora se queda con status 'marcado_completo' como historial.
   } else {
     // Marcaje parcial — actualizar progreso pero sigue en cuarentena
     _mcLoteCuarentena.marcaje_progreso = (_mcLoteCuarentena.marcaje_progreso || 0) + n;
@@ -8485,15 +8612,19 @@ function saveMarcaje() {
   }
 
   // Persistir + sync
-  saveDB();
+  saveDB(true); // lotChanged=true para trigger sync de lotes
   closeModal('modal-marcar-cuarentena');
   renderLotes();
   renderDashboard();
   if (typeof renderComprasGanado === 'function') renderComprasGanado();
   if (typeof renderAnimalesLote === 'function') renderAnimalesLote();
-  toast(esCompleto
-    ? 'Marcaje completo: ' + n + ' animales movidos a ' + loteDest
-    : n + ' animales marcados (faltan ' + _mcLoteCuarentena.animal_count + ' en cuarentena)', 'success');
+
+  var msg = creandoNuevo
+    ? 'Lote ' + loteDest + ' creado con ' + n + ' animales'
+    : (esCompleto
+        ? 'Marcaje completo: ' + n + ' animales movidos a ' + loteDest
+        : n + ' animales marcados (faltan ' + _mcLoteCuarentena.animal_count + ' en cuarentena)');
+  toast(msg, 'success');
 
   replaceTableInRailway('lots', db.lots);
   replaceTableInRailway('animals', rawAnim);
@@ -9233,7 +9364,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.2.99'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.3.1'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
