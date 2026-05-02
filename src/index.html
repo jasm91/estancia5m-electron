@@ -8367,7 +8367,21 @@ function calcCGTotal() {
   document.getElementById('cg-total').value = 'Bs. ' + total.toLocaleString();
 }
 
+var _saveCompraGanadoInProgress = false;
 function saveCompraGanado() {
+  // Guard contra doble-click / submits múltiples (mismo bug que saveAdvance)
+  if (_saveCompraGanadoInProgress) { console.warn('[saveCompraGanado] Ya está en progreso, ignorando'); return; }
+  _saveCompraGanadoInProgress = true;
+  // Desactivar el botón visualmente
+  var _btnCG = document.querySelector('#modal-compra-ganado .btn-primary');
+  if (_btnCG) { _btnCG.disabled = true; _btnCG.textContent = 'Guardando...'; }
+
+  function _releaseCG() {
+    _saveCompraGanadoInProgress = false;
+    if (_btnCG) { _btnCG.disabled = false; _btnCG.textContent = 'Guardar'; }
+  }
+
+  try {
   var proveedor = document.getElementById('cg-proveedor').value.trim();
   var fecha = document.getElementById('cg-fecha').value;
   var lote = document.getElementById('cg-lote').value;
@@ -8377,16 +8391,28 @@ function saveCompraGanado() {
   var notas = document.getElementById('cg-notas').value.trim();
   var marcarAhora = !!(document.getElementById('cg-marcar-ahora') || {}).checked;
 
-  if (!proveedor) { toast('Ingresa el proveedor', 'error'); return; }
-  if (!fecha) { toast('Ingresa la fecha', 'error'); return; }
-  if (!precioKg) { toast('Ingresa el precio por kg', 'error'); return; }
+  if (!proveedor) { toast('Ingresa el proveedor', 'error'); _releaseCG(); return; }
+  if (!fecha) { toast('Ingresa la fecha', 'error'); _releaseCG(); return; }
+  if (!precioKg) { toast('Ingresa el precio por kg', 'error'); _releaseCG(); return; }
 
   // ────── MODO CUARENTENA (animales sin ID, lote temporal) ──────
   if (!marcarAhora) {
     var cantCuar = parseInt((document.getElementById('cg-cuarentena-count')||{}).value) || 0;
     var pesoPromCuar = parseFloat((document.getElementById('cg-cuarentena-peso-prom')||{}).value) || 0;
-    if (!cantCuar) { toast('Ingresa la cantidad de cabezas', 'error'); return; }
-    if (!pesoPromCuar) { toast('Ingresa el peso promedio estimado', 'error'); return; }
+    if (!cantCuar) { toast('Ingresa la cantidad de cabezas', 'error'); _releaseCG(); return; }
+    if (!pesoPromCuar) { toast('Ingresa el peso promedio estimado', 'error'); _releaseCG(); return; }
+
+    // Detectar duplicado reciente: misma compra (proveedor+fecha+cant+precio) en últimos 60s
+    var nowMsCG = Date.now();
+    var dupRecent = (db.compras_ganado || []).find(function(c){
+      if (c.proveedor !== proveedor || c.fecha !== fecha) return false;
+      if (c.animal_count !== cantCuar || c.price_per_kg !== precioKg) return false;
+      var cTime = c.created_at ? new Date(c.created_at).getTime() : 0;
+      return cTime && (nowMsCG - cTime) < 60000;
+    });
+    if (dupRecent) {
+      if (!confirm('Ya hay una compra idéntica de ' + proveedor + ' (' + cantCuar + ' cab.) registrada hace menos de 1 minuto.\n\n¿Estás seguro de registrar otra?')) { _releaseCG(); return; }
+    }
 
     var pesoTotalCuar = Math.round(cantCuar * pesoPromCuar * 10) / 10;
     var totalCuar = Math.round(pesoTotalCuar * precioKg * 100) / 100;
@@ -8456,12 +8482,13 @@ function saveCompraGanado() {
     replaceTableInRailway('compras_ganado', db.compras_ganado);
     replaceTableInRailway('kardex', db.kardex);
     try { auditLog('create', 'compras_ganado', 'cg_'+Date.now(), 'Compra cuarentena: ' + cantCuar + ' cab. de ' + proveedor); } catch(e){}
+    _releaseCG();
     return;
   }
 
   // ────── MODO MARCAJE INMEDIATO (animales con ID y peso individuales) ──────
-  if (!lote) { toast('Selecciona el lote destino', 'error'); return; }
-  if (!_cgAnimals.length) { toast('Agrega al menos un animal', 'error'); return; }
+  if (!lote) { toast('Selecciona el lote destino', 'error'); _releaseCG(); return; }
+  if (!_cgAnimals.length) { toast('Agrega al menos un animal', 'error'); _releaseCG(); return; }
 
   var pesoTotal = _cgAnimals.reduce(function(s,a) { return s + (a.peso||0); }, 0);
   var total = Math.round(pesoTotal * precioKg * 100) / 100;
@@ -8557,6 +8584,12 @@ function saveCompraGanado() {
   // Push después de renderizar (sin pull que sobreescriba)
   clearTimeout(window._syncTimer);
   window._syncTimer = setTimeout(function() { pushDesktopRecords(); }, 2000);
+  } catch(e) {
+    console.error('[saveCompraGanado] error:', e);
+    toast('Error al guardar compra: ' + e.message, 'error');
+  } finally {
+    _releaseCG();
+  }
 }
 
 // ══════════════════════════════════════════════════
@@ -8959,12 +8992,47 @@ function renderComprasGanado() {
 }
 
 function deleteCompraGanado(id) {
-  if (!confirm('Eliminar esta compra de ganado?')) return;
+  var compra = (db.compras_ganado || []).find(function(c){ return c.id === id; });
+  if (!compra) return;
+  var loteCuar = (compra.cuarentena && compra.lot_code) ? compra.lot_code : null;
+  var msg = '¿Eliminar esta compra de ganado?';
+  if (loteCuar) msg += '\n\nTambién se eliminará el lote ' + loteCuar + ' (' + (compra.animal_count||0) + ' animales en cuarentena).';
+  if (!confirm(msg)) return;
   trackDeletion(id, 'compras_ganado');
   db.compras_ganado = (db.compras_ganado || []).filter(function(c) { return c.id !== id; });
+  // Si tenía lote de cuarentena asociado, borrarlo también
+  if (loteCuar) {
+    var lote = (db.lots || []).find(function(l){ return l.code === loteCuar; });
+    if (lote) {
+      trackDeletion(lote.id, 'lots');
+      db.lots = db.lots.filter(function(l){ return l.id !== lote.id; });
+    }
+    // Borrar cache de animales si los tuviera
+    try {
+      var rawAnim = JSON.parse(localStorage.getItem('e5m_animals') || '{}');
+      if (rawAnim[loteCuar]) {
+        delete rawAnim[loteCuar];
+        localStorage.setItem('e5m_animals', JSON.stringify(rawAnim));
+      }
+    } catch(e){}
+  }
   saveDB(true);
-  replaceTableInRailway('compras_ganado', db.compras_ganado || []);
+  // Push secuencial: animals → lots → compras_ganado
+  if (loteCuar) {
+    var animsAfter = {};
+    try { animsAfter = JSON.parse(localStorage.getItem('e5m_animals') || '{}'); } catch(e){}
+    replaceTableInRailway('animals', animsAfter).then(function(){
+      return replaceTableInRailway('lots', db.lots || []);
+    }).then(function(){
+      replaceTableInRailway('compras_ganado', db.compras_ganado || []);
+    });
+  } else {
+    replaceTableInRailway('compras_ganado', db.compras_ganado || []);
+  }
   renderComprasGanado();
+  if (typeof renderLotes === 'function') renderLotes();
+  if (typeof renderDashboard === 'function') renderDashboard();
+  toast(loteCuar ? ('Compra y lote ' + loteCuar + ' eliminados') : 'Compra eliminada', 'success');
 }
 
 function exportComprasGanado() {
@@ -9647,7 +9715,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.6'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.7'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
