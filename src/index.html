@@ -2037,7 +2037,7 @@ function publishTasksToPWA() {
         <option value="">Todos los empleados</option>
       </select>
       <div style="display:flex;gap:4px;background:var(--sur2);border:1px solid var(--bor);border-radius:8px;padding:3px">
-        <button class="adv-period-btn active" onclick="setAdvPeriod('mes',this)">Mes actual</button>
+        <select class="form-select" id="adv-month-sel" style="padding:5px 8px;font-size:12px;border:none;background:transparent;min-width:140px" onchange="setAdvPeriod('month-pick',null)"></select>
         <button class="adv-period-btn" onclick="setAdvPeriod('semana',this)">Semana</button>
         <button class="adv-period-btn" onclick="setAdvPeriod('todo',this)">Todo</button>
         <button class="adv-period-btn" onclick="setAdvPeriod('custom',this)">📅 Rango</button>
@@ -2094,36 +2094,46 @@ function publishTasksToPWA() {
 
 <!-- Modal registrar pago de sueldo -->
 <div class="modal-overlay" id="modal-pago-sueldo">
-<div class="modal" style="max-width:460px">
-  <h2>💵 Registrar Pago de Sueldo</h2>
+<div class="modal" style="max-width:780px">
+  <h2>💵 Registrar Pago de Sueldos</h2>
   <div class="form-row">
-    <div class="form-group"><label class="form-label">Empleado</label>
-      <select class="form-select" id="ps-empleado" onchange="onPsEmpChange()"></select>
+    <div class="form-group"><label class="form-label">Mes a pagar</label>
+      <input class="form-input" type="month" id="ps-mes" onchange="renderPsEmpleados()">
     </div>
-    <div class="form-group"><label class="form-label">Mes</label>
-      <input class="form-input" type="month" id="ps-mes">
-    </div>
-  </div>
-  <div class="form-row">
-    <div class="form-group"><label class="form-label">Salario base Bs.</label>
-      <input class="form-input" type="number" id="ps-salario" readonly style="background:var(--sur2)">
-    </div>
-    <div class="form-group"><label class="form-label">Adelantos descontados Bs.</label>
-      <input class="form-input" type="number" id="ps-adelantos" oninput="calcPagoNeto()">
+    <div class="form-group"><label class="form-label">Fecha de pago</label>
+      <input class="form-input" type="date" id="ps-fecha">
     </div>
   </div>
-  <div class="form-group"><label class="form-label">Pago neto Bs.</label>
-    <input class="form-input" type="number" id="ps-neto" readonly style="background:var(--sur2);color:var(--green);font-weight:700">
+  <div style="background:rgba(212,160,23,.06);border:1px solid rgba(212,160,23,.2);border-radius:8px;padding:10px;margin-bottom:12px;font-size:11px;color:var(--amber2);font-family:DM Mono,monospace">
+    Seleccioná los empleados a pagar. Los adelantos descontados del mes se calculan automáticamente.
   </div>
-  <div class="form-group"><label class="form-label">Fecha de pago</label>
-    <input class="form-input" type="date" id="ps-fecha">
+  <div style="max-height:340px;overflow-y:auto;border:1px solid var(--bor);border-radius:8px;background:var(--sur2)">
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead style="position:sticky;top:0;background:var(--sur);z-index:1">
+        <tr>
+          <th style="padding:8px;text-align:center;border-bottom:1px solid var(--bor);width:40px">
+            <input type="checkbox" id="ps-check-all" onchange="toggleAllPsEmpleados(this.checked)" checked>
+          </th>
+          <th style="padding:8px;text-align:left;border-bottom:1px solid var(--bor)">Empleado</th>
+          <th style="padding:8px;text-align:right;border-bottom:1px solid var(--bor)">Salario</th>
+          <th style="padding:8px;text-align:right;border-bottom:1px solid var(--bor)">Adelantos</th>
+          <th style="padding:8px;text-align:right;border-bottom:1px solid var(--bor);color:var(--green)">Neto</th>
+          <th style="padding:8px;text-align:center;border-bottom:1px solid var(--bor);width:90px">Estado</th>
+        </tr>
+      </thead>
+      <tbody id="ps-empleados-tbody"></tbody>
+    </table>
+  </div>
+  <div id="ps-total-bar" style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--sur2);border:1px solid var(--bor);border-top:none;border-radius:0 0 8px 8px;font-family:DM Mono,monospace;font-size:13px;margin-bottom:12px">
+    <span style="color:var(--muted)">Total a pagar:</span>
+    <span style="color:var(--green);font-weight:700;font-size:16px" id="ps-total-amount">Bs. 0</span>
   </div>
   <div class="form-group"><label class="form-label">Notas (opcional)</label>
-    <input class="form-input" id="ps-notas" placeholder="Incluye aguinaldo, bonos...">
+    <input class="form-input" id="ps-notas" placeholder="Aplicará a todos los pagos. Ej: pago abril 2026">
   </div>
   <div class="form-actions">
     <button class="btn btn-ghost" onclick="closeModal('modal-pago-sueldo')">Cancelar</button>
-    <button class="btn btn-primary" onclick="guardarPagoSueldo()">Registrar pago</button>
+    <button class="btn btn-primary" onclick="guardarPagoSueldo()" id="ps-guardar-btn">Registrar pagos</button>
   </div>
 </div></div>
 
@@ -7148,6 +7158,12 @@ function renderAdvances() {
   if (!db.advances) db.advances = [];
   if (!db.lluvias) db.lluvias = [];
 
+  // Populate dropdown de meses (solo la primera vez)
+  var monthSel = document.getElementById('adv-month-sel');
+  if (monthSel && !monthSel.options.length) {
+    populateAdvMonthSelect();
+  }
+
   // Populate employee filter
   var empFilter = document.getElementById('adv-filter-emp');
   if (empFilter) {
@@ -7293,15 +7309,43 @@ var _advPeriod = 'mes';
 var _advFrom   = localDate(new Date(new Date().getFullYear(),new Date().getMonth(),1));
 var _advTo     = localDate(new Date(new Date().getFullYear(),new Date().getMonth()+1,0));
 
+// Poblar dropdown de meses (12 meses hacia atrás desde el mes actual)
+function populateAdvMonthSelect() {
+  var sel = document.getElementById('adv-month-sel');
+  if (!sel) return;
+  var now = new Date();
+  var nombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  var html = '';
+  // 12 meses hacia atrás incluyendo el actual
+  for (var i = 0; i < 12; i++) {
+    var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    var ym = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    var label = nombres[d.getMonth()] + ' ' + d.getFullYear();
+    if (i === 0) label += ' (actual)';
+    html += '<option value="'+ym+'"'+(i===0?' selected':'')+'>'+label+'</option>';
+  }
+  sel.innerHTML = html;
+}
+
 function setAdvPeriod(period, btn) {
   _advPeriod = period;
   document.querySelectorAll('.adv-period-btn').forEach(function(b){ b.classList.remove('active'); });
   if (btn) btn.classList.add('active');
   var rangeInputs = document.getElementById('adv-range-inputs');
   var now = new Date();
-  if (period === 'mes') {
-    _advFrom = localDate(new Date(now.getFullYear(),now.getMonth(),1));
-    _advTo   = localDate(new Date(now.getFullYear(),now.getMonth()+1,0));
+  if (period === 'mes' || period === 'month-pick') {
+    // Si es month-pick, leer el valor del dropdown; si es 'mes' (default), usar mes actual
+    var ym;
+    if (period === 'month-pick') {
+      var sel = document.getElementById('adv-month-sel');
+      ym = sel ? sel.value : '';
+    }
+    if (!ym) ym = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+    var parts = ym.split('-');
+    var year = parseInt(parts[0]);
+    var month = parseInt(parts[1]) - 1;
+    _advFrom = localDate(new Date(year, month, 1));
+    _advTo   = localDate(new Date(year, month+1, 0));
     if(rangeInputs) rangeInputs.style.display='none';
   } else if (period === 'semana') {
     _advFrom = localDate(new Date(Date.now()-7*86400000));
@@ -9715,7 +9759,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.7'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.8'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -12181,58 +12225,132 @@ function renderHistorialSueldos() {
   });
 }
 function registrarPagoSueldo() {
-  var sel=document.getElementById('ps-empleado');
-  if(sel){
-    sel.innerHTML='<option value="">Seleccionar...</option>';
-    db.employees.filter(function(e){return e.active;}).forEach(function(e){
-      var o=document.createElement('option');o.value=e.name;o.textContent=e.name+' - Bs. '+(e.salary||0).toLocaleString();sel.appendChild(o);
-    });
+  // Mes por defecto: el mes anterior al actual (paga "mes vencido")
+  var mesEl=document.getElementById('ps-mes');
+  if(mesEl){
+    var hoy = new Date();
+    var mesAnterior = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+    mesEl.value = mesAnterior.toISOString().slice(0,7);
   }
-  var mesEl=document.getElementById('ps-mes');if(mesEl)mesEl.value=localDate().slice(0,7);
   var fechaEl=document.getElementById('ps-fecha');if(fechaEl)fechaEl.value=localDate();
-  ['ps-salario','ps-adelantos','ps-neto','ps-notas'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  var notasEl=document.getElementById('ps-notas');if(notasEl)notasEl.value='';
+  var checkAllEl=document.getElementById('ps-check-all');if(checkAllEl)checkAllEl.checked=true;
+  renderPsEmpleados();
   openModal('modal-pago-sueldo');
 }
-function onPsEmpChange() {
-  var empName=(document.getElementById('ps-empleado')||{}).value||'';
-  var emp=db.employees.find(function(e){return e.name===empName;});
-  var salEl=document.getElementById('ps-salario');
-  var advEl=document.getElementById('ps-adelantos');
+
+function renderPsEmpleados() {
+  var tbody=document.getElementById('ps-empleados-tbody');
+  if(!tbody)return;
   var mes=(document.getElementById('ps-mes')||{}).value||'';
-  if(salEl&&emp) salEl.value=emp.salary||0;
-  if(advEl&&empName&&mes){
-    var totalAdv=(db.advances||[]).filter(function(a){return a.employee===empName&&(a.date||'').startsWith(mes);}).reduce(function(s,a){return s+(a.amount||0);},0);
-    advEl.value=totalAdv;
+  var emps=(db.employees||[]).filter(function(e){return e.active!==false;});
+  if(!emps.length){
+    tbody.innerHTML='<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--muted)">No hay empleados activos</td></tr>';
+    return;
   }
-  calcPagoNeto();
+  tbody.innerHTML='';
+  emps.forEach(function(emp){
+    // ¿Ya tiene pago registrado para este mes?
+    var existing=(db.historial_sueldos||[]).find(function(r){return r.empleado===emp.name&&r.mes===mes;});
+    var yaPagado=!!existing&&existing.estado==='pagado';
+    // Calcular adelantos del mes
+    var totalAdv=(db.advances||[]).filter(function(a){return a.employee===emp.name&&(a.date||'').startsWith(mes)&&a.status==='descontado';}).reduce(function(s,a){return s+(a.amount||0);},0);
+    var salario=emp.salary||0;
+    var neto=Math.max(0,salario-totalAdv);
+    var rowId='ps-row-'+emp.name.replace(/[^a-zA-Z0-9]/g,'_');
+    var tr=document.createElement('tr');
+    tr.id=rowId;
+    tr.style.cssText='border-bottom:1px solid rgba(48,54,61,.3)' + (yaPagado?';opacity:.55':'');
+    tr.dataset.empName=emp.name;
+    tr.dataset.salario=salario;
+    tr.dataset.adelantos=totalAdv;
+    tr.dataset.neto=neto;
+    tr.dataset.yaPagado=yaPagado?'1':'0';
+    var checkHtml=yaPagado
+      ? '<input type="checkbox" disabled title="Ya pagado">'
+      : '<input type="checkbox" class="ps-emp-check" checked onchange="updatePsTotal()">';
+    var estadoBadge=yaPagado
+      ? '<span style="background:rgba(57,211,83,.12);color:var(--green);padding:3px 8px;border-radius:6px;font-size:10px;font-weight:600">Pagado</span>'
+      : '<span style="background:rgba(212,160,23,.12);color:var(--amber2);padding:3px 8px;border-radius:6px;font-size:10px;font-weight:600">Pendiente</span>';
+    tr.innerHTML='<td style="padding:8px;text-align:center">'+checkHtml+'</td>'+
+      '<td style="padding:8px"><div style="font-weight:600">'+escH(emp.name)+'</div><div style="font-size:10px;color:var(--muted)">'+escH(capFirst(emp.role||''))+'</div></td>'+
+      '<td style="padding:8px;text-align:right;font-family:DM Mono,monospace">Bs. '+salario.toLocaleString()+'</td>'+
+      '<td style="padding:8px;text-align:right;font-family:DM Mono,monospace;color:'+(totalAdv>0?'var(--amber2)':'var(--muted)')+'">Bs. '+totalAdv.toLocaleString()+'</td>'+
+      '<td style="padding:8px;text-align:right;font-family:DM Mono,monospace;color:var(--green);font-weight:700">Bs. '+neto.toLocaleString()+'</td>'+
+      '<td style="padding:8px;text-align:center">'+estadoBadge+'</td>';
+    tbody.appendChild(tr);
+  });
+  updatePsTotal();
 }
-function calcPagoNeto() {
-  var sal=parseFloat((document.getElementById('ps-salario')||{}).value)||0;
-  var adv=parseFloat((document.getElementById('ps-adelantos')||{}).value)||0;
-  var netoEl=document.getElementById('ps-neto');
-  if(netoEl) netoEl.value=Math.max(0,sal-adv);
+
+function toggleAllPsEmpleados(checked){
+  document.querySelectorAll('.ps-emp-check').forEach(function(cb){cb.checked=checked;});
+  updatePsTotal();
 }
-function guardarPagoSueldo() {
-  var emp=(document.getElementById('ps-empleado')||{}).value||'';
+
+function updatePsTotal(){
+  var total=0,count=0;
+  document.querySelectorAll('.ps-emp-check').forEach(function(cb){
+    if(cb.checked){
+      var tr=cb.closest('tr');
+      total+=parseFloat(tr.dataset.neto)||0;
+      count++;
+    }
+  });
+  var totalEl=document.getElementById('ps-total-amount');
+  if(totalEl)totalEl.textContent='Bs. '+total.toLocaleString()+' ('+count+' empleado'+(count===1?'':'s')+')';
+  var btn=document.getElementById('ps-guardar-btn');
+  if(btn)btn.textContent=count>0?('Registrar '+count+' pago'+(count===1?'':'s')):'Registrar pagos';
+}
+
+function guardarPagoSueldo(){
   var mes=(document.getElementById('ps-mes')||{}).value||'';
-  var sal=parseFloat((document.getElementById('ps-salario')||{}).value)||0;
-  var adv=parseFloat((document.getElementById('ps-adelantos')||{}).value)||0;
-  var neto=parseFloat((document.getElementById('ps-neto')||{}).value)||0;
   var fecha=(document.getElementById('ps-fecha')||{}).value||'';
   var notas=((document.getElementById('ps-notas')||{}).value||'').trim();
-  if(!emp||!mes){toast('Selecciona empleado y mes','error');return;}
-  if(!db.historial_sueldos) db.historial_sueldos=[];
-  var existing=db.historial_sueldos.find(function(r){return r.empleado===emp&&r.mes===mes;});
-  if(existing){
-    if(!confirm('Ya existe un pago para '+emp+' en '+mes+'. Actualizar?')) return;
-    existing.salario=sal;existing.adelantos=adv;existing.pago_neto=neto;
-    existing.fecha_pago=fecha;existing.notas=notas;existing.estado='pagado';existing.updated_at=new Date().toISOString();
-    toast('Pago actualizado','success');
-  } else {
-    db.historial_sueldos.push({id:Date.now(),empleado:emp,mes:mes,salario:sal,adelantos:adv,pago_neto:neto,fecha_pago:fecha,notas:notas,estado:'pagado',created_at:new Date().toISOString()});
-    toast('Pago registrado','success');
-  }
-  saveDB();closeModal('modal-pago-sueldo');renderHistorialSueldos();
+  if(!mes){toast('Selecciona el mes','error');return;}
+  if(!fecha){toast('Selecciona la fecha de pago','error');return;}
+  if(!db.historial_sueldos)db.historial_sueldos=[];
+
+  var seleccionados=[];
+  document.querySelectorAll('.ps-emp-check').forEach(function(cb){
+    if(cb.checked){
+      var tr=cb.closest('tr');
+      seleccionados.push({
+        emp:tr.dataset.empName,
+        salario:parseFloat(tr.dataset.salario)||0,
+        adelantos:parseFloat(tr.dataset.adelantos)||0,
+        neto:parseFloat(tr.dataset.neto)||0
+      });
+    }
+  });
+  if(!seleccionados.length){toast('Seleccioná al menos un empleado','error');return;}
+
+  var registrados=0;
+  seleccionados.forEach(function(s){
+    var existing=db.historial_sueldos.find(function(r){return r.empleado===s.emp&&r.mes===mes;});
+    if(existing){
+      existing.salario=s.salario;existing.adelantos=s.adelantos;existing.pago_neto=s.neto;
+      existing.fecha_pago=fecha;existing.notas=notas;existing.estado='pagado';
+      existing.updated_at=new Date().toISOString();
+    }else{
+      db.historial_sueldos.push({
+        id:Date.now()+Math.floor(Math.random()*1000),
+        empleado:s.emp,mes:mes,salario:s.salario,
+        adelantos:s.adelantos,pago_neto:s.neto,
+        fecha_pago:fecha,notas:notas,estado:'pagado',
+        created_at:new Date().toISOString()
+      });
+    }
+    registrados++;
+  });
+
+  saveDB();
+  closeModal('modal-pago-sueldo');
+  if(typeof renderHistorialSueldos==='function')renderHistorialSueldos();
+  if(typeof renderPersonal==='function')renderPersonal();
+  toast(registrados+' pago'+(registrados===1?'':'s')+' registrado'+(registrados===1?'':'s'),'success');
+  // Push al server
+  try{replaceTableInRailway('historial_sueldos',db.historial_sueldos);}catch(e){}
 }
 function deletePagoSueldo(id) {
   if(!confirm('Eliminar?')) return;
