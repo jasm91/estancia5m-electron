@@ -93,6 +93,11 @@ body{background:var(--bg);color:var(--text);font-family:'Lora',serif;font-size:1
 .bdg-blue{background:rgba(88,166,255,.12);color:var(--blue);border:1px solid rgba(88,166,255,.25)}
 .bdg-purple{background:rgba(188,140,255,.12);color:var(--purple);border:1px solid rgba(188,140,255,.25)}
 
+/* CHIPS — toggle filters */
+.chip{background:transparent;border:1px solid var(--bor);color:var(--muted);padding:6px 12px;border-radius:20px;font-family:DM Mono,monospace;font-size:11px;font-weight:500;cursor:pointer;transition:all .15s}
+.chip:hover{border-color:var(--amber2);color:var(--text)}
+.chip.chip-active{background:rgba(212,160,23,.14);border-color:var(--amber2);color:var(--amber2);font-weight:600}
+
 /* ALERTS */
 .alert-item{display:flex;gap:10px;padding:11px 14px;border-radius:8px;margin-bottom:8px;font-size:13px}
 .ai-red{background:rgba(248,81,73,.08);border:1px solid rgba(248,81,73,.2)}
@@ -647,10 +652,17 @@ function publishTasksToPWA() {
     <button class="tab-btn" id="lotes-tab-params-btn"         onclick="showLotesTab('lotes-tab-params',this)">⚙ Parametros</button>
   </div>
   <div id="lotes-tab-list" class="tab-pane" style="display:block">
+    <div style="display:flex;gap:6px;margin-bottom:12px;align-items:center">
+      <span style="font-size:11px;color:var(--muted);margin-right:4px">Mostrar:</span>
+      <button class="chip chip-active" id="lotes-filter-active" onclick="setLotesFilter('active')" style="cursor:pointer">✓ Activos</button>
+      <button class="chip" id="lotes-filter-cuarentena" onclick="setLotesFilter('cuarentena')" style="cursor:pointer">🚧 Cuarentena</button>
+      <button class="chip" id="lotes-filter-vendido" onclick="setLotesFilter('vendido')" style="cursor:pointer">💰 Vendidos</button>
+      <button class="chip" id="lotes-filter-todos" onclick="setLotesFilter('todos')" style="cursor:pointer">Todos</button>
+    </div>
     <div class="card">
       <div class="card-body" style="padding:0">
         <table class="tbl">
-          <thead><tr><th>Lote</th><th>Categoria</th><th>Raza</th><th>Potrero</th><th>Animales</th><th>Peso prom.</th><th>Estado</th><th></th></tr></thead>
+          <thead><tr><th>Lote</th><th>Categoria</th><th>Raza</th><th>Potrero</th><th>Animales</th><th>Peso prom.</th><th>Estado</th><th>Proveedor</th><th>Detalles</th><th></th></tr></thead>
           <tbody id="lotes-tbody"></tbody>
         </table>
       </div>
@@ -1129,7 +1141,7 @@ function publishTasksToPWA() {
 <div id="page-ventas" class="page">
   <div class="ph">
     <div><div class="pt">🤝 Venta de Ganado</div><div class="ps">Comercializacion de hacienda</div></div>
-    <button class="btn btn-primary" onclick="openModal('modal-sale')">+ Registrar venta</button>
+    <button class="btn btn-primary" onclick="openModalSale()">+ Registrar venta</button>
     <button class="btn btn-ghost" onclick="exportVentas()" title="Exportar a Excel">⬇ Excel</button>
   </div>
   <div class="stats" style="grid-template-columns:repeat(3,1fr)">
@@ -1303,6 +1315,19 @@ function publishTasksToPWA() {
       <option value="ajuste">Ajuste</option>
       <option value="muerte">Muerte/Baja</option>
     </select>
+    <div style="display:flex;align-items:center;gap:6px">
+      <span style="font-size:11px;color:var(--muted)">Desde:</span>
+      <input class="form-input" type="date" id="kardex-fecha-desde" onchange="renderKardex()" style="width:140px;padding:5px 8px;font-size:12px">
+    </div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <span style="font-size:11px;color:var(--muted)">Hasta:</span>
+      <input class="form-input" type="date" id="kardex-fecha-hasta" onchange="renderKardex()" style="width:140px;padding:5px 8px;font-size:12px">
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="clearKardexFiltros()" style="font-size:11px" title="Limpiar filtros">✕ Limpiar</button>
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-left:auto">
+      <input type="checkbox" id="kardex-show-vendidos" checked onchange="renderKardex()" style="cursor:pointer">
+      <span style="font-size:11px;color:var(--muted)">Incluir lotes vendidos</span>
+    </label>
   </div>
 
   <!-- Cards resumen por lote -->
@@ -1313,7 +1338,7 @@ function publishTasksToPWA() {
     <div class="card-hd"><div class="card-title">📋 Movimientos</div></div>
     <div class="card-body" style="padding:0">
       <table class="tbl">
-        <thead><tr><th>Fecha</th><th>Lote</th><th>Tipo</th><th>Cabezas</th><th>Precio/cab. Bs.</th><th>Total Bs.</th><th>DEBE</th><th>HABER</th><th>SALDO</th><th>Detalle</th><th></th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Lote</th><th>Tipo</th><th>Cabezas</th><th>Precio/cab. Bs.</th><th>Total Bs.</th><th>DEBE</th><th>HABER</th><th>SALDO</th><th>Detalle</th><th style="text-align:center">Acción</th></tr></thead>
         <tbody id="kardex-tbody"></tbody>
       </table>
     </div>
@@ -1487,6 +1512,7 @@ function publishTasksToPWA() {
     <div style="display:flex;gap:6px">
       <button class="btn btn-primary" onclick="openModalDiesel('recarga')">+ Recarga</button>
       <button class="btn btn-ghost" onclick="openModalDiesel('despacho')">+ Despacho</button>
+      <button class="btn btn-ghost" style="color:var(--blue)" onclick="openModalDiesel('traspaso')">🔄 Traspaso</button>
       <button class="btn btn-ghost" style="color:var(--amber2)" onclick="openAjusteDiesel()">📋 Ajuste Inventario</button>
     </div>
   </div>
@@ -1512,6 +1538,7 @@ function publishTasksToPWA() {
         <option value="">Todos los tipos</option>
         <option value="recarga">🔄 Recargas</option>
         <option value="despacho">⛽ Despachos</option>
+        <option value="traspaso">🔁 Traspasos</option>
         <option value="ajuste">📋 Ajustes</option>
       </select>
       <select class="form-select" id="diesel-f-vehiculo" style="width:150px;padding:5px 8px;font-size:12px" onchange="renderDieselDesktop()">
@@ -1557,8 +1584,11 @@ function publishTasksToPWA() {
 <div class="modal" style="max-width:480px">
   <h2 id="diesel-modal-title">⛽ Registrar</h2>
   <input type="hidden" id="diesel-tx-type" value="despacho">
-  <div class="form-group"><label class="form-label">Tanque</label>
+  <div class="form-group"><label class="form-label">Tanque <span id="diesel-tank-label-suffix" style="color:var(--muted);font-size:10px"></span></label>
     <select class="form-select" id="diesel-tank-sel" style="font-weight:600"></select>
+  </div>
+  <div class="form-group" id="diesel-tank-dest-group" style="display:none"><label class="form-label">Tanque destino</label>
+    <select class="form-select" id="diesel-tank-dest-sel" style="font-weight:600"></select>
   </div>
   <div class="form-row">
     <div class="form-group"><label class="form-label">Fecha</label><input class="form-input" type="date" id="diesel-fecha"></div>
@@ -4683,6 +4713,21 @@ function renderDashboard() {
 // ══════════════════════════════════════════════════
 // LOTES
 // ══════════════════════════════════════════════════
+// Filtro de estado en vista de lotes (default 'active')
+var _lotesFilter = 'active';
+
+function setLotesFilter(f) {
+  _lotesFilter = f;
+  ['active','cuarentena','vendido','todos'].forEach(function(name){
+    var el = document.getElementById('lotes-filter-' + name);
+    if (el) {
+      if (name === f) el.classList.add('chip-active');
+      else el.classList.remove('chip-active');
+    }
+  });
+  renderLotes();
+}
+
 function renderLotes() {
   renderParams();
 
@@ -4700,15 +4745,53 @@ function renderLotes() {
 
   const active = db.lots.filter(l=>!l.status||l.status==='activo'||l.status==='active');
   const cuarentena = db.lots.filter(l=>l.status==='cuarentena');
+  const vendidos = db.lots.filter(l=>l.status==='vendido'||l.status==='sold');
   var subtitle = active.length+' lotes activos · '+active.reduce((s,l)=>s+l.animal_count,0)+' animales';
   if (cuarentena.length) subtitle += ' · 🚧 ' + cuarentena.length + ' en cuarentena (' + cuarentena.reduce((s,l)=>s+(l.animal_count||0),0) + ' cab.)';
+  if (vendidos.length) subtitle += ' · 💰 ' + vendidos.length + ' vendidos';
   document.getElementById('lotes-sub').textContent = subtitle;
+
+  // Aplicar filtro
+  var lotsToShow = db.lots.filter(function(l) {
+    if (_lotesFilter === 'todos') return true;
+    if (_lotesFilter === 'active') return !l.status || l.status === 'activo' || l.status === 'active';
+    if (_lotesFilter === 'cuarentena') return l.status === 'cuarentena';
+    if (_lotesFilter === 'vendido') return l.status === 'vendido' || l.status === 'sold';
+    return true;
+  });
+
+  // Helper: encuentra la compra de ganado asociada a un lote
+  // Primero busca por lot_code directo (lote cuarentena), después en lote_destinos (lotes destino post-marcaje)
+  function findCompraForLot(code) {
+    var compras = db.compras_ganado || [];
+    var direct = compras.find(function(c) { return c.lot_code === code; });
+    if (direct) return direct;
+    return compras.find(function(c) {
+      return c.lote_destinos && c.lote_destinos.indexOf(code) >= 0;
+    });
+  }
   const tbody = document.getElementById('lotes-tbody');
-  tbody.innerHTML = db.lots.map(function(lot){
+  if (!lotsToShow.length) {
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--muted)">Sin lotes en este filtro</td></tr>';
+    return;
+  }
+  tbody.innerHTML = lotsToShow.map(function(lot){
     var isCuarentena = lot.status === 'cuarentena';
     var btnMover = isCuarentena
       ? '<button class="btn btn-primary btn-sm" onclick="openMarcarCuarentena('+lot.id+')" style="background:#A855F7;border-color:#A855F7" title="Marcar IDs y pesos individuales">📝 Marcar</button>'
       : '<button class="btn btn-ghost btn-sm" onclick="openMoveLot('+lot.id+')">Mover</button>';
+    // Datos de proveedor / detalles desde la compra asociada (si existe)
+    var compra = findCompraForLot(lot.code);
+    var proveedorTxt = compra && compra.proveedor ? compra.proveedor : '-';
+    var detalleTxt = '';
+    if (compra) {
+      var partes = [];
+      if (compra.fecha) partes.push('🗓 ' + compra.fecha);
+      if (compra.total) partes.push('💰 Bs. ' + compra.total.toLocaleString());
+      if (compra.notes) partes.push(compra.notes);
+      detalleTxt = partes.join(' · ');
+    }
+    if (!detalleTxt) detalleTxt = lot.notes ? escH(lot.notes) : '-';
     return '<tr'+(isCuarentena?' style="background:rgba(168,85,247,.04)"':'')+'>'+
       '<td><span style="font-family:DM Mono,monospace;background:var(--sur2);padding:3px 8px;border-radius:5px;color:'+(isCuarentena?'#A855F7':'var(--amber2)')+';border:1px solid var(--bor)">'+escH(lot.code)+'</span></td>'+
       '<td>'+capFirst(lot.category)+'</td>'+
@@ -4717,6 +4800,8 @@ function renderLotes() {
       '<td style="font-weight:500">'+lot.animal_count+'</td>'+
       '<td>'+(lot.avg_weight?lot.avg_weight+' kg':'-')+'</td>'+
       '<td>'+lotStatusBadge(lot)+'</td>'+
+      '<td style="font-size:12px;color:'+(proveedorTxt==='-'?'var(--muted)':'var(--text)')+'">'+escH(proveedorTxt)+'</td>'+
+      '<td style="font-size:11px;color:var(--muted);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escH(detalleTxt)+'">'+escH(detalleTxt)+'</td>'+
       '<td style="display:flex;gap:6px">'+
         btnMover +
         '<button class="btn btn-danger btn-sm" onclick="deleteLot('+lot.id+')">X</button>'+
@@ -5664,6 +5749,82 @@ function validateSaleCount() {
 var _saleSelectedAnimals = [];
 var _saleAnimalLotMapForKardex = []; // Para distribuir venta multi-lote en kardex después del save
 
+function openModalSale() {
+  // Reset state global
+  _saleSelectedAnimals = [];
+  _salePesoMap = {};
+  _saleAnimalLotMapForKardex = [];
+
+  // Reset campos del form (con guardas porque algunos pueden no existir)
+  function _setVal(id, val) {
+    var el = document.getElementById(id);
+    if (el) {
+      if (el.type === 'checkbox') el.checked = !!val;
+      else el.value = val;
+    }
+  }
+  function _setText(id, val) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = val;
+  }
+  function _hide(id) {
+    var el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  }
+
+  _setVal('sale-lot', '');
+  _setVal('sale-scope', 'lot'); // Modo "Lote completo" por default
+  _setVal('sale-count', '');
+  _setVal('sale-kg', '');
+  _setVal('sale-peso-momento', '');
+  _setVal('sale-kg-calc', '');
+  _setVal('sale-animal-search', '');
+  _setVal('sale-peso-min', '');
+  _setVal('sale-peso-max', '');
+  _setVal('sale-buyer', '');
+  _setVal('sale-type', 'frigorifico');
+  _setVal('sale-price', '');
+  _setVal('sale-discount-pct', '');
+  _setVal('sale-total', '');
+  _setVal('sale-date', localDate());
+  _setVal('sale-invoice', '');
+  _setVal('sale-trace', false);
+
+  // Reset textos auxiliares
+  _setText('sale-count-max', '');
+  _setText('sale-selected-count', '');
+
+  // Ocultar warns/info bloques
+  _hide('sale-count-warn');
+  _hide('sale-discount-info');
+  _hide('sale-individual-summary');
+
+  // Reset modos visibles
+  var lotMode = document.getElementById('sale-lot-mode');
+  var indMode = document.getElementById('sale-individual-mode');
+  if (lotMode) lotMode.style.display = 'block';
+  if (indMode) indMode.style.display = 'none';
+
+  // Limpiar lista de animales individual
+  var animList = document.getElementById('sale-animals-list');
+  if (animList) animList.innerHTML = '';
+
+  // Repopular dropdown de lotes con conteo real (e5m_animals.length)
+  var saleLotEl = document.getElementById('sale-lot');
+  if (saleLotEl) {
+    var _saleAnimDB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
+    var lotOpts = (db.lots || [])
+      .filter(function(l) { return !l.status || l.status === 'activo' || l.status === 'active'; })
+      .map(function(l) {
+        var realCount = (_saleAnimDB[l.code] || []).length || (l.animal_count || 0);
+        return '<option value="' + l.code + '">' + escH(l.code) + ' - ' + escH(l.category || '') + ' (' + realCount + ' cab.)</option>';
+      }).join('');
+    saleLotEl.innerHTML = '<option value="">Seleccionar...</option><option value="__all__">🌐 Todos los lotes (mix)</option>' + lotOpts;
+  }
+
+  openModal('modal-sale');
+}
+
 function onSaleScopeChange(val) {
   // No permitir modo "Lote completo" si está seleccionado "Todos los lotes"
   var lotVal = (document.getElementById('sale-lot')||{}).value || '';
@@ -5996,7 +6157,7 @@ function saveSale() {
     toast('Para venta de varios lotes, usá modo individual','error');return;
   }
 
-  var sale={id:db.next_ids.sale++,lot_code:lot_code,buyer:buyer,type:(document.getElementById('sale-type')||{}).value||'frigorifico',price_per_kg:price,date:date,invoice:(document.getElementById('sale-invoice')||{}).value||'',trace_req:(document.getElementById('sale-trace')||{}).checked||false,notes:'',scope:scope,discount_pct:discountPct};
+  var sale={id:db.next_ids.sale++,lot_code:lot_code,buyer:buyer,type:(document.getElementById('sale-type')||{}).value||'frigorifico',price_per_kg:price,date:date,invoice:(document.getElementById('sale-invoice')||{}).value||'',trace_req:(document.getElementById('sale-trace')||{}).checked||false,notes:'',scope:scope,discount_pct:discountPct,created_at:new Date().toISOString()};
   var saleLot = isMultiLot ? null : db.lots.find(function(l){return l.code===lot_code;});
   var animalesDB=getAnimalesDB();
 
@@ -8045,6 +8206,7 @@ function openModalCompraGanado() {
   // Poblar lotes con conteo real
   var sel = document.getElementById('cg-lote');
   sel.innerHTML = '<option value="">Seleccionar lote...</option>';
+  sel.value = '';
   var _cgAnimDB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
   (db.lots || []).forEach(function(l) {
     if (l.status === 'activo' || l.status === 'active' || !l.status) {
@@ -8627,6 +8789,52 @@ function saveMarcaje() {
     if (compra.lote_destinos.indexOf(loteDest) < 0) compra.lote_destinos.push(loteDest);
   }
 
+  // ── ASIENTO DUAL EN KARDEX: traspaso de costo cuarentena → lote destino ──
+  // Calcula el costo proporcional según animales marcados sobre el total comprado
+  var costoProporcional = 0;
+  var pesoProporcional = 0;
+  if (compra && compra.total && compra.animal_count) {
+    costoProporcional = Math.round((compra.total * n / compra.animal_count) * 100) / 100;
+    pesoProporcional = Math.round((compra.total_kg || 0) * n / compra.animal_count * 10) / 10;
+  }
+  if (costoProporcional > 0) {
+    if (!db.kardex) db.kardex = [];
+    var precioPorCab = Math.round(costoProporcional / n * 100) / 100;
+    var nowIso = new Date().toISOString();
+    // 1. HABER en lote cuarentena (sale costo proporcional)
+    db.kardex.push({
+      id: Date.now() + 100,
+      lote: _mcLoteCuarentena.code,
+      tipo: 'venta', // En kardex el lado HABER es 'venta' (egreso del lote)
+      fecha: fecha,
+      cabezas: n,
+      precio: precioPorCab,
+      total: costoProporcional,
+      desc: 'Traspaso por marcaje → ' + loteDest + ' (' + n + ' cab.)',
+      by: 'Desktop',
+      created_at: nowIso,
+      auto: true,
+      traspaso: true,
+      traspaso_destino: loteDest
+    });
+    // 2. DEBE en lote destino (entra costo proporcional)
+    db.kardex.push({
+      id: Date.now() + 101,
+      lote: loteDest,
+      tipo: 'compra', // El lado DEBE es 'compra' (ingreso al lote)
+      fecha: fecha,
+      cabezas: n,
+      precio: precioPorCab,
+      total: costoProporcional,
+      desc: 'Traspaso desde cuarentena ' + _mcLoteCuarentena.code + ' (' + n + ' cab. × Bs. ' + precioPorCab + ')',
+      by: 'Desktop',
+      created_at: nowIso,
+      auto: true,
+      traspaso: true,
+      traspaso_origen: _mcLoteCuarentena.code
+    });
+  }
+
   // Persistir + sync
   saveDB(true); // lotChanged=true para trigger sync de lotes
   closeModal('modal-marcar-cuarentena');
@@ -8645,7 +8853,8 @@ function saveMarcaje() {
   replaceTableInRailway('lots', db.lots);
   replaceTableInRailway('animals', rawAnim);
   if (db.compras_ganado) replaceTableInRailway('compras_ganado', db.compras_ganado);
-  try { auditLog('update', 'compras_ganado', compra ? compra.id : _mcLoteCuarentena.code, 'Marcaje: ' + n + ' animales en ' + loteDest); } catch(e){}
+  if (db.kardex) replaceTableInRailway('kardex', db.kardex);
+  try { auditLog('update', 'compras_ganado', compra ? compra.id : _mcLoteCuarentena.code, 'Marcaje: ' + n + ' animales en ' + loteDest + (costoProporcional > 0 ? ' (costo Bs. ' + costoProporcional + ')' : '')); } catch(e){}
 
   // Reset state
   _mcAnimals = [];
@@ -8678,7 +8887,7 @@ function renderComprasGanado() {
   tbody.innerHTML = compras.sort(function(a,b) { return (b.fecha||'').localeCompare(a.fecha||''); }).map(function(c) {
     var detalle = (c.animales || []).map(function(a) { return a.id + ' (' + a.peso + 'kg)'; }).join(', ');
     return '<tr>' +
-      '<td>' + (c.fecha||'') + '</td>' +
+      '<td>' + fmtDT(c.created_at || c.fecha || '') + '</td>' +
       '<td>' + (c.proveedor||'') + '</td>' +
       '<td style="font-weight:700;color:var(--amber2)">' + (c.animal_count||0) + '</td>' +
       '<td>' + (c.total_kg||0).toLocaleString() + ' kg</td>' +
@@ -9380,7 +9589,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.3.3'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.1'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -11485,32 +11694,85 @@ function exportCuentas() {
 
 // KARDEX FINANCIERO DE LOTES
 // ══════════════════════════════════════════════════
+function clearKardexFiltros() {
+  var ids = ['kardex-lote-sel','kardex-type-sel','kardex-fecha-desde','kardex-fecha-hasta'];
+  ids.forEach(function(id){ var el = document.getElementById(id); if (el) el.value = ''; });
+  var chk = document.getElementById('kardex-show-vendidos');
+  if (chk) chk.checked = true;
+  renderKardex();
+}
+
 function renderKardex() {
   if (!db.kardex) db.kardex = [];
   if (!db.cuentas) db.cuentas = [];
   var lotSel=document.getElementById('kardex-lote-sel');
-  if(lotSel&&lotSel.options.length<=1){
-    db.lots.forEach(function(l){var o=document.createElement('option');o.value=l.code;o.textContent=l.code+' - '+capFirst(l.category)+' ('+l.animal_count+' cab.)';lotSel.appendChild(o);});
+  // Repopular SIEMPRE el dropdown (incluye vendidos para histórico) — preservar selección
+  if (lotSel) {
+    var prevSel = lotSel.value;
+    lotSel.innerHTML = '<option value="">Todos los lotes</option>';
+    var allLotsSorted = (db.lots || []).slice().sort(function(a,b){
+      // Activos primero, después cuarentena, después vendidos
+      var orderA = (a.status==='vendido'||a.status==='sold') ? 2 : (a.status==='cuarentena') ? 1 : 0;
+      var orderB = (b.status==='vendido'||b.status==='sold') ? 2 : (b.status==='cuarentena') ? 1 : 0;
+      if (orderA !== orderB) return orderA - orderB;
+      return (a.code || '').localeCompare(b.code || '');
+    });
+    allLotsSorted.forEach(function(l){
+      var o = document.createElement('option');
+      o.value = l.code;
+      var statusTag = (l.status==='vendido'||l.status==='sold') ? ' [VENDIDO]' : (l.status==='cuarentena' ? ' [CUARENTENA]' : '');
+      o.textContent = l.code + ' - ' + capFirst(l.category||'') + ' (' + (l.animal_count||0) + ' cab.)' + statusTag;
+      lotSel.appendChild(o);
+    });
+    if (prevSel) lotSel.value = prevSel;
   }
   var filterLote=(lotSel||{}).value||'';
   var filterType=(document.getElementById('kardex-type-sel')||{}).value||'';
+  var filterDesde=(document.getElementById('kardex-fecha-desde')||{}).value||'';
+  var filterHasta=(document.getElementById('kardex-fecha-hasta')||{}).value||'';
+  var showVendidos=(document.getElementById('kardex-show-vendidos')||{checked:true}).checked;
   var movs=db.kardex.filter(function(m){
     if(filterLote && !lotMatches(m.lote, filterLote))return false;
     if(filterType&&m.tipo!==filterType)return false;
+    if(filterDesde && (m.fecha||'') < filterDesde) return false;
+    if(filterHasta && (m.fecha||'') > filterHasta) return false;
     return true;
   });
   var resEl=document.getElementById('kardex-resumen');
   if(resEl){
-    var lotsToShow=filterLote?db.lots.filter(function(l){return l.code===filterLote;}):db.lots.filter(function(l){return l.status==='activo'||l.status==='active'||!l.status;});
+    var lotsToShow;
+    if (filterLote) {
+      lotsToShow = db.lots.filter(function(l){return l.code===filterLote;});
+    } else {
+      lotsToShow = db.lots.filter(function(l){
+        var isVendido = l.status==='vendido' || l.status==='sold';
+        if (isVendido && !showVendidos) return false;
+        return l.status==='activo' || l.status==='active' || !l.status || l.status==='cuarentena' || isVendido;
+      });
+      // Activos primero, vendidos al final
+      lotsToShow.sort(function(a,b){
+        var orderA = (a.status==='vendido'||a.status==='sold') ? 2 : (a.status==='cuarentena') ? 1 : 0;
+        var orderB = (b.status==='vendido'||b.status==='sold') ? 2 : (b.status==='cuarentena') ? 1 : 0;
+        if (orderA !== orderB) return orderA - orderB;
+        return (a.code || '').localeCompare(b.code || '');
+      });
+    }
     resEl.innerHTML=lotsToShow.map(function(lot){
+      // El resumen del card ignora filtro de fecha (siempre muestra el total histórico del lote)
       var lotMovs=db.kardex.filter(function(m){return m.lote===lot.code;});
       var debe=lotMovs.filter(function(m){return m.tipo==='compra'||m.tipo==='ajuste';}).reduce(function(s,m){return s+(m.total||0);},0);
       var haber=lotMovs.filter(function(m){return m.tipo==='venta';}).reduce(function(s,m){return s+(m.total||0);},0);
       var saldo=debe-haber;
       var cabCompradas=lotMovs.filter(function(m){return m.tipo==='compra';}).reduce(function(s,m){return s+(m.cabezas||0);},0);
       var promPorCab=cabCompradas?Math.round(debe/cabCompradas):0;
-      return '<div style="background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:14px">'+
-        '<div style="font-family:Syne,sans-serif;font-size:13px;font-weight:700;color:var(--amber2);margin-bottom:8px">'+escH(lot.code)+'</div>'+
+      var isVendido = lot.status==='vendido' || lot.status==='sold';
+      var isCuarentena = lot.status==='cuarentena';
+      var statusBadge = '';
+      if (isVendido) statusBadge = '<span class="bdg bdg-purple" style="font-size:9px;margin-left:6px">Vendido</span>';
+      else if (isCuarentena) statusBadge = '<span class="bdg" style="background:rgba(168,85,247,.15);color:#A855F7;border:1px solid #A855F7;font-size:9px;margin-left:6px">Cuarentena</span>';
+      var cardOpacity = isVendido ? 'opacity:0.78;' : '';
+      return '<div style="background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:14px;'+cardOpacity+'">'+
+        '<div style="font-family:Syne,sans-serif;font-size:13px;font-weight:700;color:var(--amber2);margin-bottom:8px">'+escH(lot.code)+statusBadge+'</div>'+
         '<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid rgba(48,54,61,.3)"><span style="color:var(--muted)">DEBE</span><span style="font-weight:600">Bs. '+debe.toLocaleString()+'</span></div>'+
         '<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid rgba(48,54,61,.3)"><span style="color:var(--muted)">HABER</span><span style="font-weight:600;color:var(--green)">Bs. '+haber.toLocaleString()+'</span></div>'+
         '<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;margin-top:4px"><span style="color:var(--muted);font-weight:600">SALDO</span><span style="font-weight:700;color:'+(saldo>0?'var(--amber2)':'var(--green)')+'">Bs. '+saldo.toLocaleString()+'</span></div>'+
@@ -11534,7 +11796,11 @@ function renderKardex() {
   sorted.slice().reverse().forEach(function(m){
     var tr=document.createElement('tr');
     var tipoColor={compra:'var(--blue)',venta:'var(--green)',ajuste:'var(--amber2)',muerte:'var(--red)'};
-    var delBtn=document.createElement('button');delBtn.className='btn btn-ghost btn-sm';delBtn.style.color='var(--red)';delBtn.textContent='x';
+    var delBtn=document.createElement('button');
+    delBtn.className='btn btn-ghost btn-sm';
+    delBtn.style.cssText='color:var(--red);border:1px solid var(--red);padding:4px 10px;font-size:12px;font-weight:600;border-radius:6px';
+    delBtn.title='Eliminar movimiento';
+    delBtn.textContent='🗑 Eliminar';
     delBtn.onclick=(function(id){return function(){deleteKardex(id);};})(m.id);
     tr.innerHTML='<td style="font-family:DM Mono,monospace;font-size:11px">'+escH(m.fecha||'')+'</td>'+
       '<td style="font-weight:600;color:var(--amber2)">'+escH(m.lote||'')+'</td>'+
@@ -11545,11 +11811,20 @@ function renderKardex() {
       '<td style="font-family:DM Mono,monospace;color:var(--blue)">'+(m._debe?'Bs. '+m._debe.toLocaleString():'-')+'</td>'+
       '<td style="font-family:DM Mono,monospace;color:var(--green)">'+(m._haber?'Bs. '+m._haber.toLocaleString():'-')+'</td>'+
       '<td style="font-family:DM Mono,monospace;font-weight:700;color:var(--amber2)">Bs. '+(m._saldo||0).toLocaleString()+'</td>'+
-      '<td style="font-size:11px;color:var(--muted)">'+escH(m.desc||'-')+'</td><td></td>';
-    tr.lastElementChild.appendChild(delBtn);tbody.appendChild(tr);
+      '<td style="font-size:11px;color:var(--muted)">'+escH(m.desc||'-')+'</td>'+
+      '<td style="text-align:center"></td>';
+    tr.lastElementChild.appendChild(delBtn);
+    tbody.appendChild(tr);
   });
   var subEl=document.getElementById('kardex-sub');
-  if(subEl)subEl.textContent=movs.length+' movimientos'+(filterLote?' - Lote '+filterLote:'');
+  if(subEl) {
+    var subText = movs.length+' movimientos';
+    if (filterLote) subText += ' · Lote ' + filterLote;
+    if (filterDesde || filterHasta) {
+      subText += ' · ' + (filterDesde || 'inicio') + ' → ' + (filterHasta || 'hoy');
+    }
+    subEl.textContent = subText;
+  }
 }
 function openModalKardex() {
   var sel=document.getElementById('kx-lote');
@@ -11667,11 +11942,23 @@ function guardarKardex(){
 }
 
 function deleteKardex(id){
-  if(!confirm('Eliminar este movimiento?'))return;
+  var mov = (db.kardex || []).find(function(r){ return r.id === id; });
+  if (!mov) { toast('Movimiento no encontrado', 'error'); return; }
+  var msg = 'Eliminar este movimiento del kardex?\n\n' +
+    'Fecha: ' + (mov.fecha || '-') + '\n' +
+    'Lote: ' + (mov.lote || '-') + '\n' +
+    'Tipo: ' + capFirst(mov.tipo || '') + '\n' +
+    'Cabezas: ' + (mov.cabezas || 0) + '\n' +
+    'Total: Bs. ' + (mov.total || 0).toLocaleString() + '\n' +
+    (mov.desc ? 'Detalle: ' + mov.desc + '\n' : '') +
+    '\nNota: Solo se elimina el registro contable. Los animales, ventas o compras asociadas NO se modifican.\n\n' +
+    'Esta acción no se puede deshacer.';
+  if(!confirm(msg))return;
   trackDeletion(id, 'kardex');
   db.kardex=db.kardex.filter(function(r){return r.id!==id;});
-  saveDB();renderKardex();toast('Eliminado','success');
+  saveDB();renderKardex();toast('Movimiento eliminado','success');
   replaceTableInRailway('kardex', db.kardex || []);
+  try { auditLog('delete', 'kardex', id, 'Movimiento ' + (mov.tipo||'') + ' de ' + (mov.lote||'') + ' (' + (mov.fecha||'') + ')'); } catch(e){}
 }
 
 // Editar ID de animal desde la lista del lote (para asignar IDs pendientes)
@@ -11864,6 +12151,11 @@ function recalcTankLevel() {
     var tank = getTankById(tanks, r.tank_id);
     if (type === 'recarga') tank.current_level += litros;
     else if (type === 'ajuste') tank.current_level = parseFloat(r.nivel_fisico) || tank.current_level;
+    else if (type === 'traspaso') {
+      // direction 'out' resta del tank_id, 'in' suma al tank_id
+      if (r.direction === 'in') tank.current_level += litros;
+      else tank.current_level -= litros;
+    }
     else tank.current_level -= litros;
     if (tank.current_level < 0) tank.current_level = 0;
     r._balance = Math.round(tank.current_level * 10) / 10;
@@ -12258,9 +12550,15 @@ function renderDieselDesktop() {
       tbody.innerHTML = '';
       registros.slice().sort(function(a,b){ return (b.created_at||b.fecha||'').localeCompare(a.created_at||a.fecha||''); }).forEach(function(r){
         var type = r.type || 'despacho';
-        var typeLabel = type==='recarga'?'🔄 Recarga':type==='ajuste'?(r.ajuste_direccion==='merma'?'📉 Merma':'📈 Sobrante'):'⛽ Despacho';
-        var typeColor = type==='recarga'?'var(--green)':type==='ajuste'?(r.ajuste_direccion==='merma'?'var(--red)':'var(--green)'):'var(--blue)';
-        var litrosSign = type==='recarga'?'+':'-';
+        var typeLabel, typeColor, litrosSign;
+        if (type === 'recarga') { typeLabel = '🔄 Recarga'; typeColor = 'var(--green)'; litrosSign = '+'; }
+        else if (type === 'ajuste') { typeLabel = r.ajuste_direccion==='merma' ? '📉 Merma' : '📈 Sobrante'; typeColor = r.ajuste_direccion==='merma' ? 'var(--red)' : 'var(--green)'; litrosSign = '-'; }
+        else if (type === 'traspaso') {
+          typeLabel = r.direction === 'in' ? '🔁 Traspaso (entrada)' : '🔁 Traspaso (salida)';
+          typeColor = 'var(--blue)';
+          litrosSign = r.direction === 'in' ? '+' : '-';
+        }
+        else { typeLabel = '⛽ Despacho'; typeColor = 'var(--blue)'; litrosSign = '-'; }
         var tr = document.createElement('tr');
         tr.innerHTML = '<td>'+fmtDT(r.created_at||r.fecha)+'</td>'+
           '<td style="font-weight:600;color:'+typeColor+'">'+typeLabel+'</td>'+
@@ -12453,6 +12751,7 @@ function openModalDiesel(type) {
   var vOtro=document.getElementById('diesel-vehiculo-otro');if(vOtro){vOtro.style.display='none';vOtro.value='';}
   var vSel=document.getElementById('diesel-vehiculo');if(vSel)vSel.style.display='';
   populateTankSelector('diesel-tank-sel');
+  populateTankSelector('diesel-tank-dest-sel');
   // Populate vehiculo from maquinaria catalog
   var vehSel = document.getElementById('diesel-vehiculo');
   if(vehSel) {
@@ -12467,6 +12766,8 @@ function openModalDiesel(type) {
     var ot=document.createElement('option');ot.value='__otro__';ot.textContent='➕ Otro equipo';vehSel.appendChild(ot);
   }
   var title=document.getElementById('diesel-modal-title');
+  var tankSuffix=document.getElementById('diesel-tank-label-suffix');
+  var tankDestGroup=document.getElementById('diesel-tank-dest-group');
   var vGroup=document.getElementById('diesel-vehiculo-group');
   var pGroup=document.getElementById('diesel-precio-group');
   var tGroup=document.getElementById('diesel-total-group');
@@ -12474,12 +12775,23 @@ function openModalDiesel(type) {
   var mGroup=document.getElementById('diesel-motivo-group');
   var warn=document.getElementById('diesel-stock-warn');
   if(warn) warn.style.display='none';
+  if(tankSuffix) tankSuffix.textContent='';
+  if(tankDestGroup) tankDestGroup.style.display='none';
   if (type==='recarga') {
     if(title) title.textContent='🔄 Recarga de Tanque';
     if(vGroup) vGroup.style.display='none';
     if(pGroup) pGroup.style.display='';
     if(tGroup) tGroup.style.display='';
     if(prGroup) prGroup.style.display='';
+    if(mGroup) mGroup.style.display='none';
+  } else if (type==='traspaso') {
+    if(title) title.textContent='🔁 Traspaso entre Tanques';
+    if(tankSuffix) tankSuffix.textContent='(origen)';
+    if(tankDestGroup) tankDestGroup.style.display='';
+    if(vGroup) vGroup.style.display='none';
+    if(pGroup) pGroup.style.display='none';
+    if(tGroup) tGroup.style.display='none';
+    if(prGroup) prGroup.style.display='none';
     if(mGroup) mGroup.style.display='none';
   } else {
     if(title) title.textContent='⛽ Despacho de Combustible';
@@ -12523,6 +12835,73 @@ function saveDiesel() {
   var tankId=(document.getElementById('diesel-tank-sel')||{}).value;
   var tanks=getDieselTanks();
   var tank=getTankById(tanks,tankId);
+
+  // ── TRASPASO: dos registros (egreso en origen + ingreso en destino) ──
+  if (type === 'traspaso') {
+    var tankDestId = (document.getElementById('diesel-tank-dest-sel')||{}).value;
+    if (!tankDestId) { toast('Seleccioná el tanque destino', 'error'); return; }
+    if (tankDestId === tankId) { toast('Origen y destino deben ser distintos', 'error'); return; }
+    var tankDest = getTankById(tanks, tankDestId);
+    if (litros > tank.current_level) {
+      toast('Stock insuficiente en ' + tank.name + ': ' + tank.current_level + ' L disponibles', 'error');
+      return;
+    }
+    if ((tankDest.current_level + litros) > tankDest.capacity) {
+      var espacio = Math.round((tankDest.capacity - tankDest.current_level)*10)/10;
+      toast('Excede capacidad de ' + tankDest.name + ' (' + tankDest.capacity + ' L). Espacio: ' + espacio + ' L', 'error');
+      return;
+    }
+    if(!db.diesel) db.diesel=[];
+    if(!db.next_ids) db.next_ids={};
+    if(!db.next_ids.diesel) db.next_ids.diesel=1;
+    var nowIso = new Date().toISOString();
+    // Egreso (origen)
+    var recOut = {
+      id: db.next_ids.diesel++,
+      type: 'traspaso',
+      direction: 'out',
+      tank_id: tankId,
+      tank_dest_id: tankDestId,
+      fecha: fecha,
+      litros: litros,
+      obs: obs,
+      vehiculo: 'Traspaso → ' + tankDest.name,
+      by: 'Desktop',
+      created_at: nowIso,
+      traspaso_pair: nowIso // para vincular ambos
+    };
+    // Ingreso (destino)
+    var recIn = {
+      id: db.next_ids.diesel++,
+      type: 'traspaso',
+      direction: 'in',
+      tank_id: tankDestId,
+      tank_origen_id: tankId,
+      fecha: fecha,
+      litros: litros,
+      obs: obs,
+      vehiculo: 'Traspaso ← ' + tank.name,
+      by: 'Desktop',
+      created_at: nowIso,
+      traspaso_pair: nowIso
+    };
+    tank.current_level = Math.round((tank.current_level - litros) * 10) / 10;
+    if (tank.current_level < 0) tank.current_level = 0;
+    tankDest.current_level = Math.round((tankDest.current_level + litros) * 10) / 10;
+    if (tankDest.current_level > tankDest.capacity) tankDest.current_level = tankDest.capacity;
+    db.diesel.push(recOut);
+    db.diesel.push(recIn);
+    saveDieselTanks(tanks);
+    saveDB();
+    closeModal('modal-diesel');
+    renderDieselDesktop();
+    toast('Traspaso: ' + litros + ' L de ' + tank.name + ' → ' + tankDest.name, 'success');
+    try { auditLog('create', 'diesel', recOut.id, 'Traspaso ' + litros + ' L: ' + tank.name + ' → ' + tankDest.name); } catch(e){}
+    if (db.diesel) try { replaceTableInRailway('diesel', db.diesel); } catch(e){}
+    return;
+  }
+
+  // ── RECARGA / DESPACHO (lógica original) ──
   if(type!=='recarga' && litros>tank.current_level){toast('Stock insuficiente: '+tank.current_level+' L disponibles','error');return;}
   if(type==='recarga' && (tank.current_level+litros)>tank.capacity){
     var espacioDisp = Math.round((tank.capacity - tank.current_level)*10)/10;
@@ -12553,12 +12932,26 @@ function saveDiesel() {
 }
 
 function deleteDiesel(id) {
-  if(!confirm('Eliminar registro? Se recalculará el nivel del tanque.')) return;
+  var rec = (db.diesel || []).find(function(r){ return String(r.id) === String(id); });
+  if (!rec) { toast('Registro no encontrado', 'error'); return; }
+  // Si es traspaso, advertir que se borra el par completo
+  var pairId = null;
+  if (rec.type === 'traspaso' && rec.traspaso_pair) {
+    pairId = rec.traspaso_pair;
+    if (!confirm('Eliminar este traspaso? Se eliminarán AMBOS asientos (origen y destino) y se recalculará el nivel de los tanques.')) return;
+  } else {
+    if(!confirm('Eliminar registro? Se recalculará el nivel del tanque.')) return;
+  }
   trackDeletion(id, 'diesel');
-  db.diesel=db.diesel.filter(function(r){return String(r.id)!==String(id);});
+  if (pairId) {
+    // Borrar todos los registros con ese traspaso_pair
+    db.diesel = db.diesel.filter(function(r){ return r.traspaso_pair !== pairId; });
+  } else {
+    db.diesel = db.diesel.filter(function(r){ return String(r.id) !== String(id); });
+  }
   saveDB(); recalcTankLevel(); renderDieselDesktop();
   replaceTableInRailway('diesel', db.diesel || []);
-  toast('Eliminado y tanque recalculado','success');
+  toast(pairId ? 'Traspaso eliminado y tanques recalculados' : 'Eliminado y tanque recalculado', 'success');
 }
 function openModalAceite() {
   ['aceite-tipo','aceite-obs','aceite-kmhr','aceite-costo'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
