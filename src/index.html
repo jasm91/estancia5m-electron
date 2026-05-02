@@ -4128,6 +4128,7 @@ function pullFromRailwayDesktop(thenPush) {
         { local: 'cuentas',        remote: remote.cuentas },
         { local: 'historial_sueldos', remote: remote.historial_sueldos },
         { local: 'health_alerts',  remote: remote.health_alerts },
+        { local: 'employees',      remote: remote.employees },
       ];
       fieldTables.forEach(function(t) {
         if (t.remote && t.remote.length) {
@@ -7318,38 +7319,71 @@ function setAdvPeriod(period, btn) {
 }
 
 
+var _saveAdvanceInProgress = false;
 function saveAdvance() {
-  var emp = document.getElementById('adv-employee').value;
-  var amount = parseFloat(document.getElementById('adv-amount').value);
-  var date = document.getElementById('adv-date').value;
-  var status = document.getElementById('adv-status').value;
-  var reason = document.getElementById('adv-reason').value.trim();
-  if (!emp || !amount || !date) { toast('Completa empleado, monto y fecha', 'error'); return; }
-  if (!db.advances) db.advances = [];
-  if (!db.lluvias) db.lluvias = [];
-  // Warn if total advances exceed salary - but ALLOW (by design)
-  var employee = db.employees.find(function(e){return e.name===emp;});
-  if (employee) {
-    var currentPending = db.advances.filter(function(a){
-      return a.employee===emp && a.status==='pendiente';
-    }).reduce(function(s,a){return s+(a.amount||0);},0);
-    if ((currentPending + amount) > employee.salary) {
-      var excess = (currentPending + amount) - employee.salary;
-      if (!confirm('⚠ Este adelanto supera el salario de '+emp.split(' ')[0]+' en Bs. '+excess.toLocaleString()+'.\nEl exceso quedara registrado como deuda del empleado.\n\n¿Confirmas el adelanto?')) return;
-    }
+  // Guard contra doble-click / submits múltiples
+  if (_saveAdvanceInProgress) { console.warn('[saveAdvance] Ya está en progreso, ignorando'); return; }
+  _saveAdvanceInProgress = true;
+  // Desactivar el botón visualmente
+  var btn = document.querySelector('#modal-advance .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+
+  function _release() {
+    _saveAdvanceInProgress = false;
+    if (btn) { btn.disabled = false; btn.textContent = 'Registrar adelanto'; }
   }
-  db.advances.push({
-    id: db.next_ids.advance++,
-    employee: emp,
-    amount: amount,
-    date: date,
-    status: status,
-    reason: reason,
-  });
-  saveDB();
-  closeModal('modal-advance');
-  renderAdvances();
-  toast('Adelanto de Bs. '+amount.toLocaleString()+' registrado para '+emp.split(' ')[0], 'success');
+
+  try {
+    var emp = document.getElementById('adv-employee').value;
+    var amount = parseFloat(document.getElementById('adv-amount').value);
+    var date = document.getElementById('adv-date').value;
+    var status = document.getElementById('adv-status').value;
+    var reason = document.getElementById('adv-reason').value.trim();
+    if (!emp || !amount || !date) { toast('Completa empleado, monto y fecha', 'error'); _release(); return; }
+    if (!db.advances) db.advances = [];
+    if (!db.lluvias) db.lluvias = [];
+    // Warn if total advances exceed salary - but ALLOW (by design)
+    var employee = db.employees.find(function(e){return e.name===emp;});
+    if (employee) {
+      var currentPending = db.advances.filter(function(a){
+        return a.employee===emp && a.status==='pendiente';
+      }).reduce(function(s,a){return s+(a.amount||0);},0);
+      if ((currentPending + amount) > employee.salary) {
+        var excess = (currentPending + amount) - employee.salary;
+        if (!confirm('⚠ Este adelanto supera el salario de '+emp.split(' ')[0]+' en Bs. '+excess.toLocaleString()+'.\nEl exceso quedara registrado como deuda del empleado.\n\n¿Confirmas el adelanto?')) { _release(); return; }
+      }
+    }
+    // Detectar duplicados recientes (mismo emp+monto+fecha en los últimos 60s)
+    var nowMs = Date.now();
+    var possibleDup = (db.advances || []).find(function(a){
+      if (a.employee !== emp || a.amount !== amount || a.date !== date) return false;
+      var aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+      return aTime && (nowMs - aTime) < 60000;
+    });
+    if (possibleDup) {
+      if (!confirm('Ya hay un adelanto idéntico hace menos de 1 minuto.\n\n¿Estás seguro de registrar otro?')) { _release(); return; }
+    }
+    db.advances.push({
+      id: db.next_ids.advance++,
+      employee: emp,
+      amount: amount,
+      date: date,
+      status: status,
+      reason: reason,
+      created_at: new Date().toISOString(),
+    });
+    saveDB();
+    closeModal('modal-advance');
+    renderAdvances();
+    // Push al server (faltaba)
+    replaceTableInRailway('advances', db.advances || []);
+    toast('Adelanto de Bs. '+amount.toLocaleString()+' registrado para '+emp.split(' ')[0], 'success');
+  } catch(e) {
+    console.error('[saveAdvance] error:', e);
+    toast('Error al guardar adelanto: ' + e.message, 'error');
+  } finally {
+    _release();
+  }
 }
 
 function toggleAdvance(id) {
@@ -9613,7 +9647,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.5'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.6'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
