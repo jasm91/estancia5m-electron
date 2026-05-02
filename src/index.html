@@ -3935,10 +3935,10 @@ function _computeDiff(oldObj, newObj) {
 
 // Reemplazar una tabla específica en Railway (para que borrados se propaguen a PWA)
 function replaceTableInRailway(tableName, records) {
-  if (!navigator.onLine) return;
+  if (!navigator.onLine) return Promise.resolve(false);
   var apiUrl = getApiUrl();
   var token = localStorage.getItem('e5m_api_token') || '';
-  if (!token) { console.warn('replaceTableInRailway: sin token, skip '+tableName); return; }
+  if (!token) { console.warn('replaceTableInRailway: sin token, skip '+tableName); return Promise.resolve(false); }
   // Default: array vacío. Pero si records es explícitamente un objeto (no array, no null), mandarlo tal cual.
   var payloadRecords;
   if (records === null || records === undefined) {
@@ -3950,16 +3950,16 @@ function replaceTableInRailway(tableName, records) {
   } else {
     payloadRecords = [];
   }
-  fetch(apiUrl + '/bulk-push', {
+  return fetch(apiUrl + '/bulk-push', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
     body: JSON.stringify({ table: tableName, records: payloadRecords })
   }).then(function(r){ return r.json(); })
   .then(function(d){
-    if(d.ok) console.log('[Sync] '+tableName+': OK');
-    else console.error('[Sync] '+tableName+': Error',d.error||d);
+    if(d.ok) { console.log('[Sync] '+tableName+': OK'); return true; }
+    else { console.error('[Sync] '+tableName+': Error',d.error||d); return false; }
   })
-  .catch(function(e){ console.error('[Sync] '+tableName+': '+e.message); });
+  .catch(function(e){ console.error('[Sync] '+tableName+': '+e.message); return false; });
 }
 
 function mergeArrays(local, remote, idField, tableName) {
@@ -4155,7 +4155,8 @@ function pullFromRailwayDesktop(thenPush) {
       }
 
       // Tasks: Railway gana, solo preservar tareas locales creadas offline (últimas 2 horas)
-      if (remote.tasks) {
+      // FIX: Si server devuelve [] (blip), no pisar — preservar copia local
+      if (remote.tasks && remote.tasks.length) {
         var remoteTasks = remote.tasks || [];
         var deleted = getDeletedIds('tasks');
         var merged = remoteTasks.filter(function(t) { return !deleted[String(t.id)]; });
@@ -6310,6 +6311,19 @@ function saveSale() {
     if(saleLot) {
       saleLot.animal_count=Math.max(0,saleLot.animal_count-animals_count);
       if(saleLot.animal_count===0) saleLot.status='vendido';
+      // FIX: cuando vendes en scope 'lot' (no individual), e5m_animals queda con todos los animales viejos.
+      // El server reconcilia animal_count contra e5m_animals[code], así que si no removemos del cache,
+      // el lote "resucita" en el próximo pull con la cantidad pre-venta.
+      // Removemos los primeros N del cache para mantener consistencia.
+      try {
+        var rawAnim = JSON.parse(localStorage.getItem('e5m_animals') || '{}');
+        if (rawAnim[lot_code] && Array.isArray(rawAnim[lot_code])) {
+          var keepCount = Math.max(0, rawAnim[lot_code].length - animals_count);
+          rawAnim[lot_code] = rawAnim[lot_code].slice(0, keepCount);
+          localStorage.setItem('e5m_animals', JSON.stringify(rawAnim));
+          console.log('[saveSale lot-scope] Cache animals['+lot_code+'] reducido a '+keepCount+' (vendidos '+animals_count+')');
+        }
+      } catch(e) { console.warn('[saveSale lot-scope] Error sync e5m_animals:', e.message); }
     }
   }
 
@@ -6353,14 +6367,19 @@ function saveSale() {
   }
   addActivity('Sistema','otro',isMultiLot?sale.lot_codes.join(','):lot_code,'Venta: '+sale.animals+' animales a '+buyer+' - Bs. '+sale.total.toLocaleString());
   saveDB(); closeModal('modal-sale'); renderVentas(); renderLotes(); renderDashboard();
-  replaceTableInRailway('sales', db.sales || []);
-  replaceTableInRailway('lots', db.lots || []);
-  // CRÍTICO: pushear también el cache de animales al server, sino los animales vendidos
-  // siguen apareciendo en el server.animals[] y reaparecen en el próximo sync-pull
-  try {
-    var animalsCache = JSON.parse(localStorage.getItem('e5m_animals') || '{}');
-    replaceTableInRailway('animals', animalsCache);
-  } catch(e) { console.warn('[saveSale] No se pudo pushear animals:', e.message); }
+  // CRÍTICO: el orden importa. Pushear animals ANTES que lots, secuencialmente.
+  // El server reconcilia animal_count de lots contra serverAnimals[code]. Si pusheamos lots primero,
+  // el server ve los animals VIEJOS (cantidad pre-venta) y "reconcilia" el lote al valor viejo,
+  // ignorando que la venta redujo la cantidad. Esperar a que animals llegue antes de mandar lots.
+  var animalsCache = {};
+  try { animalsCache = JSON.parse(localStorage.getItem('e5m_animals') || '{}'); } catch(e) {}
+  replaceTableInRailway('animals', animalsCache).then(function(){
+    return replaceTableInRailway('lots', db.lots || []);
+  }).then(function(){
+    replaceTableInRailway('sales', db.sales || []);
+    if (db.kardex) replaceTableInRailway('kardex', db.kardex || []);
+    if (db.pesajes) replaceTableInRailway('pesajes', db.pesajes || []);
+  });
   toast('Venta registrada: Bs. '+sale.total.toLocaleString(),'success');
   try { auditLog('create', 'sales', sale.id, _summarizeRecord('sales', sale)); } catch(e){}
 }
@@ -8850,10 +8869,13 @@ function saveMarcaje() {
         : n + ' animales marcados (faltan ' + _mcLoteCuarentena.animal_count + ' en cuarentena)');
   toast(msg, 'success');
 
-  replaceTableInRailway('lots', db.lots);
-  replaceTableInRailway('animals', rawAnim);
-  if (db.compras_ganado) replaceTableInRailway('compras_ganado', db.compras_ganado);
-  if (db.kardex) replaceTableInRailway('kardex', db.kardex);
+  // CRÍTICO: orden secuencial. Animals antes que lots para que el server reconcilie correctamente.
+  replaceTableInRailway('animals', rawAnim).then(function(){
+    return replaceTableInRailway('lots', db.lots);
+  }).then(function(){
+    if (db.compras_ganado) replaceTableInRailway('compras_ganado', db.compras_ganado);
+    if (db.kardex) replaceTableInRailway('kardex', db.kardex);
+  });
   try { auditLog('update', 'compras_ganado', compra ? compra.id : _mcLoteCuarentena.code, 'Marcaje: ' + n + ' animales en ' + loteDest + (costoProporcional > 0 ? ' (costo Bs. ' + costoProporcional + ')' : '')); } catch(e){}
 
   // Reset state
@@ -9589,7 +9611,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.1'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.3'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -17797,9 +17819,12 @@ async function cleanupOrphanLots() {
   localStorage.setItem('e5m_animals', JSON.stringify(rawAnim));
   saveDB(true);
 
-  // Push al server
-  try { replaceTableInRailway('lots', db.lots); } catch(e){}
-  try { replaceTableInRailway('animals', rawAnim); } catch(e){}
+  // Push al server — animals primero, después lots (orden crítico para reconciliación)
+  try {
+    replaceTableInRailway('animals', rawAnim).then(function(){
+      return replaceTableInRailway('lots', db.lots);
+    });
+  } catch(e){}
 
   // Re-render
   if (typeof renderLotes === 'function') renderLotes();
