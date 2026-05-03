@@ -5710,28 +5710,46 @@ function renderVentas() {
         var tdIds = document.createElement('td');
         tdIds.colSpan = 11;
         tdIds.style.cssText = 'padding:12px 16px;border-top:none';
-        // Cruzar animal_ids con db.pesajes tipo venta
+
+        // Detectar multi-lote para columnas dinámicas
+        var saleLotsForFilter = isMultiLot
+          ? (s.lot_codes || String(s.lot_code).split(',').map(function(x){return x.trim();}))
+          : [s.lot_code];
+
+        // Cruzar animal_ids con db.pesajes tipo venta — incluir TODOS los lotes de la venta
         var pesajesVenta = (db.pesajes||[]).filter(function(p){
-          return p.tipo === 'venta' && p.lot_code === s.lot_code && p.date === s.date;
+          return p.tipo === 'venta' && saleLotsForFilter.indexOf(p.lot_code) >= 0 && p.date === s.date;
         });
         var pesoMap = {};
-        pesajesVenta.forEach(function(p){ pesoMap[String(p.animal_id)] = p.peso; });
+        var lotMap = {};   // animal_id -> lot_code (para columna Lote en multi-lote)
+        pesajesVenta.forEach(function(p){
+          pesoMap[String(p.animal_id)] = p.peso;
+          lotMap[String(p.animal_id)] = p.lot_code;
+        });
         var totalKgDetalle = 0;
         var rowsHtml = s.animal_ids.map(function(aid, idx){
           var peso = pesoMap[String(aid)] || 0;
           totalKgDetalle += peso;
           var total = peso ? (peso * s.price_per_kg).toLocaleString('es-BO', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+          var loteCol = isMultiLot
+            ? '<td style="padding:5px 10px;font-family:DM Mono,monospace;font-size:11px"><span class="bdg" style="background:rgba(168,85,247,.12);color:#a855f7;padding:2px 6px;border-radius:4px;font-size:10px">'+escH(lotMap[String(aid)] || '?')+'</span></td>'
+            : '';
           return '<tr style="border-bottom:1px solid var(--bor)">'+
             '<td style="padding:5px 10px;font-family:DM Mono,monospace;font-size:12px;color:var(--amber2)">#'+(idx+1)+'</td>'+
             '<td style="padding:5px 10px;font-family:DM Mono,monospace;font-size:12px">'+escH(String(aid))+'</td>'+
+            loteCol +
             '<td style="padding:5px 10px;font-size:12px">'+(peso ? peso+' kg' : '—')+'</td>'+
             '<td style="padding:5px 10px;font-size:12px;color:var(--green)">Bs. '+total+'</td>'+
             '</tr>';
         }).join('');
         var avgKg = s.animal_ids.length ? Math.round(totalKgDetalle / s.animal_ids.length * 10) / 10 : 0;
+
+        var headerExtras = isMultiLot ? '<th style="padding:6px 10px;text-align:left">Lote origen</th>' : '';
+        var colSpanFooter = isMultiLot ? 3 : 2;
+
         var idsHtml =
           '<div style="margin-bottom:8px;display:flex;align-items:center;gap:12px">'+
-            '<span style="font-size:11px;font-weight:700;color:var(--muted)">DETALLE DE ANIMALES VENDIDOS</span>'+
+            '<span style="font-size:11px;font-weight:700;color:var(--muted)">DETALLE DE ANIMALES VENDIDOS' + (isMultiLot ? ' — VENTA MIXTA' : '') + '</span>'+
             '<span style="font-size:11px;color:var(--muted)">'+s.animal_ids.length+' animales · '+
               (totalKgDetalle ? totalKgDetalle.toFixed(0)+' kg total · '+avgKg+' kg prom.' : '')+
             '</span>'+
@@ -5741,12 +5759,13 @@ function renderVentas() {
             '<thead><tr style="background:var(--sur);font-size:11px;color:var(--muted)">'+
               '<th style="padding:6px 10px;text-align:left">#</th>'+
               '<th style="padding:6px 10px;text-align:left">ID Animal</th>'+
+              headerExtras +
               '<th style="padding:6px 10px;text-align:left">Peso venta</th>'+
               '<th style="padding:6px 10px;text-align:left">Total Bs.</th>'+
             '</tr></thead>'+
             '<tbody>'+rowsHtml+'</tbody>'+
             '<tfoot><tr style="background:var(--sur);font-weight:700;font-size:12px">'+
-              '<td colspan="2" style="padding:6px 10px;color:var(--muted)">TOTAL</td>'+
+              '<td colspan="'+colSpanFooter+'" style="padding:6px 10px;color:var(--muted)">TOTAL</td>'+
               '<td style="padding:6px 10px;color:var(--amber2)">'+totalKgDetalle.toFixed(0)+' kg</td>'+
               '<td style="padding:6px 10px;color:var(--green)">Bs. '+(totalKgDetalle*s.price_per_kg).toLocaleString('es-BO',{minimumFractionDigits:2,maximumFractionDigits:2})+'</td>'+
             '</tr></tfoot>'+
@@ -5788,12 +5807,15 @@ function validateSaleCount() {
 
 // Variables globales para venta individual
 var _saleSelectedAnimals = [];
+// Mapa global: animal_id -> lot_code (preserva info del lote aunque el DOM se re-renderice)
+var _saleAnimalLotMap = {};
 var _saleAnimalLotMapForKardex = []; // Para distribuir venta multi-lote en kardex después del save
 
 function openModalSale() {
   // Reset state global
   _saleSelectedAnimals = [];
   _salePesoMap = {};
+  _saleAnimalLotMap = {};
   _saleAnimalLotMapForKardex = [];
 
   // Reset campos del form (con guardas porque algunos pueden no existir)
@@ -5879,6 +5901,7 @@ function onSaleScopeChange(val) {
   document.getElementById('sale-individual-mode').style.display = val==='individual'?'block':'none';
   if(val==='individual') {
     _saleSelectedAnimals=[];
+    _saleAnimalLotMap = {};
     var lotCode = lotVal === '__all__' ? '' : lotVal;
     renderSaleAnimalList(lotCode,'','','');
   } else if (val === 'lot' && lotVal && lotVal !== '__all__') {
@@ -5897,6 +5920,7 @@ function onSaleLotChange(code) {
       toast('Para venta de animales mezclados de varios lotes se usa modo individual','info');
     } else {
       _saleSelectedAnimals = [];
+      _saleAnimalLotMap = {};
       renderSaleAnimalList('', '', '', '');  // pasar '' para que use todos los lotes
     }
     var maxEl=document.getElementById('sale-count-max');
@@ -5910,6 +5934,7 @@ function onSaleLotChange(code) {
   var scope=(document.getElementById('sale-scope')||{}).value||'lot';
   if(scope==='individual') {
     _saleSelectedAnimals=[];
+    _saleAnimalLotMap = {};
     renderSaleAnimalList(code,'','','');
   } else if (scope === 'lot' && lot) {
     // Modo "Lote completo": prellenar automáticamente cantidad, peso/animal y kg totales
@@ -6017,15 +6042,18 @@ function onPesoInputChange(animalId, val) {
 
 function toggleSaleAnimalChk(chk) {
   var aid = chk.getAttribute('data-aid');
+  var lotFromChk = chk.getAttribute('data-lot') || '';
   var pesoEl = document.getElementById('peso-'+aid);
   var peso = pesoEl ? (parseFloat(pesoEl.value)||parseFloat(chk.getAttribute('data-peso'))||0) : 0;
   var idx = _saleSelectedAnimals.indexOf(aid);
   if (chk.checked && idx < 0) {
     _saleSelectedAnimals.push(aid);
     if (peso) _salePesoMap[aid] = peso;
+    if (lotFromChk) _saleAnimalLotMap[aid] = lotFromChk;
   } else if (!chk.checked && idx >= 0) {
     _saleSelectedAnimals.splice(idx, 1);
     delete _salePesoMap[aid];
+    delete _saleAnimalLotMap[aid];
   }
   var row = document.getElementById('sale-row-'+aid);
   if (row) row.style.background = chk.checked ? 'rgba(201,168,76,.08)' : '';
@@ -6092,10 +6120,12 @@ function selectAllSaleAnimals() {
     return;
   }
   _salePesoMap={};
+  _saleAnimalLotMap = {};
   _saleSelectedAnimals=animals.map(function(a){
     var aid=(a.animal_id||a.id||'').toString();
     var lp=a.pesajes&&a.pesajes.length?a.pesajes[a.pesajes.length-1].peso:0;
     if(lp) _salePesoMap[aid]=lp;
+    if(a._lotCode) _saleAnimalLotMap[aid] = a._lotCode;
     return aid;
   });
   filterSaleAnimals();
@@ -6104,6 +6134,7 @@ function selectAllSaleAnimals() {
 function clearSaleAnimals() {
   _saleSelectedAnimals=[];
   _salePesoMap={};
+  _saleAnimalLotMap = {};
   filterSaleAnimals();
 }
 
@@ -6205,18 +6236,24 @@ function saveSale() {
   if(scope==='individual') {
     if(!_saleSelectedAnimals.length){toast('Selecciona al menos un animal','error');return;}
 
+
     // Construir mapa { lotCode: [animalId,...] } a partir de la selección
     // En modo multi-lote, cada animal puede estar en un lote distinto — buscar en todos
     var byLot = {};       // lotCode -> [animalIds]
     var animalLotMap = {}; // animalId -> lotCode
     _saleSelectedAnimals.forEach(function(id){
-      // Primero intentar leer del checkbox que tiene data-lot
+      // PRIORIDAD 1: mapa global persistente (más confiable, no depende del DOM actual)
+      if (_saleAnimalLotMap[id]) {
+        animalLotMap[id] = _saleAnimalLotMap[id];
+        return;
+      }
+      // PRIORIDAD 2: leer del checkbox actual
       var chk = document.getElementById('chk-'+id);
       var lotFromChk = chk ? chk.getAttribute('data-lot') : '';
       if (lotFromChk) {
         animalLotMap[id] = lotFromChk;
       } else {
-        // Fallback: buscar en animalesDB
+        // PRIORIDAD 3: fallback — buscar en animalesDB (puede dar el lote equivocado si el ID se repite)
         Object.keys(animalesDB).some(function(lc){
           if ((animalesDB[lc]||[]).find(function(x){return (x.animal_id||x.id||'').toString()===id;})) {
             animalLotMap[id] = lc;
@@ -6224,12 +6261,21 @@ function saveSale() {
           }
         });
       }
+      if (!animalLotMap[id]) {
+      }
     });
     Object.keys(animalLotMap).forEach(function(id){
       var lc = animalLotMap[id];
       if (!byLot[lc]) byLot[lc] = [];
       byLot[lc].push(id);
     });
+
+
+    // FORZAR multi-lote si byLot tiene más de un lote
+    if (Object.keys(byLot).length > 1) {
+      isMultiLot = true;
+    }
+
     // Guardar para uso del bloque de kardex después del save
     _saleAnimalLotMapForKardex = Object.keys(animalLotMap).map(function(id){return {id:id, lot:animalLotMap[id]};});
 
@@ -9800,7 +9846,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.13'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.14'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
