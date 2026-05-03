@@ -2428,10 +2428,11 @@ function publishTasksToPWA() {
         <input type="password" class="form-input" id="cfg-token" placeholder="Tu token secreto de Railway">
         <div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted);margin-top:4px">El mismo que configuraste en las variables de Railway</div>
       </div>
-      <div style="display:flex;gap:10px">
-        <button class="btn btn-primary" onclick="saveServerConfig()" style="flex:1">💾 Guardar configuracion</button>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="saveServerConfig()" style="flex:1;min-width:200px">💾 Guardar configuracion</button>
         <button class="btn btn-ghost" onclick="testConnection()">🔍 Probar conexion</button>
         <button class="btn btn-ghost" style="color:var(--amber2)" onclick="forcePullFromToken()">⬇️ Forzar carga</button>
+        <button class="btn btn-ghost" style="color:var(--red)" onclick="forcePushToServer()">⬆️ Forzar push a server</button>
       </div>
       <div id="cfg-test-result" style="margin-top:12px;font-family:DM Mono,monospace;font-size:11px;display:none"></div>
     </div>
@@ -4330,6 +4331,15 @@ function pullFromRailwayDesktop(thenPush) {
       } else {
         setSyncStatus('ok');
       }
+      // Registrar el last_sync_at: este es el timestamp del server al momento del pull.
+      // Si el server vuelve a cambiar después, last_modified > last_sync_at y sabremos.
+      try {
+        if (remote.last_modified) {
+          localStorage.setItem('e5m_last_sync_at', remote.last_modified);
+        } else {
+          localStorage.setItem('e5m_last_sync_at', new Date().toISOString());
+        }
+      } catch(e){}
     })
     .catch(function() {
       setSyncStatus('error');
@@ -4393,7 +4403,11 @@ function pushDesktopRecords() {
     if (!r.ok) { console.error('pushDesktop HTTP error:', r.status); return r.text().then(function(t){ console.error(t); return {ok:false}; }); }
     return r.json(); 
   }).then(function(d){
-    if (d && d.ok) { setSyncStatus('ok'); console.log('pushDesktop OK:', d.pushed); }
+    if (d && d.ok) {
+      setSyncStatus('ok');
+      console.log('pushDesktop OK:', d.pushed);
+      try { localStorage.setItem('e5m_last_sync_at', new Date().toISOString()); } catch(e){}
+    }
     else { console.error('pushDesktop failed:', d); }
   }).catch(function(e){ console.error('pushDesktop error:', e); });
 }
@@ -4403,6 +4417,42 @@ function pushToRailway() {
   // Bloquear durante restore en progreso o post-restore (primeros 30 seg después del reload)
   if (window._restoreInProgress) { console.log('[Push] Bloqueado por restore en progreso'); return; }
   if (sessionStorage.getItem('_post_restore') === '1') { console.log('[Push] Bloqueado por post-restore'); return; }
+
+  // ═══ #2 PRE-PUSH CHECK: ¿el server tiene cambios más nuevos que mi última sync?
+  // Si sí → pullear primero, después pushear (evita pisar cambios de PWA u otra PC)
+  var apiUrlPre = getApiUrl();
+  var tokenPre  = localStorage.getItem('e5m_api_token') || '';
+  var lastSyncAt = localStorage.getItem('e5m_last_sync_at') || '';
+  if (tokenPre && lastSyncAt) {
+    fetch(apiUrlPre + '/last-modified', {
+      headers: { 'Authorization': 'Bearer ' + tokenPre },
+      signal: (function(){ var c=new AbortController(); setTimeout(function(){c.abort();},5000); return c.signal; })()
+    })
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(meta){
+      if (meta && meta.last_modified && meta.last_modified > lastSyncAt) {
+        console.warn('[PrePushCheck] Server cambió desde mi última sync: server=' + meta.last_modified + ' | local=' + lastSyncAt + ' → pulleando primero');
+        toast('Hay cambios en el server, sincronizando antes de subir tus datos...', 'info');
+        // Pull primero, después de 2s push
+        pullFromRailwayDesktop(false);
+        setTimeout(function() { _doPushToRailway(); }, 3500);
+      } else {
+        // Server no cambió o nunca synceé → push directo
+        _doPushToRailway();
+      }
+    })
+    .catch(function(){
+      // Si falla el check, push directo (no bloqueamos por error de red)
+      _doPushToRailway();
+    });
+  } else {
+    // Sin token o sin last_sync previa → push directo
+    _doPushToRailway();
+  }
+}
+
+function _doPushToRailway() {
+  if (!navigator.onLine) return;
   var apiUrl = getApiUrl();
   var token  = localStorage.getItem('e5m_api_token') || '';
   var tasks  = JSON.parse(localStorage.getItem('e5m_tasks') || '[]');
@@ -4492,7 +4542,12 @@ function pushToRailway() {
     return r.json(); 
   })
   .then(function(d){
-    if (d && d.ok) { setSyncStatus('ok'); console.log('Push OK:', d.pushed); }
+    if (d && d.ok) {
+      setSyncStatus('ok');
+      console.log('Push OK:', d.pushed);
+      // Actualizar last_sync_at: después de push exitoso, mi estado local está alineado con el server
+      try { localStorage.setItem('e5m_last_sync_at', new Date().toISOString()); } catch(e){}
+    }
     else { console.error('Push failed:', d); }
   })
   .catch(function(e){ console.error('Push error:', e); });
@@ -9916,7 +9971,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.17'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.19'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -10381,6 +10436,95 @@ function forcePullFromToken() {
       setTimeout(function(){ location.reload(); }, 1500);
     })
     .catch(function(e){ toast('Error: '+e.message,'error'); });
+}
+
+// ════════════════════════════════════════════════════════════
+// PUSH FORZADO COMPLETO — reemplaza TODO en el server con local
+// Útil cuando: PWA pisó datos del Desktop, migración de PC,
+// restauración desde backup, o el server tiene datos incorrectos.
+// ════════════════════════════════════════════════════════════
+async function forcePushToServer() {
+  if (!confirm('⚠ ATENCION ⚠\n\nEsto va a REEMPLAZAR completamente TODOS los datos del server con los datos LOCALES de esta PC.\n\nCualquier cambio en el server que no este localmente se va a PERDER (incluyendo cambios de la PWA o de otra PC).\n\n¿Continuar?')) return;
+
+  if (!confirm('Ultima confirmacion.\n\n¿Estas 100% seguro de que los datos LOCALES de esta PC son los correctos?\n\nSi tenes dudas, hace primero un backup desde "Backup y Restauracion".')) return;
+
+  console.log('━━━ INICIANDO PUSH FORZADO COMPLETO ━━━');
+  toast('Push forzado iniciado — ver consola para progreso', 'info');
+
+  var tablas = [
+    { name: 'lots',              data: db.lots || [] },
+    { name: 'pesajes',           data: db.pesajes || [] },
+    { name: 'sales',             data: db.sales || [] },
+    { name: 'compras_ganado',    data: db.compras_ganado || [] },
+    { name: 'purchases',         data: db.purchases || [] },
+    { name: 'treatments',        data: db.treatments || [] },
+    { name: 'vet_products',      data: db.vet_products || db.products || [] },
+    { name: 'employees',         data: db.employees || [] },
+    { name: 'advances',          data: db.advances || [] },
+    { name: 'historial_sueldos', data: db.historial_sueldos || [] },
+    { name: 'tasks',             data: (function(){ try { return JSON.parse(localStorage.getItem('e5m_tasks')||'[]'); } catch(e){ return []; } })() },
+    { name: 'lluvias',           data: db.lluvias || [] },
+    { name: 'partos',            data: db.partos || [] },
+    { name: 'agua',              data: db.agua || [] },
+    { name: 'sal',               data: db.sal || [] },
+    { name: 'alimento',          data: db.alimento || [] },
+    { name: 'conteo',            data: db.conteo || [] },
+    { name: 'kardex',            data: db.kardex || [] },
+    { name: 'maintenance',       data: db.maintenance || [] },
+    { name: 'diesel',            data: db.diesel || [] },
+    { name: 'aceite',            data: db.aceite || [] },
+    { name: 'cuentas',           data: db.cuentas || [] },
+    { name: 'rotation_history',  data: db.rotation_history || [] },
+    { name: 'pasture_evals',     data: db.pasture_evals || [] },
+    { name: 'bajas',             data: db.bajas || [] },
+    { name: 'health_alerts',     data: db.alerts || [] },
+    { name: 'field_activities',  data: db.activities || [] }
+  ];
+
+  // Animals: caso especial — viene de localStorage
+  var animalsRaw = {};
+  try { animalsRaw = JSON.parse(localStorage.getItem('e5m_animals') || '{}'); } catch(e){}
+  tablas.push({ name: 'animals', data: animalsRaw });
+
+  var ok = 0, fail = 0;
+  var fallidas = [];
+
+  for (var i = 0; i < tablas.length; i++) {
+    var t = tablas[i];
+    var size = Array.isArray(t.data) ? t.data.length : Object.keys(t.data).length;
+    console.log('[' + (i+1) + '/' + tablas.length + '] ' + t.name + ' (' + size + ' items)...');
+    try {
+      var result = await replaceTableInRailway(t.name, t.data);
+      if (result) {
+        ok++;
+        console.log('  ✅ ' + t.name);
+      } else {
+        fail++;
+        fallidas.push(t.name);
+        console.warn('  ❌ ' + t.name + ' — fallo (response false)');
+      }
+    } catch(e) {
+      fail++;
+      fallidas.push(t.name);
+      console.error('  ❌ ' + t.name + ' — error:', e.message);
+    }
+    await new Promise(function(r){ setTimeout(r, 200); });
+  }
+
+  console.log('\n━━━ RESUMEN ━━━');
+  console.log('✅ OK:', ok);
+  console.log('❌ Fallaron:', fail);
+  if (fallidas.length) console.log('Tablas fallidas:', fallidas.join(', '));
+
+  if (fail === 0) {
+    console.log('\n🎉 PUSH COMPLETO EXITOSO');
+    toast('✅ Push exitoso: ' + ok + ' tablas sincronizadas al server', 'success');
+    alert('✅ PUSH COMPLETO EXITOSO\n\n' + ok + ' tablas sincronizadas.\n\nEl server ahora refleja exactamente lo que hay en esta PC. La PWA al hacer pull va a recibir todos estos datos.');
+  } else {
+    console.log('\n⚠ Algunas tablas fallaron. Revisar el log de arriba.');
+    toast('Push terminado con errores: ' + fail + ' tablas fallaron', 'error');
+    alert('⚠ PUSH TERMINADO CON ERRORES\n\n✅ OK: ' + ok + '\n❌ Fallaron: ' + fail + '\n\nTablas fallidas:\n' + fallidas.join(', ') + '\n\nPodes volver a intentar — las exitosas no se rompen.');
+  }
 }
 
 function previewHeaderName() {
@@ -13863,6 +14007,38 @@ document.addEventListener('DOMContentLoaded', function(){
   if (camIn) camIn.addEventListener('change', function(e){ if(this.files[0]) _evpHandleFile(this.files[0]); });
   if (galIn) galIn.addEventListener('change', function(e){ if(this.files[0]) _evpHandleFile(this.files[0]); });
 });
+
+// ═══ #1 PULL AL ARRANQUE: garantizar que el local arranque con datos del server ═══
+// Antes de cualquier interacción, hacer pull si hay token + online. Con timeout 8s.
+// Si falla por red o timeout, se sigue con cache local (offline-first).
+(function startupPull() {
+  // Esperar a que el DOM esté listo y db cargada
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startupPull);
+    return;
+  }
+  // Bypass si está en post-restore (ya hay flujo dedicado para eso)
+  if (sessionStorage.getItem('_post_restore') === '1') return;
+  // Bypass si no hay token (primera vez)
+  var token = localStorage.getItem('e5m_api_token') || '';
+  if (!token) return;
+  if (!navigator.onLine) {
+    console.log('[StartupPull] Offline, usando cache local');
+    return;
+  }
+
+  // Esperar 1.5s para que la app cargue lo básico antes de pullear
+  setTimeout(function() {
+    if (typeof pullFromRailwayDesktop !== 'function') {
+      console.warn('[StartupPull] pullFromRailwayDesktop no disponible aún');
+      return;
+    }
+    var lastSync = localStorage.getItem('e5m_last_sync_at') || '';
+    console.log('[StartupPull] Última sync local: ' + (lastSync || 'nunca') + ' → trayendo datos del server...');
+    setSyncStatus('syncing');
+    pullFromRailwayDesktop(false);
+  }, 1500);
+})();
 
 // Handler post-restore: cuando la app reinicia después de un restore,
 // el localStorage está vacío. Hay que hacer pull forzado del server (que ya tiene
