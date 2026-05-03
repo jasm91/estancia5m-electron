@@ -4219,24 +4219,37 @@ function pullFromRailwayDesktop(thenPush) {
       if (typeof renderActividades === 'function') try { renderActividades(); } catch(e){}
 
       // Aplicar branding si viene en el pull
-      // Sincronizar animales desde Railway
-      if (remote.animals && typeof remote.animals === 'object' && !Array.isArray(remote.animals) && Object.keys(remote.animals).length) {
+      // Sincronizar animales desde Railway — server es fuente de verdad
+      // (PWA puede registrar bajas/partos que el Desktop debe ver)
+      if (remote.animals && typeof remote.animals === 'object' && !Array.isArray(remote.animals)) {
         var localAnimals = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
         var remoteAnimals = remote.animals;
-        // Merge: si Railway tiene lotes que local no tiene, agregarlos
-        // Si ambos tienen el mismo lote, local gana (desktop es fuente de verdad)
+        // Identificar lotes con cambios PENDIENTES locales (compras/ventas no sincronizadas)
+        var pendingLots = {};
+        try {
+          var pending = (typeof getPendingDesktopRecords === 'function') ? getPendingDesktopRecords() : [];
+          pending.forEach(function(item){
+            if (item && item.record && item.record.lot_code) pendingLots[item.record.lot_code] = true;
+            if (item && item.lot_code) pendingLots[item.lot_code] = true;
+          });
+        } catch(e) {}
         var merged = {};
-        // Primero copiar todo lo local
-        Object.keys(localAnimals).forEach(function(lc) { merged[lc] = localAnimals[lc]; });
-        // Agregar lotes remotos que no existen localmente
+        // Server gana por default
         Object.keys(remoteAnimals).forEach(function(lc) {
-          if (!merged[lc] || !merged[lc].length) {
-            merged[lc] = (remoteAnimals[lc]||[]).map(function(a) {
-              return { id: a.animal_id || a.id || '', raza: a.breed || a.raza || '', pesajes: a.pesajes || [] };
-            });
+          merged[lc] = (remoteAnimals[lc]||[]).map(function(a) {
+            return { id: a.animal_id || a.id || '', animal_id: a.animal_id || a.id || '', raza: a.breed || a.raza || '', breed: a.breed || a.raza || '', pesajes: a.pesajes || [] };
+          });
+        });
+        // Preservar lotes locales solo si tienen cambios pendientes
+        Object.keys(localAnimals).forEach(function(lc) {
+          if (pendingLots[lc] && localAnimals[lc] && localAnimals[lc].length) {
+            console.log('[Sync] Preservando animales del lote', lc, 'por cambio pendiente local');
+            merged[lc] = localAnimals[lc];
           }
         });
         localStorage.setItem('e5m_animals', JSON.stringify(merged));
+        var totalMerged = Object.values(merged).reduce(function(s, a){ return s + (a ? a.length : 0); }, 0);
+        console.log('[Sync] Animals OK: ' + Object.keys(merged).length + ' lots, ' + totalMerged + ' animals (server-wins)');
       }
 
       // branding: Desktop is source of truth — only accept if local is empty
@@ -9846,7 +9859,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.14'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.15'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
