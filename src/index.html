@@ -9067,12 +9067,57 @@ function saveMarcaje() {
   }
 
   // Persistir + sync
+  // ── Rotation history: registrar movimientos derivados del marcaje ──
+  if (!db.rotation_history) db.rotation_history = [];
+  var nowIso2 = new Date().toISOString();
+
+  // 1) Si se creó un lote nuevo CON paddock asignado, abrir rotación inicial
+  if (creandoNuevo) {
+    var loteCreado = db.lots.find(function(l){ return l.code === loteDest; });
+    if (loteCreado && loteCreado.paddock) {
+      // Defensivo: cerrar cualquier rotación abierta previa de este lote (no debería haber, es nuevo)
+      (db.rotation_history || []).forEach(function(r){
+        if (r.lot_code === loteCreado.code && !r.exit_date) {
+          r.exit_date = fecha;
+          r.exit_at = nowIso2;
+          var d1c = new Date(r.entry_date); var d2c = new Date(fecha);
+          r.days_occupied = Math.max(1, Math.round((d2c-d1c)/86400000));
+        }
+      });
+      db.rotation_history.push({
+        id: Date.now() + Math.random()*1000,
+        lot_code: loteCreado.code,
+        potrero: loteCreado.paddock,
+        from_potrero: 'Cuarentena',
+        entry_date: fecha,
+        entry_at: nowIso2,
+        exit_date: null, exit_at: null, days_occupied: 0,
+        cabezas: n,
+        reason: 'Marcaje desde cuarentena ' + _mcLoteCuarentena.code,
+        by: 'Desktop'
+      });
+    }
+  }
+
+  // 2) Si la cuarentena se vació por marcaje completo, cerrar su rotación
+  if (esCompleto) {
+    (db.rotation_history || []).forEach(function(r){
+      if (r.lot_code === _mcLoteCuarentena.code && !r.exit_date) {
+        r.exit_date = fecha;
+        r.exit_at = nowIso2;
+        var d1q = new Date(r.entry_date); var d2q = new Date(fecha);
+        r.days_occupied = Math.max(1, Math.round((d2q-d1q)/86400000));
+      }
+    });
+  }
+
   saveDB(true); // lotChanged=true para trigger sync de lotes
   closeModal('modal-marcar-cuarentena');
   renderLotes();
   renderDashboard();
   if (typeof renderComprasGanado === 'function') renderComprasGanado();
   if (typeof renderAnimalesLote === 'function') renderAnimalesLote();
+  if (typeof renderRotacion === 'function') renderRotacion();
 
   var msg = creandoNuevo
     ? 'Lote ' + loteDest + ' creado con ' + n + ' animales'
@@ -9087,6 +9132,7 @@ function saveMarcaje() {
   }).then(function(){
     if (db.compras_ganado) replaceTableInRailway('compras_ganado', db.compras_ganado);
     if (db.kardex) replaceTableInRailway('kardex', db.kardex);
+    if (db.rotation_history) replaceTableInRailway('rotation_history', db.rotation_history);
   });
   try { auditLog('update', 'compras_ganado', compra ? compra.id : _mcLoteCuarentena.code, 'Marcaje: ' + n + ' animales en ' + loteDest + (costoProporcional > 0 ? ' (costo Bs. ' + costoProporcional + ')' : '')); } catch(e){}
 
@@ -9870,7 +9916,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.16'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.17'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
