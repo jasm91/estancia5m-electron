@@ -419,15 +419,7 @@ function showLotesTab(tabId, btn) {
 }
 function today(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function localDate(d){d=d||new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
-function fmtDT(str) {
-  if (!str) return '-';
-  try {
-    if (str.length <= 10) return str;
-    var d = new Date(str);
-    if (isNaN(d.getTime())) return str.slice(0,10);
-    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
-  } catch(e) { return str.slice(0,16); }
-}
+// fmtDT está definida más abajo (línea ~9769)
 
 
 function publishTasksToPWA() {
@@ -9773,7 +9765,9 @@ function fmtDT(str) {
     var dt = new Date(s);
     if (!isNaN(dt)) {
       var pad = function(n){ return n.toString().padStart(2,'0'); };
-      return s.slice(0,10) + ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes());
+      // Usar fecha local (getFullYear/getMonth/getDate) NO el slice del string UTC,
+      // porque al cruzar medianoche UTC el día se desfasa respecto al horario local.
+      return dt.getFullYear() + '-' + pad(dt.getMonth()+1) + '-' + pad(dt.getDate()) + ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes());
     }
   }
   if (s.length >= 16 && s[10] === ' ') return s.slice(0,16);
@@ -9781,7 +9775,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.11'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.12'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
