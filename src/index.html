@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EstanciaPro - Sistema de Gestión Ganadera</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-<noscript><link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet"></noscript>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=Lora:ital,wght@0,400;0,500;1,400&family=Noto+Color+Emoji&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=Lora:ital,wght@0,400;0,500;1,400&family=Noto+Color+Emoji&display=swap" rel="stylesheet"></noscript>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -18,7 +18,9 @@
   --text:#E6EDF3;--muted:#7D8590;--muted2:#484F58;
 }
 html{scroll-behavior:smooth}
-body{background:var(--bg);color:var(--text);font-family:'Lora',serif;font-size:14px;line-height:1.6;min-height:100vh;overflow-x:hidden}
+body{background:var(--bg);color:var(--text);font-family:'Lora','Segoe UI Emoji','Apple Color Emoji','Noto Color Emoji','Segoe UI Symbol',serif;font-size:14px;line-height:1.6;min-height:100vh;overflow-x:hidden}
+/* Forzar uso de la fuente de emoji color en spans con la clase emoji */
+.emoji,.emj{font-family:'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif}
 
 /* LAYOUT */
 .app{display:grid;grid-template-columns:220px 1fr;grid-template-rows:56px 1fr;min-height:100vh}
@@ -9360,6 +9362,16 @@ function _formatActivityValue(key, val) {
   if (key === 'date' || key === 'fecha' || key === 'applied_at' || key === 'completed_at') {
     return fmtDT(val);
   }
+  // Timestamps ISO completos (created_at, updated_at, last_seen, first_seen, etc.) → formato local legible
+  if ((key === 'created_at' || key === 'updated_at' || key === 'last_seen' || key === 'first_seen' || key === 'fecha_pago' || key === 'timestamp') && typeof val === 'string' && val.indexOf('T') > 0) {
+    try {
+      var d = new Date(val);
+      if (!isNaN(d.getTime())) {
+        var pad = function(n){return String(n).padStart(2,'0');};
+        return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+      }
+    } catch(e){}
+  }
   if (typeof val === 'boolean') return val ? 'Sí' : 'No';
   if (typeof val === 'object') {
     try { return JSON.stringify(val); } catch(e){ return String(val); }
@@ -9769,7 +9781,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.10'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.11'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
