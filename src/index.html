@@ -2680,6 +2680,27 @@ function publishTasksToPWA() {
   </div>
 </div>
 
+<!-- ══ Modal Pegado Masivo (compartido CG y Marcar Cuarentena) ══ -->
+<div class="modal-overlay" id="modal-bulk-paste" style="z-index:1000">
+  <div class="modal" style="width:560px;max-height:85vh;overflow-y:auto">
+    <h2>📥 Pegar lista de animales</h2>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+      Pega o sube CSV con: <strong>ID, Raza, Peso</strong> (una fila por animal). Detecta automáticamente <code>,</code> <code>;</code> <code>tab</code>. Los headers se ignoran.
+    </div>
+    <div class="form-group">
+      <label class="form-label">Archivo CSV (opcional)</label>
+      <input type="file" id="bp-file" accept=".csv,.txt" style="margin-bottom:8px" onchange="bpHandleFile(this)">
+      <textarea class="form-textarea" id="bp-text" placeholder="Pegá aquí los datos:&#10;1041, F1, 370&#10;1043, F1, 391&#10;1045, F1, 339" style="min-height:150px;font-family:DM Mono,monospace;font-size:11px" oninput="bpPreview()"></textarea>
+    </div>
+    <div id="bp-preview-info" style="font-size:11px;color:var(--muted);margin-bottom:8px">Pegá datos para previsualizar</div>
+    <div id="bp-preview-table" style="max-height:200px;overflow-y:auto;margin-bottom:12px;font-size:11px"></div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeBulkPaste()">Cancelar</button>
+      <button class="btn btn-primary" id="bp-confirm-btn" onclick="bpConfirm()" disabled>Agregar animales</button>
+    </div>
+  </div>
+</div>
+
 <!-- TASK MODAL -->
 <div class="modal-overlay" id="modal-task" style="align-items:center">
   <div class="modal" style="width:560px">
@@ -3069,7 +3090,10 @@ function publishTasksToPWA() {
 <div id="cg-block-individual" style="display:none;background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.2);border-radius:8px;padding:14px;margin:12px 0">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
     <div style="font-size:12px;font-weight:700;color:var(--blue)">🐄 Animales a ingresar</div>
-    <button class="btn btn-ghost btn-sm" onclick="addCGAnimal()">+ Agregar animal</button>
+    <div style="display:flex;gap:6px">
+      <button class="btn btn-ghost btn-sm" onclick="addCGAnimal()">+ Agregar animal</button>
+      <button class="btn btn-ghost btn-sm" onclick="openBulkPaste('cg')" style="color:var(--green);border-color:rgba(57,211,83,.3)" title="Pegar lista o cargar CSV">📥 Pegar / CSV</button>
+    </div>
   </div>
   <div style="max-height:250px;overflow-y:auto" id="cg-animals-list">
     <table class="tbl" style="font-size:11px">
@@ -3150,6 +3174,7 @@ function publishTasksToPWA() {
       <div style="display:flex;gap:8px">
         <button class="btn btn-ghost btn-sm" onclick="addMCAnimal()">+ Agregar</button>
         <button class="btn btn-ghost btn-sm" onclick="addMCAnimalsBatch()">+ Agregar todos</button>
+        <button class="btn btn-ghost btn-sm" onclick="openBulkPaste('mc')" style="color:var(--green);border-color:rgba(57,211,83,.3)" title="Pegar lista o cargar CSV">📥 Pegar / CSV</button>
       </div>
     </div>
     <div style="max-height:300px;overflow-y:auto">
@@ -9775,7 +9800,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.12'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.13'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -18450,13 +18475,27 @@ var _bulkAnimals = [];
 function openBulkModal() {
   var sel = document.getElementById('bulk-lot-select');
   if (sel) {
-    sel.innerHTML = '<option value="">Seleccionar lote...</option>';
-    (db.lots || []).forEach(function(l) {
-      var o = document.createElement('option');
-      o.value = l.code;
-      o.textContent = l.code + ' - ' + (l.category || '') + ' (' + (l.animal_count || 0) + ' cab.)';
-      sel.appendChild(o);
+    // Solo lotes ACTIVOS con animales (excluir vendidos, cuarentena, vacíos)
+    var lotesElegibles = (db.lots || []).filter(function(l){
+      var status = (l.status || 'activo').toLowerCase();
+      if (status === 'sold' || status === 'vendido') return false;
+      if (status === 'cuarentena') return false;
+      if (!l.animal_count || l.animal_count === 0) return false;
+      return true;
     });
+    // Ordenar por código
+    lotesElegibles.sort(function(a, b){ return (a.code || '').localeCompare(b.code || ''); });
+    sel.innerHTML = '<option value="">Seleccionar lote...</option>';
+    if (!lotesElegibles.length) {
+      sel.innerHTML += '<option value="" disabled>(sin lotes activos con animales)</option>';
+    } else {
+      lotesElegibles.forEach(function(l) {
+        var o = document.createElement('option');
+        o.value = l.code;
+        o.textContent = l.code + ' - ' + (l.category || '') + ' (' + (l.animal_count || 0) + ' cab.)';
+        sel.appendChild(o);
+      });
+    }
   }
   var dateEl = document.getElementById('bulk-pesaje-date');
   if (dateEl) dateEl.value = today();
@@ -18488,6 +18527,163 @@ function parseBulkFile(input) {
     previewBulkAnimals();
   };
   reader.readAsText(file);
+}
+
+// ════════════════════════════════════════════════════════════════
+// BULK PASTE — modal compartido para pegar/CSV en CG y MC
+// ════════════════════════════════════════════════════════════════
+var _bpContext = null;   // 'cg' (compra ganado) | 'mc' (marcar cuarentena)
+var _bpParsed  = [];     // animales parseados, se confirma al click
+
+function openBulkPaste(ctx) {
+  _bpContext = ctx;
+  _bpParsed = [];
+  var ta = document.getElementById('bp-text'); if (ta) ta.value = '';
+  var fi = document.getElementById('bp-file'); if (fi) fi.value = '';
+  var info = document.getElementById('bp-preview-info'); if (info) { info.textContent = 'Pegá datos para previsualizar'; info.style.color = 'var(--muted)'; }
+  var tbl = document.getElementById('bp-preview-table'); if (tbl) tbl.innerHTML = '';
+  var btn = document.getElementById('bp-confirm-btn'); if (btn) btn.disabled = true;
+  // Mover el modal al final del body para garantizar z-index correcto encima de cualquier modal padre
+  var overlay = document.getElementById('modal-bulk-paste');
+  if (overlay && overlay.parentNode !== document.body) {
+    document.body.appendChild(overlay);
+  }
+  // Forzar z-index muy alto inline (encima de cualquier otro modal)
+  if (overlay) overlay.style.cssText = 'z-index: 99999 !important; display: flex; position: fixed; inset: 0; background: rgba(0,0,0,.7); align-items: center; justify-content: center;';
+  if (overlay) overlay.classList.add('open');
+}
+
+function closeBulkPaste() {
+  var overlay = document.getElementById('modal-bulk-paste');
+  if (overlay) {
+    overlay.classList.remove('open');
+    overlay.style.cssText = 'z-index: 99999;';  // reset al cerrar
+  }
+}
+
+function bpHandleFile(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var ta = document.getElementById('bp-text');
+    if (ta) ta.value = e.target.result;
+    bpPreview();
+  };
+  reader.readAsText(file);
+}
+
+function bpPreview() {
+  var text = (document.getElementById('bp-text') || {}).value || '';
+  _bpParsed = parseBulkData(text);
+  var info = document.getElementById('bp-preview-info');
+  var tbl = document.getElementById('bp-preview-table');
+  var btn = document.getElementById('bp-confirm-btn');
+  if (!_bpParsed.length) {
+    if (info) { info.textContent = 'No se detectaron animales válidos'; info.style.color = 'var(--red)'; }
+    if (tbl) tbl.innerHTML = '';
+    if (btn) btn.disabled = true;
+    return;
+  }
+  // Estadísticas
+  var pesoTotal = _bpParsed.reduce(function(s, a){ return s + (a.peso||0); }, 0);
+  var pesoProm = _bpParsed.length ? Math.round(pesoTotal / _bpParsed.length * 10) / 10 : 0;
+
+  // Validación contra tope (si aplica)
+  var validacion = '';
+  var hayProblema = false;
+  if (_bpContext === 'mc' && _mcLoteCuarentena) {
+    var tope = _mcLoteCuarentena.animal_count || 0;
+    var yaMarcados = (typeof _mcAnimals !== 'undefined') ? _mcAnimals.length : 0;
+    var espacio = Math.max(0, tope - yaMarcados);
+    if (_bpParsed.length > espacio) {
+      validacion = '<div style="margin-top:6px;padding:8px 10px;background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.3);border-radius:6px;font-size:11px;color:var(--red)">⚠ Estás pegando ' + _bpParsed.length + ' animales pero solo quedan ' + espacio + ' por marcar (lote: ' + tope + ', ya marcados: ' + yaMarcados + '). Se agregarán los primeros ' + espacio + ' y se descartarán ' + (_bpParsed.length - espacio) + '.</div>';
+      hayProblema = true;
+    } else if (_bpParsed.length < espacio) {
+      validacion = '<div style="margin-top:6px;padding:6px 10px;background:rgba(212,160,23,.06);border:1px solid rgba(212,160,23,.2);border-radius:6px;font-size:11px;color:var(--amber2)">ℹ Quedarán ' + (espacio - _bpParsed.length) + ' animales sin marcar (podés guardar parcial).</div>';
+    } else {
+      validacion = '<div style="margin-top:6px;padding:6px 10px;background:rgba(57,211,83,.06);border:1px solid rgba(57,211,83,.2);border-radius:6px;font-size:11px;color:var(--green)">✓ Cantidad exacta — coincide con lo esperado.</div>';
+    }
+  } else if (_bpContext === 'cg') {
+    // Modo Compra Ganado individual: comparar contra "Cantidad esperada" si hay campo
+    var cantEsperadaEl = document.getElementById('cg-cuarentena-count');
+    var cantEsperada = cantEsperadaEl ? parseInt(cantEsperadaEl.value) || 0 : 0;
+    if (cantEsperada > 0) {
+      if (_bpParsed.length === cantEsperada) {
+        validacion = '<div style="margin-top:6px;padding:6px 10px;background:rgba(57,211,83,.06);border:1px solid rgba(57,211,83,.2);border-radius:6px;font-size:11px;color:var(--green)">✓ Cantidad coincide con la compra (' + cantEsperada + ').</div>';
+      } else {
+        validacion = '<div style="margin-top:6px;padding:8px 10px;background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.3);border-radius:6px;font-size:11px;color:var(--red)">⚠ La compra dice ' + cantEsperada + ' animales pero estás pegando ' + _bpParsed.length + '. Revisá si falta algo.</div>';
+      }
+    }
+  }
+
+  // IDs duplicados dentro del pegado mismo (parseBulkData ya dedupea pero igual avisamos visual)
+  var idsSet = {};
+  var dups = [];
+  _bpParsed.forEach(function(a){ if (idsSet[a.id]) dups.push(a.id); idsSet[a.id] = true; });
+
+  if (info) {
+    info.innerHTML = '<strong style="color:var(--green)">' + _bpParsed.length + ' animales</strong> · Peso total: <strong>' + pesoTotal.toLocaleString() + ' kg</strong> · Promedio: <strong>' + pesoProm + ' kg</strong>' + validacion;
+    info.style.color = 'var(--text)';
+  }
+  // Tabla preview
+  if (tbl) {
+    var rows = _bpParsed.slice(0, 50).map(function(a, i){
+      return '<tr><td style="padding:4px 8px;color:var(--muted)">' + (i+1) + '</td>' +
+             '<td style="padding:4px 8px;font-family:DM Mono,monospace;color:var(--amber2);font-weight:600">' + escH(a.id) + '</td>' +
+             '<td style="padding:4px 8px">' + escH(a.raza||'-') + '</td>' +
+             '<td style="padding:4px 8px;font-family:DM Mono,monospace">' + (a.peso||'—') + ' kg</td></tr>';
+    }).join('');
+    var more = _bpParsed.length > 50 ? '<div style="padding:6px;text-align:center;color:var(--muted);font-size:10px">... y ' + (_bpParsed.length-50) + ' más</div>' : '';
+    tbl.innerHTML = '<table class="tbl" style="font-size:11px;width:100%"><thead><tr><th style="text-align:left">#</th><th style="text-align:left">ID</th><th style="text-align:left">Raza</th><th style="text-align:left">Peso</th></tr></thead><tbody>' + rows + '</tbody></table>' + more;
+  }
+  if (btn) btn.disabled = false;
+}
+
+function bpConfirm() {
+  if (!_bpParsed.length) { toast('Nada que agregar', 'error'); return; }
+  if (_bpContext === 'cg') {
+    // Modo Compra Ganado — agregar a _cgAnimals
+    if (typeof _cgAnimals === 'undefined') { toast('Modo no inicializado', 'error'); return; }
+    var razaDefault = (document.getElementById('cg-raza') || {}).value || '';
+    _bpParsed.forEach(function(a){
+      _cgAnimals.push({
+        id: a.id || '',
+        peso: a.peso || 0,
+        raza: a.raza || razaDefault
+      });
+    });
+    if (typeof renderCGAnimalsTable === 'function') renderCGAnimalsTable();
+    if (typeof calcCGTotal === 'function') calcCGTotal();
+    toast(_bpParsed.length + ' animales agregados a la compra', 'success');
+  } else if (_bpContext === 'mc') {
+    // Modo Marcar Cuarentena — agregar a _mcAnimals con tope si lo hay
+    if (typeof _mcAnimals === 'undefined') { toast('Modo no inicializado', 'error'); return; }
+    var tope = _mcLoteCuarentena ? (_mcLoteCuarentena.animal_count || 9999) : 9999;
+    var espacio = Math.max(0, tope - _mcAnimals.length);
+    if (espacio === 0) { toast('Ya alcanzaste la cantidad de la compra', 'warning'); return; }
+    var aAgregar = _bpParsed.slice(0, espacio);
+    var categoriaDefault = _mcLoteCuarentena ? _mcLoteCuarentena.category : '';
+    var razaDefault = _mcLoteCuarentena ? _mcLoteCuarentena.breed : '';
+    aAgregar.forEach(function(a){
+      _mcAnimals.push({
+        id: a.id || '',
+        peso: a.peso || (_mcLoteCuarentena ? _mcLoteCuarentena.avg_weight || 0 : 0),
+        categoria: categoriaDefault,
+        raza: a.raza || razaDefault
+      });
+    });
+    if (typeof renderMCAnimals === 'function') renderMCAnimals();
+    var msg = aAgregar.length + ' animales agregados al marcaje';
+    if (aAgregar.length < _bpParsed.length) {
+      msg += ' (' + (_bpParsed.length - aAgregar.length) + ' descartados por exceder cantidad de compra)';
+    }
+    toast(msg, 'success');
+  } else {
+    toast('Contexto desconocido', 'error');
+    return;
+  }
+  closeBulkPaste();
 }
 
 function parseBulkData(text) {
