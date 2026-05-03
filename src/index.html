@@ -9769,7 +9769,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.9'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.10'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -14510,6 +14510,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Verificación automática de actualización al inicio (3 seg después del load)
   setTimeout(checkForUpdateOnStartup, 3000);
+  // [v1.4.10] Marca de test del sistema de actualizaciones
+  console.log('%c✨ EstanciaPro v1.4.10 — sistema de updates activado', 'color:#39d353;font-weight:bold;font-size:13px');
 });
 
 // ══════════════════════════════════════════════════
