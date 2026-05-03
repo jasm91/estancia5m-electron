@@ -4951,10 +4951,21 @@ function moveLot() {
   // Record rotation history
   if (!db.rotation_history) db.rotation_history = [];
 if (!db.pasture_evals) db.pasture_evals = [];
-  // Close previous occupation
-  if (old) {
-    var prevEntry = db.rotation_history.filter(function(r){return r.lot_code===lot.code && r.potrero===old && !r.exit_date;});
-    prevEntry.forEach(function(r){ r.exit_date=localDate(); r.exit_at=new Date().toISOString(); var d1=new Date(r.entry_date); var d2=new Date(); r.days_occupied=Math.max(1,Math.round((d2-d1)/86400000)); });
+  // Cerrar TODAS las rotaciones abiertas del lote (no solo la del potrero anterior).
+  // Solo una rotación puede estar "en curso" por lote. Defensivo contra estados inconsistentes
+  // donde queden múltiples abiertas por bugs previos o syncs cruzados.
+  var rotacionesAbiertas = db.rotation_history.filter(function(r){
+    return r.lot_code === lot.code && !r.exit_date;
+  });
+  rotacionesAbiertas.forEach(function(r){
+    r.exit_date = localDate();
+    r.exit_at = new Date().toISOString();
+    var d1 = new Date(r.entry_date);
+    var d2 = new Date();
+    r.days_occupied = Math.max(1, Math.round((d2-d1)/86400000));
+  });
+  if (rotacionesAbiertas.length > 1) {
+    console.warn('[moveLot] Cerradas ' + rotacionesAbiertas.length + ' rotaciones abiertas (deberían ser 1). Posible inconsistencia previa.');
   }
   // Open new occupation
   db.rotation_history.push({
@@ -9859,7 +9870,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.15'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.16'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
