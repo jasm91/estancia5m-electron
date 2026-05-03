@@ -4066,6 +4066,15 @@ function pullFromRailwayDesktop(thenPush) {
         return;
       }
 
+      // ═══ CHECK DE VERSIÓN MÍNIMA ═══
+      // Si el server exige una versión más nueva, mostrar modal bloqueante.
+      // No corta el flujo de sync (los datos se cargan igual), pero después bloquea la UI.
+      if (remote.desktop_min_version && typeof checkMinVersionRequired === 'function') {
+        try {
+          checkMinVersionRequired(remote.desktop_min_version, remote.desktop_latest_version);
+        } catch(e) { console.warn('[MinVersion] Error chequeando:', e); }
+      }
+
       // ═══ DESKTOP ES LA FUENTE ÚNICA DE VERDAD ═══
       // Merge SOLO para tablas donde PWA/campo/bot agregan datos
       // Los registros borrados en desktop NO regresan (trackDeletion los excluye)
@@ -9971,7 +9980,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.19'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.20'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -14877,6 +14886,28 @@ function checkLatestVersionFromGithub() {
     .catch(function(e){ console.warn('[UpdateCheck] No se pudo verificar:', e.message); });
 }
 
+// ═══ Min Version Check temprano (al arranque, sin auth) ═══
+// Usa endpoint público /api/versions para detectar versiones obsoletas inmediatamente,
+// incluso si el pull falla o el token está mal. Se ejecuta apenas la app puede.
+(function earlyVersionCheck() {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', earlyVersionCheck);
+    return;
+  }
+  if (!navigator.onLine) return;
+  setTimeout(function() {
+    var apiUrl = (typeof getApiUrl === 'function') ? getApiUrl() : 'https://estancia5m-api-production.up.railway.app/api';
+    fetch(apiUrl + '/versions', { signal: (function(){ var c=new AbortController(); setTimeout(function(){c.abort();},5000); return c.signal; })() })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(data) {
+        if (data && data.desktop_min && typeof checkMinVersionRequired === 'function') {
+          checkMinVersionRequired(data.desktop_min, data.desktop_latest);
+        }
+      })
+      .catch(function(){ /* silencio: si falla, el pull regular lo cubre */ });
+  }, 800);
+})();
+
 function compareVersions(a, b) {
   var pa = String(a).split('.').map(function(n){return parseInt(n)||0;});
   var pb = String(b).split('.').map(function(n){return parseInt(n)||0;});
@@ -14886,6 +14917,127 @@ function compareVersions(a, b) {
     if (na < nb) return -1;
   }
   return 0;
+}
+
+// ═══ Min Version Enforcement ═══
+// Si el server exige una versión mínima más nueva que la actual, mostrar modal bloqueante.
+// El usuario solo puede salir actualizando o cerrando la app.
+function checkMinVersionRequired(minVersion, latestVersion) {
+  if (!minVersion) return;
+  var currentVersion = (typeof _APP_VERSION !== 'undefined' ? _APP_VERSION : '0.0.0');
+  if (compareVersions(currentVersion, minVersion) < 0) {
+    console.warn('[MinVersion] Versión obsoleta: ' + currentVersion + ' < requerida ' + minVersion);
+    showMinVersionBlocker(currentVersion, minVersion, latestVersion || minVersion);
+  } else {
+    // Si la app cumple, asegurar que el modal no esté visible
+    var existing = document.getElementById('min-version-blocker');
+    if (existing) existing.remove();
+  }
+}
+
+function showMinVersionBlocker(currentVersion, minVersion, latestVersion) {
+  // Si ya está mostrado, no duplicar
+  if (document.getElementById('min-version-blocker')) return;
+
+  var overlay = document.createElement('div');
+  overlay.id = 'min-version-blocker';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);';
+
+  overlay.innerHTML =
+    '<div style="background:var(--sur,#1a1a1a);border:2px solid var(--red,#e74c3c);border-radius:16px;padding:32px;max-width:520px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.5);text-align:center">' +
+      '<div style="font-size:48px;margin-bottom:16px">⚠️</div>' +
+      '<h2 style="color:var(--red,#e74c3c);font-size:22px;margin:0 0 12px;font-weight:700">Actualización requerida</h2>' +
+      '<p style="color:var(--text,#fff);font-size:14px;line-height:1.6;margin:0 0 20px">' +
+        'Esta versión de EstanciaPro tiene un problema crítico de sincronización que ya fue corregido. Para evitar pérdida de datos, debes actualizar antes de continuar.' +
+      '</p>' +
+      '<div style="background:rgba(231,76,60,0.1);border:1px solid rgba(231,76,60,0.3);border-radius:8px;padding:12px;margin-bottom:20px;font-family:DM Mono,monospace;font-size:12px;text-align:left">' +
+        '<div style="color:var(--muted,#888)">Tu versión actual:</div>' +
+        '<div style="color:var(--red,#e74c3c);font-weight:700;font-size:16px">v' + currentVersion + '</div>' +
+        '<div style="color:var(--muted,#888);margin-top:8px">Versión mínima requerida:</div>' +
+        '<div style="color:var(--green,#39d353);font-weight:700;font-size:16px">v' + minVersion + (latestVersion && latestVersion !== minVersion ? ' (última disponible: v' + latestVersion + ')' : '') + '</div>' +
+      '</div>' +
+      '<div id="mvb-status" style="color:var(--muted,#888);font-size:12px;margin-bottom:16px;min-height:18px"></div>' +
+      '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">' +
+        '<button id="mvb-update-btn" onclick="triggerMinVersionUpdate()" style="background:var(--green,#39d353);color:#000;border:none;border-radius:8px;padding:14px 28px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">⬇️ Descargar e instalar ahora</button>' +
+        '<button onclick="window.close()" style="background:transparent;color:var(--muted,#888);border:1px solid var(--bor,#333);border-radius:8px;padding:14px 28px;font-size:13px;cursor:pointer;font-family:inherit">Cerrar app</button>' +
+      '</div>' +
+      '<p style="color:var(--muted,#888);font-size:11px;margin:16px 0 0;line-height:1.4">' +
+        'Si no podés actualizar ahora, contactá a soporte. La app seguirá funcionando solo en modo lectura hasta actualizar.' +
+      '</p>' +
+    '</div>';
+
+  document.body.appendChild(overlay);
+
+  // Bloquear interacción con el resto de la UI
+  document.body.style.overflow = 'hidden';
+}
+
+function triggerMinVersionUpdate() {
+  var statusEl = document.getElementById('mvb-status');
+  var btn = document.getElementById('mvb-update-btn');
+  if (btn) btn.disabled = true;
+  if (statusEl) statusEl.textContent = '⏳ Buscando y descargando actualización...';
+
+  // Si electron-updater está disponible, usarlo
+  if (window.estancia && window.estancia.app) {
+    // Listeners de progreso (si existen)
+    if (typeof window.estancia.app.onUpdateProgress === 'function') {
+      try {
+        window.estancia.app.onUpdateProgress(function(data){
+          if (statusEl && data && typeof data.percent === 'number') {
+            statusEl.textContent = '⬇️ Descargando... ' + Math.round(data.percent) + '%';
+          }
+        });
+      } catch(e){}
+    }
+    if (typeof window.estancia.app.onUpdateDownloaded === 'function') {
+      try {
+        window.estancia.app.onUpdateDownloaded(function(){
+          if (statusEl) statusEl.textContent = '✅ Descarga completa. Instalando en 2 segundos...';
+          setTimeout(function(){
+            if (typeof window.estancia.app.quitAndInstall === 'function') {
+              window.estancia.app.quitAndInstall();
+            }
+          }, 2000);
+        });
+      } catch(e){}
+    }
+    if (typeof window.estancia.app.onUpdateError === 'function') {
+      try {
+        window.estancia.app.onUpdateError(function(msg){
+          if (statusEl) statusEl.innerHTML = '❌ Error: ' + (msg || 'no se pudo descargar') + '. <a href="#" onclick="window.estancia.app.openExternal(\'https://github.com/jasm91/estancia5m-electron/releases/latest\');return false;" style="color:var(--green)">Descargar manual</a>';
+          if (btn) btn.disabled = false;
+        });
+      } catch(e){}
+    }
+
+    // Usar forceUpdate que dispara el flow completo
+    if (typeof window.estancia.app.forceUpdate === 'function') {
+      window.estancia.app.forceUpdate().catch(function(e){
+        console.error('[MinVersion] Update error:', e);
+        if (statusEl) statusEl.innerHTML = '❌ Error al iniciar descarga. <a href="#" onclick="window.estancia.app.openExternal(\'https://github.com/jasm91/estancia5m-electron/releases/latest\');return false;" style="color:var(--green)">Descargar manual</a>';
+        if (btn) btn.disabled = false;
+      });
+    } else if (typeof window.estancia.app.checkUpdate === 'function') {
+      // Fallback: solo checkUpdate, después usuario tendrá que cerrar y reabrir
+      window.estancia.app.checkUpdate().catch(function(e){
+        console.error('[MinVersion] checkUpdate error:', e);
+      });
+      if (statusEl) statusEl.textContent = '⏳ Verificando... cerrá y reabrí la app cuando termine la descarga';
+    } else {
+      // Fallback final: abrir página
+      if (statusEl) statusEl.innerHTML = '↗ Abriendo página de descarga...';
+      if (window.estancia.app.openExternal) {
+        window.estancia.app.openExternal('https://github.com/jasm91/estancia5m-electron/releases/latest');
+      }
+      if (btn) btn.disabled = false;
+    }
+  } else {
+    // Sin electron API: abrir página
+    if (statusEl) statusEl.innerHTML = '↗ Abriendo página de descarga...';
+    window.open('https://github.com/jasm91/estancia5m-electron/releases/latest', '_blank');
+    if (btn) btn.disabled = false;
+  }
 }
 
 function showUpdateBadge(version, downloaded) {
