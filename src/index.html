@@ -462,12 +462,22 @@ function publishTasksToPWA() {
   <div class="topbar-right">
     <span class="user-chip" id="header-user">Propietario</span>
     <span class="alert-count" id="alertCountBadge" onclick="showPage('alertas')">0 alertas</span>
+    <span id="header-update-badge" onclick="showPage('config')" style="display:none;background:linear-gradient(135deg,#39d353,#1a7f37);color:#fff;border-radius:8px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:Syne,sans-serif;font-weight:700;animation:pulse-update 1.5s infinite;border:1px solid rgba(57,211,83,.4);box-shadow:0 0 8px rgba(57,211,83,.3)" title="Click para actualizar">
+      ⬇️ Nueva versión
+    </span>
     <button id="desktop-sync-btn" onclick="manualSync()" style="background:var(--sur2);border:1px solid var(--bor);color:var(--text);border-radius:8px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:Syne,sans-serif;font-weight:600;display:flex;align-items:center;gap:6px">
       <span id="desktop-sync-icon">↻</span> <span id="desktop-sync-label">Sync</span>
     </button>
     <div class="dot" id="sync-dot"></div>
   </div>
 </header>
+
+<style>
+@keyframes pulse-update {
+  0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 8px rgba(57,211,83,.3); }
+  50% { opacity: .85; transform: scale(1.04); box-shadow: 0 0 14px rgba(57,211,83,.6); }
+}
+</style>
 
 <!-- PANTALLA DE ACTIVACIÓN -->
 <div id="activation-screen" style="display:none;position:fixed;inset:0;background:#0A0C0F;z-index:99999;align-items:center;justify-content:center;flex-direction:column">
@@ -9759,7 +9769,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.8'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.9'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -10393,6 +10403,8 @@ function checkForAppUpdate() {
       if (btn) { btn.disabled = false; btn.textContent = '⬇️ Actualizar ahora'; btn.style.animation = ''; }
       var installBtn = document.getElementById('btn-install-update');
       if (installBtn) { installBtn.style.display = 'inline-block'; installBtn.style.animation = 'pulse 1.5s infinite'; }
+      // Actualizar el badge del header al estado "lista para instalar"
+      try { showUpdateBadge(info.version, true); showUpdateNotification(info.version, true); } catch(e){}
     });
   }
   if (window.estancia.app.onUpdateError) {
@@ -14495,7 +14507,98 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     this.value='';
   });
+
+  // Verificación automática de actualización al inicio (3 seg después del load)
+  setTimeout(checkForUpdateOnStartup, 3000);
 });
+
+// ══════════════════════════════════════════════════
+// VERIFICACIÓN AUTOMÁTICA DE UPDATES AL ARRANQUE
+// ══════════════════════════════════════════════════
+function checkForUpdateOnStartup() {
+  // Si ya hay una versión descargada esperando instalar, mostrar el badge directo
+  if (window.estancia && window.estancia.app && window.estancia.app.updateStatus) {
+    window.estancia.app.updateStatus().then(function(status){
+      if (status && status.downloaded && status.version) {
+        showUpdateBadge(status.version, true);
+        showUpdateNotification(status.version, true);
+        return;
+      }
+      // Si no hay descargada, hacer fetch a GitHub para comparar
+      checkLatestVersionFromGithub();
+    }).catch(function(){
+      checkLatestVersionFromGithub();
+    });
+  } else {
+    checkLatestVersionFromGithub();
+  }
+}
+
+function checkLatestVersionFromGithub() {
+  var ghToken = localStorage.getItem('gh_token') || '';
+  var headers = {};
+  if (ghToken) headers['Authorization'] = 'token ' + ghToken;
+  fetch('https://api.github.com/repos/jasm91/estancia5m-electron/releases/latest', { headers: headers })
+    .then(function(r){ if (!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+    .then(function(data){
+      if (!data || !data.tag_name) return;
+      var latestVersion = data.tag_name.replace('v','');
+      var currentVersion = (typeof _APP_VERSION !== 'undefined' ? _APP_VERSION : '0.0.0');
+      if (compareVersions(latestVersion, currentVersion) > 0) {
+        showUpdateBadge(latestVersion, false);
+        showUpdateNotification(latestVersion, false);
+      }
+    })
+    .catch(function(e){ console.warn('[UpdateCheck] No se pudo verificar:', e.message); });
+}
+
+function compareVersions(a, b) {
+  var pa = String(a).split('.').map(function(n){return parseInt(n)||0;});
+  var pb = String(b).split('.').map(function(n){return parseInt(n)||0;});
+  for (var i = 0; i < Math.max(pa.length, pb.length); i++) {
+    var na = pa[i]||0, nb = pb[i]||0;
+    if (na > nb) return 1;
+    if (na < nb) return -1;
+  }
+  return 0;
+}
+
+function showUpdateBadge(version, downloaded) {
+  var badge = document.getElementById('header-update-badge');
+  if (!badge) return;
+  badge.style.display = 'inline-block';
+  badge.title = downloaded
+    ? 'v' + version + ' descargada y lista para instalar. Click para ir a actualizar.'
+    : 'Nueva versión v' + version + ' disponible. Click para descargar.';
+  badge.innerHTML = downloaded ? ('✅ v' + version + ' lista') : ('⬇️ Nueva v' + version);
+}
+
+function hideUpdateBadge() {
+  var badge = document.getElementById('header-update-badge');
+  if (badge) badge.style.display = 'none';
+}
+
+function showUpdateNotification(version, downloaded) {
+  // Notificación nativa del sistema operativo
+  if (!('Notification' in window)) return;
+  var send = function(){
+    try {
+      new Notification('EstanciaPro — Nueva Versión Disponible', {
+        body: downloaded
+          ? 'La versión ' + version + ' ya está descargada. Reiniciá la app para instalarla.'
+          : 'La versión ' + version + ' ya está disponible. Click en "Nueva versión" del header para actualizar.',
+        icon: 'assets/icon.png',
+        tag: 'estanciapro-update-' + version,
+        requireInteraction: false
+      });
+    } catch(e) { console.warn('[UpdateNotify]', e.message); }
+  };
+  if (Notification.permission === 'granted') {
+    send();
+  } else if (Notification.permission !== 'denied') {
+    Notification.requestPermission().then(function(p){ if (p === 'granted') send(); });
+  }
+}
 
 // ══════════════════════════════════════════════════
 // PARÁMETROS (Potreros, Categorias, Razas, Actividades)
