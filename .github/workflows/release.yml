@@ -5,6 +5,10 @@ on:
     tags:
       - 'v*'
 
+# Permisos necesarios para crear Releases
+permissions:
+  contents: write
+
 jobs:
   # ── Crear Release vacío PRIMERO para evitar race condition ──
   # Sin este job, Mac y Windows corren en paralelo y ambos intentan
