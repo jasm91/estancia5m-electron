@@ -5,33 +5,8 @@ on:
     tags:
       - 'v*'
 
-# Permisos necesarios para crear Releases
-permissions:
-  contents: write
-
 jobs:
-  # ── Crear Release vacío PRIMERO para evitar race condition ──
-  # Sin este job, Mac y Windows corren en paralelo y ambos intentan
-  # crear el Release simultáneamente → conflict 422 already_exists
-  create-release:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-
   build-mac:
-    needs: create-release
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -51,7 +26,6 @@ jobs:
         run: npm run publish:mac
 
   build-windows:
-    needs: create-release
     runs-on: windows-latest
     steps:
       - name: Checkout
