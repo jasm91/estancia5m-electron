@@ -22428,7 +22428,7 @@ var _TOUR_STEPS = [
   },
   {
     page: 'lotes/list', title: '🐄 Lotes',
-    text: 'Gestión de lotes ganaderos:\n• **Crear lote** con código, categoría, raza y potrero\n• **Mover lote** con foto del pasto, sugerencia de destino y motivo\n• **Ver estado**: animales, peso promedio, GMD\n\nSub-pestañas: Pesajes, Agua, Sal, Conteo, Partos, Alimento, Animales, Bajas, Historial, **🔄 Rotación** y Actividad.',
+    text: 'Gestión de lotes ganaderos:\n• **Crear lote** con código, categoría, raza y potrero\n• **📥 Pegar / CSV** al crear lote: cargá muchos animales a la vez (en vez de uno por uno) — ideal para lotes con 50+ cabezas\n• **Mover lote** con foto del pasto, sugerencia de destino y motivo\n• **Ver estado**: animales, peso promedio, GMD\n\nSub-pestañas: Pesajes, Agua, Sal, Conteo, Partos, Alimento, Animales, Bajas, Historial, **🔄 Rotación** y Actividad.',
   },
   {
     page: 'lotes/rotacion', title: '🔄 Rotación de Potreros',
@@ -22436,7 +22436,7 @@ var _TOUR_STEPS = [
   },
   {
     page: 'lotes/animales', title: '🐂 Animales',
-    text: 'Vista individual por ID:\n• **Filtrar** por lote, buscar por ID o raza\n• **Filtro de peso**: Min/Max kg\n• **Acciones**: Pesaje, Editar ID, Mover entre lotes, Baja con foto\n• **Paginación**: 50 animales por página',
+    text: 'Vista individual por ID:\n• **Filtrar** por lote, buscar por ID o raza\n• **Filtro de peso**: Min/Max kg\n• **Acciones**: Pesaje, Editar ID, Mover entre lotes, Baja con foto\n• **Paginación**: 50 animales por página\n\n**📦 Pesaje masivo** (NUEVO):\n• Al hacer click en 🐂 Pesaje aparecen 2 botones: **📄 Descargar Excel** (genera plantilla con animales pre-cargados) e **📥 Importar Excel/CSV** (sube los pesos completados)\n• Ideal para pesar 100+ animales sin cargar uno por uno\n• Preview con stats: Válidos / Advertencias / Errores antes de guardar',
   },
   {
     page: 'lotes/bajas', title: '🪦 Bajas',
@@ -22487,12 +22487,16 @@ var _TOUR_STEPS = [
     text: 'Indicadores productivos y económicos:\n• **Costo por kg producido** por lote\n• **Desglose de egresos vs ingresos** con % por categoría\n• **Personal** se calcula con pagos reales (historial_sueldos), no estimación de salario × meses\n• **Compras se distribuyen** por categoría según subcuenta (sanidad, combustible, mantenimiento, alimento, etc.) — coincide con Contabilidad\n• Solo recargas de diesel como costo (no despachos)\n• **Merma diesel y stock vet** contabilizadas\n• **Venta de carne de baja** como ingreso separado\n• Botón **🔄 Actualizar** para re-renderizar tras cambios',
   },
   {
+    page: 'analisis-lote', title: '📈 Análisis por Lote',
+    text: 'Dashboard analítico por lote (sidebar **📈 Análisis Lote**):\n\n**📊 KPIs principales**: Cabezas, peso promedio, GMD, kg totales, días en lote\n**📊 Histograma de pesos** con buckets dinámicos y boxplot (mediana, cuartiles, outliers)\n**📈 Curva de crecimiento** del lote en el tiempo\n**⚡ GMD individual** ordenado de mejor a peor (verde/amber/rojo según rendimiento)\n\n**🎯 Proyección a faena** (NUEVO v1.4.23):\n• **Target editable** (peso de venta) y **GMD editable** (kg/día)\n• **Cap automático** si la GMD calculada es absurda (>3 kg/d)\n• **Botón ↺** para volver a GMD real\n• **4 KPIs**: Días a faena · Ya superaron target · No llegan en 6m (rezagados) · Valor estimado\n\n**💡 Insights** con alertas accionables · **📋 Detalle por animal** filtrable (Top performers / Rezagados) · **💉 Sanidad** del lote (curaciones, vacunas) · **📊 Comparativo** con otros lotes',
+  },
+  {
     page: 'contabilidad', title: '📒 Contabilidad',
     text: 'Vista financiera integrada (alimentación automática):\n• **📈 Desglose por categoría** en 2 columnas: Ingresos | Egresos + balance final\n• **📂 Resumen jerárquico** plegable: Tipo de gasto → Cuenta → Subcuenta\n• **📋 Detalle por subcuenta** en tarjetas (cada subcuenta = una caja con sus registros)\n• **Click en subcuenta** del resumen → scroll automático a su tarjeta con highlight\n• **🔄 Actualizar**: sync con servidor + re-render\n• **⬇ Excel** y **⬇ PDF** del reporte\n• **+ Registro** manual con cuenta + subcuenta del catálogo\n• **Editar subcuentas** con cascada automática a registros existentes',
   },
   {
     page: 'config', title: '⚙️ Configuración',
-    text: 'Configuración del sistema:\n• **🏠 Identidad**: Nombre de la estancia y propietario\n• **🔗 Servidor**: Token de sincronización\n• **📡 Reportes automáticos**: Número WhatsApp destino + botones de prueba (matutino 6AM, semanal lunes 9AM, mensual 1ro 9AM)\n• **📍 Coordenadas**: Para clima y visión satelital\n• **📋 Parámetros**: Potreros (con hectáreas, capacidad, días máx/descanso), categorías, razas, **catálogo de cuentas y subcuentas**\n• **💾 Backups**: Cloud + restaurar',
+    text: 'Configuración del sistema:\n• **🏠 Identidad**: Nombre de la estancia y propietario\n• **🔗 Servidor**: Token de sincronización\n• **📡 Reportes automáticos**: Número WhatsApp destino + botones de prueba (matutino 6AM, semanal lunes 9AM, mensual 1ro 9AM)\n• **📍 Coordenadas**: Para clima y visión satelital\n• **📋 Parámetros**: Potreros (con hectáreas, capacidad, días máx/descanso), categorías, razas, **catálogo de cuentas y subcuentas**\n• **📥 Onboarding Inicial** (v1.4.21+): Descargá una plantilla Excel con 11 hojas (lotes, animales, empleados, potreros, etc.) — completala y subila para arrancar el sistema con todo configurado de una vez. Modo "solo agregar" para no pisar datos existentes\n• **💾 Backups**: Cloud + restaurar',
   },
 ];
 
@@ -22529,6 +22533,10 @@ function showTourStep() {
   var tab = parts[1] || '';
   var btn = null; try { btn = document.querySelector('.nav-btn[onclick*="'+page+'"]'); } catch(e) {}
   if (typeof showPage === 'function') showPage(page, btn);
+  // Páginas que requieren inicialización adicional
+  if (page === 'analisis-lote' && typeof initAnalisisLote === 'function') {
+    setTimeout(function(){ initAnalisisLote(); }, 150);
+  }
   if (tab && typeof showLotesTab === 'function') {
     setTimeout(function(){ showLotesTab('lotes-tab-' + tab, document.getElementById('lotes-tab-' + tab + '-btn')); }, 200);
   }

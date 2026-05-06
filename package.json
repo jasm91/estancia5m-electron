@@ -49,6 +49,8 @@
     "dmg": {
       "title": "Estancia Pro",
       "icon": "assets/icon.icns",
+      "background": null,
+      "writeUpdateInfo": false,
       "contents": [
         {
           "x": 130,
