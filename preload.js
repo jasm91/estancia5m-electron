@@ -1,4 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
+const XLSX = require('xlsx');
+const fs = require('fs');
+const path = require('path');
 
 // Expose safe APIs to renderer (src/index.html)
 contextBridge.exposeInMainWorld('estancia', {
@@ -51,5 +54,22 @@ contextBridge.exposeInMainWorld('estancia', {
     getDir: () => ipcRenderer.invoke('backup:getDir'),
     onShutdownRequest: (cb) => ipcRenderer.on('backup:shutdown-request', () => cb()),
     shutdownDone: () => ipcRenderer.send('backup:shutdown-done'),
+  },
+
+  // ── XLSX (SheetJS) — leer y escribir archivos Excel ─────
+  xlsx: {
+    // Leer archivo Excel desde un ArrayBuffer
+    readBuffer: (buffer) => {
+      const wb = XLSX.read(new Uint8Array(buffer), { type: 'array', cellDates: true });
+      const result = {};
+      wb.SheetNames.forEach(name => {
+        result[name] = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: null, raw: false });
+      });
+      return { sheetNames: wb.SheetNames, sheets: result };
+    },
+    // Generar un xlsx desde un array de hojas y descargarlo
+    saveAs: (sheetsData, filename) => {
+      return ipcRenderer.invoke('xlsx:save-as', { sheetsData, filename });
+    },
   },
 });

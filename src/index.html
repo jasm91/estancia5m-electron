@@ -561,6 +561,7 @@ function publishTasksToPWA() {
     <button class="nav-btn" onclick="showPage('trazabilidad',this)"><span class="nav-icon">🔖</span>Trazabilidad</button>
     <!-- <button class="nav-btn" onclick="showPage('reportes',this)"><span class="nav-icon">📊</span>Reportes Gerenciales</button>  ← Obsoleto, info disponible en Contabilidad y CREA -->
     <button class="nav-btn" onclick="showPage('reporte-crea',this)"><span class="nav-icon">🏆</span>Reporte CREA</button>
+    <button class="nav-btn" onclick="showPage('analisis-lote',this);initAnalisisLote()"><span class="nav-icon">📈</span>Análisis Lote</button>
     <button class="nav-btn" onclick="showPage('params-reporte',this)"><span class="nav-icon">🎯</span>Params. Reporte</button>
   </div>
   <div class="nav-sec">
@@ -2166,6 +2167,181 @@ function publishTasksToPWA() {
 
 <!-- ═══ CONFIG ═══ -->
 <!-- PARAMETROS DE REPORTE -->
+<!-- ════════════ ANÁLISIS DE LOTE ════════════ -->
+<div id="page-analisis-lote" class="page">
+  <div class="ph">
+    <div><div class="pt">📈 Análisis por Lote</div><div class="ps">Histograma, GMD, curva de crecimiento e indicadores zootécnicos</div></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select class="form-select" id="al-lot-select" style="width:200px;padding:6px 10px;font-size:12px" onchange="renderAnalisisLote()">
+        <option value="">Seleccionar lote...</option>
+      </select>
+      <button class="btn btn-ghost" id="al-export-btn" onclick="exportAnalisisLotePDF()" style="display:none">⬇ Exportar PDF</button>
+    </div>
+  </div>
+
+  <!-- Estado vacío -->
+  <div id="al-empty-state" style="background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:60px 20px;text-align:center;color:var(--muted)">
+    <div style="font-size:48px;margin-bottom:16px">📊</div>
+    <div style="font-size:16px;margin-bottom:8px;color:var(--text)">Seleccioná un lote para ver su análisis</div>
+    <div style="font-size:13px">El análisis incluye histograma de peso, GMD por animal, curva de crecimiento, comparativa con otros lotes y detalle individual.</div>
+  </div>
+
+  <!-- Contenedor del análisis -->
+  <div id="al-content" style="display:none">
+
+    <!-- Header del lote -->
+    <div style="background:var(--sur);border:1px solid var(--bor);border-radius:10px;padding:18px 22px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:14px">
+        <div>
+          <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap">
+            <div id="al-lot-code" style="font-family:'DM Mono',monospace;font-size:32px;font-weight:700;color:var(--text);letter-spacing:-0.02em">SS1</div>
+            <div id="al-lot-status" style="font-family:'DM Mono',monospace;font-size:11px;padding:4px 10px;border-radius:4px;background:rgba(57,211,83,0.12);color:var(--green);border:1px solid rgba(57,211,83,0.3);text-transform:uppercase;letter-spacing:0.08em">● Activo</div>
+          </div>
+          <div id="al-lot-meta" style="display:flex;flex-wrap:wrap;gap:18px;margin-top:10px;font-size:13px;color:var(--muted)"></div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px">Último pesaje</div>
+          <div id="al-last-weight" style="font-family:'DM Mono',monospace;font-size:14px;color:var(--text)">-</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div id="al-kpis" style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px"></div>
+
+    <!-- Alertas -->
+    <div id="al-alerts" style="margin-bottom:14px"></div>
+
+    <!-- Grid principal -->
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px">
+
+      <!-- Columna izquierda: charts grandes -->
+      <div>
+        <!-- Histograma -->
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-hd">
+            <div class="card-title"><span style="color:var(--amber);margin-right:6px">📊</span>Distribución de peso actual</div>
+            <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)" id="al-hist-subtitle">-</div>
+          </div>
+          <div style="position:relative;height:280px"><canvas id="al-chart-histograma"></canvas></div>
+          <div id="al-boxplot-stats" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:14px"></div>
+        </div>
+
+        <!-- Curva de crecimiento -->
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-hd">
+            <div class="card-title"><span style="color:var(--amber);margin-right:6px">📈</span>Curva de crecimiento</div>
+            <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)" id="al-curva-subtitle">-</div>
+          </div>
+          <div style="position:relative;height:300px"><canvas id="al-chart-curva"></canvas></div>
+        </div>
+
+        <!-- Proyección a faena -->
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-hd">
+            <div class="card-title"><span style="color:var(--amber);margin-right:6px">🎯</span>Proyección a faena</div>
+            <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+              <div style="display:flex;align-items:center;gap:6px;font-family:'DM Mono',monospace;font-size:11px">
+                <span style="color:var(--muted)">Target:</span>
+                <input type="number" id="al-faena-target" min="200" max="700" step="10" style="width:60px;padding:3px 6px;background:var(--bg2,#161616);border:1px solid var(--bor);border-radius:4px;color:var(--text);font-family:inherit;font-size:11px;text-align:right" onchange="renderAnalisisLote()">
+                <span style="color:var(--muted)">kg</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;font-family:'DM Mono',monospace;font-size:11px">
+                <span style="color:var(--muted)">GMD:</span>
+                <input type="number" id="al-faena-gmd" min="0.1" max="3" step="0.05" style="width:60px;padding:3px 6px;background:var(--bg2,#161616);border:1px solid var(--bor);border-radius:4px;color:var(--text);font-family:inherit;font-size:11px;text-align:right" onchange="renderAnalisisLote()">
+                <span style="color:var(--muted)">kg/d</span>
+                <button onclick="resetGmdToReal()" title="Volver a GMD real calculada" style="background:transparent;border:1px solid var(--bor);padding:2px 6px;border-radius:4px;color:var(--muted);font-size:9px;cursor:pointer;font-family:inherit">↺</button>
+              </div>
+              <div id="al-proy-subtitle" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">-</div>
+            </div>
+          </div>
+          <div id="al-gmd-real-info" style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);margin-bottom:8px;display:none"></div>
+          <div style="position:relative;height:280px"><canvas id="al-chart-proyeccion"></canvas></div>
+          <div id="al-proy-summary" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px"></div>
+        </div>
+
+        <!-- GMD individual -->
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-hd">
+            <div class="card-title"><span style="color:var(--amber);margin-right:6px">⚡</span>GMD individual</div>
+            <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)" id="al-gmd-subtitle">-</div>
+          </div>
+          <div style="position:relative;height:240px"><canvas id="al-chart-gmd"></canvas></div>
+        </div>
+
+      </div>
+
+      <!-- Columna derecha: insights y comparativos -->
+      <div>
+        <!-- Insights -->
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-hd">
+            <div class="card-title"><span style="color:var(--amber);margin-right:6px">💡</span>Insights</div>
+          </div>
+          <div id="al-insights"></div>
+        </div>
+
+        <!-- Distribución por rango -->
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-hd">
+            <div class="card-title"><span style="color:var(--amber);margin-right:6px">⚖️</span>Animales por rango</div>
+          </div>
+          <div id="al-distribucion"></div>
+        </div>
+
+        <!-- Comparativo otros lotes -->
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-hd">
+            <div class="card-title"><span style="color:var(--amber);margin-right:6px">⚔️</span>Vs. otros lotes</div>
+            <div id="al-comp-subtitle" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">misma categoría</div>
+          </div>
+          <div style="position:relative;height:180px"><canvas id="al-chart-comparativo"></canvas></div>
+          <div id="al-comp-table" style="margin-top:12px"></div>
+        </div>
+
+        <!-- Sanidad -->
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-hd">
+            <div class="card-title"><span style="color:var(--amber);margin-right:6px">💉</span>Sanidad</div>
+          </div>
+          <div id="al-sanidad"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Tabla detalle de animales -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-hd">
+        <div class="card-title"><span style="color:var(--amber);margin-right:6px">📋</span>Detalle por animal</div>
+        <div style="display:flex;gap:6px">
+          <span class="chip active" onclick="filterAlTable('todos',this)">Todos</span>
+          <span class="chip" onclick="filterAlTable('top',this)">Top performers</span>
+          <span class="chip" onclick="filterAlTable('rezagados',this)">Rezagados</span>
+        </div>
+      </div>
+      <div style="max-height:400px;overflow-y:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead style="position:sticky;top:0;background:var(--sur);z-index:1">
+            <tr>
+              <th style="padding:8px 10px;text-align:left;font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);font-weight:600">ID</th>
+              <th style="padding:8px 10px;text-align:left;font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);font-weight:600">RAZA</th>
+              <th style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);font-weight:600">PESO INI.</th>
+              <th style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);font-weight:600">PESO ACT.</th>
+              <th style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);font-weight:600">Δ TOTAL</th>
+              <th style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);font-weight:600">GMD</th>
+              <th style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);font-weight:600"># PES.</th>
+              <th style="padding:8px 10px;text-align:left;font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);font-weight:600">ESTADO</th>
+            </tr>
+          </thead>
+          <tbody id="al-tbody-animales"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <div id="page-params-reporte" class="page">
   <div class="ph">
     <div><div class="pt">🎯 Parametros de Reporte</div><div class="ps">Objetivos productivos y referencias para reportes gerenciales</div></div>
@@ -2438,6 +2614,25 @@ function publishTasksToPWA() {
     </div>
   </div>
 
+  <!-- Onboarding inicial -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-hd">
+      <div class="card-title">📥 Onboarding Inicial</div>
+      <span style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted)" id="onboarding-status">Cargá datos masivamente desde Excel</span>
+    </div>
+    <div class="card-body">
+      <div style="background:rgba(57,211,83,.06);border:1px solid rgba(57,211,83,.2);border-radius:8px;padding:12px;margin-bottom:16px;font-family:DM Mono,monospace;font-size:11px;color:var(--green);line-height:1.6">
+        Descargá la plantilla Excel, llená los datos de tu estancia (lotes, animales, potreros, stock, maquinaria, personal, etc.) y subila para cargar todo de una vez. <strong>Solo agrega lo nuevo</strong> — si un lote o animal ya existe, esa fila se ignora.
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="downloadOnboardingTemplate()" style="flex:1;min-width:200px;background:var(--green);color:#000">📄 Descargar plantilla Excel</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('onboarding-file-input').click()">📂 Importar archivo completado</button>
+        <input type="file" id="onboarding-file-input" accept=".xlsx,.xls" style="display:none" onchange="handleOnboardingFile(event)">
+      </div>
+      <div id="onboarding-result" style="margin-top:12px;font-family:DM Mono,monospace;font-size:11px;display:none"></div>
+    </div>
+  </div>
+
   <!-- Backup y restauracion -->
   <div class="card" style="margin-bottom:20px">
     <div class="card-hd">
@@ -2681,6 +2876,32 @@ function publishTasksToPWA() {
   </div>
 </div>
 
+<!-- ══ Modal Onboarding Preview ══ -->
+<div class="modal-overlay" id="modal-onboarding-preview" style="z-index:99999">
+  <div class="modal" style="width:680px;max-width:95vw;max-height:90vh;overflow-y:auto">
+    <h2>📥 Vista previa de importación</h2>
+
+    <div id="onboarding-preview-summary" style="background:rgba(57,211,83,.06);border:1px solid rgba(57,211,83,.2);border-radius:8px;padding:14px;margin-bottom:14px;font-family:DM Mono,monospace;font-size:12px"></div>
+
+    <div id="onboarding-preview-errors" style="display:none;background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.3);border-radius:8px;padding:14px;margin-bottom:14px;font-size:12px;color:var(--red)"></div>
+
+    <div id="onboarding-preview-warnings" style="display:none;background:rgba(212,160,23,.06);border:1px solid rgba(212,160,23,.25);border-radius:8px;padding:14px;margin-bottom:14px;font-size:12px;color:var(--amber2)"></div>
+
+    <div id="onboarding-preview-detail" style="margin-bottom:14px"></div>
+
+    <div style="background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.2);border-radius:8px;padding:10px;margin-bottom:14px;font-family:DM Mono,monospace;font-size:10px;color:var(--blue);line-height:1.5">
+      ℹ Modo "solo agregar nuevo": si un lote, animal, producto o subcuenta ya existe (mismo código/nombre), esa fila se ignora. No se sobreescriben datos existentes.
+    </div>
+
+    <div id="onboarding-progress" style="display:none;margin-bottom:14px;font-family:DM Mono,monospace;font-size:11px;color:var(--muted)"></div>
+
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeOnboardingPreview()">Cancelar</button>
+      <button class="btn btn-primary" id="onboarding-import-btn" onclick="confirmOnboardingImport()" disabled>Importar todo</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ Modal Pegado Masivo (compartido CG y Marcar Cuarentena) ══ -->
 <div class="modal-overlay" id="modal-bulk-paste" style="z-index:1000">
   <div class="modal" style="width:560px;max-height:85vh;overflow-y:auto">
@@ -2774,7 +2995,7 @@ function publishTasksToPWA() {
 <div style="border-top:1px solid var(--bor);margin-top:14px;padding-top:14px">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
     <label class="form-label" style="margin:0">Animales individuales <span id="lot-animal-count-badge" style="color:var(--amber2);font-family:DM Mono,monospace">(0)</span></label>
-    <div style="display:flex;gap:8px;align-items:center">
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
       <span style="font-size:11px;color:var(--muted)">ID:</span>
       <input class="form-input" id="lot-new-animal-id" placeholder="Ej: 1041" style="width:90px;padding:4px 8px;font-size:12px" onkeydown="if(event.key==='Enter')addLotAnimal()">
       <span style="font-size:11px;color:var(--muted)">Raza:</span>
@@ -2785,6 +3006,7 @@ function publishTasksToPWA() {
       <span style="font-size:11px;color:var(--muted)">Peso:</span>
       <input class="form-input" id="lot-new-animal-peso" placeholder="kg" type="number" style="width:70px;padding:4px 8px;font-size:12px" onkeydown="if(event.key==='Enter')addLotAnimal()">
       <button class="btn btn-primary" style="padding:4px 12px;font-size:12px" onclick="addLotAnimal()">+ Add</button>
+      <button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;color:var(--green);border-color:rgba(57,211,83,.3)" onclick="openBulkPaste('newlot')" title="Pegar lista o cargar CSV">📥 Pegar / CSV</button>
     </div>
   </div>
   <!-- Lista de animales agregados -->
@@ -4408,9 +4630,9 @@ function pushDesktopRecords() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
     body: JSON.stringify(payload),
-  }).then(function(r){ 
+  }).then(function(r){
     if (!r.ok) { console.error('pushDesktop HTTP error:', r.status); return r.text().then(function(t){ console.error(t); return {ok:false}; }); }
-    return r.json(); 
+    return r.json();
   }).then(function(d){
     if (d && d.ok) {
       setSyncStatus('ok');
@@ -4546,9 +4768,9 @@ function _doPushToRailway() {
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
     body: JSON.stringify(payload),
   })
-  .then(function(r){ 
+  .then(function(r){
     if (!r.ok) { console.error('Push HTTP error:', r.status, r.statusText); return r.text().then(function(t){ console.error('Push body:', t); return {ok:false}; }); }
-    return r.json(); 
+    return r.json();
   })
   .then(function(d){
     if (d && d.ok) {
@@ -9980,7 +10202,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.20'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.23'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -10534,6 +10756,1568 @@ async function forcePushToServer() {
     toast('Push terminado con errores: ' + fail + ' tablas fallaron', 'error');
     alert('⚠ PUSH TERMINADO CON ERRORES\n\n✅ OK: ' + ok + '\n❌ Fallaron: ' + fail + '\n\nTablas fallidas:\n' + fallidas.join(', ') + '\n\nPodes volver a intentar — las exitosas no se rompen.');
   }
+}
+
+// ════════════════════════════════════════════════════════════
+// ONBOARDING INICIAL — descarga plantilla, importa Excel
+// ════════════════════════════════════════════════════════════
+
+// Estructura estándar de subcuentas (usada en plantilla y como base)
+var ONBOARDING_SUBCUENTAS_BASE = [
+  ['INSUMOS','Veterinaria','Vacunas, antibióticos, antiparasitarios'],
+  ['INSUMOS','Sal','Sal mineral y bloques'],
+  ['INSUMOS','Suplementos','Suplementos nutricionales'],
+  ['INSUMOS','Alimento','Concentrados, balanceado, heno'],
+  ['INSUMOS','Combustible','Diesel, gasolina'],
+  ['INSUMOS','Lubricantes','Aceite, grasa'],
+  ['INSUMOS','Repuestos','Repuestos para maquinaria'],
+  ['INSUMOS','Herramientas','Herramientas de campo'],
+  ['INSUMOS','Otros insumos','Otros consumibles'],
+  ['INFRAESTRUCTURA','Alambrado','Materiales de alambrado'],
+  ['INFRAESTRUCTURA','Corrales','Mantenimiento de corrales y mangas'],
+  ['INFRAESTRUCTURA','Pozos','Construcción/mantenimiento de pozos'],
+  ['INFRAESTRUCTURA','Bebederos','Bebederos y tanques de agua'],
+  ['INFRAESTRUCTURA','Caminos','Caminos internos'],
+  ['INFRAESTRUCTURA','Construcción','Casas, galpones, instalaciones'],
+  ['MAQUINARIA','Mantenimiento','Servicios y reparaciones'],
+  ['MAQUINARIA','Compra equipos','Compra de maquinaria'],
+  ['MAQUINARIA','Combustible maq.','Combustible específico maquinaria'],
+  ['PERSONAL','Sueldos','Sueldos mensuales'],
+  ['PERSONAL','Adelantos','Adelantos al personal'],
+  ['PERSONAL','Aguinaldo','Aguinaldo y bonificaciones'],
+  ['PERSONAL','Beneficios sociales','AFP, seguro, beneficios'],
+  ['PERSONAL','Comida personal','Provisión de comida al personal'],
+  ['GANADO','Compra ganado','Compra de animales'],
+  ['GANADO','Inseminación','Servicios de inseminación'],
+  ['GANADO','Sanidad','Tratamientos sanitarios'],
+  ['GANADO','Marcaje','Marcaje y caravana'],
+  ['VENTAS','Venta ganado en pie','Ventas a frigorífico u otros'],
+  ['VENTAS','Venta carne','Venta de carne directa'],
+  ['VENTAS','Otros ingresos','Otros ingresos'],
+  ['ADMINISTRATIVO','Contabilidad','Honorarios, asesoría'],
+  ['ADMINISTRATIVO','Servicios','Luz, agua, internet, teléfono'],
+  ['ADMINISTRATIVO','Impuestos','Impuestos y tasas'],
+  ['ADMINISTRATIVO','Bancarios','Comisiones, intereses'],
+  ['ADMINISTRATIVO','Movilidad','Viáticos, peajes, viajes'],
+  ['OTROS','Imprevistos','Gastos no categorizados'],
+  ['OTROS','Donaciones','Donaciones y aportes']
+];
+
+function downloadOnboardingTemplate() {
+  if (!window.estancia || !window.estancia.xlsx) {
+    toast('XLSX no disponible — actualiza la app a v1.4.21 o superior','error');
+    return;
+  }
+  var sheets = {
+    'INSTRUCCIONES': [
+      ['🐄 ESTANCIAPRO — Onboarding Inicial'],
+      [''],
+      ['1. Lle\u00f1\u00e1 cada hoja con los datos de tu estancia.'],
+      ['2. Las filas con "Ejemplo - borrar" son gu\u00eda. Borralas o dejalas, se ignoran al importar.'],
+      ['3. Columnas con * son OBLIGATORIAS (sin esos datos la fila se ignora).'],
+      ['4. Pesos en KG. Fechas en formato YYYY-MM-DD.'],
+      ['5. C\u00f3digos de lote \u00daNICOS, sin espacios. Ej: SS1, A-01, B02.'],
+      ['6. El lote_code en hoja Animales DEBE existir en hoja Lotes.'],
+      ['7. Cuando termines, en EstanciaPro: Configuraci\u00f3n -> Importar archivo completado.'],
+      [''],
+      ['Modo de importaci\u00f3n: SOLO AGREGA NUEVO. Si un lote/animal/producto/subcuenta ya existe, esa fila se ignora.']
+    ],
+    'Parametros': [
+      ['PARAMETRO*','VALOR*'],
+      ['Nombre estancia','Mi Estancia SRL'],
+      ['Propietario','Juan P\u00e9rez'],
+      ['Ubicaci\u00f3n','Beni, Bolivia'],
+      ['Hect\u00e1reas totales',1500],
+      ['Moneda','Bs']
+    ],
+    'Potreros': [
+      ['NOMBRE*','HECTAREAS*','CAPACIDAD (cab)','PLUVIOMETRO ASIGNADO','OBSERVACIONES'],
+      ['Potrero Norte',50,100,'Pluvi\u00f3metro Casa','Ejemplo - borrar'],
+      ['Potrero Sur',40,80,'Pluvi\u00f3metro Casa','Ejemplo - borrar'],
+      ['Potrero Este',60,120,'','Ejemplo - borrar']
+    ],
+    'Pluviometros': [
+      ['NOMBRE*','UBICACION','OBSERVACIONES'],
+      ['Pluvi\u00f3metro Casa','Casa principal','Ejemplo - borrar'],
+      ['Pluvi\u00f3metro Lote 4','Cerca del lote 4','Ejemplo - borrar']
+    ],
+    'Subcuentas': [['CUENTA*','SUBCUENTA*','DESCRIPCION']].concat(ONBOARDING_SUBCUENTAS_BASE),
+    'Lotes': [
+      ['CODIGO*','CATEGORIA*','RAZA','POTRERO','CABEZAS*','PESO PROM (kg)','PROVEEDOR ORIGEN','OBSERVACIONES'],
+      ['SS1','Novillo','Nelore','Potrero Norte',50,380,'Estancia La Pampa','Ejemplo - borrar'],
+      ['A-01','Vaca','Nelore x F1','Potrero Sur',80,420,'Cr\u00eda propia','Ejemplo - borrar'],
+      ['B-02','Ternero','Brahman','Potrero Este',120,220,'Mercado Santa Cruz','Ejemplo - borrar']
+    ],
+    'Animales': [
+      ['LOTE_CODE*','ANIMAL_ID*','RAZA','PESO (kg)','FECHA_PESAJE','OBSERVACIONES'],
+      ['SS1','1001','Nelore',385,'2026-05-01','Ejemplo - borrar'],
+      ['SS1','1002','Nelore',378,'2026-05-01','Ejemplo - borrar'],
+      ['A-01','2050','Nelore x F1',425,'2026-05-01','Ejemplo - borrar']
+    ],
+    'Stock_Vet': [
+      ['NOMBRE PRODUCTO*','TIPO','STOCK ACTUAL*','UNIDAD*','DOSIS POR 50KG','COSTO POR UNIDAD (Bs)','OBSERVACIONES'],
+      ['Ivermectina 1%','Antiparasitario',500,'ml','1 ml',0.85,'Ejemplo - borrar'],
+      ['Pen-Estreptomicina','Antibi\u00f3tico',200,'ml','0.8 ml',1.20,'Ejemplo - borrar'],
+      ['Vacuna Aftosa','Vacuna',150,'dosis','1 dosis',4.50,'Ejemplo - borrar']
+    ],
+    'Maquinaria': [
+      ['NOMBRE / IDENTIFICADOR*','TIPO*','MARCA','ANIO','HOROMETRO INICIAL','KM INICIAL','OBSERVACIONES'],
+      ['Toyota Hilux','Camioneta','Toyota',2020,'',85000,'Ejemplo - borrar'],
+      ['Tractor John D 5E','Tractor','John D.',2019,1250,'','Ejemplo - borrar']
+    ],
+    'Tanques_Combustible': [
+      ['NOMBRE*','TIPO COMBUSTIBLE*','CAPACIDAD (litros)*','NIVEL ACTUAL (litros)','UBICACION','OBSERVACIONES'],
+      ['Tanque Casa','Diesel',2000,1500,'Casa principal','Ejemplo - borrar'],
+      ['Tambor Lote 4','Diesel',200,150,'Cerca lote 4','Ejemplo - borrar']
+    ],
+    'Personal': [
+      ['NOMBRE COMPLETO*','ROL*','SUELDO MENSUAL (Bs)','FECHA INGRESO','TELEFONO','OBSERVACIONES'],
+      ['Carlos Arteaga','Capataz',3500,'2024-01-15','70000000','Ejemplo - borrar'],
+      ['Doris Su\u00e1rez','Cocinera',2200,'2024-03-01','70000001','Ejemplo - borrar']
+    ]
+  };
+
+  window.estancia.xlsx.saveAs(sheets, 'EstanciaPro_Plantilla_Onboarding.xlsx').then(function(result){
+    if (result && result.success) toast('Plantilla guardada — abrila y carga tus datos','success');
+    else toast('Descarga cancelada','info');
+  }).catch(function(e){ toast('Error: ' + (e.message||e),'error'); });
+}
+
+var _onboardingParsed = null;
+
+function handleOnboardingFile(event) {
+  var file = event.target.files[0];
+  if (!file) return;
+  var resultEl = document.getElementById('onboarding-result');
+  if (resultEl) { resultEl.style.display = 'block'; resultEl.innerHTML = 'Leyendo archivo...'; resultEl.style.color = 'var(--muted)'; }
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      if (!window.estancia || !window.estancia.xlsx) {
+        if (resultEl) { resultEl.innerHTML = 'XLSX no disponible — actualiza la app'; resultEl.style.color = 'var(--red)'; }
+        return;
+      }
+      var raw = window.estancia.xlsx.readBuffer(e.target.result);
+      var parsed = parseOnboardingWorkbook(raw);
+      _onboardingParsed = parsed;
+      showOnboardingPreview(parsed);
+      event.target.value = '';
+    } catch(err) {
+      console.error('[Onboarding] Error:', err);
+      if (resultEl) { resultEl.innerHTML = 'Error leyendo archivo: ' + err.message; resultEl.style.color = 'var(--red)'; }
+    }
+  };
+  reader.onerror = function() {
+    if (resultEl) { resultEl.innerHTML = 'No se pudo leer el archivo'; resultEl.style.color = 'var(--red)'; }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function _isExampleOrEmptyRow(row) {
+  var values = Object.values(row || {});
+  var allEmpty = values.every(function(v){ return v === null || v === undefined || String(v).trim() === ''; });
+  if (allEmpty) return true;
+  return values.some(function(v){
+    var s = String(v||'').toLowerCase();
+    return s.indexOf('ejemplo - borrar') >= 0 || s.indexOf('ejemplo-borrar') >= 0;
+  });
+}
+
+function _getCol(row, names) {
+  for (var i = 0; i < names.length; i++) {
+    var keys = Object.keys(row || {});
+    for (var j = 0; j < keys.length; j++) {
+      if (keys[j].toUpperCase().replace(/[*\s]/g,'').indexOf(names[i].toUpperCase().replace(/[*\s]/g,'')) >= 0) {
+        return row[keys[j]];
+      }
+    }
+  }
+  return null;
+}
+
+function _getColNum(row, names) {
+  var v = _getCol(row, names);
+  if (v === null || v === undefined || v === '') return null;
+  var n = parseFloat(String(v).replace(',','.'));
+  return isNaN(n) ? null : n;
+}
+
+function _getColStr(row, names) {
+  var v = _getCol(row, names);
+  return (v === null || v === undefined) ? '' : String(v).trim();
+}
+
+function parseOnboardingWorkbook(raw) {
+  var sheets = raw.sheets || {};
+  function findSheet(keyword) {
+    for (var name in sheets) {
+      if (name.toUpperCase().indexOf(keyword.toUpperCase()) >= 0) return sheets[name];
+    }
+    return [];
+  }
+  var result = { parametros:[], potreros:[], pluviometros:[], subcuentas:[], lotes:[], animales:[], stockVet:[], maquinaria:[], tanques:[], personal:[] };
+
+  findSheet('Parametros').forEach(function(r){
+    if (_isExampleOrEmptyRow(r)) return;
+    var key = _getColStr(r, ['PARAMETRO']);
+    var val = _getCol(r, ['VALOR']);
+    if (key) result.parametros.push({ key: key, value: val });
+  });
+
+  findSheet('Potrero').forEach(function(r){
+    if (_isExampleOrEmptyRow(r)) return;
+    var name = _getColStr(r, ['NOMBRE']);
+    var ha = _getColNum(r, ['HECTAREAS']);
+    if (!name || ha == null) return;
+    result.potreros.push({ name: name, hectareas: ha, capacidad: _getColNum(r, ['CAPACIDAD']), pluviometro: _getColStr(r, ['PLUVIOMETRO']), obs: _getColStr(r, ['OBSERVACIONES']) });
+  });
+
+  findSheet('Pluviometro').forEach(function(r){
+    if (_isExampleOrEmptyRow(r)) return;
+    var name = _getColStr(r, ['NOMBRE']);
+    if (!name) return;
+    result.pluviometros.push({ name: name, ubicacion: _getColStr(r, ['UBICACION']), obs: _getColStr(r, ['OBSERVACIONES']) });
+  });
+
+  findSheet('Subcuenta').forEach(function(r){
+    if (_isExampleOrEmptyRow(r)) return;
+    var cuenta = _getColStr(r, ['CUENTA']);
+    var name = _getColStr(r, ['SUBCUENTA']);
+    if (!cuenta || !name) return;
+    result.subcuentas.push({ cuenta: cuenta, name: name, desc: _getColStr(r, ['DESCRIPCION']) });
+  });
+
+  findSheet('Lotes').forEach(function(r){
+    if (_isExampleOrEmptyRow(r)) return;
+    var code = _getColStr(r, ['CODIGO']);
+    var category = _getColStr(r, ['CATEGORIA']);
+    var cab = _getColNum(r, ['CABEZAS']);
+    if (!code || !category || cab == null) return;
+    result.lotes.push({ code: code, category: category, breed: _getColStr(r, ['RAZA']), paddock: _getColStr(r, ['POTRERO']), animal_count: cab, avg_weight: _getColNum(r, ['PESOPROM']), supplier: _getColStr(r, ['PROVEEDOR']), obs: _getColStr(r, ['OBSERVACIONES']) });
+  });
+
+  findSheet('Animales').forEach(function(r){
+    if (_isExampleOrEmptyRow(r)) return;
+    var lc = _getColStr(r, ['LOTECODE','LOTE']);
+    var aid = _getColStr(r, ['ANIMALID','ID']);
+    if (!lc || !aid) return;
+    result.animales.push({ lot_code: lc, animal_id: aid, breed: _getColStr(r, ['RAZA']), peso: _getColNum(r, ['PESO']), fecha: _getColStr(r, ['FECHAPESAJE','FECHA']), obs: _getColStr(r, ['OBSERVACIONES']) });
+  });
+
+  findSheet('Stock').forEach(function(r){
+    if (_isExampleOrEmptyRow(r)) return;
+    var name = _getColStr(r, ['NOMBREPRODUCTO','NOMBRE']);
+    var stock = _getColNum(r, ['STOCK']);
+    var unit = _getColStr(r, ['UNIDAD']);
+    if (!name || stock == null || !unit) return;
+    result.stockVet.push({ name: name, type: _getColStr(r, ['TIPO']), stock: stock, unit: unit, dose: _getColStr(r, ['DOSIS']), cost: _getColNum(r, ['COSTO']), obs: _getColStr(r, ['OBSERVACIONES']) });
+  });
+
+  findSheet('Maquinaria').forEach(function(r){
+    if (_isExampleOrEmptyRow(r)) return;
+    var name = _getColStr(r, ['IDENTIFICADOR','NOMBRE']);
+    var tipo = _getColStr(r, ['TIPO']);
+    if (!name || !tipo) return;
+    result.maquinaria.push({ name: name, type: tipo, brand: _getColStr(r, ['MARCA']), year: _getColNum(r, ['ANIO']), horometro: _getColNum(r, ['HOROMETRO']), km: _getColNum(r, ['KM']), obs: _getColStr(r, ['OBSERVACIONES']) });
+  });
+
+  findSheet('Tanques').forEach(function(r){
+    if (_isExampleOrEmptyRow(r)) return;
+    var name = _getColStr(r, ['NOMBRE']);
+    var fuel = _getColStr(r, ['TIPOCOMBUSTIBLE','TIPO']);
+    var cap = _getColNum(r, ['CAPACIDAD']);
+    if (!name || !fuel || cap == null) return;
+    result.tanques.push({ name: name, fuel: fuel, capacity: cap, level: _getColNum(r, ['NIVEL']), location: _getColStr(r, ['UBICACION']), obs: _getColStr(r, ['OBSERVACIONES']) });
+  });
+
+  findSheet('Personal').forEach(function(r){
+    if (_isExampleOrEmptyRow(r)) return;
+    var name = _getColStr(r, ['NOMBRECOMPLETO','NOMBRE']);
+    var role = _getColStr(r, ['ROL']);
+    if (!name || !role) return;
+    result.personal.push({ name: name, role: role, salary: _getColNum(r, ['SUELDO']), hire_date: _getColStr(r, ['FECHAINGRESO','FECHA']), phone: _getColStr(r, ['TELEFONO']), obs: _getColStr(r, ['OBSERVACIONES']) });
+  });
+
+  return result;
+}
+
+function validateOnboardingImport(parsed) {
+  var errors = [], warnings = [];
+  var lotCodes = {};
+  parsed.lotes.forEach(function(l){
+    if (lotCodes[l.code]) errors.push('Lote duplicado en Excel: ' + l.code);
+    lotCodes[l.code] = true;
+  });
+  var allLotCodes = {};
+  (db.lots || []).forEach(function(l){ allLotCodes[l.code] = true; });
+  parsed.lotes.forEach(function(l){ allLotCodes[l.code] = true; });
+  parsed.animales.forEach(function(a){
+    if (!allLotCodes[a.lot_code]) errors.push('Animal ' + a.animal_id + ': el lote "' + a.lot_code + '" no existe (ni en sistema ni en Excel)');
+  });
+  var animKey = {};
+  parsed.animales.forEach(function(a){
+    var k = a.lot_code + ':' + a.animal_id;
+    if (animKey[k]) errors.push('Animal duplicado en Excel: ' + a.animal_id + ' en lote ' + a.lot_code);
+    animKey[k] = true;
+  });
+  var pluvNames = {};
+  parsed.pluviometros.forEach(function(p){ pluvNames[p.name] = true; });
+  parsed.potreros.forEach(function(p){
+    if (p.pluviometro && !pluvNames[p.pluviometro]) warnings.push('Potrero "' + p.name + '": pluviómetro "' + p.pluviometro + '" no está en hoja Pluviometros');
+  });
+  return { errors: errors, warnings: warnings, ok: errors.length === 0 };
+}
+
+function showOnboardingPreview(parsed) {
+  var validation = validateOnboardingImport(parsed);
+  var existingLots = {};
+  (db.lots || []).forEach(function(l){ existingLots[l.code] = true; });
+  var lotesNuevos = parsed.lotes.filter(function(l){ return !existingLots[l.code]; });
+  var lotesExistentes = parsed.lotes.length - lotesNuevos.length;
+
+  var existingAnimals = {};
+  try {
+    var rawA = JSON.parse(localStorage.getItem('e5m_animals') || '{}');
+    Object.keys(rawA).forEach(function(lc){
+      (rawA[lc]||[]).forEach(function(a){ existingAnimals[lc + ':' + (a.animal_id||a.id||'')] = true; });
+    });
+  } catch(e){}
+  var animalesNuevos = parsed.animales.filter(function(a){ return !existingAnimals[a.lot_code + ':' + a.animal_id]; });
+  var animalesExistentes = parsed.animales.length - animalesNuevos.length;
+
+  var existingProducts = {};
+  (db.products || []).forEach(function(p){ existingProducts[String(p.name||'').toLowerCase()] = true; });
+  var prodNuevos = parsed.stockVet.filter(function(p){ return !existingProducts[String(p.name).toLowerCase()]; });
+  var prodExistentes = parsed.stockVet.length - prodNuevos.length;
+
+  var rp = (typeof getRp === 'function') ? getRp() : {};
+  var existingSubs = {};
+  (rp.subcuentas || []).forEach(function(s){ existingSubs[String(s.name||'').toLowerCase()] = true; });
+  var subsNuevas = parsed.subcuentas.filter(function(s){ return !existingSubs[String(s.name).toLowerCase()]; });
+  var subsExistentes = parsed.subcuentas.length - subsNuevas.length;
+
+  var existingPotreros = {};
+  (rp.potreros || []).forEach(function(p){ existingPotreros[String(p.name||p).toLowerCase()] = true; });
+  var potrerosNuevos = parsed.potreros.filter(function(p){ return !existingPotreros[String(p.name).toLowerCase()]; });
+
+  var existingMaq = {};
+  (db.maquinaria || []).forEach(function(m){ existingMaq[String(m.name||'').toLowerCase()] = true; });
+  var maqNuevas = parsed.maquinaria.filter(function(m){ return !existingMaq[String(m.name).toLowerCase()]; });
+
+  var existingPersonal = {};
+  (db.employees || []).forEach(function(e){ existingPersonal[String(e.name||'').toLowerCase()] = true; });
+  var personalNuevos = parsed.personal.filter(function(e){ return !existingPersonal[String(e.name).toLowerCase()]; });
+
+  var summary = '<strong style="color:var(--green)">Datos a importar (solo nuevos):</strong><br>';
+  summary += '✓ ' + potrerosNuevos.length + ' potreros<br>';
+  summary += '✓ ' + parsed.pluviometros.length + ' pluviómetros<br>';
+  summary += '✓ ' + subsNuevas.length + ' subcuentas' + (subsExistentes ? ' <span style="color:var(--muted)">(' + subsExistentes + ' ya existen)</span>' : '') + '<br>';
+  summary += '✓ ' + lotesNuevos.length + ' lotes' + (lotesExistentes ? ' <span style="color:var(--muted)">(' + lotesExistentes + ' ya existen)</span>' : '') + '<br>';
+  summary += '✓ ' + animalesNuevos.length + ' animales' + (animalesExistentes ? ' <span style="color:var(--muted)">(' + animalesExistentes + ' ya existen)</span>' : '') + '<br>';
+  summary += '✓ ' + prodNuevos.length + ' productos veterinarios' + (prodExistentes ? ' <span style="color:var(--muted)">(' + prodExistentes + ' ya existen)</span>' : '') + '<br>';
+  summary += '✓ ' + maqNuevas.length + ' maquinarias<br>';
+  summary += '✓ ' + parsed.tanques.length + ' tanques de combustible<br>';
+  summary += '✓ ' + personalNuevos.length + ' empleados<br>';
+  if (parsed.parametros.length) summary += '✓ ' + parsed.parametros.length + ' parámetros generales<br>';
+  document.getElementById('onboarding-preview-summary').innerHTML = summary;
+
+  var errEl = document.getElementById('onboarding-preview-errors');
+  if (validation.errors.length) {
+    errEl.style.display = 'block';
+    errEl.innerHTML = '<strong>Errores que impiden importar (' + validation.errors.length + '):</strong><br>' +
+      validation.errors.slice(0,10).map(function(e){ return '• ' + escH(e); }).join('<br>') +
+      (validation.errors.length > 10 ? '<br><em>...y ' + (validation.errors.length - 10) + ' más</em>' : '');
+  } else { errEl.style.display = 'none'; }
+
+  var warnEl = document.getElementById('onboarding-preview-warnings');
+  if (validation.warnings.length) {
+    warnEl.style.display = 'block';
+    warnEl.innerHTML = '<strong>Advertencias (' + validation.warnings.length + '):</strong><br>' +
+      validation.warnings.slice(0,10).map(function(w){ return '• ' + escH(w); }).join('<br>');
+  } else { warnEl.style.display = 'none'; }
+
+  var importBtn = document.getElementById('onboarding-import-btn');
+  if (importBtn) {
+    var totalNew = potrerosNuevos.length + parsed.pluviometros.length + subsNuevas.length +
+                   lotesNuevos.length + animalesNuevos.length + prodNuevos.length +
+                   maqNuevas.length + parsed.tanques.length + personalNuevos.length;
+    if (validation.ok && totalNew > 0) {
+      importBtn.disabled = false;
+      importBtn.textContent = 'Importar ' + totalNew + ' registros';
+    } else if (!validation.ok) {
+      importBtn.disabled = true;
+      importBtn.textContent = 'Corregí los errores primero';
+    } else {
+      importBtn.disabled = true;
+      importBtn.textContent = 'Nada para importar';
+    }
+  }
+
+  var overlay = document.getElementById('modal-onboarding-preview');
+  if (overlay) {
+    if (overlay.parentNode !== document.body) document.body.appendChild(overlay);
+    overlay.classList.add('open');
+  }
+}
+
+function closeOnboardingPreview() {
+  var overlay = document.getElementById('modal-onboarding-preview');
+  if (overlay) overlay.classList.remove('open');
+  _onboardingParsed = null;
+  var pe = document.getElementById('onboarding-progress'); if (pe) pe.style.display = 'none';
+  var resultEl = document.getElementById('onboarding-result'); if (resultEl) resultEl.style.display = 'none';
+}
+
+async function confirmOnboardingImport() {
+  if (!_onboardingParsed) return;
+  if (!confirm('¿Importar los registros nuevos al sistema? Los existentes no se modifican.')) return;
+  var progressEl = document.getElementById('onboarding-progress');
+  var importBtn = document.getElementById('onboarding-import-btn');
+  if (importBtn) importBtn.disabled = true;
+  if (progressEl) { progressEl.style.display = 'block'; progressEl.textContent = 'Aplicando datos al sistema local...'; }
+
+  var p = _onboardingParsed;
+  var rp = (typeof getRp === 'function') ? getRp() : {};
+  if (!rp.potreros) rp.potreros = [];
+  if (!rp.subcuentas) rp.subcuentas = [];
+  if (!db.products) db.products = [];
+  if (!db.maquinaria) db.maquinaria = [];
+  if (!db.employees) db.employees = [];
+  if (!db.lots) db.lots = [];
+
+  try {
+    p.parametros.forEach(function(par){
+      var k = String(par.key||'').toLowerCase();
+      if (k.indexOf('nombre') >= 0 && k.indexOf('estancia') >= 0) rp.nombre_estancia = String(par.value||'');
+      else if (k.indexOf('propietario') >= 0) rp.propietario = String(par.value||'');
+      else if (k.indexOf('ubicaci') >= 0) rp.ubicacion = String(par.value||'');
+      else if (k.indexOf('hect') >= 0) rp.superficie_total = parseFloat(par.value)||0;
+      else if (k.indexOf('moneda') >= 0) rp.moneda = String(par.value||'Bs');
+    });
+
+    var existingPot = {};
+    (rp.potreros||[]).forEach(function(po){ existingPot[String(po.name||po).toLowerCase()] = true; });
+    p.potreros.forEach(function(po){
+      if (!existingPot[String(po.name).toLowerCase()]) rp.potreros.push({ name: po.name, hectareas: po.hectareas, capacidad: po.capacidad || null });
+    });
+
+    var pluvios = [];
+    try { pluvios = JSON.parse(localStorage.getItem('e5m_pluvios')||'[]'); } catch(e){}
+    var pluvSet = {};
+    pluvios.forEach(function(pl){ pluvSet[String(pl.name||'').toLowerCase()] = true; });
+    p.pluviometros.forEach(function(pl){
+      if (!pluvSet[String(pl.name).toLowerCase()]) pluvios.push({ name: pl.name, ubicacion: pl.ubicacion || '' });
+    });
+    localStorage.setItem('e5m_pluvios', JSON.stringify(pluvios));
+
+    var existingSubs = {};
+    (rp.subcuentas||[]).forEach(function(s){ existingSubs[String(s.name||'').toLowerCase()] = true; });
+    p.subcuentas.forEach(function(s){
+      if (!existingSubs[String(s.name).toLowerCase()]) rp.subcuentas.push({ name: s.name, cuenta: s.cuenta });
+    });
+
+    var existingL = {};
+    db.lots.forEach(function(l){ existingL[l.code] = true; });
+    var nextLotId = (db.next_ids && db.next_ids.lot) || 100;
+    p.lotes.forEach(function(l){
+      if (existingL[l.code]) return;
+      db.lots.push({
+        id: nextLotId++, code: l.code, category: l.category, breed: l.breed || '',
+        paddock: l.paddock || '', animal_count: l.animal_count || 0, avg_weight: l.avg_weight || 0,
+        supplier: l.supplier || '', status: 'active',
+        entry_date: (typeof localDate==='function'?localDate():new Date().toISOString().slice(0,10)),
+        notes: l.obs || ''
+      });
+    });
+    if (db.next_ids) db.next_ids.lot = nextLotId;
+
+    var animDB = {};
+    try { animDB = JSON.parse(localStorage.getItem('e5m_animals')||'{}'); } catch(e){}
+    p.animales.forEach(function(a){
+      if (!animDB[a.lot_code]) animDB[a.lot_code] = [];
+      var existsId = animDB[a.lot_code].find(function(x){ return String(x.animal_id||x.id||'') === String(a.animal_id); });
+      if (existsId) return;
+      var pesajes = [];
+      if (a.peso) pesajes.push({ fecha: a.fecha || (typeof localDate==='function'?localDate():new Date().toISOString().slice(0,10)), peso: a.peso });
+      animDB[a.lot_code].push({ animal_id: String(a.animal_id), id: String(a.animal_id), breed: a.breed || '', raza: a.breed || '', pesajes: pesajes });
+    });
+    localStorage.setItem('e5m_animals', JSON.stringify(animDB));
+
+    var existingP = {};
+    (db.products||[]).forEach(function(prd){ existingP[String(prd.name||'').toLowerCase()] = true; });
+    var nextProdId = (db.next_ids && db.next_ids.product) || 100;
+    p.stockVet.forEach(function(prd){
+      if (existingP[String(prd.name).toLowerCase()]) return;
+      db.products.push({ id: nextProdId++, name: prd.name, type: prd.type || '', stock: prd.stock || 0, unit: prd.unit || 'unidad', dose_per_50kg: prd.dose || '', cost: prd.cost || 0, notes: prd.obs || '' });
+    });
+    if (db.next_ids) db.next_ids.product = nextProdId;
+
+    var existingM = {};
+    (db.maquinaria||[]).forEach(function(m){ existingM[String(m.name||'').toLowerCase()] = true; });
+    p.maquinaria.forEach(function(m){
+      if (existingM[String(m.name).toLowerCase()]) return;
+      db.maquinaria.push({ id: Date.now() + Math.random()*100, name: m.name, type: m.type, brand: m.brand || '', year: m.year || null, horometro: m.horometro || 0, km: m.km || 0, notes: m.obs || '' });
+    });
+
+    var tanks = [];
+    try { tanks = JSON.parse(localStorage.getItem('e5m_diesel_tank')||'[]'); } catch(e){}
+    if (!Array.isArray(tanks)) tanks = [];
+    var existingT = {};
+    tanks.forEach(function(t){ existingT[String(t.name||'').toLowerCase()] = true; });
+    p.tanques.forEach(function(tk){
+      if (existingT[String(tk.name).toLowerCase()]) return;
+      tanks.push({ id: Date.now() + Math.random()*100, name: tk.name, fuel: tk.fuel, capacity: tk.capacity, level: tk.level != null ? tk.level : tk.capacity, location: tk.location || '' });
+    });
+    localStorage.setItem('e5m_diesel_tank', JSON.stringify(tanks));
+
+    var existingE = {};
+    (db.employees||[]).forEach(function(e){ existingE[String(e.name||'').toLowerCase()] = true; });
+    var nextEmpId = (db.next_ids && db.next_ids.employee) || 100;
+    p.personal.forEach(function(e){
+      if (existingE[String(e.name).toLowerCase()]) return;
+      db.employees.push({ id: nextEmpId++, name: e.name, role: e.role, salary: e.salary || 0, hire_date: e.hire_date || '', phone: e.phone || '', notes: e.obs || '' });
+    });
+    if (db.next_ids) db.next_ids.employee = nextEmpId;
+
+    if (typeof saveRp === 'function') saveRp(rp);
+    saveDB();
+
+    if (progressEl) progressEl.textContent = 'Sincronizando con el server (esto puede tardar 10-20s)...';
+
+    var pushTables = [
+      { name: 'lots', data: db.lots },
+      { name: 'vet_products', data: db.products },
+      { name: 'employees', data: db.employees },
+      { name: 'maquinaria', data: db.maquinaria },
+      { name: 'animals', data: animDB },
+      { name: 'estancia_params', data: rp }
+    ];
+    var ok = 0, fail = 0;
+    for (var i = 0; i < pushTables.length; i++) {
+      var t = pushTables[i];
+      if (progressEl) progressEl.textContent = 'Sincronizando ' + t.name + ' (' + (i+1) + '/' + pushTables.length + ')...';
+      try {
+        var r = await replaceTableInRailway(t.name, t.data);
+        if (r) ok++; else fail++;
+      } catch(e) { fail++; console.error('[Onboarding] push ' + t.name + ':', e); }
+      await new Promise(function(r){ setTimeout(r, 200); });
+    }
+
+    closeOnboardingPreview();
+    var resultEl = document.getElementById('onboarding-result');
+    if (resultEl) {
+      resultEl.style.display = 'block';
+      resultEl.innerHTML = 'Importacion completa. ' + ok + '/' + pushTables.length + ' tablas sincronizadas. Recargando...';
+      resultEl.style.color = 'var(--green)';
+    }
+    toast('Onboarding completo — recargando','success');
+    setTimeout(function(){ location.reload(); }, 2000);
+  } catch(err) {
+    console.error('[Onboarding] Error en import:', err);
+    if (progressEl) progressEl.textContent = 'Error: ' + err.message;
+    toast('Error al importar: ' + err.message, 'error');
+    if (importBtn) importBtn.disabled = false;
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// ANÁLISIS DE LOTE — dashboard de indicadores zootécnicos
+// ════════════════════════════════════════════════════════════
+
+var _alCharts = {};      // referencias a Chart.js para destruirlas al cambiar lote
+var _alAnimalesData = []; // animales del lote actual con cálculos
+
+function initAnalisisLote() {
+  // Llenar selector de lotes
+  var sel = document.getElementById('al-lot-select');
+  if (!sel) return;
+
+  // Preservar selección actual si la hay
+  var currentVal = sel.value;
+  sel.innerHTML = '<option value="">Seleccionar lote...</option>';
+
+  var lots = (db.lots || []).filter(function(l) {
+    var st = (l.status || '').toLowerCase();
+    return st !== 'sold' && st !== 'vendido' && (l.animal_count || 0) > 0;
+  }).sort(function(a, b) { return (a.code || '').localeCompare(b.code || ''); });
+
+  lots.forEach(function(l) {
+    var opt = document.createElement('option');
+    opt.value = l.code;
+    var statusLabel = (l.status || '').toLowerCase() === 'cuarentena' ? ' [CUARENTENA]' : '';
+    opt.textContent = l.code + ' — ' + (l.category || '') + statusLabel + ' (' + l.animal_count + ' cab)';
+    sel.appendChild(opt);
+  });
+
+  if (currentVal) sel.value = currentVal;
+
+  if (sel.value) renderAnalisisLote();
+}
+
+function _alDestroyCharts() {
+  Object.keys(_alCharts).forEach(function(k) {
+    try { if (_alCharts[k]) _alCharts[k].destroy(); } catch(e) {}
+  });
+  _alCharts = {};
+}
+
+// Calcular GMD individual: peso final - peso inicial / días
+function _alCalcAnimalStats(anim, fallbackEntryDate) {
+  var pesajes = (anim.pesajes || []).filter(function(p) { return p && p.peso && p.fecha; });
+  pesajes.sort(function(a, b) { return String(a.fecha).localeCompare(String(b.fecha)); });
+
+  var pesoActual = pesajes.length ? pesajes[pesajes.length - 1].peso : null;
+  var pesoIngreso = pesajes.length ? pesajes[0].peso : null;
+  var fechaIngreso = pesajes.length ? pesajes[0].fecha : fallbackEntryDate;
+  var fechaUltima = pesajes.length ? pesajes[pesajes.length - 1].fecha : null;
+
+  var gmd = null;
+  var deltaTotal = null;
+  var dias = null;
+  if (pesajes.length >= 2 && pesoActual && pesoIngreso) {
+    deltaTotal = pesoActual - pesoIngreso;
+    var t1 = new Date(fechaIngreso).getTime();
+    var t2 = new Date(fechaUltima).getTime();
+    dias = Math.max(1, Math.round((t2 - t1) / (1000 * 60 * 60 * 24)));
+    gmd = deltaTotal / dias;
+  }
+
+  return {
+    id: String(anim.animal_id || anim.id || '?'),
+    raza: anim.raza || anim.breed || '-',
+    pesoActual: pesoActual,
+    pesoIngreso: pesoIngreso,
+    deltaTotal: deltaTotal,
+    gmd: gmd,
+    pesajes: pesajes,
+    fechaIngreso: fechaIngreso,
+    fechaUltima: fechaUltima,
+    nPesajes: pesajes.length
+  };
+}
+
+function _alFmtNum(n, decimals) {
+  if (n === null || n === undefined || isNaN(n)) return '-';
+  return Number(n).toFixed(decimals != null ? decimals : 0);
+}
+
+function renderAnalisisLote() {
+  var sel = document.getElementById('al-lot-select');
+  if (!sel || !sel.value) {
+    document.getElementById('al-empty-state').style.display = 'block';
+    document.getElementById('al-content').style.display = 'none';
+    document.getElementById('al-export-btn').style.display = 'none';
+    return;
+  }
+
+  var lotCode = sel.value;
+  var lot = (db.lots || []).find(function(l) { return l.code === lotCode; });
+  if (!lot) {
+    toast('Lote no encontrado', 'error');
+    return;
+  }
+
+  // Cargar animales
+  var animDB = {};
+  try { animDB = JSON.parse(localStorage.getItem('e5m_animals') || '{}'); } catch(e) {}
+  var animales = (animDB[lotCode] || []).map(function(a) {
+    return _alCalcAnimalStats(a, lot.entry_date);
+  });
+  _alAnimalesData = animales;
+
+  if (!animales.length) {
+    document.getElementById('al-empty-state').innerHTML =
+      '<div style="font-size:48px;margin-bottom:16px">⚠️</div>' +
+      '<div style="font-size:16px;margin-bottom:8px;color:var(--text)">El lote ' + escH(lotCode) + ' no tiene animales individuales registrados</div>' +
+      '<div style="font-size:13px">Para ver análisis individual, importá animales con peso desde el onboarding o registrá pesajes individuales.</div>';
+    document.getElementById('al-empty-state').style.display = 'block';
+    document.getElementById('al-content').style.display = 'none';
+    document.getElementById('al-export-btn').style.display = 'none';
+    return;
+  }
+
+  document.getElementById('al-empty-state').style.display = 'none';
+  document.getElementById('al-content').style.display = 'block';
+  document.getElementById('al-export-btn').style.display = 'inline-block';
+
+  _alDestroyCharts();
+  // Envolver cada renderer en try/catch para que un error en uno no rompa los demás
+  function _alSafeRender(name, fn) {
+    try { fn(); } catch(err) { console.error('[Análisis Lote] Error en ' + name + ':', err); }
+  }
+  _alSafeRender('Header',     function() { _alRenderHeader(lot, animales); });
+  _alSafeRender('KPIs',       function() { _alRenderKPIs(lot, animales); });
+  _alSafeRender('Alerts',     function() { _alRenderAlerts(lot, animales); });
+  _alSafeRender('Histograma', function() { _alRenderHistograma(animales); });
+  _alSafeRender('Curva',      function() { _alRenderCurva(animales); });
+  _alSafeRender('Proyección', function() { _alRenderProyeccion(lot, animales); });
+  _alSafeRender('GMD',        function() { _alRenderGMD(animales); });
+  _alSafeRender('Insights',   function() { _alRenderInsights(lot, animales); });
+  _alSafeRender('Distribución', function() { _alRenderDistribucion(animales); });
+  _alSafeRender('Comparativo',function() { _alRenderComparativo(lot, animales); });
+  _alSafeRender('Sanidad',    function() { _alRenderSanidad(lot); });
+  _alSafeRender('Tabla',      function() { _alRenderTabla(animales, 'todos'); });
+}
+
+function _alRenderHeader(lot, animales) {
+  document.getElementById('al-lot-code').textContent = lot.code;
+
+  var statusEl = document.getElementById('al-lot-status');
+  var status = (lot.status || '').toLowerCase();
+  if (status === 'cuarentena') {
+    statusEl.textContent = '● Cuarentena';
+    statusEl.style.background = 'rgba(255, 149, 0, 0.12)';
+    statusEl.style.color = 'var(--orange, #FF9500)';
+    statusEl.style.borderColor = 'rgba(255, 149, 0, 0.3)';
+  } else {
+    statusEl.textContent = '● Activo';
+    statusEl.style.background = 'rgba(57, 211, 83, 0.12)';
+    statusEl.style.color = 'var(--green)';
+    statusEl.style.borderColor = 'rgba(57, 211, 83, 0.3)';
+  }
+
+  var meta = '';
+  if (lot.category) meta += '<span><span style="color:var(--amber)">🐂</span> <strong style="color:var(--text)">' + escH(lot.category) + '</strong></span>';
+  if (lot.breed) meta += '<span><span style="color:var(--amber)">🧬</span> ' + escH(lot.breed) + '</span>';
+  if (lot.paddock) meta += '<span><span style="color:var(--amber)">🌾</span> ' + escH(lot.paddock) + '</span>';
+  if (lot.supplier) meta += '<span><span style="color:var(--amber)">🏷️</span> ' + escH(lot.supplier) + '</span>';
+
+  // Días desde ingreso
+  if (lot.entry_date) {
+    var dias = Math.round((new Date().getTime() - new Date(lot.entry_date).getTime()) / (1000 * 60 * 60 * 24));
+    meta += '<span><span style="color:var(--amber)">📅</span> Ingreso: ' + escH(lot.entry_date) + ' <strong style="color:var(--text)">(' + dias + ' días)</strong></span>';
+  }
+
+  document.getElementById('al-lot-meta').innerHTML = meta;
+
+  // Última fecha de pesaje
+  var lastDates = animales.filter(function(a) { return a.fechaUltima; }).map(function(a) { return a.fechaUltima; }).sort();
+  document.getElementById('al-last-weight').textContent = lastDates.length ? lastDates[lastDates.length - 1] : '-';
+}
+
+function _alRenderKPIs(lot, animales) {
+  var pesoActuales = animales.filter(function(a) { return a.pesoActual; }).map(function(a) { return a.pesoActual; });
+  var gmds = animales.filter(function(a) { return a.gmd != null; }).map(function(a) { return a.gmd; });
+
+  var promPeso = pesoActuales.length ? (pesoActuales.reduce(function(s, x) { return s + x; }, 0) / pesoActuales.length) : 0;
+  var pesoTotal = pesoActuales.reduce(function(s, x) { return s + x; }, 0);
+  var promGmd = gmds.length ? (gmds.reduce(function(s, x) { return s + x; }, 0) / gmds.length) : 0;
+
+  // CV (coeficiente de variación)
+  var cv = 0;
+  if (pesoActuales.length > 1) {
+    var variance = pesoActuales.reduce(function(s, x) { return s + Math.pow(x - promPeso, 2); }, 0) / pesoActuales.length;
+    var sigma = Math.sqrt(variance);
+    cv = promPeso > 0 ? (sigma / promPeso) * 100 : 0;
+  }
+
+  // Rezagados (GMD < 0.5)
+  var rezagados = gmds.filter(function(g) { return g < 0.5; }).length;
+
+  var kpis = [
+    { label: 'Cabezas', value: animales.length, unit: '', color: 'amber', trend: '' },
+    { label: 'Peso promedio', value: _alFmtNum(promPeso, 0), unit: 'kg', color: 'green', trend: '' },
+    { label: 'GMD promedio', value: _alFmtNum(promGmd, 2), unit: 'kg/d', color: 'blue', trend: gmds.length ? '▲ ' + gmds.length + ' animales con datos' : 'sin datos' },
+    { label: 'Uniformidad (CV)', value: _alFmtNum(cv, 1), unit: '%', color: 'purple', trend: cv < 10 ? '▲ uniforme' : (cv < 15 ? '~ aceptable' : '▼ disperso') },
+    { label: 'Peso total', value: _alFmtNum(pesoTotal, 0).replace(/\B(?=(\d{3})+(?!\d))/g, ','), unit: 'kg', color: 'orange', trend: '' },
+    { label: 'Rezagados', value: rezagados, unit: '', color: 'red', trend: rezagados ? 'GMD < 0.5 kg/d' : 'sin rezagos' }
+  ];
+
+  var html = kpis.map(function(k) {
+    var trendClass = k.trend.indexOf('▲') >= 0 ? 'up' : (k.trend.indexOf('▼') >= 0 ? 'down' : 'flat');
+    var trendColor = trendClass === 'up' ? 'var(--green)' : (trendClass === 'down' ? 'var(--red)' : 'var(--muted)');
+    var bg = {
+      amber: 'var(--amber)',
+      green: 'var(--green)',
+      blue: 'var(--blue, #58A6FF)',
+      purple: 'var(--purple, #A371F7)',
+      orange: 'var(--orange, #FF9500)',
+      red: 'var(--red)'
+    }[k.color] || 'var(--amber)';
+    return '<div style="background:var(--sur);border:1px solid var(--bor);border-radius:8px;padding:14px 16px;position:relative;overflow:hidden">' +
+      '<div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:' + bg + '"></div>' +
+      '<div style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">' + k.label + '</div>' +
+      '<div style="font-size:22px;font-weight:700;color:var(--text);font-family:\'DM Mono\',monospace;letter-spacing:-0.01em">' +
+        k.value + (k.unit ? '<span style="font-size:12px;color:var(--muted);font-weight:400;margin-left:3px">' + k.unit + '</span>' : '') +
+      '</div>' +
+      (k.trend ? '<div style="font-size:11px;margin-top:4px;font-family:\'DM Mono\',monospace;color:' + trendColor + '">' + k.trend + '</div>' : '') +
+    '</div>';
+  }).join('');
+
+  document.getElementById('al-kpis').innerHTML = html;
+}
+
+function _alRenderAlerts(lot, animales) {
+  var html = '';
+  // Listos para faena (peso target >= 450 kg para novillos, configurable)
+  var pesoFaena = (lot.category || '').toLowerCase().indexOf('novillo') >= 0 ? 450 : 0;
+  if (pesoFaena > 0) {
+    var listosFaena = animales.filter(function(a) { return a.pesoActual && a.pesoActual >= pesoFaena; }).length;
+    if (listosFaena > 0) {
+      var pct = ((listosFaena / animales.length) * 100).toFixed(0);
+      html += '<div style="background:rgba(57,211,83,0.06);border:1px solid rgba(57,211,83,0.25);border-radius:8px;padding:12px 14px;margin-bottom:10px;display:flex;align-items:flex-start;gap:12px;font-size:13px">' +
+        '<div style="font-size:18px">✅</div><div>' +
+        '<div style="font-weight:700;margin-bottom:2px">' + listosFaena + ' animales superaron el peso de faena (≥' + pesoFaena + ' kg)</div>' +
+        '<div style="color:var(--muted);font-size:12px">' + pct + '% del lote listo para venta. Considerá venta parcial o seguir engorde.</div>' +
+        '</div></div>';
+    }
+  }
+  // Rezagados con detalles
+  var rezagados = animales.filter(function(a) { return a.gmd != null && a.gmd < 0.5; });
+  if (rezagados.length > 0) {
+    var ids = rezagados.slice(0, 6).map(function(a) { return a.id; }).join(', ') + (rezagados.length > 6 ? '...' : '');
+    html += '<div style="background:rgba(255,149,0,0.06);border:1px solid rgba(255,149,0,0.25);border-radius:8px;padding:12px 14px;margin-bottom:10px;display:flex;align-items:flex-start;gap:12px;font-size:13px">' +
+      '<div style="font-size:18px">⚠️</div><div>' +
+      '<div style="font-weight:700;margin-bottom:2px">' + rezagados.length + ' animales con GMD bajo (< 0.5 kg/día)</div>' +
+      '<div style="color:var(--muted);font-size:12px">IDs: ' + escH(ids) + '. Revisar sanidad o separar a lote especial.</div>' +
+      '</div></div>';
+  }
+  // Sin pesajes recientes
+  var sinPesaje = animales.filter(function(a) { return a.nPesajes < 2; }).length;
+  if (sinPesaje > animales.length * 0.5) {
+    html += '<div style="background:rgba(88,166,255,0.06);border:1px solid rgba(88,166,255,0.25);border-radius:8px;padding:12px 14px;margin-bottom:10px;display:flex;align-items:flex-start;gap:12px;font-size:13px">' +
+      '<div style="font-size:18px">ℹ️</div><div>' +
+      '<div style="font-weight:700;margin-bottom:2px">' + sinPesaje + ' animales con menos de 2 pesajes</div>' +
+      '<div style="color:var(--muted);font-size:12px">No se puede calcular GMD individual sin al menos 2 pesajes. Programá un pesaje del lote.</div>' +
+      '</div></div>';
+  }
+  document.getElementById('al-alerts').innerHTML = html;
+}
+
+function _alRenderHistograma(animales) {
+  var pesoActuales = animales.filter(function(a) { return a.pesoActual; }).map(function(a) { return a.pesoActual; });
+  if (!pesoActuales.length) {
+    document.getElementById('al-hist-subtitle').textContent = 'Sin datos de pesaje';
+    return;
+  }
+
+  // Calcular buckets dinámicos
+  var minP = Math.min.apply(null, pesoActuales);
+  var maxP = Math.max.apply(null, pesoActuales);
+  var rango = maxP - minP;
+  var bucketSize = rango > 100 ? 20 : (rango > 50 ? 10 : 5);
+  // Redondear el min hacia abajo al múltiplo de bucketSize
+  var startP = Math.floor(minP / bucketSize) * bucketSize;
+  var endP = Math.ceil(maxP / bucketSize) * bucketSize;
+
+  var labels = [];
+  var counts = [];
+  for (var b = startP; b < endP; b += bucketSize) {
+    labels.push(b + '-' + (b + bucketSize));
+    counts.push(0);
+  }
+  pesoActuales.forEach(function(p) {
+    var idx = Math.min(labels.length - 1, Math.floor((p - startP) / bucketSize));
+    if (idx >= 0) counts[idx]++;
+  });
+
+  // Colores por gradient (rojo bajo → verde medio → azul alto)
+  var colors = labels.map(function(_, i) {
+    var pct = i / Math.max(1, labels.length - 1);
+    if (pct < 0.2) return '#E74C3C';
+    if (pct < 0.4) return '#FF9500';
+    if (pct < 0.6) return '#C9A84C';
+    if (pct < 0.8) return '#39D353';
+    return '#58A6FF';
+  });
+
+  document.getElementById('al-hist-subtitle').textContent = pesoActuales.length + ' animales · buckets de ' + bucketSize + ' kg';
+
+  // Stats boxplot
+  var sorted = pesoActuales.slice().sort(function(a, b) { return a - b; });
+  var median = sorted[Math.floor(sorted.length / 2)];
+  var q1 = sorted[Math.floor(sorted.length * 0.25)];
+  var q3 = sorted[Math.floor(sorted.length * 0.75)];
+
+  var statsHtml =
+    _alStatCell('Mín', minP + ' kg') +
+    _alStatCell('Q1', q1 + ' kg') +
+    _alStatCell('Mediana', median + ' kg') +
+    _alStatCell('Q3', q3 + ' kg') +
+    _alStatCell('Máx', maxP + ' kg');
+  document.getElementById('al-boxplot-stats').innerHTML = statsHtml;
+
+  var ctx = document.getElementById('al-chart-histograma');
+  if (ctx) {
+    _alCharts.hist = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{ label: 'Animales', data: counts, backgroundColor: colors, borderRadius: 4, borderSkipped: false }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: { label: function(c) { return c.parsed.y + ' animales (' + ((c.parsed.y / animales.length) * 100).toFixed(1) + '%)'; } }
+          }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+          y: { beginAtZero: true, grid: { color: '#2A2A2A' }, ticks: { stepSize: 1, font: { size: 10 } } }
+        }
+      }
+    });
+  }
+}
+
+function _alStatCell(label, val) {
+  return '<div style="background:var(--bg2,#161616);border:1px solid var(--bor);border-radius:6px;padding:10px;text-align:center">' +
+    '<div style="font-family:\'DM Mono\',monospace;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:3px">' + label + '</div>' +
+    '<div style="font-family:\'DM Mono\',monospace;font-size:14px;font-weight:700;color:var(--text)">' + val + '</div>' +
+  '</div>';
+}
+
+function _alRenderCurva(animales) {
+  // Agrupar pesajes por fecha y calcular promedio/min/max del lote
+  var fechasMap = {};
+  animales.forEach(function(a) {
+    a.pesajes.forEach(function(p) {
+      if (!fechasMap[p.fecha]) fechasMap[p.fecha] = [];
+      fechasMap[p.fecha].push(p.peso);
+    });
+  });
+  var fechas = Object.keys(fechasMap).sort();
+
+  if (fechas.length < 2) {
+    document.getElementById('al-curva-subtitle').textContent = 'Insuficientes pesajes para graficar curva';
+    return;
+  }
+
+  var prom = fechas.map(function(f) {
+    var arr = fechasMap[f];
+    return arr.reduce(function(s, x) { return s + x; }, 0) / arr.length;
+  });
+  var minArr = fechas.map(function(f) { return Math.min.apply(null, fechasMap[f]); });
+  var maxArr = fechas.map(function(f) { return Math.max.apply(null, fechasMap[f]); });
+
+  document.getElementById('al-curva-subtitle').textContent = fechas.length + ' fechas de pesaje';
+
+  var ctx = document.getElementById('al-chart-curva');
+  if (ctx) {
+    _alCharts.curva = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: fechas,
+        datasets: [
+          { label: 'Máximo', data: maxArr, borderColor: 'rgba(57,211,83,0.4)', backgroundColor: 'rgba(57,211,83,0.05)', borderDash: [4, 4], tension: 0.35, pointRadius: 3, fill: false },
+          { label: 'Promedio', data: prom, borderColor: '#C9A84C', backgroundColor: 'rgba(201,168,76,0.1)', borderWidth: 3, tension: 0.35, pointRadius: 5, pointBackgroundColor: '#C9A84C', fill: false },
+          { label: 'Mínimo', data: minArr, borderColor: 'rgba(231,76,60,0.4)', backgroundColor: 'transparent', borderDash: [4, 4], tension: 0.35, pointRadius: 3, fill: false }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { font: { size: 11 }, padding: 12, usePointStyle: true } } },
+        scales: {
+          y: { beginAtZero: false, grid: { color: '#2A2A2A' }, title: { display: true, text: 'Peso (kg)', color: '#666', font: { size: 11 } } },
+          x: { grid: { display: false } }
+        }
+      }
+    });
+  }
+}
+
+function _alRenderProyeccion(lot, animales) {
+  try {
+    // Determinar peso target (default según categoría)
+    var defaultTarget = 480;
+    var cat = (lot.category || '').toLowerCase();
+    if (cat.indexOf('vaca') >= 0) defaultTarget = 420;
+    else if (cat.indexOf('toro') >= 0) defaultTarget = 600;
+    else if (cat.indexOf('vaquill') >= 0 || cat.indexOf('ternero') >= 0) defaultTarget = 380;
+    // Usar valor del input si ya existe, sino default
+    var inputEl = document.getElementById('al-faena-target');
+    var targetWeight = inputEl && inputEl.value ? parseFloat(inputEl.value) : defaultTarget;
+    if (!targetWeight || targetWeight < 200) targetWeight = defaultTarget;
+    if (inputEl && !inputEl.value) inputEl.value = targetWeight;
+
+    // Animales con suficiente data para proyectar
+    var conGmd = animales.filter(function(a) { return a.gmd != null && a.gmd > 0 && a.pesoActual; });
+    var subtitle = document.getElementById('al-proy-subtitle');
+    var summaryEl = document.getElementById('al-proy-summary');
+    var gmdInfoEl = document.getElementById('al-gmd-real-info');
+    if (!subtitle || !summaryEl) return;
+
+    if (!conGmd.length) {
+      subtitle.textContent = 'Sin datos suficientes (se requieren ≥2 pesajes)';
+      summaryEl.innerHTML = '';
+      if (gmdInfoEl) gmdInfoEl.style.display = 'none';
+      return;
+    }
+
+    // Calcular GMD promedio REAL y peso promedio actual
+    var gmds = conGmd.map(function(a) { return a.gmd; });
+    var pesos = conGmd.map(function(a) { return a.pesoActual; });
+    var gmdReal = gmds.reduce(function(s, x) { return s + x; }, 0) / gmds.length;
+    var pesoProm = pesos.reduce(function(s, x) { return s + x; }, 0) / pesos.length;
+
+    // ── GMD: capear automáticamente si es absurda + permitir override manual ─────
+    // GMDs >3.0 kg/d son físicamente imposibles para bovinos en pastoreo
+    // (incluso en feedlot intensivo el máximo realista es ~2.0 kg/d)
+    var GMD_MAX_REALISTA = 2.0;
+    var gmdInputEl = document.getElementById('al-faena-gmd');
+    var gmdInputValue = gmdInputEl && gmdInputEl.value ? parseFloat(gmdInputEl.value) : NaN;
+
+    var gmdRealEsAbsurda = gmdReal > 3.0 || gmdReal < 0.01;
+    var gmdParaUsar;
+    var gmdSource;
+
+    if (!isNaN(gmdInputValue) && gmdInputValue >= 0.05 && gmdInputValue <= 3.0) {
+      // Usuario fijó manualmente un GMD
+      gmdParaUsar = gmdInputValue;
+      gmdSource = (Math.abs(gmdInputValue - gmdReal) < 0.01) ? 'real' : 'simulada';
+    } else if (gmdRealEsAbsurda) {
+      // GMD calculada es absurda → usar default seguro
+      gmdParaUsar = 0.75;
+      gmdSource = 'fallback';
+    } else {
+      gmdParaUsar = gmdReal;
+      gmdSource = 'real';
+    }
+
+    // Pre-llenar el input si está vacío
+    if (gmdInputEl && !gmdInputEl.value) {
+      // Si la GMD real es absurda, sugerir el fallback; sino la real
+      var initVal = gmdRealEsAbsurda ? 0.75 : gmdReal;
+      gmdInputEl.value = initVal.toFixed(2);
+    }
+
+    // Mostrar info de GMD real calculada (especialmente si fue capeada)
+    if (gmdInfoEl) {
+      if (gmdRealEsAbsurda) {
+        gmdInfoEl.style.display = 'block';
+        gmdInfoEl.innerHTML = '<span style="color:var(--red)">⚠ GMD real calculada: ' + gmdReal.toFixed(2) + ' kg/d (atípica — pesajes muy cercanos o valores inconsistentes)</span> · usando ' + gmdParaUsar.toFixed(2) + ' kg/d para proyectar';
+      } else if (gmdSource === 'simulada') {
+        gmdInfoEl.style.display = 'block';
+        gmdInfoEl.innerHTML = '<span style="color:var(--blue,#58A6FF)">▶ Simulación con GMD ' + gmdParaUsar.toFixed(2) + ' kg/d</span> · GMD real del lote: ' + gmdReal.toFixed(2) + ' kg/d';
+      } else {
+        gmdInfoEl.style.display = 'block';
+        gmdInfoEl.innerHTML = '<span style="color:var(--muted)">GMD real del lote: <strong style="color:var(--text)">' + gmdReal.toFixed(2) + ' kg/d</strong> (calculado de pesajes individuales)</span>';
+      }
+    }
+
+    // Si el lote ya supera el target, mostrar diferente
+    if (pesoProm >= targetWeight) {
+      subtitle.innerHTML = '<span style="color:var(--green)">✓ Promedio del lote ya superó el target</span>';
+    } else {
+      var diasAFaena = Math.round((targetWeight - pesoProm) / gmdParaUsar);
+      var fechaFaena = new Date(Date.now() + diasAFaena * 24 * 60 * 60 * 1000);
+      var fechaStr = fechaFaena.toLocaleDateString('es-BO', { day: '2-digit', month: 'short', year: 'numeric' });
+      subtitle.innerHTML = '<strong style="color:var(--text)">~' + diasAFaena + ' días</strong> · <span style="color:var(--amber)">' + fechaStr + '</span>';
+    }
+
+    // ── Construir el dataset del gráfico ──────────────────────────
+    // 1. Curva histórica: agrupar pesajes por fecha y promediar
+    var fechasMap = {};
+    animales.forEach(function(a) {
+      (a.pesajes || []).forEach(function(p) {
+        if (!p || !p.fecha || !p.peso) return;
+        if (!fechasMap[p.fecha]) fechasMap[p.fecha] = [];
+        fechasMap[p.fecha].push(p.peso);
+      });
+    });
+    var fechasHist = Object.keys(fechasMap).sort();
+
+    // Si hay <2 fechas históricas, no podemos graficar curva — pero sí KPIs
+    if (fechasHist.length < 2) {
+      // Solo renderizar KPIs sin gráfico
+      _alProyRenderKPIs(animales, conGmd, pesoProm, gmdParaUsar, targetWeight);
+      return;
+    }
+
+    var historicoPromedio = fechasHist.map(function(f) {
+      var arr = fechasMap[f];
+      return arr.reduce(function(s, x) { return s + x; }, 0) / arr.length;
+    });
+
+    // 2. Proyección: desde la última fecha histórica
+    var ultimaFechaHist = new Date(fechasHist[fechasHist.length - 1]);
+    var ultimoPeso = historicoPromedio[historicoPromedio.length - 1];
+    var diasProy = pesoProm < targetWeight
+      ? Math.min(540, Math.ceil((targetWeight - ultimoPeso) / gmdParaUsar) + 30)
+      : 90;
+    if (diasProy < 60) diasProy = 60;
+
+    // Generar puntos cada N días (~30 puntos total)
+    var stepDays = Math.max(7, Math.floor(diasProy / 30));
+    var labelsProy = [];
+    var valoresProy = [];
+    for (var d = stepDays; d <= diasProy; d += stepDays) {  // empezar en stepDays (no 0)
+      var fecha = new Date(ultimaFechaHist.getTime() + d * 24 * 60 * 60 * 1000);
+      labelsProy.push(fecha.toISOString().slice(0, 10));
+      valoresProy.push(Math.round(ultimoPeso + d * gmdParaUsar));
+    }
+
+    // 3. Combinar histórico + proyección
+    // Eje X: todas las fechas (históricas + proyectadas)
+    var labelsCombo = fechasHist.concat(labelsProy);
+
+    // Dataset histórico: valores reales en los puntos históricos, null en los proyectados
+    var dataHist = historicoPromedio.concat(labelsProy.map(function() { return null; }));
+
+    // Dataset proyectado: null en históricos (excepto el último para conectar), valores en proyectados
+    var dataProy = fechasHist.map(function(_, i) {
+      return i === fechasHist.length - 1 ? ultimoPeso : null;  // solo el último histórico
+    }).concat(valoresProy);
+
+    // Dataset target (línea horizontal)
+    var dataTarget = labelsCombo.map(function() { return targetWeight; });
+
+    var ctx = document.getElementById('al-chart-proyeccion');
+    if (ctx) {
+      _alCharts.proy = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labelsCombo,
+          datasets: [
+            {
+              label: 'Histórico',
+              data: dataHist,
+              borderColor: '#C9A84C',
+              backgroundColor: 'rgba(201,168,76,0.1)',
+              borderWidth: 3,
+              tension: 0.35,
+              pointRadius: 4,
+              pointBackgroundColor: '#C9A84C',
+              fill: false,
+              spanGaps: false
+            },
+            {
+              label: 'Proyectado (GMD ' + gmdParaUsar.toFixed(2) + ')',
+              data: dataProy,
+              borderColor: '#58A6FF',
+              backgroundColor: 'rgba(88,166,255,0.06)',
+              borderWidth: 2.5,
+              borderDash: [6, 4],
+              tension: 0.1,
+              pointRadius: 2,
+              pointBackgroundColor: '#58A6FF',
+              fill: false,
+              spanGaps: true
+            },
+            {
+              label: 'Target faena (' + targetWeight + ' kg)',
+              data: dataTarget,
+              borderColor: '#39D353',
+              backgroundColor: 'transparent',
+              borderWidth: 2,
+              borderDash: [4, 4],
+              tension: 0,
+              pointRadius: 0,
+              fill: false
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { font: { size: 10 }, padding: 10, usePointStyle: true, pointStyle: 'line' }
+            },
+            tooltip: {
+              callbacks: {
+                label: function(c) {
+                  var ds = c.dataset.label || '';
+                  if (c.parsed.y == null) return null;
+                  return ds + ': ' + Math.round(c.parsed.y) + ' kg';
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: false,
+              grid: { color: '#2A2A2A' },
+              title: { display: true, text: 'Peso (kg)', color: '#666', font: { size: 11 } }
+            },
+            x: {
+              grid: { display: false },
+              ticks: { maxTicksLimit: 8, font: { size: 9 } }
+            }
+          }
+        }
+      });
+    }
+
+    _alProyRenderKPIs(animales, conGmd, pesoProm, gmdParaUsar, targetWeight);
+  } catch(err) {
+    console.error('[Proyección] Error renderizando:', err);
+    var subtitle = document.getElementById('al-proy-subtitle');
+    var summaryEl = document.getElementById('al-proy-summary');
+    if (subtitle) subtitle.textContent = 'Error generando proyección';
+    if (summaryEl) summaryEl.innerHTML = '';
+  }
+}
+
+// Botón ↺ — vuelve la GMD del input a la real calculada
+function resetGmdToReal() {
+  var gmdInputEl = document.getElementById('al-faena-gmd');
+  if (!gmdInputEl) return;
+  // Limpiar el input — al renderear de nuevo, se va a auto-completar con la GMD real
+  gmdInputEl.value = '';
+  if (typeof renderAnalisisLote === 'function') renderAnalisisLote();
+}
+
+function _alProyRenderKPIs(animales, conGmd, pesoProm, gmdProm, targetWeight) {
+  var summaryEl = document.getElementById('al-proy-summary');
+  if (!summaryEl) return;
+
+  var precioKg = (typeof rp !== 'undefined' && rp && rp.precio_kg_carne) ? parseFloat(rp.precio_kg_carne) : 18;
+  var moneda = (typeof rp !== 'undefined' && rp && rp.moneda) || 'Bs';
+
+  var diasA = pesoProm < targetWeight ? Math.round((targetWeight - pesoProm) / gmdProm) : 0;
+  var yaListos = conGmd.filter(function(a) { return a.pesoActual >= targetWeight; }).length;
+  var pctListos = conGmd.length ? Math.round(yaListos / conGmd.length * 100) : 0;
+  var horizon = 180;
+  var noLlegan = conGmd.filter(function(a) {
+    var pesoFuturo = a.pesoActual + a.gmd * horizon;
+    return pesoFuturo < targetWeight;
+  }).length;
+  var pctNoLlegan = conGmd.length ? Math.round(noLlegan / conGmd.length * 100) : 0;
+  var totalAnimales = animales.length;
+  var pesoTotalProyectado = totalAnimales * targetWeight;
+  var valorEstimado = pesoTotalProyectado * precioKg;
+
+  function _proyKpi(label, value, sub, color) {
+    var bg = color || 'var(--amber)';
+    return '<div style="background:var(--bg2,#161616);border:1px solid var(--bor);border-radius:6px;padding:10px 12px;position:relative;overflow:hidden">' +
+      '<div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:' + bg + '"></div>' +
+      '<div style="font-family:\'DM Mono\',monospace;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">' + label + '</div>' +
+      '<div style="font-size:16px;font-weight:700;color:var(--text);font-family:\'DM Mono\',monospace">' + value + '</div>' +
+      (sub ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + sub + '</div>' : '') +
+    '</div>';
+  }
+
+  var diasLabel = diasA > 0 ? diasA + ' días' : '✓ Ya listos';
+  var diasSub = '';
+  if (diasA > 0) {
+    var meses = (diasA / 30).toFixed(1);
+    var fechaFin = new Date(Date.now() + diasA * 24 * 60 * 60 * 1000);
+    diasSub = '~' + meses + ' meses · ' + fechaFin.toLocaleDateString('es-BO', { month: 'short', year: '2-digit' });
+  }
+
+  summaryEl.innerHTML =
+    _proyKpi('Días a faena', diasLabel, diasSub, 'var(--amber)') +
+    _proyKpi('Ya superaron', yaListos + ' / ' + conGmd.length, pctListos + '% del lote', 'var(--green)') +
+    _proyKpi('No llegan en 6m', noLlegan + ' / ' + conGmd.length, pctNoLlegan + '% rezagados', noLlegan > 0 ? 'var(--red)' : 'var(--muted)') +
+    _proyKpi('Valor estimado', moneda + ' ' + valorEstimado.toLocaleString('es-BO', { maximumFractionDigits: 0 }), 'a ' + moneda + ' ' + precioKg + '/kg', 'var(--blue, #58A6FF)');
+}
+
+function _alRenderGMD(animales) {
+  var conGmd = animales.filter(function(a) { return a.gmd != null; });
+  if (!conGmd.length) {
+    document.getElementById('al-gmd-subtitle').textContent = 'Sin datos suficientes (se requieren ≥2 pesajes)';
+    return;
+  }
+  conGmd.sort(function(a, b) { return b.gmd - a.gmd; });
+  var labels = conGmd.map(function(a) { return a.id; });
+  var values = conGmd.map(function(a) { return a.gmd; });
+  var colors = values.map(function(v) {
+    if (v >= 1.0) return '#39D353';
+    if (v >= 0.7) return '#C9A84C';
+    if (v >= 0.5) return '#FF9500';
+    return '#E74C3C';
+  });
+
+  document.getElementById('al-gmd-subtitle').textContent = conGmd.length + ' animales · ordenados de mejor a peor';
+
+  var ctx = document.getElementById('al-chart-gmd');
+  if (ctx) {
+    _alCharts.gmd = new Chart(ctx, {
+      type: 'bar',
+      data: { labels: labels, datasets: [{ label: 'GMD', data: values, backgroundColor: colors, borderRadius: 2 }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: function(c) { return 'GMD: ' + c.parsed.y.toFixed(2) + ' kg/día'; } } }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 9 }, maxRotation: 90 } },
+          y: { beginAtZero: true, grid: { color: '#2A2A2A' }, title: { display: true, text: 'GMD (kg/día)', color: '#666', font: { size: 11 } } }
+        }
+      }
+    });
+  }
+}
+
+function _alRenderInsights(lot, animales) {
+  var html = '';
+  var conGmd = animales.filter(function(a) { return a.gmd != null; });
+  var gmds = conGmd.map(function(a) { return a.gmd; });
+  var promGmd = gmds.length ? (gmds.reduce(function(s, x) { return s + x; }, 0) / gmds.length) : 0;
+  var pesoActuales = animales.filter(function(a) { return a.pesoActual; }).map(function(a) { return a.pesoActual; });
+  var promPeso = pesoActuales.length ? (pesoActuales.reduce(function(s, x) { return s + x; }, 0) / pesoActuales.length) : 0;
+
+  // Meta GMD configurable (asumir 0.75 si no está)
+  var metaGmd = 0.75;
+  if (typeof rp !== 'undefined' && rp && rp.meta_gmd) metaGmd = parseFloat(rp.meta_gmd) || 0.75;
+
+  if (promGmd > 0) {
+    var diff = ((promGmd / metaGmd - 1) * 100);
+    var diffStr = (diff >= 0 ? '+' : '') + diff.toFixed(1) + '%';
+    html += _alInsight('Performance', 'GMD del lote (<strong>' + promGmd.toFixed(2) + ' kg/d</strong>) está <strong>' + diffStr + '</strong> respecto a la meta de ' + metaGmd + ' kg/d.');
+  }
+
+  // CV
+  if (pesoActuales.length > 1) {
+    var variance = pesoActuales.reduce(function(s, x) { return s + Math.pow(x - promPeso, 2); }, 0) / pesoActuales.length;
+    var sigma = Math.sqrt(variance);
+    var cv = (sigma / promPeso) * 100;
+    var cvDesc = cv < 10 ? 'muy uniforme' : (cv < 15 ? 'aceptable' : 'disperso');
+    html += _alInsight('Uniformidad', 'CV de <strong>' + cv.toFixed(1) + '%</strong> indica un lote <strong>' + cvDesc + '</strong>.' + (cv < 10 ? ' Ideal para venta en bloque.' : ''));
+  }
+
+  // Estimación a faena
+  var pesoFaena = (lot.category || '').toLowerCase().indexOf('novillo') >= 0 ? 480 : 0;
+  if (pesoFaena > 0 && promPeso > 0 && promGmd > 0 && promPeso < pesoFaena) {
+    var diasAFaena = Math.round((pesoFaena - promPeso) / promGmd);
+    html += _alInsight('Tiempo a faena', 'Con GMD actual, <strong>' + diasAFaena + ' días</strong> hasta peso promedio ' + pesoFaena + ' kg.');
+  }
+
+  // Engorde acumulado
+  var conIngreso = animales.filter(function(a) { return a.deltaTotal != null && a.deltaTotal > 0; });
+  if (conIngreso.length) {
+    var promDelta = conIngreso.reduce(function(s, a) { return s + a.deltaTotal; }, 0) / conIngreso.length;
+    html += _alInsight('Engorde acumulado', 'Promedio: <strong>+' + Math.round(promDelta) + ' kg/animal</strong> desde primer pesaje.');
+  }
+
+  // Valor estimado
+  var precioKg = (typeof rp !== 'undefined' && rp && rp.precio_kg_carne) ? parseFloat(rp.precio_kg_carne) : 18;
+  var pesoTotal = pesoActuales.reduce(function(s, x) { return s + x; }, 0);
+  if (pesoTotal > 0) {
+    var moneda = (typeof rp !== 'undefined' && rp && rp.moneda) || 'Bs';
+    var valor = pesoTotal * precioKg;
+    html += _alInsight('Valor estimado', 'A ' + moneda + ' ' + precioKg + '/kg: <strong>' + moneda + ' ' + valor.toLocaleString('es-BO', { maximumFractionDigits: 0 }) + '</strong>');
+  }
+
+  if (!html) {
+    html = '<div style="color:var(--muted);font-size:12px;padding:14px">Cargá pesajes individuales para ver insights del lote.</div>';
+  }
+
+  document.getElementById('al-insights').innerHTML = html;
+}
+
+function _alInsight(label, text) {
+  return '<div style="padding:12px 14px;background:var(--bg2,#161616);border-radius:6px;border-left:3px solid var(--amber);margin-bottom:8px;font-size:12px">' +
+    '<div style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">' + label + '</div>' +
+    '<div>' + text + '</div>' +
+  '</div>';
+}
+
+function _alRenderDistribucion(animales) {
+  var pesoActuales = animales.filter(function(a) { return a.pesoActual; }).map(function(a) { return a.pesoActual; });
+  if (!pesoActuales.length) {
+    document.getElementById('al-distribucion').innerHTML = '<div style="color:var(--muted);font-size:12px">Sin datos</div>';
+    return;
+  }
+  // Buckets fijos para distribución por rango (más narrativos que el histograma)
+  var minP = Math.min.apply(null, pesoActuales);
+  var maxP = Math.max.apply(null, pesoActuales);
+  var bucketSize = 30;
+  var startP = Math.floor(minP / bucketSize) * bucketSize;
+  var endP = Math.ceil((maxP + 1) / bucketSize) * bucketSize;
+  var n = animales.length;
+  var html = '';
+  for (var b = startP; b < endP; b += bucketSize) {
+    var count = pesoActuales.filter(function(p) { return p >= b && p < b + bucketSize; }).length;
+    if (count === 0) continue;
+    var pct = (count / n) * 100;
+    var color = b < startP + (endP - startP) * 0.33 ? 'var(--orange,#FF9500)' : (b < startP + (endP - startP) * 0.66 ? 'var(--amber)' : 'var(--green)');
+    html += '<div style="display:grid;grid-template-columns:90px 1fr 40px;gap:10px;align-items:center;margin-bottom:8px;font-size:12px">' +
+      '<span style="font-family:\'DM Mono\',monospace;color:var(--muted);font-size:11px">' + b + '-' + (b + bucketSize) + ' kg</span>' +
+      '<div style="height:22px;background:var(--bg2,#161616);border-radius:4px;position:relative;overflow:hidden">' +
+        '<div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:4px;display:flex;align-items:center;padding-left:8px;color:#000;font-family:\'DM Mono\',monospace;font-size:10px;font-weight:700">' + count + '</div>' +
+      '</div>' +
+      '<span style="font-family:\'DM Mono\',monospace;color:var(--text);font-weight:600;text-align:right">' + pct.toFixed(0) + '%</span>' +
+    '</div>';
+  }
+  document.getElementById('al-distribucion').innerHTML = html;
+}
+
+function _alRenderComparativo(lot, animales) {
+  // Otros lotes activos de misma categoría
+  var sameCat = (db.lots || []).filter(function(l) {
+    var st = (l.status || '').toLowerCase();
+    return l.code !== lot.code && st !== 'sold' && st !== 'vendido' && st !== 'cuarentena' &&
+      (l.category || '').toLowerCase() === (lot.category || '').toLowerCase();
+  });
+
+  if (!sameCat.length) {
+    document.getElementById('al-comp-subtitle').textContent = 'Sin otros lotes de misma categoría';
+    document.getElementById('al-comp-table').innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px">No hay otros lotes activos de "' + escH(lot.category || '') + '" para comparar.</div>';
+    return;
+  }
+
+  var animDB = {};
+  try { animDB = JSON.parse(localStorage.getItem('e5m_animals') || '{}'); } catch(e) {}
+
+  // Calcular GMD y peso promedio para cada lote
+  function lotStats(lc, fallbackEntry) {
+    var anims = (animDB[lc] || []).map(function(a) { return _alCalcAnimalStats(a, fallbackEntry); });
+    var pesos = anims.filter(function(a) { return a.pesoActual; }).map(function(a) { return a.pesoActual; });
+    var gmds = anims.filter(function(a) { return a.gmd != null; }).map(function(a) { return a.gmd; });
+    return {
+      promPeso: pesos.length ? pesos.reduce(function(s, x) { return s + x; }, 0) / pesos.length : 0,
+      promGmd: gmds.length ? gmds.reduce(function(s, x) { return s + x; }, 0) / gmds.length : 0
+    };
+  }
+
+  var thisStats = lotStats(lot.code, lot.entry_date);
+  var rows = [{ code: lot.code, isThis: true, peso: thisStats.promPeso, gmd: thisStats.promGmd }];
+  sameCat.forEach(function(l) {
+    var s = lotStats(l.code, l.entry_date);
+    rows.push({ code: l.code, isThis: false, peso: s.promPeso, gmd: s.promGmd });
+  });
+  rows = rows.filter(function(r) { return r.gmd > 0 || r.peso > 0; });
+
+  document.getElementById('al-comp-subtitle').textContent = 'cat: ' + (lot.category || 'sin cat');
+
+  // Chart comparativo
+  var ctx = document.getElementById('al-chart-comparativo');
+  if (ctx) {
+    _alCharts.comp = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: rows.map(function(r) { return r.code; }),
+        datasets: [{
+          label: 'GMD',
+          data: rows.map(function(r) { return parseFloat(r.gmd.toFixed(2)); }),
+          backgroundColor: rows.map(function(r) { return r.isThis ? '#C9A84C' : '#3A3A3A'; }),
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { beginAtZero: true, grid: { color: '#2A2A2A' } },
+          y: { grid: { display: false } }
+        }
+      }
+    });
+  }
+
+  // Tabla
+  var tHtml = '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px">' +
+    '<thead><tr>' +
+      '<th style="padding:6px 8px;text-align:left;font-family:\'DM Mono\',monospace;font-size:10px;color:var(--muted)">LOTE</th>' +
+      '<th style="padding:6px 8px;text-align:right;font-family:\'DM Mono\',monospace;font-size:10px;color:var(--muted)">PESO</th>' +
+      '<th style="padding:6px 8px;text-align:right;font-family:\'DM Mono\',monospace;font-size:10px;color:var(--muted)">GMD</th>' +
+    '</tr></thead><tbody>';
+  rows.forEach(function(r) {
+    tHtml += '<tr style="' + (r.isThis ? 'background:rgba(201,168,76,0.06)' : '') + '">' +
+      '<td style="padding:7px 8px;border-bottom:1px solid var(--bor)">' + (r.isThis ? '<strong style="color:var(--amber)">' + escH(r.code) + ' (este)</strong>' : escH(r.code)) + '</td>' +
+      '<td style="padding:7px 8px;text-align:right;font-family:\'DM Mono\',monospace;border-bottom:1px solid var(--bor)">' + (r.peso > 0 ? Math.round(r.peso) + ' kg' : '-') + '</td>' +
+      '<td style="padding:7px 8px;text-align:right;font-family:\'DM Mono\',monospace;border-bottom:1px solid var(--bor)">' + (r.gmd > 0 ? r.gmd.toFixed(2) : '-') + '</td>' +
+    '</tr>';
+  });
+  tHtml += '</tbody></table>';
+  document.getElementById('al-comp-table').innerHTML = tHtml;
+}
+
+function _alRenderSanidad(lot) {
+  // Curaciones del lote (últimos 180 días)
+  var hace180 = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  var treats = (db.treatments || []).filter(function(t) {
+    return t.lot_code === lot.code && t.date >= hace180;
+  });
+
+  var ultDespara = '-';
+  var ultVacuna = '-';
+  treats.sort(function(a, b) { return String(b.date).localeCompare(String(a.date)); });
+  for (var i = 0; i < treats.length; i++) {
+    var pname = String(treats[i].product_name || '').toLowerCase();
+    if (ultDespara === '-' && (pname.indexOf('iverme') >= 0 || pname.indexOf('parasit') >= 0 || pname.indexOf('despara') >= 0)) ultDespara = treats[i].date;
+    if (ultVacuna === '-' && pname.indexOf('vacuna') >= 0) ultVacuna = treats[i].date;
+  }
+
+  // Costo total sanidad
+  var products = db.products || [];
+  var costoTotal = 0;
+  treats.forEach(function(t) {
+    var prod = products.find(function(p) { return p.id === t.product_id || p.name === t.product_name; });
+    if (prod && prod.cost) {
+      var qty = parseFloat(t.quantity) || 0;
+      costoTotal += qty * parseFloat(prod.cost);
+    }
+  });
+  var costoCab = lot.animal_count ? (costoTotal / lot.animal_count) : 0;
+  var moneda = (typeof rp !== 'undefined' && rp && rp.moneda) || 'Bs';
+
+  document.getElementById('al-sanidad').innerHTML =
+    '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+      '<tr><td style="padding:7px 0;color:var(--muted)">Curaciones (180d)</td><td style="padding:7px 0;text-align:right"><strong>' + treats.length + '</strong></td></tr>' +
+      '<tr><td style="padding:7px 0;color:var(--muted);border-top:1px solid var(--bor)">Última desparasitación</td><td style="padding:7px 0;text-align:right;font-family:\'DM Mono\',monospace;font-size:11px;border-top:1px solid var(--bor)">' + ultDespara + '</td></tr>' +
+      '<tr><td style="padding:7px 0;color:var(--muted);border-top:1px solid var(--bor)">Última vacuna</td><td style="padding:7px 0;text-align:right;font-family:\'DM Mono\',monospace;font-size:11px;border-top:1px solid var(--bor)">' + ultVacuna + '</td></tr>' +
+      (costoTotal > 0 ? '<tr><td style="padding:7px 0;color:var(--muted);border-top:1px solid var(--bor)">Costo sanidad/cab</td><td style="padding:7px 0;text-align:right;border-top:1px solid var(--bor)"><strong>' + moneda + ' ' + costoCab.toFixed(0) + '</strong></td></tr>' : '') +
+    '</table>';
+}
+
+function _alRenderTabla(animales, filter) {
+  var rows = animales.slice();
+  if (filter === 'top') {
+    rows = rows.filter(function(a) { return a.gmd != null && a.gmd >= 0.9; }).sort(function(a, b) { return b.gmd - a.gmd; });
+  } else if (filter === 'rezagados') {
+    rows = rows.filter(function(a) { return a.gmd != null && a.gmd < 0.5; }).sort(function(a, b) { return a.gmd - b.gmd; });
+  } else {
+    rows.sort(function(a, b) { return (b.gmd || -Infinity) - (a.gmd || -Infinity); });
+  }
+
+  if (!rows.length) {
+    document.getElementById('al-tbody-animales').innerHTML = '<tr><td colspan="8" style="padding:20px;text-align:center;color:var(--muted)">Sin animales para mostrar</td></tr>';
+    return;
+  }
+
+  var html = '';
+  rows.forEach(function(a) {
+    var estado;
+    if (a.gmd == null) estado = '<span class="tag tag-muted" style="display:inline-block;padding:2px 8px;border-radius:10px;font-family:\'DM Mono\',monospace;font-size:10px;background:var(--bg2,#161616);color:var(--muted)">Sin datos</span>';
+    else if (a.gmd >= 1.0) estado = '<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-family:\'DM Mono\',monospace;font-size:10px;background:rgba(57,211,83,0.12);color:var(--green)">★ Top</span>';
+    else if (a.gmd >= 0.7) estado = '<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-family:\'DM Mono\',monospace;font-size:10px;background:rgba(88,166,255,0.12);color:var(--blue,#58A6FF)">Normal</span>';
+    else if (a.gmd >= 0.5) estado = '<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-family:\'DM Mono\',monospace;font-size:10px;background:rgba(201,168,76,0.12);color:var(--amber)">GMD bajo</span>';
+    else estado = '<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-family:\'DM Mono\',monospace;font-size:10px;background:rgba(231,76,60,0.12);color:var(--red)">⚠ Atención</span>';
+
+    var deltaColor = '';
+    if (a.deltaTotal != null) {
+      if (a.deltaTotal < 0) deltaColor = 'color:var(--red)';
+      else if (a.deltaTotal >= 100) deltaColor = 'color:var(--green)';
+    }
+
+    html += '<tr style="border-bottom:1px solid var(--bor)">' +
+      '<td style="padding:9px 10px;font-family:\'DM Mono\',monospace"><strong>' + escH(a.id) + '</strong></td>' +
+      '<td style="padding:9px 10px;color:var(--text);font-size:12px">' + escH(a.raza) + '</td>' +
+      '<td style="padding:9px 10px;text-align:right;font-family:\'DM Mono\',monospace">' + (a.pesoIngreso ? a.pesoIngreso + ' kg' : '-') + '</td>' +
+      '<td style="padding:9px 10px;text-align:right;font-family:\'DM Mono\',monospace"><strong>' + (a.pesoActual ? a.pesoActual + ' kg' : '-') + '</strong></td>' +
+      '<td style="padding:9px 10px;text-align:right;font-family:\'DM Mono\',monospace;' + deltaColor + '">' + (a.deltaTotal != null ? (a.deltaTotal >= 0 ? '+' : '') + a.deltaTotal + ' kg' : '-') + '</td>' +
+      '<td style="padding:9px 10px;text-align:right;font-family:\'DM Mono\',monospace"><strong>' + (a.gmd != null ? a.gmd.toFixed(2) : '-') + '</strong></td>' +
+      '<td style="padding:9px 10px;text-align:right;font-family:\'DM Mono\',monospace;color:var(--muted)">' + a.nPesajes + '</td>' +
+      '<td style="padding:9px 10px">' + estado + '</td>' +
+    '</tr>';
+  });
+  document.getElementById('al-tbody-animales').innerHTML = html;
+}
+
+function filterAlTable(filter, btn) {
+  // Marcar chip activo
+  if (btn) {
+    var siblings = btn.parentNode.querySelectorAll('.chip');
+    siblings.forEach(function(s) { s.classList.remove('active'); });
+    btn.classList.add('active');
+  }
+  _alRenderTabla(_alAnimalesData, filter);
+}
+
+function exportAnalisisLotePDF() {
+  toast('Exportación PDF próximamente. Por ahora, usá Cmd/Ctrl+P para imprimir.', 'info');
 }
 
 function previewHeaderName() {
@@ -17376,6 +19160,425 @@ function savePesajeAnimal(){
   toast("Pesaje: "+animalId+" - "+peso+" kg","success");
 }
 
+// ════════════════════════════════════════════════════════════
+// PESAJE MASIVO — Excel pre-cargado + Import con preview
+// ════════════════════════════════════════════════════════════
+
+var _ipParsed = []; // pesajes parseados con su validación
+var _ipLotCode = null;
+
+// Descargar plantilla Excel pre-cargada con animales del lote
+function downloadPesajesTemplate() {
+  var modal = document.getElementById("modal-pesaje-animal");
+  var lotCode = modal ? modal._lotCode : "";
+  if (!lotCode) { toast("No se identificó el lote", "error"); return; }
+
+  var lot = (db.lots || []).find(function(l) { return l.code === lotCode; });
+  var all = getAnimalesDB();
+  var animals = all[lotCode] || [];
+
+  if (!animals.length) {
+    toast("Este lote no tiene animales individuales registrados", "error");
+    return;
+  }
+
+  if (!window.estancia || !window.estancia.xlsx || !window.estancia.xlsx.saveAs) {
+    toast("Función Excel no disponible en esta versión", "error");
+    return;
+  }
+
+  // Construir hojas
+  var fechaHoy = localDate();
+
+  // Hoja 1: Pesajes
+  var headerPesajes = [
+    "ID / Caravana",
+    "Raza",
+    "Peso anterior (kg)",
+    "Fecha último pesaje",
+    "Peso nuevo (kg)",
+    "Notas"
+  ];
+
+  var rowsPesajes = [headerPesajes];
+  animals.forEach(function(a) {
+    var pesajes = (a.pesajes || []).slice().sort(function(x, y) { return String(x.fecha).localeCompare(y.fecha); });
+    var ultimo = pesajes.length ? pesajes[pesajes.length - 1] : null;
+    rowsPesajes.push([
+      String(a.id || a.animal_id || ""),
+      a.raza || a.breed || "",
+      ultimo ? ultimo.peso : "",
+      ultimo ? ultimo.fecha : "",
+      "", // PESO NUEVO — vacío para que César complete
+      ""
+    ]);
+  });
+
+  // Hoja 2: Instrucciones
+  var instrucciones = [
+    ["INSTRUCCIONES PARA PESAJE MASIVO"],
+    [""],
+    ["1. Completá la columna 'Peso nuevo (kg)' para cada animal pesado"],
+    ["2. Si un animal no fue pesado hoy, dejá la celda vacía (será ignorado)"],
+    ["3. Podés agregar notas opcionales en la última columna"],
+    ["4. Guardá el archivo y volvé al sistema"],
+    ["5. Hacé click en 'Importar Excel/CSV' y subí este archivo"],
+    [""],
+    ["Lote: " + lotCode],
+    ["Categoría: " + (lot ? lot.category : "")],
+    ["Potrero: " + (lot ? lot.paddock : "")],
+    ["Animales en el lote: " + animals.length],
+    ["Fecha generación: " + fechaHoy],
+    [""],
+    ["⚠ NO modifiques las columnas A-D (ID, Raza, Peso anterior, Fecha)"],
+    ["⚠ Las cabeceras deben mantenerse para que el import funcione"]
+  ];
+
+  var fileName = "Pesajes_" + lotCode + "_" + fechaHoy + ".xlsx";
+  // El handler xlsx:save-as espera un OBJETO { 'NombreHoja': [filas], ... }, no un array
+  var sheetsObj = {
+    "Pesajes": rowsPesajes,
+    "Instrucciones": instrucciones
+  };
+  window.estancia.xlsx.saveAs(sheetsObj, fileName).then(function(result) {
+    if (!result || result.success === false) {
+      // Cancelado por el usuario o error
+      if (result && result.error) {
+        toast("Error guardando Excel: " + result.error, "error");
+      }
+      return;
+    }
+    if (result.success && result.path) {
+      toast("✓ Excel guardado: " + animals.length + " animales", "success");
+    }
+  }).catch(function(e) {
+    console.error("Error generando Excel:", e);
+    toast("Error: " + (e.message || "no se pudo generar"), "error");
+  });
+}
+
+// Abrir modal de import
+function openImportPesajes() {
+  var modal = document.getElementById("modal-pesaje-animal");
+  _ipLotCode = modal ? modal._lotCode : "";
+  if (!_ipLotCode) { toast("No se identificó el lote", "error"); return; }
+
+  _ipParsed = [];
+
+  var lot = (db.lots || []).find(function(l) { return l.code === _ipLotCode; });
+  var lblEl = document.getElementById("ip-lot-label");
+  if (lblEl) lblEl.textContent = "Lote: " + _ipLotCode + (lot ? " · " + lot.category + " · " + lot.paddock : "");
+
+  // Reset UI
+  var fileEl = document.getElementById("ip-file"); if (fileEl) fileEl.value = "";
+  var pasteAreaEl = document.getElementById("ip-paste-area"); if (pasteAreaEl) pasteAreaEl.style.display = "none";
+  var pasteTextEl = document.getElementById("ip-paste-text"); if (pasteTextEl) pasteTextEl.value = "";
+  var statsEl = document.getElementById("ip-stats"); if (statsEl) { statsEl.style.display = "none"; statsEl.innerHTML = ""; }
+  var previewEl = document.getElementById("ip-preview"); if (previewEl) previewEl.style.display = "none";
+  var btnEl = document.getElementById("ip-confirm-btn"); if (btnEl) btnEl.disabled = true;
+  var fechaEl = document.getElementById("ip-fecha-global"); if (fechaEl) fechaEl.value = localDate();
+
+  openModal("modal-import-pesajes");
+}
+
+// Manejar archivo subido
+function handleImportFile(file) {
+  if (!file) return;
+  if (!window.estancia || !window.estancia.xlsx || !window.estancia.xlsx.readBuffer) {
+    toast("Función Excel no disponible", "error");
+    return;
+  }
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var buf = e.target.result;
+      var fname = (file.name || "").toLowerCase();
+
+      if (fname.endsWith(".csv")) {
+        // CSV: convertir a texto y procesar
+        var decoder = new TextDecoder("utf-8");
+        var text = decoder.decode(new Uint8Array(buf));
+        _ipProcessCSVText(text);
+      } else {
+        // XLSX/XLS: readBuffer es SÍNCRONO y devuelve {sheetNames, sheets}
+        // donde sheets[name] es un ARRAY DE OBJETOS (no array de arrays)
+        var result;
+        try {
+          result = window.estancia.xlsx.readBuffer(buf);
+        } catch (err) {
+          toast("Error leyendo Excel: " + (err.message || "formato inválido"), "error");
+          console.error("[xlsx readBuffer]", err);
+          return;
+        }
+        if (!result || !result.sheets) {
+          toast("Archivo Excel inválido o vacío", "error");
+          return;
+        }
+        // Buscar hoja "Pesajes" o usar la primera
+        var sheetName = "Pesajes";
+        if (!result.sheets[sheetName]) sheetName = result.sheetNames[0];
+        var rowObjs = result.sheets[sheetName] || [];
+        if (!rowObjs.length) {
+          toast("La hoja '" + sheetName + "' está vacía", "error");
+          return;
+        }
+        // Convertir array de objetos {ID:957,Peso:345,...} a array de arrays [['ID','Peso',...],[957,345,...]]
+        var headers = Object.keys(rowObjs[0]);
+        var rows = [headers];
+        rowObjs.forEach(function(obj) {
+          rows.push(headers.map(function(h) { return obj[h]; }));
+        });
+        _ipProcessRows(rows);
+      }
+    } catch (err) {
+      console.error("[handleImportFile]", err);
+      toast("Error procesando archivo: " + err.message, "error");
+    }
+  };
+  reader.onerror = function() {
+    toast("Error leyendo archivo", "error");
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// Procesar texto CSV pegado
+function processImportText() {
+  var text = (document.getElementById("ip-paste-text") || {}).value || "";
+  if (!text.trim()) {
+    _ipParsed = [];
+    document.getElementById("ip-preview").style.display = "none";
+    document.getElementById("ip-stats").style.display = "none";
+    document.getElementById("ip-confirm-btn").disabled = true;
+    return;
+  }
+  _ipProcessCSVText(text);
+}
+
+function _ipProcessCSVText(text) {
+  var lines = text.split(/\r?\n/).filter(function(l) { return l.trim().length > 0; });
+  var rows = lines.map(function(l) {
+    // Detectar separador: tab, coma o punto y coma
+    var sep = l.indexOf("\t") >= 0 ? "\t" : (l.indexOf(";") >= 0 ? ";" : ",");
+    return l.split(sep).map(function(c) { return c.trim().replace(/^"|"$/g, ""); });
+  });
+  _ipProcessRows(rows);
+}
+
+// Procesar filas crudas (formato Excel descargado o CSV libre)
+function _ipProcessRows(rows) {
+  if (!rows || !rows.length) {
+    toast("Archivo vacío", "error");
+    return;
+  }
+
+  var all = getAnimalesDB();
+  var animals = all[_ipLotCode] || [];
+
+  // Detectar formato: si la primera fila tiene "ID" o "Caravana" → es header
+  var firstRow = (rows[0] || []).map(function(c) { return String(c || "").toLowerCase(); });
+  var hasHeader = firstRow.some(function(c) {
+    return c.indexOf("id") >= 0 || c.indexOf("caravana") >= 0 || c.indexOf("peso") >= 0;
+  });
+
+  // Detectar columnas
+  var idIdx = 0, pesoIdx = 1, anteriorIdx = -1;
+  if (hasHeader) {
+    firstRow.forEach(function(c, i) {
+      if (c.indexOf("id") >= 0 || c.indexOf("caravana") >= 0) idIdx = i;
+      if (c.indexOf("peso nuevo") >= 0) pesoIdx = i;
+      else if (pesoIdx === 1 && (c.indexOf("peso") >= 0 && c.indexOf("anterior") < 0)) pesoIdx = i;
+      if (c.indexOf("anterior") >= 0) anteriorIdx = i;
+    });
+  }
+
+  var dataRows = hasHeader ? rows.slice(1) : rows;
+  var parsed = [];
+
+  dataRows.forEach(function(r, rowIdx) {
+    if (!r || !r.length) return;
+    var idRaw = String(r[idIdx] || "").trim();
+    var pesoRaw = String(r[pesoIdx] || "").trim().replace(",", ".");
+    if (!idRaw || !pesoRaw) {
+      // ID sin peso → ignorar silenciosamente (animal no pesado)
+      if (idRaw && !pesoRaw) {
+        return; // OK, simplemente no se pesó
+      }
+      return;
+    }
+    var peso = parseFloat(pesoRaw);
+    if (!peso || peso <= 0) return;
+
+    // Buscar animal en el lote
+    var animal = animals.find(function(a) {
+      return String(a.id || a.animal_id || "").trim() === idRaw;
+    });
+
+    var item = {
+      row: rowIdx + (hasHeader ? 2 : 1),
+      id: idRaw,
+      peso: peso,
+      animal: animal,
+      pesoAnterior: null,
+      delta: null,
+      warnings: [],
+      error: null
+    };
+
+    if (!animal) {
+      item.error = "ID no encontrado en este lote";
+    } else {
+      // Calcular peso anterior y delta
+      var pesajes = (animal.pesajes || []).slice().sort(function(x, y) { return String(x.fecha).localeCompare(y.fecha); });
+      var ultimo = pesajes.length ? pesajes[pesajes.length - 1] : null;
+      if (ultimo) {
+        item.pesoAnterior = ultimo.peso;
+        item.delta = peso - ultimo.peso;
+
+        // Warnings (no bloquean)
+        var diasEntre = Math.max(1, Math.round((new Date().getTime() - new Date(ultimo.fecha).getTime()) / 86400000));
+        var gmd = item.delta / diasEntre;
+        if (item.delta < 0 && Math.abs(item.delta) / ultimo.peso > 0.30) {
+          item.warnings.push("Pérdida >30% vs último pesaje");
+        }
+        if (gmd > 5) {
+          item.warnings.push("Ganancia GMD > 5 kg/d (verificar)");
+        }
+      }
+
+      // Warnings de rango
+      if (peso < 50) item.warnings.push("Peso muy bajo (<50kg)");
+      if (peso > 700) item.warnings.push("Peso muy alto (>700kg)");
+    }
+
+    parsed.push(item);
+  });
+
+  _ipParsed = parsed;
+  _ipRenderPreview();
+}
+
+function _ipRenderPreview() {
+  var statsEl = document.getElementById("ip-stats");
+  var previewEl = document.getElementById("ip-preview");
+  var tbodyEl = document.getElementById("ip-preview-tbody");
+  var btnEl = document.getElementById("ip-confirm-btn");
+  if (!statsEl || !previewEl || !tbodyEl) return;
+
+  if (!_ipParsed.length) {
+    statsEl.style.display = "none";
+    previewEl.style.display = "none";
+    btnEl.disabled = true;
+    return;
+  }
+
+  var validos = _ipParsed.filter(function(p) { return !p.error; });
+  var conWarnings = _ipParsed.filter(function(p) { return !p.error && p.warnings.length > 0; });
+  var errores = _ipParsed.filter(function(p) { return p.error; });
+
+  // Stats
+  statsEl.style.display = "grid";
+  statsEl.style.gridTemplateColumns = "repeat(3, 1fr)";
+  statsEl.style.gap = "8px";
+  statsEl.innerHTML =
+    '<div style="background:rgba(57,211,83,.06);border:1px solid rgba(57,211,83,.25);border-radius:6px;padding:10px 12px;text-align:center">' +
+      '<div style="font-size:18px;font-weight:700;color:var(--green);font-family:\'DM Mono\',monospace">' + validos.length + '</div>' +
+      '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">Válidos</div>' +
+    '</div>' +
+    '<div style="background:rgba(255,149,0,.06);border:1px solid rgba(255,149,0,.25);border-radius:6px;padding:10px 12px;text-align:center">' +
+      '<div style="font-size:18px;font-weight:700;color:var(--orange,#FF9500);font-family:\'DM Mono\',monospace">' + conWarnings.length + '</div>' +
+      '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">Advertencias</div>' +
+    '</div>' +
+    '<div style="background:rgba(231,76,60,.06);border:1px solid rgba(231,76,60,.25);border-radius:6px;padding:10px 12px;text-align:center">' +
+      '<div style="font-size:18px;font-weight:700;color:var(--red);font-family:\'DM Mono\',monospace">' + errores.length + '</div>' +
+      '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">Errores</div>' +
+    '</div>';
+
+  // Preview tabla
+  previewEl.style.display = "block";
+  var html = "";
+  _ipParsed.forEach(function(p, idx) {
+    var bg = "";
+    var estado = "";
+    if (p.error) {
+      bg = "rgba(231,76,60,.05)";
+      estado = '<span style="color:var(--red);font-size:10px">❌ ' + escH(p.error) + '</span>';
+    } else if (p.warnings.length) {
+      bg = "rgba(255,149,0,.04)";
+      estado = '<span style="color:var(--orange,#FF9500);font-size:10px">⚠ ' + escH(p.warnings.join(", ")) + '</span>';
+    } else {
+      estado = '<span style="color:var(--green);font-size:10px">✅ OK</span>';
+    }
+
+    var deltaStr = "—", deltaColor = "var(--muted)";
+    if (p.delta != null) {
+      var sign = p.delta >= 0 ? "+" : "";
+      deltaStr = sign + p.delta.toFixed(1);
+      deltaColor = p.delta < 0 ? "var(--red)" : (p.delta > 0 ? "var(--green)" : "var(--muted)");
+    }
+
+    html += '<tr style="background:' + bg + ';border-bottom:1px solid var(--bor)">' +
+      '<td style="padding:7px 8px;color:var(--muted);font-family:\'DM Mono\',monospace">' + (idx + 1) + '</td>' +
+      '<td style="padding:7px 8px;font-family:\'DM Mono\',monospace;font-weight:600">' + escH(p.id) + '</td>' +
+      '<td style="padding:7px 8px;text-align:right;font-family:\'DM Mono\',monospace;font-weight:700">' + p.peso.toFixed(1) + ' kg</td>' +
+      '<td style="padding:7px 8px;text-align:right;font-family:\'DM Mono\',monospace;color:var(--muted)">' + (p.pesoAnterior != null ? p.pesoAnterior + ' kg' : "—") + '</td>' +
+      '<td style="padding:7px 8px;text-align:right;font-family:\'DM Mono\',monospace;color:' + deltaColor + '">' + deltaStr + '</td>' +
+      '<td style="padding:7px 8px">' + estado + '</td>' +
+    '</tr>';
+  });
+  tbodyEl.innerHTML = html;
+
+  btnEl.disabled = validos.length === 0;
+  btnEl.textContent = validos.length > 0 ? "Guardar " + validos.length + " pesajes válidos" : "Sin pesajes válidos";
+}
+
+// Confirmar y guardar todos los pesajes válidos
+function confirmImportPesajes() {
+  var validos = _ipParsed.filter(function(p) { return !p.error && p.animal; });
+  if (!validos.length) { toast("No hay pesajes válidos", "error"); return; }
+
+  var fecha = (document.getElementById("ip-fecha-global") || {}).value || localDate();
+  var all = getAnimalesDB();
+  var animals = all[_ipLotCode] || [];
+
+  validos.forEach(function(item) {
+    var animal = animals.find(function(a) {
+      return String(a.id || a.animal_id || "").trim() === item.id;
+    });
+    if (!animal) return;
+    animal.pesajes = animal.pesajes || [];
+    var existe = animal.pesajes.find(function(p) { return p.fecha === fecha; });
+    if (existe) {
+      existe.peso = item.peso;
+    } else {
+      animal.pesajes.push({ fecha: fecha, peso: item.peso });
+    }
+    animal.pesajes.sort(function(a, b) { return String(a.fecha).localeCompare(b.fecha); });
+  });
+
+  // Actualizar avg_weight del lote
+  var lot = (db.lots || []).find(function(l) { return l.code === _ipLotCode; });
+  if (lot && animals.length) {
+    var ws = animals.map(function(a) {
+      return a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length - 1].peso : 0;
+    });
+    lot.avg_weight = Math.round(ws.reduce(function(s, w) { return s + w; }, 0) / ws.length * 10) / 10;
+  }
+
+  saveAnimalesDB(all);
+  saveDB();
+
+  // Audit log
+  try {
+    auditLog("update", "pesajes", _ipLotCode, "Pesaje masivo: " + validos.length + " animales en lote " + _ipLotCode);
+  } catch(e) {}
+
+  closeModal("modal-import-pesajes");
+  closeModal("modal-pesaje-animal");
+  if (typeof renderAnimalesLote === "function") renderAnimalesLote();
+  if (typeof renderPesajesFromAnimales === "function") renderPesajesFromAnimales();
+  toast("✓ " + validos.length + " pesajes guardados", "success");
+}
+
 function renderPesajesFromAnimales(){
   var container=document.getElementById("pesajes-from-animals");if(!container) return;
   var all=getAnimalesDB();var lots=db.lots||[];var html="";
@@ -17446,8 +19649,24 @@ function renderPesajesFromAnimales(){
 
 <!-- MODAL PESAJE INDIVIDUAL -->
 <div class="modal-overlay" id="modal-pesaje-animal">
-<div class="modal"><h2>Registrar Pesaje</h2>
+<div class="modal" style="max-width:580px"><h2>⚖️ Registrar Pesaje</h2>
 <div id="pa-lot-label" style="font-size:12px;color:var(--muted);margin-bottom:12px"></div>
+
+<!-- Botones de carga masiva -->
+<div style="background:var(--sur2);border:1px solid var(--bor);border-radius:10px;padding:12px 14px;margin-bottom:14px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <div style="font-size:12px;font-weight:700;color:var(--amber2)">📦 Pesaje masivo</div>
+    <div style="font-size:10px;color:var(--muted)">Recomendado para >5 animales</div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn btn-ghost btn-sm" onclick="downloadPesajesTemplate()" style="color:var(--blue,#58A6FF);border-color:rgba(88,166,255,.3);font-size:11px" title="Genera Excel con animales pre-cargados">📄 Descargar Excel</button>
+    <button class="btn btn-ghost btn-sm" onclick="openImportPesajes()" style="color:var(--green);border-color:rgba(57,211,83,.3);font-size:11px" title="Subí el Excel completado o pegá CSV">📥 Importar Excel/CSV</button>
+  </div>
+</div>
+
+<div style="height:1px;background:var(--bor);margin:14px 0"></div>
+<div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.04em">⚖️ Pesaje individual</div>
+
 <div class="form-group"><label class="form-label">Buscar animal por ID</label>
   <input class="form-input" id="pa-search" placeholder="Escribi el ID para filtrar..." oninput="filterPesajeAnimals(this.value)">
 </div>
@@ -17475,6 +19694,71 @@ function renderPesajesFromAnimales(){
   <button class="btn btn-ghost" onclick="closeModal('modal-pesaje-animal')">Cancelar</button>
   <button class="btn btn-primary" onclick="savePesajeAnimal()">Guardar pesaje</button>
 </div></div></div>
+
+<!-- MODAL: Importar pesajes desde Excel/CSV -->
+<div class="modal-overlay" id="modal-import-pesajes">
+<div class="modal" style="max-width:900px;max-height:92vh;display:flex;flex-direction:column;padding:0">
+  <div style="padding:18px 24px 12px;border-bottom:1px solid var(--bor);flex-shrink:0">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2 style="margin:0">📥 Importar pesajes</h2>
+      <button onclick="closeModal('modal-import-pesajes')" style="background:transparent;border:1px solid var(--bor);width:32px;height:32px;border-radius:8px;cursor:pointer;color:var(--muted);font-size:14px">✕</button>
+    </div>
+    <div id="ip-lot-label" style="font-size:12px;color:var(--muted);margin-top:6px"></div>
+  </div>
+
+  <div style="overflow-y:auto;flex:1;padding:18px 24px">
+    <!-- Drop zone / file input -->
+    <div style="background:var(--sur2);border:2px dashed var(--bor);border-radius:10px;padding:20px;text-align:center;margin-bottom:14px" id="ip-dropzone">
+      <div style="font-size:32px;margin-bottom:8px">📊</div>
+      <div style="font-size:13px;color:var(--text);margin-bottom:6px">Arrastrá un archivo Excel/CSV o clickeá abajo</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Acepta el Excel descargado, o cualquier xlsx/csv con columnas ID y Peso</div>
+      <input type="file" id="ip-file" accept=".xlsx,.xls,.csv" onchange="handleImportFile(this.files[0])" style="display:none">
+      <button class="btn btn-primary btn-sm" onclick="document.getElementById('ip-file').click()">📂 Elegir archivo</button>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('ip-paste-area').style.display='block';this.style.display='none'" style="margin-left:8px">📋 O pegar CSV</button>
+    </div>
+
+    <!-- Pegar área (oculta por default) -->
+    <div id="ip-paste-area" style="display:none;margin-bottom:14px">
+      <label style="font-size:11px;color:var(--muted);font-weight:700;letter-spacing:1px;display:block;margin-bottom:6px">PEGAR DATOS (FORMATO: ID, PESO POR LÍNEA)</label>
+      <textarea id="ip-paste-text" rows="6" placeholder="957	345&#10;793	305&#10;495	410&#10;..." style="width:100%;background:var(--sur2);border:1px solid var(--bor);border-radius:8px;padding:10px;color:var(--text);font-family:monospace;font-size:12px;resize:vertical" oninput="processImportText()"></textarea>
+    </div>
+
+    <!-- Stats summary -->
+    <div id="ip-stats" style="display:none;margin-bottom:14px"></div>
+
+    <!-- Preview table -->
+    <div id="ip-preview" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="font-size:12px;font-weight:700;color:var(--text)">Vista previa</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <label style="font-size:11px;color:var(--muted)">Fecha pesaje:</label>
+          <input type="date" id="ip-fecha-global" style="padding:4px 8px;font-size:11px;background:var(--sur2);border:1px solid var(--bor);border-radius:4px;color:var(--text);font-family:inherit">
+        </div>
+      </div>
+      <div style="max-height:400px;overflow-y:auto;border:1px solid var(--bor);border-radius:8px">
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+          <thead style="position:sticky;top:0;background:var(--sur);z-index:1">
+            <tr>
+              <th style="padding:8px;text-align:left;font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);font-weight:600">#</th>
+              <th style="padding:8px;text-align:left;font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);font-weight:600">ID</th>
+              <th style="padding:8px;text-align:right;font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);font-weight:600">PESO NUEVO</th>
+              <th style="padding:8px;text-align:right;font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);font-weight:600">ANTERIOR</th>
+              <th style="padding:8px;text-align:right;font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);font-weight:600">Δ</th>
+              <th style="padding:8px;text-align:left;font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);font-weight:600">ESTADO</th>
+            </tr>
+          </thead>
+          <tbody id="ip-preview-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div style="padding:14px 24px;border-top:1px solid var(--bor);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0">
+    <button class="btn btn-ghost" onclick="closeModal('modal-import-pesajes')">Cancelar</button>
+    <button class="btn btn-primary" id="ip-confirm-btn" onclick="confirmImportPesajes()" disabled>Guardar pesajes</button>
+  </div>
+</div>
+</div>
 
 <!-- LIGHTBOX FOTO -->
 <div id="photo-lightbox" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.92);z-index:9999;align-items:center;justify-content:center;cursor:zoom-out" onclick="closePhotoLightbox()">
@@ -18976,7 +21260,7 @@ function parseBulkFile(input) {
 // ════════════════════════════════════════════════════════════════
 // BULK PASTE — modal compartido para pegar/CSV en CG y MC
 // ════════════════════════════════════════════════════════════════
-var _bpContext = null;   // 'cg' (compra ganado) | 'mc' (marcar cuarentena)
+var _bpContext = null;   // 'cg' (compra ganado) | 'mc' (marcar cuarentena) | 'newlot' (nuevo lote)
 var _bpParsed  = [];     // animales parseados, se confirma al click
 
 function openBulkPaste(ctx) {
@@ -19059,6 +21343,18 @@ function bpPreview() {
         validacion = '<div style="margin-top:6px;padding:8px 10px;background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.3);border-radius:6px;font-size:11px;color:var(--red)">⚠ La compra dice ' + cantEsperada + ' animales pero estás pegando ' + _bpParsed.length + '. Revisá si falta algo.</div>';
       }
     }
+  } else if (_bpContext === 'newlot') {
+    // Nuevo Lote: validar duplicados contra _lotNewAnimals existente
+    if (typeof _lotNewAnimals !== 'undefined' && _lotNewAnimals.length > 0) {
+      var existIds = {};
+      _lotNewAnimals.forEach(function(a) { existIds[a.id] = true; });
+      var dupCount = _bpParsed.filter(function(a) { return existIds[a.id]; }).length;
+      if (dupCount > 0) {
+        validacion = '<div style="margin-top:6px;padding:8px 10px;background:rgba(212,160,23,.06);border:1px solid rgba(212,160,23,.2);border-radius:6px;font-size:11px;color:var(--amber2)">⚠ ' + dupCount + ' IDs ya están en la lista — se omitirán al agregar.</div>';
+      } else {
+        validacion = '<div style="margin-top:6px;padding:6px 10px;background:rgba(57,211,83,.06);border:1px solid rgba(57,211,83,.2);border-radius:6px;font-size:11px;color:var(--green)">✓ Sin duplicados con animales ya agregados.</div>';
+      }
+    }
   }
 
   // IDs duplicados dentro del pegado mismo (parseBulkData ya dedupea pero igual avisamos visual)
@@ -19123,6 +21419,33 @@ function bpConfirm() {
       msg += ' (' + (_bpParsed.length - aAgregar.length) + ' descartados por exceder cantidad de compra)';
     }
     toast(msg, 'success');
+  } else if (_bpContext === 'newlot') {
+    // Modo Nuevo Lote — agregar a _lotNewAnimals
+    if (typeof _lotNewAnimals === 'undefined') { toast('Modo no inicializado', 'error'); return; }
+    var razaDefaultLot = (document.getElementById('lot-new-animal-raza') || {}).value || '';
+    var fechaLot = (document.getElementById('lot-entry') || {}).value || localDate();
+    var existentes = {};
+    _lotNewAnimals.forEach(function(a){ existentes[a.id] = true; });
+
+    var agregados = 0, duplicados = 0;
+    _bpParsed.forEach(function(a){
+      var idStr = String(a.id || '').trim();
+      if (!idStr) return;
+      if (existentes[idStr]) { duplicados++; return; }
+      _lotNewAnimals.push({
+        id: idStr,
+        raza: a.raza || razaDefaultLot,
+        peso: a.peso || null,
+        pesajes: a.peso ? [{ fecha: fechaLot, peso: a.peso }] : []
+      });
+      existentes[idStr] = true;
+      agregados++;
+    });
+
+    if (typeof renderLotAnimalList === 'function') renderLotAnimalList();
+    var msg2 = agregados + ' animales agregados al lote nuevo';
+    if (duplicados > 0) msg2 += ' (' + duplicados + ' duplicados omitidos)';
+    toast(msg2, 'success');
   } else {
     toast('Contexto desconocido', 'error');
     return;

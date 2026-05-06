@@ -373,6 +373,28 @@ ipcMain.handle('export:openFolder', (_, filePath) => {
   shell.showItemInFolder(filePath);
 });
 
+// ── Guardar archivo XLSX (usa SheetJS desde renderer) ──────
+ipcMain.handle('xlsx:save-as', async (_, { sheetsData, filename }) => {
+  const { filePath } = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: filename || 'plantilla.xlsx',
+    filters: [{ name: 'Excel', extensions: ['xlsx'] }],
+  });
+  if (!filePath) return { success: false };
+  try {
+    const XLSX = require('xlsx');
+    const wb = XLSX.utils.book_new();
+    // sheetsData es un objeto: { 'NombreHoja': [['celda1','celda2'], ['celda1','celda2']] }
+    Object.keys(sheetsData).forEach(name => {
+      const ws = XLSX.utils.aoa_to_sheet(sheetsData[name]);
+      XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31)); // Excel limita 31 chars
+    });
+    XLSX.writeFile(wb, filePath);
+    return { success: true, path: filePath };
+  } catch(err) {
+    return { success: false, error: err.message };
+  }
+});
+
 // ── Auto backup silencioso ──────────────────────────────────
 function getBackupDir() {
   const path = require('path');
