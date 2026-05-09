@@ -5117,9 +5117,10 @@ function renderLotes() {
   }
   tbody.innerHTML = lotsToShow.map(function(lot){
     var isCuarentena = lot.status === 'cuarentena';
+    var isMarcado = lot.status === 'marcado_completo';
     var btnMover = isCuarentena
       ? '<button class="btn btn-primary btn-sm" onclick="openMarcarCuarentena('+lot.id+')" style="background:#A855F7;border-color:#A855F7" title="Marcar IDs y pesos individuales">📝 Marcar</button>'
-      : '<button class="btn btn-ghost btn-sm" onclick="openMoveLot('+lot.id+')">Mover</button>';
+      : (isMarcado ? '' : '<button class="btn btn-ghost btn-sm" onclick="openMoveLot('+lot.id+')">Mover</button>');
     // Datos de proveedor / detalles desde la compra asociada (si existe)
     var compra = findCompraForLot(lot.code);
     var proveedorTxt = compra && compra.proveedor ? compra.proveedor : '-';
@@ -5132,8 +5133,13 @@ function renderLotes() {
       detalleTxt = partes.join(' · ');
     }
     if (!detalleTxt) detalleTxt = lot.notes ? escH(lot.notes) : '-';
-    return '<tr'+(isCuarentena?' style="background:rgba(168,85,247,.04)"':'')+'>'+
-      '<td><span style="font-family:DM Mono,monospace;background:var(--sur2);padding:3px 8px;border-radius:5px;color:'+(isCuarentena?'#A855F7':'var(--amber2)')+';border:1px solid var(--bor)">'+escH(lot.code)+'</span></td>'+
+    // Si es marcado_completo y hay lote destino, mostrarlo en detalles
+    if (isMarcado && lot.marcaje_lot_destino) {
+      detalleTxt = '→ ' + escH(lot.marcaje_lot_destino) + (detalleTxt && detalleTxt !== '-' ? ' · ' + detalleTxt : '');
+    }
+    var rowBg = isCuarentena ? 'background:rgba(168,85,247,.04)' : (isMarcado ? 'background:rgba(107,114,128,.04);opacity:.75' : '');
+    return '<tr'+(rowBg?' style="'+rowBg+'"':'')+'>'+
+      '<td><span style="font-family:DM Mono,monospace;background:var(--sur2);padding:3px 8px;border-radius:5px;color:'+(isCuarentena?'#A855F7':(isMarcado?'#9CA3AF':'var(--amber2)'))+';border:1px solid var(--bor)">'+escH(lot.code)+'</span></td>'+
       '<td>'+capFirst(lot.category)+'</td>'+
       '<td style="color:var(--muted);font-size:12px">'+escH(lot.breed||'-')+'</td>'+
       '<td>'+escH(lot.paddock||'-')+'</td>'+
@@ -5144,7 +5150,7 @@ function renderLotes() {
       '<td style="font-size:11px;color:var(--muted);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escH(detalleTxt)+'">'+escH(detalleTxt)+'</td>'+
       '<td style="display:flex;gap:6px">'+
         btnMover +
-        '<button class="btn btn-danger btn-sm" onclick="deleteLot('+lot.id+')">X</button>'+
+        (isMarcado ? '' : '<button class="btn btn-danger btn-sm" onclick="deleteLot('+lot.id+')">X</button>')+
       '</td>'+
     '</tr>';
   }).join('');
@@ -5153,6 +5159,7 @@ function renderLotes() {
 function lotStatusBadge(lot) {
   if(lot.status==='sold' || lot.status==='vendido') return'<span class="bdg bdg-purple">Vendido</span>';
   if(lot.status==='cuarentena') return'<span class="bdg" style="background:rgba(168,85,247,.15);color:#A855F7;border:1px solid #A855F7">🚧 Cuarentena</span>';
+  if(lot.status==='marcado_completo') return'<span class="bdg" style="background:rgba(107,114,128,.15);color:#9CA3AF;border:1px solid #6B7280">📦 Marcado</span>';
   const alerts = db.alerts.filter(a=>!a.resolved&&a.lot_code===lot.code);
   if(alerts.length) return'<span class="bdg bdg-amber">⚠ Alerta</span>';
   return'<span class="bdg bdg-green">✓ Activo</span>';
@@ -7182,7 +7189,7 @@ function editPurchaseSubcuenta(purchaseId) {
 function suggestSubcuentasAI() {
   var need = (db.purchases||[]).filter(function(p){ return !p.subcuenta && p.desc; });
   if (!need.length) return;
-  var geminiKey = getGeminiKey(); if (!geminiKey) return;
+  // v1.4.27: ya no se valida geminiKey local; el server maneja la disponibilidad
   var params = getParams();
   var subcuentas = params.subcuentas || [];
   var subList = subcuentas.map(function(s){ return s.name+' ('+s.cuenta+')'; }).join(', ');
@@ -7190,10 +7197,10 @@ function suggestSubcuentasAI() {
   var descs = batch.map(function(p,i){ return (i+1)+'. '+p.desc+' (Bs '+p.total+', proveedor: '+(p.supplier||'-')+')'; }).join('\n');
   var subNames = subcuentas.map(function(s){ return s.name; });
   var prompt = 'Asigna UNA subcuenta a cada compra. Responde SOLO un JSON array de strings.\nSubcuentas validas: '+subNames.join(', ')+'\n\nCompras:\n'+descs+'\n\nEjemplo respuesta: ["Herramientas","Sanidad","Combustible"]\nSOLO el array JSON, nada mas.';
-  fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key='+geminiKey, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.1,maxOutputTokens:1000}})
-  }).then(function(r){return r.json();}).then(function(d){
+  aiGenerate({
+    contents:[{parts:[{text:prompt}]}],
+    generationConfig:{temperature:0.1,maxOutputTokens:1000}
+  }).then(function(d){
     var text = (d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]&&d.candidates[0].content.parts[0].text)||'';
     text = text.replace(/```json|```/g,'').trim();
     // Clean: remove "(COSTOS)" etc from names
@@ -10184,6 +10191,34 @@ var _API_URL   = 'https://estancia5m-api-production.up.railway.app/api';
 function getApiUrl() { return (localStorage.getItem('e5m_api_url') || _API_URL).replace(/\/+$/, ''); }
 function getApiToken() { return localStorage.getItem('e5m_api_token') || _API_TOKEN; }
 
+// ──────────────────────────────────────────────────────────
+// Helper: llamada a IA via proxy del server (no Gemini directo)
+// La key vive en server env SG_GEMINI_KEY, nunca en el cliente.
+// Body: { contents, generationConfig?, system_instruction?, model? } (formato Gemini)
+// Returns: Promise<respuesta Gemini> | error con .error.message
+// ──────────────────────────────────────────────────────────
+function aiGenerate(body) {
+  var api = getApiUrl();
+  var token = getApiToken();
+  return fetch(api + '/ai/generate', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + token,
+      'X-App-Version': _APP_VERSION,
+      'X-App-Type': 'desktop'
+    },
+    body: JSON.stringify(body)
+  }).then(function(r) {
+    return r.json().then(function(d) {
+      if (r.status >= 400) {
+        return { error: { message: d.error || 'Error IA', code: d.code, status: r.status } };
+      }
+      return d;
+    });
+  });
+}
+
 // Formatear fecha+hora para mostrar en todos los registros
 function fmtDT(str) {
   if (!str) return '';
@@ -10202,7 +10237,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.23'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.27'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -10375,7 +10410,7 @@ function startRestoreWithData(data) {
       if (data.tasks)   localStorage.setItem('e5m_tasks', JSON.stringify(data.tasks));
       if (data.report_params && typeof data.report_params === 'object' && Object.keys(data.report_params).length) {
         localStorage.setItem('e5m_report_params', JSON.stringify(data.report_params));
-        if (data.report_params.gemini_key) localStorage.setItem('e5m_gemini_key', data.report_params.gemini_key);
+        // v1.4.27: gemini_key ya no se sincroniza al cliente (vive solo en server env SG_GEMINI_KEY)
       }
       if (data.estancia_params && typeof data.estancia_params === 'object' && Object.keys(data.estancia_params).length) {
         localStorage.setItem('e5m_params', JSON.stringify(data.estancia_params));
@@ -15656,32 +15691,24 @@ function evaluatePasto() {
   var res = document.getElementById('evp-result');
   if (res) res.innerHTML = '<div style="padding:10px;color:var(--muted);font-size:12px">🤖 Analizando con IA Gemini...</div>';
 
-  var geminiKey = (typeof getGeminiKey === 'function') ? getGeminiKey() : (localStorage.getItem('e5m_gemini_key')||'');
-  if (!geminiKey) {
-    if (res) res.innerHTML = '<div style="padding:10px;color:var(--red);font-size:12px">No hay Gemini key configurada (Config → API Keys)</div>';
-    if (btn) { btn.disabled = false; btn.textContent = '🤖 Evaluar con IA'; }
-    return;
-  }
+  // v1.4.27: ya no se valida geminiKey local; el server maneja la disponibilidad
 
   var b64 = _evpPhoto.replace(/^data:image\/\w+;base64,/, '');
   var context = potrero ? 'Potrero: '+potrero+'. ' : '';
   if (lotCode) context += 'Lote: '+lotCode+'. ';
   var prompt = 'Eres un agronomo experto en pasturas tropicales del oriente boliviano. Analiza esta foto y responde EXACTAMENTE en este formato (sin texto adicional antes ni despues):\n**ESPECIE**: [nombre cientifico y comun]\n**ALTURA**: [numero] cm\n**COBERTURA**: [numero] %\n**ESTADO**: [Excelente|Bueno|Regular|Degradado|Critico]\n**NDVI_EST**: [0.0-1.0]\n**RECOMENDACION**: [una linea breve]\n\n' + context + 'Sé conciso, en español.';
 
-  fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key='+geminiKey, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({
-      contents: [{parts: [
-        {inline_data: {mime_type: 'image/jpeg', data: b64}},
-        {text: prompt}
-      ]}],
-      generationConfig: {
-        maxOutputTokens: 2048,
-        temperature: 0.2,
-        thinkingConfig: { thinkingBudget: 0 }  // Gemini 2.5: deshabilitar reasoning para no consumir tokens
-      }
-    })
-  }).then(function(r){return r.json();}).then(function(d){
+  aiGenerate({
+    contents: [{parts: [
+      {inline_data: {mime_type: 'image/jpeg', data: b64}},
+      {text: prompt}
+    ]}],
+    generationConfig: {
+      maxOutputTokens: 2048,
+      temperature: 0.2,
+      thinkingConfig: { thinkingBudget: 0 }  // Gemini 2.5: deshabilitar reasoning para no consumir tokens
+    }
+  }).then(function(d){
     console.log('[EvalPasto Desktop] Respuesta Gemini:', d);
     var txt = '';
     var finishReason = '';
@@ -22141,32 +22168,15 @@ function renderHistorialAnimales() {
 var _aiHistory = [];
 var _aiOpen = false;
 
-function getGeminiKey() { return localStorage.getItem('e5m_gemini_key') || ''; }
+function getGeminiKey() {
+  // v1.4.27: la key vive en server (env SG_GEMINI_KEY), no en el cliente.
+  // Mantenemos esta función por compatibilidad con código legacy que la llamaba.
+  return '';
+}
 function guardarGeminiKey() {
-  var key = ((document.getElementById('cfg-gemini-key')||{}).value||'').trim();
-  if (!key) { toast('Ingresa la API key','error'); return; }
-  localStorage.setItem('e5m_gemini_key', key);
-  // Propagate to report_params → current tenant
-  try {
-    var rp = JSON.parse(localStorage.getItem('e5m_report_params')||'{}');
-    rp.gemini_key = key;
-    localStorage.setItem('e5m_report_params', JSON.stringify(rp));
-    replaceTableInRailway('report_params', rp);
-  } catch(e){ console.warn('Error syncing Gemini key:', e); }
-  // Propagate to ALL tenants via admin endpoint
-  var _apiUrl = localStorage.getItem('e5m_api_url') || 'https://estancia5m-api-production.up.railway.app/api';
-  fetch(_apiUrl + '/admin/set-gemini-key', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer jisunu-admin-2026-sgbolivia' },
-    body: JSON.stringify({ gemini_key: key })
-  })
-  .then(function(r){ return r.json(); })
-  .then(function(d){
-    if (d.ok) toast('API Key guardada para todos los tenants (' + d.tenants_updated + ')','ok');
-    else toast('Guardada local. Error servidor: ' + (d.error||''),'warn');
-  })
-  .catch(function(e){ toast('Guardada local. Sin conexión al servidor','warn'); });
-  toast('Gemini API Key guardada','success');
+  // v1.4.27: la gestión de Gemini key se centraliza en SG Bolivia.
+  // El input de la UI no es funcional, lo dejamos por compatibilidad.
+  toast('La gestión de IA ahora está centralizada en SG Bolivia. No es necesario configurar API key.','info');
 }
 
 function toggleAiChat() {
@@ -22574,11 +22584,7 @@ function sendAiMsg() {
 
   _aiHistory.push({ role: 'user', parts: [{ text: text }] });
 
-  var key = getGeminiKey();
-  if (!key) {
-    addAiMsg('assistant', 'Necesitas la **Gemini API Key** para el asistente.\n[NAV:config:Ir a Config] → seccion "Gemini API Key"\n\nEs gratis en aistudio.google.com');
-    return;
-  }
+  // v1.4.27: ya no se valida key local; el server maneja la disponibilidad
 
   var typingDiv = document.createElement('div');
   typingDiv.id = 'ai-typing';
@@ -22587,16 +22593,11 @@ function sendAiMsg() {
   document.getElementById('ai-messages').appendChild(typingDiv);
   document.getElementById('ai-messages').scrollTop = 999999;
 
-  fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + key, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: _AI_PROMPT + '\nDATOS ACTUALES DE LA ESTANCIA:\n' + buildAiDataContext() }] },
-      contents: _aiHistory.slice(-10),
-      generationConfig: { maxOutputTokens: 2048, temperature: 0.3 }
-    })
+  aiGenerate({
+    system_instruction: { parts: [{ text: _AI_PROMPT + '\nDATOS ACTUALES DE LA ESTANCIA:\n' + buildAiDataContext() }] },
+    contents: _aiHistory.slice(-10),
+    generationConfig: { maxOutputTokens: 2048, temperature: 0.3 }
   })
-  .then(function(r) { return r.json(); })
   .then(function(d) {
     var typing = document.getElementById('ai-typing');
     if (typing) typing.remove();
