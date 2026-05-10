@@ -1116,7 +1116,7 @@ function publishTasksToPWA() {
   <div class="ph">
     <div><div class="pt">📦 Stock Veterinario</div><div class="ps">Medicamentos · sal mineral · alertas automaticas</div></div>
     <div style="display:flex;gap:8px">
-      <button class="btn btn-primary" onclick="openModal('modal-product')">+ Nuevo producto</button>
+      <button class="btn btn-primary" onclick="openNewProduct()">+ Nuevo producto</button>
       <button class="btn btn-primary" onclick="openConteoInventario()" style="background:var(--blue);font-size:12px">📋 Conteo Inventario</button>
       <button class="btn btn-ghost" onclick="exportStock()" title="Exportar a Excel">⬇ Excel</button>
     </div>
@@ -3089,8 +3089,23 @@ function publishTasksToPWA() {
   <div class="form-group"><label class="form-label">Nombre</label><input class="form-input" id="prod-name" placeholder="Ej: Ivermectina 1%"></div>
   <div class="form-group"><label class="form-label">Tipo</label>
     <select class="form-select" id="prod-type">
-      <option value="antiparasitario">Antiparasitario</option><option value="vacuna">Vacuna</option>
-      <option value="antibiotico">Antibiotico</option><option value="vitamina">Vitamina/Mineral</option><option value="otro">Otro</option>
+      <optgroup label="Veterinarios">
+        <option value="antiparasitario">Antiparasitario</option>
+        <option value="vacuna">Vacuna</option>
+        <option value="antibiotico">Antibiótico</option>
+        <option value="antiinflamatorio">Antiinflamatorio</option>
+        <option value="vitamina_mineral">Vitamina / Mineral</option>
+        <option value="hormona">Hormona reproductiva</option>
+      </optgroup>
+      <optgroup label="Suplementación">
+        <option value="sal_mineral">Sal mineral</option>
+        <option value="alimento_balanceado">Alimento balanceado</option>
+      </optgroup>
+      <optgroup label="Combustibles y lubricantes">
+        <option value="combustible">Combustible</option>
+        <option value="lubricante">Lubricante / Aceite</option>
+      </optgroup>
+      <option value="otro">Otro</option>
     </select>
   </div>
 </div>
@@ -5684,13 +5699,14 @@ function renderStock() {
     var wTd=isLow?700:400;
     return '<tr>'+
       '<td style="font-weight:500">'+escH(p.name)+'</td>'+
-      '<td><span class="bdg bdg-'+typeColor(p.type)+'">'+capFirst(p.type)+'</span></td>'+
+      '<td><span class="bdg bdg-'+typeColor(p.type)+'">'+typeLabel(p.type)+'</span></td>'+
       '<td style="font-family:DM Mono,monospace;color:'+colorTd+';font-weight:'+wTd+'">'+p.stock_qty+' '+p.unit+'</td>'+
       '<td style="font-family:DM Mono,monospace;color:var(--muted)">'+p.stock_min+' '+p.unit+'</td>'+
       '<td style="width:120px"><div class="prg-bar" style="width:100px"><div class="prg-fill '+fillCls+'" style="width:'+pct+'%"></div></div></td>'+
       '<td style="font-size:12px">'+expCell+'</td>'+
       '<td>'+(isLow?'<span class="bdg bdg-red">Critico</span>':'<span class="bdg bdg-green">OK</span>')+'</td>'+
       '<td style="display:flex;gap:4px">'+
+        '<button class="btn btn-ghost btn-sm" onclick="openEditProduct('+p.id+')">Editar</button>'+
         '<button class="btn btn-ghost btn-sm" onclick="toggleStockActivity('+p.id+')">Actividad</button>'+
         '<button class="btn btn-ghost btn-sm" onclick="quickAddStock('+p.id+')">+ Stock</button>'+
         '<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteProduct('+p.id+')">&#x2715;</button>'+
@@ -5933,22 +5949,72 @@ function deleteProduct(id) {
   toast('Producto eliminado', 'success');
 }
 
+// Variable global para tracking del modo create/edit del modal-product
+var editingProductId = null;
+
+function openNewProduct() {
+  editingProductId = null;
+  document.getElementById('prod-name').value = '';
+  document.getElementById('prod-type').value = 'antiparasitario';
+  document.getElementById('prod-unit').value = 'ml';
+  document.getElementById('prod-stock').value = 0;
+  document.getElementById('prod-min').value = 0;
+  document.getElementById('prod-dose').value = '';
+  document.getElementById('prod-cost').value = '';
+  document.getElementById('prod-expiry').value = '';
+  document.getElementById('prod-supplier').value = '';
+  var titleEl = document.querySelector('#modal-product h2');
+  if (titleEl) titleEl.innerHTML = '💊 Nuevo Producto';
+  openModal('modal-product');
+}
+
+function openEditProduct(id) {
+  var p = db.products.find(function(x){ return x.id == id; });
+  if (!p) { toast('Producto no encontrado','error'); return; }
+  editingProductId = p.id;
+  document.getElementById('prod-name').value = p.name || '';
+  document.getElementById('prod-type').value = p.type || 'otro';
+  document.getElementById('prod-unit').value = p.unit || 'ml';
+  document.getElementById('prod-stock').value = p.stock_qty || 0;
+  document.getElementById('prod-min').value = p.stock_min || 0;
+  document.getElementById('prod-dose').value = p.dose_per_50kg || '';
+  document.getElementById('prod-cost').value = p.unit_cost || '';
+  document.getElementById('prod-expiry').value = p.expiry_date || '';
+  document.getElementById('prod-supplier').value = p.supplier || '';
+  var titleEl = document.querySelector('#modal-product h2');
+  if (titleEl) titleEl.innerHTML = '✏️ Editar Producto';
+  openModal('modal-product');
+}
+
 function saveProduct() {
-  const name=document.getElementById('prod-name').value.trim();
-  if(!name){toast('Ingresa el nombre del producto','error');return;}
-  db.products.push({
-    id:db.next_ids.product++,name,
-    type:document.getElementById('prod-type').value,
-    unit:document.getElementById('prod-unit').value,
-    stock_qty:parseFloat(document.getElementById('prod-stock').value)||0,
-    stock_min:parseFloat(document.getElementById('prod-min').value)||0,
-    dose_per_50kg:parseFloat(document.getElementById('prod-dose').value)||null,
-    unit_cost:parseFloat(document.getElementById('prod-cost').value)||0,
-    expiry_date:document.getElementById('prod-expiry').value||null,
-    supplier:document.getElementById('prod-supplier').value
-  });
-  saveDB(); closeModal('modal-product'); renderStock();
-  toast('Producto agregado','success');
+  const name = document.getElementById('prod-name').value.trim();
+  if(!name){ toast('Ingresa el nombre del producto','error'); return; }
+  
+  const productData = {
+    name: name,
+    type: document.getElementById('prod-type').value,
+    unit: document.getElementById('prod-unit').value,
+    stock_qty: parseFloat(document.getElementById('prod-stock').value) || 0,
+    stock_min: parseFloat(document.getElementById('prod-min').value) || 0,
+    dose_per_50kg: parseFloat(document.getElementById('prod-dose').value) || null,
+    unit_cost: parseFloat(document.getElementById('prod-cost').value) || 0,
+    expiry_date: document.getElementById('prod-expiry').value || null,
+    supplier: document.getElementById('prod-supplier').value
+  };
+  
+  if (editingProductId !== null) {
+    var idx = db.products.findIndex(function(p){ return p.id == editingProductId; });
+    if (idx === -1) { toast('Producto no encontrado','error'); return; }
+    db.products[idx] = Object.assign({}, db.products[idx], productData);
+    saveDB(); closeModal('modal-product'); renderStock();
+    toast('Producto actualizado','success');
+  } else {
+    db.products.push(Object.assign({ id: db.next_ids.product++ }, productData));
+    saveDB(); closeModal('modal-product'); renderStock();
+    toast('Producto agregado','success');
+  }
+  
+  editingProductId = null;
 }
 
 // ══════════════════════════════════════════════════
@@ -8644,7 +8710,25 @@ function lotMatches(recordLot, filterLot) {
 
 function capFirst(str) { return str?str.charAt(0).toUpperCase()+str.slice(1).replace('_',' '):''; }
 function getProdUnit(id) { const p=db.products.find(p=>p.id===id); return p?p.unit:''; }
-function typeColor(type) { const m={antiparasitario:'blue',vacuna:'green',antibiotico:'red',vitamina:'amber',otro:'purple'}; return m[type]||'blue'; }
+function typeColor(type) {
+  const m = {
+    antiparasitario:'blue', vacuna:'green', antibiotico:'red',
+    antiinflamatorio:'amber', vitamina_mineral:'amber', vitamina:'amber',
+    hormona:'purple', sal_mineral:'cyan', alimento_balanceado:'amber',
+    combustible:'red', lubricante:'amber', otro:'purple'
+  };
+  return m[type] || 'blue';
+}
+function typeLabel(type) {
+  const m = {
+    antiparasitario:'Antiparasitario', vacuna:'Vacuna', antibiotico:'Antibiótico',
+    antiinflamatorio:'Antiinflamatorio', vitamina_mineral:'Vitamina/Mineral',
+    vitamina:'Vitamina/Mineral', hormona:'Hormona',
+    sal_mineral:'Sal mineral', alimento_balanceado:'Alimento',
+    combustible:'Combustible', lubricante:'Lubricante', otro:'Otro'
+  };
+  return m[type] || (type ? type.charAt(0).toUpperCase()+type.slice(1) : '-');
+}
 
 function toast(msg, type='success') {
   const wrap=document.getElementById('toastWrap');
@@ -12478,28 +12562,29 @@ function checkForAppUpdate() {
       setUpdateStatus('❌ Error: ' + e.message, 'var(--red)');
     });
   } else {
-    // Fallback: verificar via GitHub API
-    var ghToken = ((document.getElementById('cfg-gh-token')||{}).value||'').trim() || localStorage.getItem('gh_token') || '';
-    var headers = {};
-    if (ghToken) headers['Authorization'] = 'token ' + ghToken;
-    fetch('https://api.github.com/repos/jasm91/estancia5m-electron/releases/latest', { headers: headers })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (btn) btn.disabled = false;
-      if (data.tag_name) {
-        var latestVersion = data.tag_name.replace('v','');
-        var currentVersion = _APP_VERSION || '0.0.0';
-        if (latestVersion !== currentVersion) {
-          setUpdateStatus('✅ <strong>Nueva versión:</strong> v' + latestVersion + ' (actual: v' + currentVersion + ')<br><span style="font-size:10px;color:var(--muted)">Haz click en "Actualizar ahora" para descargar</span>', 'var(--green)');
+    // Fallback: verificar via GitHub API (usa getGhToken para leer de settings/localStorage/input)
+    getGhToken().then(function(ghToken){
+      var headers = {};
+      if (ghToken) headers['Authorization'] = 'token ' + ghToken;
+      fetch('https://api.github.com/repos/jasm91/estancia5m-electron/releases/latest', { headers: headers })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (btn) btn.disabled = false;
+        if (data.tag_name) {
+          var latestVersion = data.tag_name.replace('v','');
+          var currentVersion = _APP_VERSION || '0.0.0';
+          if (latestVersion !== currentVersion) {
+            setUpdateStatus('✅ <strong>Nueva versión:</strong> v' + latestVersion + ' (actual: v' + currentVersion + ')<br><span style="font-size:10px;color:var(--muted)">Haz click en "Actualizar ahora" para descargar</span>', 'var(--green)');
+          } else {
+            setUpdateStatus('✅ Versión actual: <strong>v' + currentVersion + '</strong> (la más reciente)', 'var(--green)');
+          }
         } else {
-          setUpdateStatus('✅ Versión actual: <strong>v' + currentVersion + '</strong> (la más reciente)', 'var(--green)');
+          setUpdateStatus('⚠️ No se pudo obtener la versión más reciente', 'var(--amber)');
         }
-      } else {
-        setUpdateStatus('⚠️ No se pudo obtener la versión más reciente', 'var(--amber)');
-      }
-    }).catch(function(e) {
-      if (btn) btn.disabled = false;
-      setUpdateStatus('❌ Error verificando: ' + e.message, 'var(--red)');
+      }).catch(function(e) {
+        if (btn) btn.disabled = false;
+        setUpdateStatus('❌ Error verificando: ' + e.message, 'var(--red)');
+      });
     });
   }
 }
@@ -16679,22 +16764,37 @@ function checkForUpdateOnStartup() {
   }
 }
 
+// Helper para leer el GitHub PAT desde múltiples ubicaciones (settings/localStorage/input)
+function getGhToken() {
+  var fromInput = ((document.getElementById('cfg-gh-token')||{}).value||'').trim();
+  if (fromInput) return Promise.resolve(fromInput);
+  if (window.estancia && window.estancia.settings && window.estancia.settings.get) {
+    return window.estancia.settings.get('gh_token').then(function(t){
+      return t || localStorage.getItem('gh_token') || '';
+    }).catch(function(){
+      return localStorage.getItem('gh_token') || '';
+    });
+  }
+  return Promise.resolve(localStorage.getItem('gh_token') || '');
+}
+
 function checkLatestVersionFromGithub() {
-  var ghToken = localStorage.getItem('gh_token') || '';
-  var headers = {};
-  if (ghToken) headers['Authorization'] = 'token ' + ghToken;
-  fetch('https://api.github.com/repos/jasm91/estancia5m-electron/releases/latest', { headers: headers })
-    .then(function(r){ if (!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
-    .then(function(data){
-      if (!data || !data.tag_name) return;
-      var latestVersion = data.tag_name.replace('v','');
-      var currentVersion = (typeof _APP_VERSION !== 'undefined' ? _APP_VERSION : '0.0.0');
-      if (compareVersions(latestVersion, currentVersion) > 0) {
-        showUpdateBadge(latestVersion, false);
-        showUpdateNotification(latestVersion, false);
-      }
-    })
-    .catch(function(e){ console.warn('[UpdateCheck] No se pudo verificar:', e.message); });
+  getGhToken().then(function(ghToken){
+    var headers = {};
+    if (ghToken) headers['Authorization'] = 'token ' + ghToken;
+    fetch('https://api.github.com/repos/jasm91/estancia5m-electron/releases/latest', { headers: headers })
+      .then(function(r){ if (!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+      .then(function(data){
+        if (!data || !data.tag_name) return;
+        var latestVersion = data.tag_name.replace('v','');
+        var currentVersion = (typeof _APP_VERSION !== 'undefined' ? _APP_VERSION : '0.0.0');
+        if (compareVersions(latestVersion, currentVersion) > 0) {
+          showUpdateBadge(latestVersion, false);
+          showUpdateNotification(latestVersion, false);
+        }
+      })
+      .catch(function(e){ console.warn('[UpdateCheck] No se pudo verificar:', e.message); });
+  });
 }
 
 // ═══ Min Version Check temprano (al arranque, sin auth) ═══
