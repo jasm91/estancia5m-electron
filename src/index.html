@@ -4480,6 +4480,25 @@ function pullFromRailwayDesktop(thenPush) {
             if (item && item.lot_code) pendingLots[item.lot_code] = true;
           });
         } catch(e) {}
+
+        // FIX v1.4.29: Detectar lotes con ediciones recientes de ID (id_updated_at < 60 seg)
+        // para protegerlos del overwrite del server. Sin esto, si el sync-pull entra
+        // antes de que el sync-push haga llegar el cambio, el ID viejo regresa.
+        var recentlyEditedLots = {};
+        var nowMs = Date.now();
+        try {
+          Object.keys(localAnimals).forEach(function(lc) {
+            (localAnimals[lc]||[]).forEach(function(a) {
+              if (a.id_updated_at) {
+                var diff = nowMs - new Date(a.id_updated_at).getTime();
+                if (diff >= 0 && diff < 60000) { // dentro de los últimos 60 segundos
+                  recentlyEditedLots[lc] = true;
+                }
+              }
+            });
+          });
+        } catch(e) {}
+
         var merged = {};
         // Server gana por default
         Object.keys(remoteAnimals).forEach(function(lc) {
@@ -4487,10 +4506,12 @@ function pullFromRailwayDesktop(thenPush) {
             return { id: a.animal_id || a.id || '', animal_id: a.animal_id || a.id || '', raza: a.breed || a.raza || '', breed: a.breed || a.raza || '', pesajes: a.pesajes || [] };
           });
         });
-        // Preservar lotes locales solo si tienen cambios pendientes
+        // Preservar lotes locales si tienen cambios pendientes O ediciones recientes de ID
         Object.keys(localAnimals).forEach(function(lc) {
-          if (pendingLots[lc] && localAnimals[lc] && localAnimals[lc].length) {
-            console.log('[Sync] Preservando animales del lote', lc, 'por cambio pendiente local');
+          var shouldPreserve = (pendingLots[lc] || recentlyEditedLots[lc]) && localAnimals[lc] && localAnimals[lc].length;
+          if (shouldPreserve) {
+            var reason = pendingLots[lc] ? 'pending' : 'recent-id-edit';
+            console.log('[Sync] Preservando animales del lote', lc, 'por', reason);
             merged[lc] = localAnimals[lc];
           }
         });
@@ -8426,10 +8447,27 @@ document.querySelectorAll('.modal-overlay').forEach(overlay=>{
   overlay.addEventListener('click',e=>{if(e.target===overlay) overlay.classList.remove('open')});
 });
 
+// Helper para filtrar productos por tipos permitidos (incluye productos sin clasificar)
+function getProductsForAction(allowedTypes) {
+  return (db.products || []).filter(function(p) {
+    if (!p.stock_qty || p.stock_qty <= 0) return false;  // sin stock disponible
+    if (!p.type || p.type === 'otro') return true;        // sin clasificar siempre aparece
+    return allowedTypes.indexOf(p.type) !== -1;
+  });
+}
+
+// Tipos sanitarios permitidos en modal Curación
+var SANITARY_TYPES = ['antiparasitario','vacuna','antibiotico','antiinflamatorio','vitamina_mineral','hormona','vitamina'];
+
 function populateSelects() {
-  // Products
-  var opts=db.products.map(function(p){ return '<option value="'+p.id+'">'+escH(p.name)+' ('+p.stock_qty+' '+p.unit+')</option>'; }).join('');
-  ['tr-product'].forEach(function(id){var el=document.getElementById(id);if(el){el.innerHTML='<option value="">Seleccionar...</option>'+opts;}});
+  // Products — modal Curación filtra por tipos sanitarios + sin clasificar
+  var sanitaryProds = getProductsForAction(SANITARY_TYPES);
+  var trOpts = sanitaryProds.map(function(p){
+    var typeBadge = p.type && p.type !== 'otro' ? '' : ' [sin clasificar]';
+    return '<option value="'+p.id+'">'+escH(p.name)+' ('+p.stock_qty+' '+p.unit+')'+typeBadge+'</option>';
+  }).join('');
+  var trEl = document.getElementById('tr-product');
+  if (trEl) trEl.innerHTML = '<option value="">Seleccionar...</option>'+trOpts;
 
   // Lots
   var lotOpts=db.lots.filter(function(l){return !l.status||l.status==='activo'||l.status==='active';}).map(function(l){return '<option value="'+l.code+'">'+escH(l.code)+' - '+escH(l.category)+' ('+l.animal_count+' cab.)</option>';}).join('');
@@ -14368,11 +14406,22 @@ function saveEditAnimalId() {
   var animalesDB=getAnimalesDB();
   var lista=animalesDB[lotCode]||[];
   if(!lista[idx])return;
+  var idAnterior = lista[idx].id;
   lista[idx].id=nuevoId;
+  lista[idx].animal_id=nuevoId; // FIX v1.4.29: persistir en ambos campos para que sync sea consistente
+  lista[idx].id_updated_at = new Date().toISOString(); // FIX v1.4.29: marca temporal para merge correcto en sync-pull
   localStorage.setItem('e5m_animals',JSON.stringify(animalesDB));
+
+  // FIX v1.4.29: Disparar push inmediato al server para evitar que un sync-pull sobreescriba el cambio.
+  // Sin esto, si entra un pull antes del próximo push automático, el server (que aún tiene el ID viejo)
+  // pisa el cambio local y al reabrir el modal vuelve a aparecer el ID original.
+  if (typeof pushToRailway === 'function') {
+    try { pushToRailway(); } catch(e) { console.error('[saveEditAnimalId] push failed:', e); }
+  }
+
   closeModal('modal-edit-animal-id');
   renderAnimalesLote();
-  toast('ID actualizado: '+nuevoId,'success');
+  toast('ID actualizado: '+idAnterior+' → '+nuevoId,'success');
 }
 
 // HISTORIAL SUELDOS
