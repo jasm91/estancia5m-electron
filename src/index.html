@@ -4242,7 +4242,50 @@ function replaceTableInRailway(tableName, records) {
 function mergeArrays(local, remote, idField, tableName) {
   var localIds = {};
   var deleted = getDeletedIds(tableName);
-  (local || []).forEach(function(r) { localIds[r[idField]] = true; });
+  var localMap = {};
+  (local || []).forEach(function(r) {
+    localIds[r[idField]] = true;
+    localMap[r[idField]] = r;
+  });
+
+  // FIX v1.4.30 (12-may-2026): para rotation_history, aceptar actualizaciones de exit_date
+  // del remote. Antes mergeArrays solo agregaba registros nuevos, nunca actualizaba existentes.
+  // Resultado: cuando la PWA cerraba una rotación en el server (exit_date != null), el Desktop
+  // mantenía su versión vieja con exit_date: null, confundiendo el render.
+  if (tableName === 'rotation_history') {
+    var merged = [];
+    var remoteIds = {};
+    (remote || []).forEach(function(r) {
+      var rid = String(r[idField] || '');
+      remoteIds[rid] = true;
+      if (deleted[rid]) return;
+      var localR = localMap[r[idField]];
+      if (!localR) {
+        // Solo en remote — agregar
+        merged.push(r);
+      } else {
+        // Existe en ambos — preservar exit_date del lado que lo tenga seteado
+        if (!localR.exit_date && r.exit_date) {
+          // Remote tiene el cierre, local todavía no — aceptar
+          merged.push(r);
+        } else if (localR.exit_date && !r.exit_date) {
+          // Local tiene cierre, remote no (no debería pasar) — mantener local
+          merged.push(localR);
+        } else {
+          // Ambos cerrados o ambos abiertos — preferir remote (server-wins)
+          merged.push(r);
+        }
+      }
+    });
+    // Agregar locales que no están en remote (movimientos offline recientes)
+    (local || []).forEach(function(r) {
+      var rid = String(r[idField] || '');
+      if (!remoteIds[rid] && !deleted[rid]) merged.push(r);
+    });
+    return merged;
+  }
+
+  // Comportamiento original para otras tablas
   var merged = (local || []).slice();
   (remote || []).forEach(function(r) {
     var rid = String(r[idField] || '');
@@ -4573,6 +4616,7 @@ function pullFromRailwayDesktop(thenPush) {
 
       // Re-render todo
       if (typeof renderLotes === 'function') renderLotes();
+      if (typeof renderRotacion === 'function') renderRotacion(); // FIX v1.4.30: el tab Rotación no se re-renderizaba tras pull
       if (typeof renderDashboard === 'function') renderDashboard();
       if (typeof renderStock === 'function') renderStock();
       if (typeof renderCompras === 'function') renderCompras();
