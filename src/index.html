@@ -661,7 +661,6 @@ function publishTasksToPWA() {
       <span style="font-size:11px;color:var(--muted);margin-right:4px">Mostrar:</span>
       <button class="chip chip-active" id="lotes-filter-active" onclick="setLotesFilter('active')" style="cursor:pointer">✓ Activos</button>
       <button class="chip" id="lotes-filter-cuarentena" onclick="setLotesFilter('cuarentena')" style="cursor:pointer">🚧 Cuarentena</button>
-      <button class="chip" id="lotes-filter-vendido" onclick="setLotesFilter('vendido')" style="cursor:pointer">💰 Vendidos</button>
       <button class="chip" id="lotes-filter-todos" onclick="setLotesFilter('todos')" style="cursor:pointer">Todos</button>
     </div>
     <div class="card">
@@ -4211,19 +4210,102 @@ function _computeDiff(oldObj, newObj) {
 }
 
 // Reemplazar una tabla específica en Railway (para que borrados se propaguen a PWA)
-function replaceTableInRailway(tableName, records) {
+//
+// FIX v1.4.31: cola persistente de reintentos.
+// Antes: si fallaba (offline, sin token, timeout, error server), retornaba false silencioso
+// y el cambio en el cliente nunca llegaba al server. Causó pérdida de sync en marcaje offline.
+// Ahora: cualquier falla guarda el payload en localStorage['e5m_replace_queue'] y se reintenta
+// automáticamente cuando vuelve la conexión o al próximo sync.
+
+function _replaceQueueGet() {
+  try { return JSON.parse(localStorage.getItem('e5m_replace_queue') || '[]'); } catch(e) { return []; }
+}
+function _replaceQueueSet(q) {
+  try { localStorage.setItem('e5m_replace_queue', JSON.stringify(q)); } catch(e) { console.error('[ReplaceQueue] localStorage full:', e); }
+}
+function _replaceQueueEnqueue(tableName, records) {
+  var q = _replaceQueueGet();
+  // Deduplicar: si hay otro pendiente para la misma tabla, reemplazar (último gana, es REPLACE total).
+  q = q.filter(function(it){ return it.table !== tableName; });
+  q.push({ table: tableName, records: records, attempts: 0, queued_at: Date.now() });
+  _replaceQueueSet(q);
+  _updateSyncBadge();
+  console.warn('[ReplaceQueue] Encolado push de "' + tableName + '" (queue size: ' + q.length + ')');
+}
+function _updateSyncBadge() {
+  try {
+    var q = _replaceQueueGet();
+    var btn = document.getElementById('sync-btn');
+    if (!btn) return;
+    if (q.length > 0) {
+      btn.title = q.length + ' push pendientes de sincronizar';
+      if (btn.textContent.indexOf('⚠') < 0) btn.textContent = '⚠ Sync (' + q.length + ')';
+    } else {
+      btn.title = '';
+      if (btn.textContent.indexOf('⚠') >= 0) btn.textContent = 'Sync';
+    }
+  } catch(e) {}
+}
+function flushReplaceQueue() {
   if (!navigator.onLine) return Promise.resolve(false);
+  var q = _replaceQueueGet();
+  if (!q.length) return Promise.resolve(true);
+  console.log('[ReplaceQueue] Flushing ' + q.length + ' entries');
+  // Procesar secuencialmente para no saturar
+  var chain = Promise.resolve();
+  q.forEach(function(item) {
+    chain = chain.then(function() {
+      return _doReplace(item.table, item.records, true).then(function(ok) {
+        if (ok) {
+          // Quitar de la cola
+          var q2 = _replaceQueueGet().filter(function(x){ return x.table !== item.table || x.queued_at !== item.queued_at; });
+          _replaceQueueSet(q2);
+          console.log('[ReplaceQueue] ✓ ' + item.table + ' enviado, queue size: ' + q2.length);
+        } else {
+          // Incrementar intentos y dejar en cola (o descartar si llegamos al límite)
+          var q2 = _replaceQueueGet();
+          var idx = q2.findIndex(function(x){ return x.table === item.table && x.queued_at === item.queued_at; });
+          if (idx >= 0) {
+            q2[idx].attempts = (q2[idx].attempts || 0) + 1;
+            if (q2[idx].attempts >= 5) {
+              console.error('[ReplaceQueue] Descartando ' + item.table + ' tras 5 intentos fallidos');
+              q2.splice(idx, 1);
+              try { toast('No se pudo sincronizar ' + item.table + ' al server. Datos locales OK pero pueden no estar en otros dispositivos.', 'error'); } catch(e){}
+            }
+            _replaceQueueSet(q2);
+          }
+        }
+      });
+    });
+  });
+  return chain.then(function() { _updateSyncBadge(); return true; });
+}
+// Auto-flush al detectar conexión + cada 60s mientras haya cola
+window.addEventListener('online', function() { setTimeout(flushReplaceQueue, 1500); });
+setInterval(function() {
+  if (_replaceQueueGet().length > 0) flushReplaceQueue();
+}, 60000);
+
+// Implementación interna: si fromQueue=true, no re-encolar al fallar (evitar loop).
+function _doReplace(tableName, records, fromQueue) {
+  if (!navigator.onLine) {
+    if (!fromQueue) _replaceQueueEnqueue(tableName, records);
+    return Promise.resolve(false);
+  }
   var apiUrl = getApiUrl();
   var token = localStorage.getItem('e5m_api_token') || '';
-  if (!token) { console.warn('replaceTableInRailway: sin token, skip '+tableName); return Promise.resolve(false); }
-  // Default: array vacío. Pero si records es explícitamente un objeto (no array, no null), mandarlo tal cual.
+  if (!token) {
+    console.warn('_doReplace: sin token, skip ' + tableName);
+    if (!fromQueue) _replaceQueueEnqueue(tableName, records);
+    return Promise.resolve(false);
+  }
   var payloadRecords;
   if (records === null || records === undefined) {
     payloadRecords = [];
   } else if (Array.isArray(records)) {
     payloadRecords = records;
   } else if (typeof records === 'object') {
-    payloadRecords = records;  // dict/object — el server bulk-push acepta esto
+    payloadRecords = records;
   } else {
     payloadRecords = [];
   }
@@ -4233,11 +4315,26 @@ function replaceTableInRailway(tableName, records) {
     body: JSON.stringify({ table: tableName, records: payloadRecords })
   }).then(function(r){ return r.json(); })
   .then(function(d){
-    if(d.ok) { console.log('[Sync] '+tableName+': OK'); return true; }
-    else { console.error('[Sync] '+tableName+': Error',d.error||d); return false; }
+    if (d.ok) { console.log('[Sync] ' + tableName + ': OK'); return true; }
+    console.error('[Sync] ' + tableName + ': Error', d.error || d);
+    if (!fromQueue) _replaceQueueEnqueue(tableName, records);
+    return false;
   })
-  .catch(function(e){ console.error('[Sync] '+tableName+': '+e.message); return false; });
+  .catch(function(e){
+    console.error('[Sync] ' + tableName + ': ' + e.message);
+    if (!fromQueue) _replaceQueueEnqueue(tableName, records);
+    return false;
+  });
 }
+
+// API pública (compatible con todas las llamadas existentes)
+function replaceTableInRailway(tableName, records) {
+  return _doReplace(tableName, records, false);
+}
+// Al cargar, intentar limpiar la cola si quedó algo de la sesión anterior
+setTimeout(function() {
+  try { _updateSyncBadge(); if (navigator.onLine) flushReplaceQueue(); } catch(e){}
+}, 3000);
 
 function mergeArrays(local, remote, idField, tableName) {
   var localIds = {};
@@ -4634,6 +4731,19 @@ function pullFromRailwayDesktop(thenPush) {
       if (typeof renderTareas === 'function') renderTareas();
       if (typeof renderContabilidad === 'function') try { renderContabilidad(); } catch(e){}
       if (typeof renderReporteCREA === 'function') try { renderReporteCREA(); } catch(e){}
+      // FIX v1.4.31: 9 renderXxx que solo se invocaban en tab-switch.
+      // Si el usuario estaba viendo uno de estos tabs durante un pull, los
+      // datos nuevos no se reflejaban hasta cambiar de pestaña y volver.
+      // El más crítico es renderSanidad porque alerts vienen de la PWA.
+      if (typeof renderLluviasDesktop === 'function') try { renderLluviasDesktop(); } catch(e){}
+      if (typeof renderBajasDesktop === 'function') try { renderBajasDesktop(); } catch(e){}
+      if (typeof renderMaquinaria === 'function') try { renderMaquinaria(); } catch(e){}
+      if (typeof renderEvalPasto === 'function') try { renderEvalPasto(); } catch(e){}
+      if (typeof renderHistorialSueldos === 'function') try { renderHistorialSueldos(); } catch(e){}
+      if (typeof renderKardex === 'function') try { renderKardex(); } catch(e){}
+      if (typeof renderSanidad === 'function') try { renderSanidad(); } catch(e){}
+      if (typeof renderHistorialAnimales === 'function') try { renderHistorialAnimales(); } catch(e){}
+      if (typeof renderConteoHistory === 'function') try { renderConteoHistory(); } catch(e){}
 
       if (thenPush) {
         setSyncStatus('ok');
@@ -5138,7 +5248,7 @@ var _lotesFilter = 'active';
 
 function setLotesFilter(f) {
   _lotesFilter = f;
-  ['active','cuarentena','vendido','todos'].forEach(function(name){
+  ['active','cuarentena','todos'].forEach(function(name){
     var el = document.getElementById('lotes-filter-' + name);
     if (el) {
       if (name === f) el.classList.add('chip-active');
@@ -5870,18 +5980,28 @@ function toggleStockActivity(prodId) {
     }
   });
 
-  // Conteos manuales (ajustes)
+  // Conteos manuales (ajustes de inventario)
+  // FIX v1.4.31: inventory_counts tiene estructura { items: [{product_id, stock_fisico, diferencia, ...}] },
+  // no campos product_id/qty al nivel raíz. Antes la condición nunca matcheaba, por lo que los
+  // ajustes por conteo físico no aparecían en el historial pero sí afectaban el stock real.
+  // Esto explicaba divergencias entre (entradas - salidas) y stock_actual.
   (db.inventory_counts||[]).forEach(function(c){
-    if (c.product_id == prodId || (c.product_name && c.product_name === prodName)) {
+    if (!c.ajustado) return; // solo conteos que efectivamente ajustaron stock
+    (c.items || []).forEach(function(item){
+      var matchById = item.product_id == prodId;
+      var matchByName = item.product_name && item.product_name === prodName;
+      if (!matchById && !matchByName) return;
+      var diff = parseFloat(item.diferencia) || 0;
+      if (diff === 0) return;
       entries.push({
         date: c.date || c.created_at || '',
         type: 'Conteo',
-        sign: '±',
-        qty: parseFloat(c.counted_qty || c.qty)||0,
-        desc: 'Conteo manual' + (c.notes?' · '+c.notes:''),
+        sign: diff > 0 ? '+' : '-',
+        qty: Math.abs(diff),
+        desc: 'Ajuste por conteo físico (sistema: ' + (item.stock_teorico||item.stock_sistema||0) + ', físico: ' + (item.stock_fisico||0) + ')' + (item.motivo?' · '+item.motivo:''),
         by: c.by || ''
       });
-    }
+    });
   });
 
   // Mantenimiento (descuento de stock por uso de insumo)
@@ -7957,6 +8077,10 @@ function toggleAdvance(id) {
   var adv = db.advances.find(function(a){ return a.id===id; });
   if (adv) adv.status = adv.status==='pendiente' ? 'descontado' : 'pendiente';
   saveDB();
+  // FIX v1.4.31: toggle de status edita un advance existente. sync-push usa
+  // mergeById que ignora actualizaciones, así que el toggle se revertía tras
+  // el próximo pull. replaceTableInRailway hace REPLACE total y persiste.
+  replaceTableInRailway('advances', db.advances || []);
   renderAdvances();
 }
 
@@ -9440,7 +9564,7 @@ function saveMarcaje() {
   });
   localStorage.setItem('e5m_animals', JSON.stringify(rawAnim));
 
-  // Actualizar lote destino: animal_count + avg_weight
+  // ── Actualizar lote destino: animal_count + avg_weight
   var loteDestObj = db.lots.find(function(l) { return l.code === loteDest; });
   if (!loteDestObj) {
     // Defensivo: no debería pasar nunca, pero si pasa, error claro (no silencioso)
@@ -9450,6 +9574,19 @@ function saveMarcaje() {
     localStorage.setItem('e5m_animals', JSON.stringify(rawAnim));
     return;
   }
+  // FIX v1.4.31: snapshots para audit log de movimientos de lote (origen y destino).
+  // Antes el marcaje solo logueaba update en compras_ganado, dejando los cambios reales
+  // de status/animal_count del lote sin trazabilidad en el tablero de auditoría.
+  var _origenSnap = {
+    code: _mcLoteCuarentena.code,
+    animal_count: _mcLoteCuarentena.animal_count,
+    status: _mcLoteCuarentena.status || 'cuarentena'
+  };
+  var _destinoSnap = {
+    code: loteDestObj.code,
+    animal_count: loteDestObj.animal_count || 0,
+    avg_weight: loteDestObj.avg_weight || 0
+  };
   loteDestObj.animal_count = (loteDestObj.animal_count || 0) + n;
   var pesos = rawAnim[loteDest].map(function(a) {
     return (a.pesajes && a.pesajes.length) ? a.pesajes[a.pesajes.length-1].peso : 0;
@@ -9594,6 +9731,25 @@ function saveMarcaje() {
     if (db.rotation_history) replaceTableInRailway('rotation_history', db.rotation_history);
   });
   try { auditLog('update', 'compras_ganado', compra ? compra.id : _mcLoteCuarentena.code, 'Marcaje: ' + n + ' animales en ' + loteDest + (costoProporcional > 0 ? ' (costo Bs. ' + costoProporcional + ')' : '')); } catch(e){}
+  // FIX v1.4.31: log explícito de movimientos en los lotes involucrados (origen y destino).
+  try {
+    var origenMsg = 'Marcaje saliente: ' + _mcLoteCuarentena.code + ' · ' + n + ' animales → ' + loteDest +
+      (esCompleto ? ' (lote cerrado: cuarentena → marcado_completo)' : ' (parcial, quedan ' + _mcLoteCuarentena.animal_count + ' en cuarentena)');
+    auditLog('update', 'lots', _mcLoteCuarentena.id, origenMsg, {
+      animal_count: [_origenSnap.animal_count, _mcLoteCuarentena.animal_count],
+      status: [_origenSnap.status, _mcLoteCuarentena.status || 'cuarentena']
+    });
+  } catch(e){}
+  // Para el lote destino: si era recién creado, ya hay un audit 'create lots' del paso anterior.
+  // Si era preexistente, registrar el ingreso de animales.
+  if (!creandoNuevo) {
+    try {
+      var destinoMsg = 'Marcaje entrante: ' + loteDestObj.code + ' · +' + n + ' animales desde ' + _mcLoteCuarentena.code;
+      auditLog('update', 'lots', loteDestObj.id, destinoMsg, {
+        animal_count: [_destinoSnap.animal_count, loteDestObj.animal_count]
+      });
+    } catch(e){}
+  }
 
   // Reset state
   _mcAnimals = [];
@@ -16404,7 +16560,12 @@ function saveLluviaDesktop() {
     var resumen = pluvios.map(function(p){ return p.label+' '+values[p.key]; }).join(' / ');
     toast(resumen+' mm','success');
   }
-  saveDB(); closeModal('modal-lluvia-desktop'); renderLluviasDesktop();
+  saveDB();
+  // FIX v1.4.31: sync-push usa mergeById que no actualiza registros existentes,
+  // por lo que al EDITAR una lluvia el cambio se perdía tras el próximo pull.
+  // replaceTableInRailway hace REPLACE total y persiste correctamente.
+  replaceTableInRailway('lluvias', db.lluvias || []);
+  closeModal('modal-lluvia-desktop'); renderLluviasDesktop();
 }
 
 function deleteLluvia(id) {
