@@ -4680,31 +4680,50 @@ function pullFromRailwayDesktop(thenPush) {
           console.log('[Sync] Diesel tanks loaded from server (local was empty)');
         }
       }
-      // estancia_params: Desktop is source of truth — only accept from server if local is empty
+      // FIX v1.4.32: estancia_params, report_params, pluvios_config ahora usan last-write-wins
+      // por timestamp 'updated_at'. Antes la regla era "Desktop is source of truth" pero eso
+      // permitía que defaults locales pisaran los reales del server. Ahora el más reciente gana.
+      // Helper para comparar timestamps de forma segura (string ISO o undefined)
+      function _isServerNewer(localTs, serverTs) {
+        if (!serverTs) return false;       // server no tiene timestamp → no pisar local
+        if (!localTs) return true;          // local no tiene timestamp → server gana
+        try { return new Date(serverTs).getTime() > new Date(localTs).getTime(); }
+        catch(e) { return false; }
+      }
+      // estancia_params
       if (remote.estancia_params && typeof remote.estancia_params === 'object' && !Array.isArray(remote.estancia_params) && Object.keys(remote.estancia_params).length) {
         var localParams = {};
         try { localParams = JSON.parse(localStorage.getItem('e5m_params')||'{}'); } catch(e){}
-        if (!localParams.potreros || !localParams.potreros.length) {
+        var localEmpty = !localParams.potreros || !localParams.potreros.length;
+        var serverNewer = _isServerNewer(localParams.updated_at, remote.estancia_params.updated_at);
+        if (localEmpty || serverNewer) {
           localStorage.setItem('e5m_params', JSON.stringify(remote.estancia_params));
-          console.log('[Sync] Params loaded from server (local was empty)');
+          console.log('[Sync] Params loaded from server (' + (localEmpty ? 'local was empty' : 'server newer: ' + remote.estancia_params.updated_at + ' > ' + localParams.updated_at) + ')');
         }
       }
-      // report_params: Desktop is source of truth — only accept if local is empty
+      // report_params
       if (remote.report_params && typeof remote.report_params === 'object' && !Array.isArray(remote.report_params) && Object.keys(remote.report_params).length) {
         var localRP = {};
         try { localRP = JSON.parse(localStorage.getItem('e5m_report_params')||'{}'); } catch(e){}
-        if (!localRP.whatsapp_phone && !localRP.lat) {
+        var rpEmpty = !localRP.whatsapp_phone && !localRP.lat && !localRP.nombre_estancia;
+        var rpServerNewer = _isServerNewer(localRP.updated_at, remote.report_params.updated_at);
+        if (rpEmpty || rpServerNewer) {
           localStorage.setItem('e5m_report_params', JSON.stringify(remote.report_params));
-          console.log('[Sync] Report params loaded from server (local was empty)');
+          console.log('[Sync] Report params loaded from server (' + (rpEmpty ? 'local was empty' : 'server newer') + ')');
         }
       }
-      // pluvios: Desktop is source of truth — only accept if local is empty
+      // pluvios_config (es array, timestamp vive en clave separada e5m_pluvios_updated_at)
       if (remote.pluvios_config && Array.isArray(remote.pluvios_config) && remote.pluvios_config.length) {
         var localPluvios = [];
         try { localPluvios = JSON.parse(localStorage.getItem('e5m_pluvios')||'[]'); } catch(e){}
-        if (!localPluvios.length) {
+        var localPluviosTs = localStorage.getItem('e5m_pluvios_updated_at');
+        var remotePluviosTs = remote.pluvios_config_updated_at || null;  // si el server lo expone
+        var pluviosEmpty = !localPluvios.length;
+        var pluviosServerNewer = _isServerNewer(localPluviosTs, remotePluviosTs);
+        if (pluviosEmpty || pluviosServerNewer) {
           localStorage.setItem('e5m_pluvios', JSON.stringify(remote.pluvios_config));
-          console.log('[Sync] Pluvios loaded from server (local was empty)');
+          if (remotePluviosTs) localStorage.setItem('e5m_pluvios_updated_at', remotePluviosTs);
+          console.log('[Sync] Pluvios loaded from server (' + (pluviosEmpty ? 'local was empty' : 'server newer') + ')');
         }
       }
       if (remote.inventory_counts && Array.isArray(remote.inventory_counts) && remote.inventory_counts.length) {
@@ -10559,7 +10578,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.27'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.32'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -16244,12 +16263,17 @@ document.addEventListener('DOMContentLoaded', function(){
         }
         // Tablas-objeto → keys propias
         if (remote.estancia_params && typeof remote.estancia_params === 'object' && Object.keys(remote.estancia_params).length) {
+          // FIX v1.4.32: stampear updated_at NOW para que el merge posterior considere
+          // estos params como "los más recientes" frente a cualquier cache local viejo
+          remote.estancia_params.updated_at = new Date().toISOString();
           localStorage.setItem('e5m_params', JSON.stringify(remote.estancia_params));
         }
         if (remote.branding && typeof remote.branding === 'object' && Object.keys(remote.branding).length) {
           localStorage.setItem('e5m_branding', JSON.stringify(remote.branding));
         }
         if (remote.report_params && typeof remote.report_params === 'object' && Object.keys(remote.report_params).length) {
+          // FIX v1.4.32: idem report_params
+          remote.report_params.updated_at = new Date().toISOString();
           localStorage.setItem('e5m_report_params', JSON.stringify(remote.report_params));
         }
         if (remote.diesel_tank) {
@@ -16257,6 +16281,8 @@ document.addEventListener('DOMContentLoaded', function(){
         }
         if (remote.pluvios_config) {
           localStorage.setItem('e5m_pluvios', JSON.stringify(remote.pluvios_config));
+          // FIX v1.4.32: stampear timestamp para pluvios también
+          localStorage.setItem('e5m_pluvios_updated_at', new Date().toISOString());
         }
         // Tasks
         if (Array.isArray(remote.tasks)) {
@@ -16311,6 +16337,8 @@ function getPluvios() {
 }
 function savePluvios(list) {
   localStorage.setItem('e5m_pluvios', JSON.stringify(list));
+  // FIX v1.4.32: timestamp en clave separada (pluvios es array, no se le puede meter updated_at directo)
+  localStorage.setItem('e5m_pluvios_updated_at', new Date().toISOString());
   replaceTableInRailway('pluvios_config', list);
 }
 var PLUVIOS = getPluvios();
@@ -17331,10 +17359,14 @@ function resolveCuentaTipoGasto(params, subObj, fallback) {
   return cu ? cu.tipo_gasto : (fallback || 'VARIABLE');
 }
 function saveParams(params){
+  // FIX v1.4.32: setear updated_at para que el merge en pull use last-write-wins.
+  // Antes el merge usaba "local source of truth", lo que permitía que defaults autogenerados
+  // pisaran los reales del server. Ahora server gana si su timestamp es más nuevo.
+  params.updated_at = new Date().toISOString();
   lsSetParamsJSON('e5m_params', params);
   // Push to Railway immediately so PWA/Bot get the update
   replaceTableInRailway('estancia_params', params);
-  console.log('[Params] Saved locally + pushed to Railway');
+  console.log('[Params] Saved locally + pushed to Railway (updated_at=' + params.updated_at + ')');
   // Re-renderizar reportes que dependen del catálogo de cuentas/subcuentas (resolución dinámica)
   if (typeof renderContabilidad === 'function') { try { renderContabilidad(); } catch(e){} }
   if (typeof renderReporteCREA === 'function') { try { renderReporteCREA(); } catch(e){} }
@@ -20239,6 +20271,8 @@ function saveReportParams() {
     if(doo) c.dias_objetivo=parseInt(doo.value)||c.dias_objetivo;
   });
   rp.categorias=cats;
+  // FIX v1.4.32: setear updated_at para last-write-wins en sync
+  rp.updated_at = new Date().toISOString();
   saveRp(rp);
   updateHeaderBranding();
   replaceTableInRailway('report_params', rp);
