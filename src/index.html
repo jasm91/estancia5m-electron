@@ -4660,36 +4660,45 @@ function pullFromRailwayDesktop(thenPush) {
         console.log('[Sync] Animals OK: ' + Object.keys(merged).length + ' lots, ' + totalMerged + ' animals (server-wins)');
       }
 
-      // branding: Desktop is source of truth — only accept if local is empty
-      if (remote.branding && remote.branding.name) {
-        var localBrand = {};
-        try { localBrand = JSON.parse(localStorage.getItem('e5m_branding')||'{}'); } catch(e){}
-        if (!localBrand.name) {
-          localStorage.setItem('e5m_branding', JSON.stringify(remote.branding));
-          if (typeof applyBranding === 'function') applyBranding(remote.branding);
-          console.log('[Sync] Branding loaded from server (local was empty)');
-        }
-      }
-      // Sync diesel_tank y report_params del servidor
-      // diesel_tank: Desktop is source of truth — only accept if local is empty
-      if (remote.diesel_tank && ((Array.isArray(remote.diesel_tank) && remote.diesel_tank.length) || remote.diesel_tank.capacity)) {
-        var localTanks = [];
-        try { localTanks = JSON.parse(localStorage.getItem('e5m_diesel_tank')||'[]'); } catch(e){}
-        if (!localTanks.length && !localTanks.capacity) {
-          localStorage.setItem('e5m_diesel_tank', JSON.stringify(remote.diesel_tank));
-          console.log('[Sync] Diesel tanks loaded from server (local was empty)');
-        }
-      }
-      // FIX v1.4.32: estancia_params, report_params, pluvios_config ahora usan last-write-wins
-      // por timestamp 'updated_at'. Antes la regla era "Desktop is source of truth" pero eso
-      // permitía que defaults locales pisaran los reales del server. Ahora el más reciente gana.
-      // Helper para comparar timestamps de forma segura (string ISO o undefined)
+      // FIX v1.4.33: helper de last-write-wins por timestamp 'updated_at'.
+      // Antes la regla "Desktop is source of truth" permitía que defaults locales pisaran
+      // los reales del server (bug que afectó a César con potreros/categorías). Ahora el más
+      // reciente por timestamp gana. Aplica a: branding, diesel_tank, estancia_params,
+      // report_params, pluvios_config.
       function _isServerNewer(localTs, serverTs) {
         if (!serverTs) return false;       // server no tiene timestamp → no pisar local
         if (!localTs) return true;          // local no tiene timestamp → server gana
         try { return new Date(serverTs).getTime() > new Date(localTs).getTime(); }
         catch(e) { return false; }
       }
+      // FIX v1.4.33: branding usa last-write-wins
+      if (remote.branding && remote.branding.name) {
+        var localBrand = {};
+        try { localBrand = JSON.parse(localStorage.getItem('e5m_branding')||'{}'); } catch(e){}
+        var brandEmpty = !localBrand.name;
+        var brandServerNewer = _isServerNewer(localBrand.updated_at, remote.branding.updated_at);
+        if (brandEmpty || brandServerNewer) {
+          localStorage.setItem('e5m_branding', JSON.stringify(remote.branding));
+          if (typeof applyBranding === 'function') applyBranding(remote.branding);
+          console.log('[Sync] Branding loaded from server (' + (brandEmpty ? 'local was empty' : 'server newer') + ')');
+        }
+      }
+      // FIX v1.4.33: diesel_tank ahora usa last-write-wins (timestamp en clave separada
+      // e5m_diesel_tank_updated_at porque diesel_tank es array).
+      if (remote.diesel_tank && ((Array.isArray(remote.diesel_tank) && remote.diesel_tank.length) || remote.diesel_tank.capacity)) {
+        var localTanks = [];
+        try { localTanks = JSON.parse(localStorage.getItem('e5m_diesel_tank')||'[]'); } catch(e){}
+        var tanksEmpty = !localTanks.length && !localTanks.capacity;
+        var localTanksTs = localStorage.getItem('e5m_diesel_tank_updated_at');
+        var remoteTanksTs = remote.diesel_tank_updated_at || null;  // si el server lo expone
+        var tanksServerNewer = _isServerNewer(localTanksTs, remoteTanksTs);
+        if (tanksEmpty || tanksServerNewer) {
+          localStorage.setItem('e5m_diesel_tank', JSON.stringify(remote.diesel_tank));
+          if (remoteTanksTs) localStorage.setItem('e5m_diesel_tank_updated_at', remoteTanksTs);
+          console.log('[Sync] Diesel tanks loaded from server (' + (tanksEmpty ? 'local was empty' : 'server newer') + ')');
+        }
+      }
+      // FIX v1.4.33: estancia_params, report_params, pluvios_config (mismo patrón)
       // estancia_params
       if (remote.estancia_params && typeof remote.estancia_params === 'object' && !Array.isArray(remote.estancia_params) && Object.keys(remote.estancia_params).length) {
         var localParams = {};
@@ -10578,7 +10587,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.32'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.33'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -14860,6 +14869,9 @@ function getDieselTanks() {
 }
 function saveDieselTanks(tanks) {
   localStorage.setItem('e5m_diesel_tank', JSON.stringify(tanks));
+  // FIX v1.4.33: timestamp en clave separada para last-write-wins en sync.
+  // diesel_tank es array, no se le puede meter updated_at directo.
+  localStorage.setItem('e5m_diesel_tank_updated_at', new Date().toISOString());
   replaceTableInRailway('diesel_tank', tanks);
 }
 function getTankById(tanks, id) {
@@ -16263,25 +16275,29 @@ document.addEventListener('DOMContentLoaded', function(){
         }
         // Tablas-objeto → keys propias
         if (remote.estancia_params && typeof remote.estancia_params === 'object' && Object.keys(remote.estancia_params).length) {
-          // FIX v1.4.32: stampear updated_at NOW para que el merge posterior considere
+          // FIX v1.4.33: stampear updated_at NOW para que el merge posterior considere
           // estos params como "los más recientes" frente a cualquier cache local viejo
           remote.estancia_params.updated_at = new Date().toISOString();
           localStorage.setItem('e5m_params', JSON.stringify(remote.estancia_params));
         }
         if (remote.branding && typeof remote.branding === 'object' && Object.keys(remote.branding).length) {
+          // FIX v1.4.33: stampear updated_at fresh para que gane en próximo merge
+          remote.branding.updated_at = new Date().toISOString();
           localStorage.setItem('e5m_branding', JSON.stringify(remote.branding));
         }
         if (remote.report_params && typeof remote.report_params === 'object' && Object.keys(remote.report_params).length) {
-          // FIX v1.4.32: idem report_params
+          // FIX v1.4.33: idem report_params
           remote.report_params.updated_at = new Date().toISOString();
           localStorage.setItem('e5m_report_params', JSON.stringify(remote.report_params));
         }
         if (remote.diesel_tank) {
           localStorage.setItem('e5m_diesel_tank', JSON.stringify(remote.diesel_tank));
+          // FIX v1.4.33: stampear timestamp fresh para diesel_tank
+          localStorage.setItem('e5m_diesel_tank_updated_at', new Date().toISOString());
         }
         if (remote.pluvios_config) {
           localStorage.setItem('e5m_pluvios', JSON.stringify(remote.pluvios_config));
-          // FIX v1.4.32: stampear timestamp para pluvios también
+          // FIX v1.4.33: stampear timestamp para pluvios también
           localStorage.setItem('e5m_pluvios_updated_at', new Date().toISOString());
         }
         // Tasks
@@ -16337,7 +16353,7 @@ function getPluvios() {
 }
 function savePluvios(list) {
   localStorage.setItem('e5m_pluvios', JSON.stringify(list));
-  // FIX v1.4.32: timestamp en clave separada (pluvios es array, no se le puede meter updated_at directo)
+  // FIX v1.4.33: timestamp en clave separada (pluvios es array, no se le puede meter updated_at directo)
   localStorage.setItem('e5m_pluvios_updated_at', new Date().toISOString());
   replaceTableInRailway('pluvios_config', list);
 }
@@ -17359,7 +17375,7 @@ function resolveCuentaTipoGasto(params, subObj, fallback) {
   return cu ? cu.tipo_gasto : (fallback || 'VARIABLE');
 }
 function saveParams(params){
-  // FIX v1.4.32: setear updated_at para que el merge en pull use last-write-wins.
+  // FIX v1.4.33: setear updated_at para que el merge en pull use last-write-wins.
   // Antes el merge usaba "local source of truth", lo que permitía que defaults autogenerados
   // pisaran los reales del server. Ahora server gana si su timestamp es más nuevo.
   params.updated_at = new Date().toISOString();
@@ -20271,7 +20287,7 @@ function saveReportParams() {
     if(doo) c.dias_objetivo=parseInt(doo.value)||c.dias_objetivo;
   });
   rp.categorias=cats;
-  // FIX v1.4.32: setear updated_at para last-write-wins en sync
+  // FIX v1.4.33: setear updated_at para last-write-wins en sync
   rp.updated_at = new Date().toISOString();
   saveRp(rp);
   updateHeaderBranding();
