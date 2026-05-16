@@ -419,6 +419,23 @@ function showLotesTab(tabId, btn) {
 }
 function today(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function localDate(d){d=d||new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+
+// FIX v1.4.34: helper para validar que una fecha de transacción no sea futura.
+// Retorna true si OK, false si es futura (y muestra toast al usuario).
+// Uso típico al inicio de funciones save: if (!validateNotFuture(fechaValor, 'venta')) return;
+function validateNotFuture(dateStr, fieldLabel){
+  if (!dateStr) return true;   // si está vacío, otra validación se encarga
+  try {
+    var t = today();
+    if (String(dateStr) > t) {
+      var msg = 'No se pueden registrar fechas futuras' + (fieldLabel ? ' (' + fieldLabel + ')' : '') + '. Hoy es ' + t + '.';
+      if (typeof toast === 'function') toast(msg, 'error');
+      else alert(msg);
+      return false;
+    }
+  } catch(e){}
+  return true;
+}
 // fmtDT está definida más abajo (línea ~9769)
 
 
@@ -3523,8 +3540,25 @@ function publishTasksToPWA() {
   <div class="form-group"><label class="form-label">Nombre completo</label><input class="form-input" id="emp-name" placeholder="Ej: Juan Perez"></div>
   <div class="form-group"><label class="form-label">Rol</label>
     <select class="form-select" id="emp-role">
-      <option value="capataz">Capataz</option><option value="peon">Peon</option>
-      <option value="veterinario">Veterinario</option><option value="administrador">Administrador</option>
+      <optgroup label="Operativos">
+        <option value="capataz">Capataz</option>
+        <option value="encargado">Encargado / Jefe de campo</option>
+        <option value="peon">Peón</option>
+        <option value="vaquero">Vaquero</option>
+        <option value="tractorista">Tractorista / Operador de maquinaria</option>
+        <option value="alambrador">Alambrador</option>
+        <option value="cocinero">Cocinero/a</option>
+      </optgroup>
+      <optgroup label="Técnicos / Administrativos">
+        <option value="veterinario">Veterinario</option>
+        <option value="administrador">Administrador</option>
+        <option value="contador">Contador</option>
+        <option value="gerente">Gerente</option>
+      </optgroup>
+      <optgroup label="Otros">
+        <option value="auxiliar">Auxiliar</option>
+        <option value="domestica">Doméstica / Servicio</option>
+      </optgroup>
     </select>
   </div>
 </div>
@@ -5478,13 +5512,27 @@ if (!db.pasture_evals) db.pasture_evals = [];
   if (rotacionesAbiertas.length > 1) {
     console.warn('[moveLot] Cerradas ' + rotacionesAbiertas.length + ' rotaciones abiertas (deberían ser 1). Posible inconsistencia previa.');
   }
-  // Open new occupation
-  db.rotation_history.push({
-    id: Date.now(), lot_code: lot.code, potrero: newPaddock, from_potrero: old||'',
-    entry_date: localDate(), entry_at: new Date().toISOString(),
-    exit_date: null, exit_at: null, days_occupied: 0,
-    cabezas: lot.animal_count||0, reason: reason||'', by: 'Desktop'
+  // FIX v1.4.35 BUG-LOT-3: idempotencia para evitar duplicación cuando hay sync cruzado.
+  // Si ya existe una rotación abierta para este lote+potrero creada en los últimos 5 segundos
+  // (por otra instancia del mismo flow), no crear otra.
+  var nowMs = Date.now();
+  var rotacionExistenteRecien = db.rotation_history.find(function(r){
+    if (r.lot_code !== lot.code || r.potrero !== newPaddock) return false;
+    if (r.exit_date) return false;
+    var entryMs = r.entry_at ? new Date(r.entry_at).getTime() : 0;
+    return entryMs && (nowMs - entryMs) < 5000;
   });
+  if (rotacionExistenteRecien) {
+    console.warn('[moveLot] Rotación ya creada hace <5s para lote+potrero, omitiendo duplicación');
+  } else {
+    // Open new occupation
+    db.rotation_history.push({
+      id: Date.now(), lot_code: lot.code, potrero: newPaddock, from_potrero: old||'',
+      entry_date: localDate(), entry_at: new Date().toISOString(),
+      exit_date: null, exit_at: null, days_occupied: 0,
+      cabezas: lot.animal_count||0, reason: reason||'', by: 'Desktop'
+    });
+  }
   addActivity('Sistema', 'movimiento', lot.code, 'Lote '+(lot.code)+' movido de '+(old)+' a '+(newPaddock)+'. '+(reason)+'');
   // Auto-Kardex
   if (!db.kardex) db.kardex = [];
@@ -5500,12 +5548,52 @@ if (!db.pasture_evals) db.pasture_evals = [];
 }
 
 function deleteLot(id) {
-  if(!confirm('¿Eliminar este lote?')) return;
+  var lot = db.lots.find(function(l){ return l.id === id; });
+  if (!lot) return;
+  // FIX v1.4.35 BUG-LOT-2: validar referencias antes de borrar. Antes deleteLot eliminaba el lot
+  // pero dejaba huérfanos en e5m_animals, rotation_history, pesajes, treatments, sales, etc.
+  // Esos registros quedaban sin lote padre y causaban bugs de render + crecimiento sin control
+  // del localStorage.
+  var code = lot.code;
+  var refs = [];
+  var animalsCount = 0;
+  try {
+    var rawAnim = JSON.parse(localStorage.getItem('e5m_animals') || '{}');
+    animalsCount = (rawAnim[code] || []).length;
+  } catch(e){}
+  if (animalsCount > 0) refs.push(animalsCount + ' animales en cache');
+  if ((lot.animal_count || 0) > 0) refs.push(lot.animal_count + ' cabezas registradas');
+  var rotCount = (db.rotation_history || []).filter(function(r){ return r.lot_code === code; }).length;
+  if (rotCount > 0) refs.push(rotCount + ' rotaciones');
+  var pesCount = (db.pesajes || []).filter(function(p){ return p.lot_code === code; }).length;
+  if (pesCount > 0) refs.push(pesCount + ' pesajes');
+  var trCount = (db.treatments || []).filter(function(t){ return t.lot_code === code; }).length;
+  if (trCount > 0) refs.push(trCount + ' tratamientos');
+  var saleCount = (db.sales || []).filter(function(s){ return s.lot_code === code || (s.lot_codes||[]).indexOf(code) >= 0; }).length;
+  if (saleCount > 0) refs.push(saleCount + ' ventas');
+  var bajaCount = (db.bajas || []).filter(function(b){ return b.lot_code === code; }).length;
+  if (bajaCount > 0) refs.push(bajaCount + ' bajas');
+  var cgCount = (db.compras_ganado || []).filter(function(c){
+    return c.lot_code === code || (c.lote_destinos||[]).indexOf(code) >= 0;
+  }).length;
+  if (cgCount > 0) refs.push(cgCount + ' compras de ganado');
+
+  if (refs.length > 0) {
+    // Lote con datos: pedir doble confirmación con detalle
+    var detalle = refs.join(', ');
+    if (!confirm('⚠ ATENCIÓN: El lote "' + code + '" tiene datos asociados:\n\n' + detalle + '\n\nEliminarlo dejará registros huérfanos en el sistema. Se recomienda:\n• Si el lote fue vendido: márcalo como vendido en lugar de borrarlo\n• Si fue por error y no tiene actividad: borrar es seguro\n\n¿Borrar de todas formas?')) return;
+    if ((lot.animal_count || 0) > 0 || animalsCount > 0) {
+      if (!confirm('SEGUNDA CONFIRMACIÓN: el lote todavía tiene animales activos. Los animales NO se eliminarán del sistema, pero quedarán huérfanos (sin lote padre). ¿Estás seguro?')) return;
+    }
+  } else {
+    if (!confirm('¿Eliminar este lote?')) return;
+  }
   trackDeletion(id, 'lots');
-  db.lots = db.lots.filter(l=>l.id!==id);
+  db.lots = db.lots.filter(function(l){ return l.id !== id; });
   saveDB(true); renderLotes();
   replaceTableInRailway('lots', db.lots || []);
   renderDashboard();
+  try { auditLog('delete', 'lots', id, 'Eliminado lote "' + code + '"' + (refs.length ? ' con datos: ' + refs.join(', ') : '')); } catch(e){}
   toast('Lote eliminado','warning');
 }
 
@@ -5564,6 +5652,9 @@ function saveLot() {
   if(code) code = code.trim();
   if(!code){ toast('Ingresa un codigo para el lote','error'); return; }
   if(db.lots.find(function(l){ return l.code===code; })){ toast('Ese codigo ya existe','error'); return; }
+  // FIX v1.4.34: no permitir fechas futuras
+  var lotEntryVal = (document.getElementById('lot-entry')||{}).value||localDate();
+  if(!validateNotFuture(lotEntryVal, 'fecha de ingreso')) return;
 
   var totalAnimals = _lotNewAnimals.length;
   var avgWeight = null;
@@ -5580,7 +5671,7 @@ function saveLot() {
     paddock: (document.getElementById('lot-paddock-sel')||{value:''}).value,
     animal_count: totalAnimals || 0,
     avg_weight: avgWeight,
-    entry_date: (document.getElementById('lot-entry')||{}).value||localDate(),
+    entry_date: lotEntryVal,
     status: 'active',
     notes: (document.getElementById('lot-notes')||{}).value||''
   };
@@ -5820,6 +5911,8 @@ function saveTreatment() {
   const notes = '';
 
   if(!product_id||!dose||!date){toast('Completa producto, dosis y fecha','error');return;}
+  // FIX v1.4.34: no permitir fechas futuras (tr-next sí puede ser futuro)
+  if(!validateNotFuture(date, 'fecha aplicación')) return;
   if(scope==='lot'&&!lot_code){toast('Selecciona un lote','error');return;}
   if(scope==='lot'&&lot_code) {
     var treatLot = db.lots.find(function(l){return l.code===lot_code;});
@@ -5873,10 +5966,17 @@ function saveTreatment() {
   replaceTableInRailway('treatments', db.treatments || []);
   replaceTableInRailway('vet_products', db.products || []);
   toast('Curacion registrada. Stock de '+prod.name+': '+prod.stock_qty+' '+prod.unit,'success');
+  // FIX v1.4.35: audit log para curación
+  try { auditLog('create', 'treatments', t.id, _summarizeRecord('treatments', t)); } catch(e){}
 }
 
 function deleteTreatment(id) {
   if (!confirm('00bfEliminar esta curacion? El stock NO se restaura.')) return;
+  
+  // FIX v1.4.35: audit log para deleteTreatment
+  var _delRec_deleteTreatment = (db.treatments || []).find(function(r){ return String(r.id) === String(id); });
+  var _delSummary_deleteTreatment = _delRec_deleteTreatment ? _summarizeRecord('treatments', _delRec_deleteTreatment) : 'Curación #' + id;
+  try { auditLog('delete', 'treatments', id, _delSummary_deleteTreatment); } catch(e){}
   trackDeletion(id, 'treatments');
   db.treatments = db.treatments.filter(function(t){ return t.id !== id; });
   saveDB();
@@ -6150,6 +6250,11 @@ function addStock() {
 
 function deleteProduct(id) {
   if(!confirm('Eliminar este producto del stock veterinario?')) return;
+  
+  // FIX v1.4.35: audit log para deleteProduct
+  var _delRec_deleteProduct = (db.products || []).find(function(r){ return String(r.id) === String(id); });
+  var _delSummary_deleteProduct = _delRec_deleteProduct ? _summarizeRecord('products', _delRec_deleteProduct) : 'Producto #' + id;
+  try { auditLog('delete', 'products', id, _delSummary_deleteProduct); } catch(e){}
   trackDeletion(id, 'products');
   db.products = db.products.filter(function(p){ return p.id !== id; });
   saveDB();
@@ -6381,6 +6486,11 @@ function toggleSaleIds(id) {
 
 function deleteSale(id) {
   if (!confirm('00bfEliminar esta venta?')) return;
+  
+  // FIX v1.4.35: audit log para deleteSale
+  var _delRec_deleteSale = (db.sales || []).find(function(r){ return String(r.id) === String(id); });
+  var _delSummary_deleteSale = _delRec_deleteSale ? _summarizeRecord('sales', _delRec_deleteSale) : 'Venta #' + id;
+  try { auditLog('delete', 'sales', id, _delSummary_deleteSale); } catch(e){}
   trackDeletion(id, 'sales');
   db.sales = db.sales.filter(function(s){ return String(s.id)!==String(id); });
   saveDB(); renderVentas(); renderDashboard();
@@ -6819,6 +6929,8 @@ function saveSale() {
   if (discountPct < 0) discountPct = 0;
   if (discountPct > 50) discountPct = 50;
   if(!lot_code||!buyer||!price||!date){toast('Completa todos los campos requeridos','error');return;}
+  // FIX v1.4.34: no permitir fechas futuras
+  if(!validateNotFuture(date, 'fecha de venta')) return;
 
   var isMultiLot = lot_code === '__all__';
   if (isMultiLot && scope !== 'individual') {
@@ -6966,6 +7078,19 @@ function saveSale() {
     var pesoPorAnimal=parseFloat((document.getElementById('sale-peso-momento')||{}).value)||0;
     if(!animals_count||!kg){toast('Completa animales y peso','error');return;}
     if(saleLot&&animals_count>saleLot.animal_count){toast('No puedes vender mas animales que los del lote','error');return;}
+    // FIX v1.4.35 BUG-LOT-4: si el lote tiene animales con historial (pesajes individuales,
+    // tratamientos), el modo 'lot' sacará los PRIMEROS N animales del cache sin importar cuáles
+    // se vendieron realmente. Esto rompe trazabilidad. Avisar al usuario antes de proceder.
+    if (saleLot && animals_count < saleLot.animal_count) {
+      var lotAnimalsCheck = (animalesDB[lot_code] || []);
+      var conHistoria = lotAnimalsCheck.filter(function(a){
+        return (a.pesajes && a.pesajes.length > 0) ||
+               (db.treatments||[]).some(function(t){ return t.animal_id && String(t.animal_id) === String(a.id||a.animal_id); });
+      }).length;
+      if (conHistoria > 0) {
+        if (!confirm('⚠ Atención: este lote tiene ' + conHistoria + ' animales con historial individual (pesajes/tratamientos). En modo "Lote" se sacarán ' + animals_count + ' animales al azar del cache, lo que rompe la trazabilidad. Para mantener historial usá modo "Individual". ¿Continuar de todas formas?')) return;
+      }
+    }
     sale.animals=animals_count;
     sale.kg=kg;
     // kg_facturados = kg con descuento aplicado (lo que cobra el frigorífico)
@@ -7127,6 +7252,11 @@ function renderCompras() {
 
 function deletePurchase(id) {
   if (!confirm('Eliminar esta compra?')) return;
+  
+  // FIX v1.4.35: audit log para deletePurchase
+  var _delRec_deletePurchase = (db.purchases || []).find(function(r){ return String(r.id) === String(id); });
+  var _delSummary_deletePurchase = _delRec_deletePurchase ? _summarizeRecord('purchases', _delRec_deletePurchase) : 'Compra #' + id;
+  try { auditLog('delete', 'purchases', id, _delSummary_deletePurchase); } catch(e){}
   trackDeletion(id, 'purchases');
   db.purchases = db.purchases.filter(function(p){ return p.id!==id; });
   saveDB(); renderCompras();
@@ -7278,6 +7408,8 @@ function savePurchase() {
   var date = (document.getElementById('pur-date')||{}).value||'';
   if(!productLinkId){toast('Selecciona un producto o Otros','error');return;}
   if(!qty||!price||!date){toast('Completa cantidad, precio y fecha','error');return;}
+  // FIX v1.4.34: no permitir fechas futuras
+  if(!validateNotFuture(date, 'fecha de compra')) return;
   var isOtro = productLinkId === 'otro';
   var desc = isOtro ? ((document.getElementById('pur-desc')||{}).value||'').trim() : '';
   if(isOtro && !desc){toast('Ingresa una descripcion','error');return;}
@@ -7882,7 +8014,7 @@ function renderAdvances() {
 
       var roleEl = document.createElement('div');
       roleEl.style.cssText = 'font-size:10px;color:var(--muted);margin-bottom:12px';
-      roleEl.textContent = capFirst(emp.role);
+      roleEl.textContent = roleLabel(emp.role);
 
       var descontado = empAdvances.filter(function(a){ return a.status==='descontado'; }).reduce(function(s,a){ return s+(a.amount||0); },0);
       var balancePagar = salary - totalAdv; // Neto a pagar: salario menos todos los adelantos dados
@@ -8055,6 +8187,8 @@ function saveAdvance() {
     var status = document.getElementById('adv-status').value;
     var reason = document.getElementById('adv-reason').value.trim();
     if (!emp || !amount || !date) { toast('Completa empleado, monto y fecha', 'error'); _release(); return; }
+    // FIX v1.4.34: no permitir fechas futuras
+    if (!validateNotFuture(date, 'fecha del adelanto')) { _release(); return; }
     if (!db.advances) db.advances = [];
     if (!db.lluvias) db.lluvias = [];
     // Warn if total advances exceed salary - but ALLOW (by design)
@@ -8078,7 +8212,7 @@ function saveAdvance() {
     if (possibleDup) {
       if (!confirm('Ya hay un adelanto idéntico hace menos de 1 minuto.\n\n¿Estás seguro de registrar otro?')) { _release(); return; }
     }
-    db.advances.push({
+    var newAdvance = {
       id: db.next_ids.advance++,
       employee: emp,
       amount: amount,
@@ -8086,13 +8220,16 @@ function saveAdvance() {
       status: status,
       reason: reason,
       created_at: new Date().toISOString(),
-    });
+    };
+    db.advances.push(newAdvance);
     saveDB();
     closeModal('modal-advance');
     renderAdvances();
     // Push al server (faltaba)
     replaceTableInRailway('advances', db.advances || []);
     toast('Adelanto de Bs. '+amount.toLocaleString()+' registrado para '+emp.split(' ')[0], 'success');
+    // FIX v1.4.35: audit log para adelanto
+    try { auditLog('create', 'advances', newAdvance.id, 'Adelanto: ' + emp + ' · Bs ' + amount + (status==='descontado'?' (descontado)':'')); } catch(e){}
   } catch(e) {
     console.error('[saveAdvance] error:', e);
     toast('Error al guardar adelanto: ' + e.message, 'error');
@@ -8114,6 +8251,11 @@ function toggleAdvance(id) {
 
 function deleteAdvance(id) {
   if (!confirm('00bfEliminar este adelanto?')) return;
+  
+  // FIX v1.4.35: audit log para deleteAdvance
+  var _delRec_deleteAdvance = (db.advances || []).find(function(r){ return String(r.id) === String(id); });
+  var _delSummary_deleteAdvance = _delRec_deleteAdvance ? _summarizeRecord('advances', _delRec_deleteAdvance) : 'Adelanto #' + id;
+  try { auditLog('delete', 'advances', id, _delSummary_deleteAdvance); } catch(e){}
   trackDeletion(id, 'advances');
   db.advances = db.advances.filter(function(a){ return a.id!==id; });
   saveDB();
@@ -8126,6 +8268,11 @@ function deleteEmployee(id) {
   var emp = db.employees.find(function(e){ return e.id===id; });
   if (!emp) return;
   if (!confirm('00bfEliminar a ' + emp.name + '? Se perderan sus registros de actividad.')) return;
+  
+  // FIX v1.4.35: audit log para deleteEmployee
+  var _delRec_deleteEmployee = (db.employees || []).find(function(r){ return String(r.id) === String(id); });
+  var _delSummary_deleteEmployee = _delRec_deleteEmployee ? _summarizeRecord('employees', _delRec_deleteEmployee) : 'Empleado #' + id;
+  try { auditLog('delete', 'employees', id, _delSummary_deleteEmployee); } catch(e){}
   trackDeletion(id, 'employees');
   db.employees = db.employees.filter(function(e){ return e.id!==id; });
   saveDB();
@@ -8136,6 +8283,11 @@ function deleteEmployee(id) {
 
 function deleteActivity(id) {
   if (!confirm('00bfEliminar esta actividad?')) return;
+  
+  // FIX v1.4.35: audit log para deleteActivity
+  var _delRec_deleteActivity = (db.activities || []).find(function(r){ return String(r.id) === String(id); });
+  var _delSummary_deleteActivity = _delRec_deleteActivity ? _summarizeRecord('activities', _delRec_deleteActivity) : 'Actividad #' + id;
+  try { auditLog('delete', 'activities', id, _delSummary_deleteActivity); } catch(e){}
   trackDeletion(id, 'activities');
   db.activities = db.activities.filter(function(a){ return a.id!==id; });
   saveDB(); renderPersonal(); renderDashboard();
@@ -8169,10 +8321,14 @@ function editEmployee(emp) {
 function saveEmployee() {
   const name=document.getElementById('emp-name').value.trim();
   if(!name){toast('Ingresa el nombre','error');return;}
+  var auditAction = 'create';   // FIX v1.4.35: track action for audit
+  var savedEmpId = null;
+  var oldSnap = null;
   if(_editingEmployeeId !== null) {
     // Modo edicion
     var emp = db.employees.find(function(e){ return e.id === _editingEmployeeId; });
     if(emp) {
+      oldSnap = JSON.parse(JSON.stringify(emp));   // FIX v1.4.35: snapshot pre-edit
       emp.name = name;
       emp.role = document.getElementById('emp-role').value;
       emp.phone = document.getElementById('emp-phone').value;
@@ -8180,13 +8336,17 @@ function saveEmployee() {
       emp.hire_date = document.getElementById('emp-hire').value;
       var pinVal = (document.getElementById('emp-pin').value||'').trim();
       if(pinVal) emp.pin = pinVal;
+      savedEmpId = emp.id;
+      auditAction = 'update';
     }
     _editingEmployeeId = null;
     toast('Empleado actualizado','success');
   } else {
     // Modo nuevo
     var newPin = (document.getElementById('emp-pin').value||'').trim();
-    db.employees.push({id:db.next_ids.employee++,name,role:document.getElementById('emp-role').value,phone:document.getElementById('emp-phone').value,salary:parseFloat(document.getElementById('emp-salary').value)||0,hire_date:document.getElementById('emp-hire').value,active:true,pin:newPin||''});
+    var newEmp = {id:db.next_ids.employee++,name,role:document.getElementById('emp-role').value,phone:document.getElementById('emp-phone').value,salary:parseFloat(document.getElementById('emp-salary').value)||0,hire_date:document.getElementById('emp-hire').value,active:true,pin:newPin||''};
+    db.employees.push(newEmp);
+    savedEmpId = newEmp.id;
     toast('Empleado agregado','success');
   }
   // Restaurar titulo del modal
@@ -8195,6 +8355,14 @@ function saveEmployee() {
   saveDB(); closeModal('modal-employee'); renderPersonal();
   // Push al server (faltaba — la PWA con cache vieja podía pisar la lista del server)
   replaceTableInRailway('employees', db.employees || []);
+  // FIX v1.4.35: audit log para empleado
+  if (savedEmpId != null) {
+    try {
+      var current = (db.employees || []).find(function(e){ return e.id === savedEmpId; });
+      var diff = (auditAction === 'update' && oldSnap && current) ? _computeDiff(oldSnap, current) : null;
+      auditLog(auditAction, 'employees', savedEmpId, _summarizeRecord('employees', current || savedEmpId), diff);
+    } catch(e){}
+  }
 }
 
 function saveActivity() {
@@ -8625,8 +8793,27 @@ function openModal(id) {
   el.classList.add('open');
   var todayVal = localDate();
   var dtl = localDate()+'T'+new Date().toLocaleTimeString('en-US',{hour12:false,hour:'2-digit',minute:'2-digit'});
-  el.querySelectorAll('input[type="date"]').forEach(function(d){ if(!d.value) d.value=todayVal; });
-  el.querySelectorAll('input[type="datetime-local"]').forEach(function(d){ if(!d.value) d.value=dtl; });
+  // FIX v1.4.34: prevenir registros con fecha futura. Los inputs de transacción
+  // (fecha de compra, venta, pesaje, etc.) reciben max=today para que el datepicker
+  // no permita seleccionar fechas posteriores a hoy. Excluimos los inputs cuya finalidad
+  // es justamente programar algo a futuro (vencimientos, próximas aplicaciones, fechas
+  // pactadas de ingreso) y los filtros de rango.
+  var FUTURE_OK_IDS = ['task-due','tr-next','prod-expiry','emp-hire'];
+  var FILTER_ID_PATTERNS = [/-from$/, /-to$/, /-desde$/, /-hasta$/, /^range-/, /^kardex-fecha-/, /^crea-f-/, /^rp-fecha-(inicio|fin)$/, /^cont-f-/, /^mnt-(from|to)$/, /^adv-range-/];
+  function _isFilterOrFutureOk(inputId){
+    if (!inputId) return false;
+    if (FUTURE_OK_IDS.indexOf(inputId) >= 0) return true;
+    for (var i=0; i<FILTER_ID_PATTERNS.length; i++){ if (FILTER_ID_PATTERNS[i].test(inputId)) return true; }
+    return false;
+  }
+  el.querySelectorAll('input[type="date"]').forEach(function(d){
+    if(!d.value) d.value=todayVal;
+    if(!_isFilterOrFutureOk(d.id)) d.max = todayVal;
+  });
+  el.querySelectorAll('input[type="datetime-local"]').forEach(function(d){
+    if(!d.value) d.value=dtl;
+    if(!_isFilterOrFutureOk(d.id)) d.max = dtl;
+  });
   if (id === 'modal-pesaje' && typeof populatePesajeModal === 'function') populatePesajeModal();
 }
 
@@ -8943,6 +9130,30 @@ function lotMatches(recordLot, filterLot) {
 }
 
 function capFirst(str) { return str?str.charAt(0).toUpperCase()+str.slice(1).replace('_',' '):''; }
+
+// v1.4.36: mapa de labels visibles para los roles de empleado.
+// El value del dropdown se guarda en minúsculas (ej: 'peon', 'tractorista', 'domestica')
+// y este mapa los traduce al label legible con tildes y categorías completas.
+var ROLE_LABELS = {
+  capataz: 'Capataz',
+  encargado: 'Encargado / Jefe de campo',
+  peon: 'Peón',
+  vaquero: 'Vaquero',
+  tractorista: 'Tractorista / Operador de maquinaria',
+  alambrador: 'Alambrador',
+  cocinero: 'Cocinero/a',
+  veterinario: 'Veterinario',
+  administrador: 'Administrador',
+  contador: 'Contador',
+  gerente: 'Gerente',
+  auxiliar: 'Auxiliar',
+  domestica: 'Doméstica / Servicio'
+};
+function roleLabel(role) {
+  if (!role) return '';
+  var r = String(role).toLowerCase();
+  return ROLE_LABELS[r] || capFirst(role);   // fallback para roles legacy/no listados
+}
 function getProdUnit(id) { const p=db.products.find(p=>p.id===id); return p?p.unit:''; }
 function typeColor(type) {
   const m = {
@@ -9147,6 +9358,8 @@ function saveCompraGanado() {
 
   if (!proveedor) { toast('Ingresa el proveedor', 'error'); _releaseCG(); return; }
   if (!fecha) { toast('Ingresa la fecha', 'error'); _releaseCG(); return; }
+  // FIX v1.4.34: no permitir fechas futuras
+  if (!validateNotFuture(fecha, 'fecha de compra')) { _releaseCG(); return; }
   if (!precioKg) { toast('Ingresa el precio por kg', 'error'); _releaseCG(); return; }
 
   // ────── MODO CUARENTENA (animales sin ID, lote temporal) ──────
@@ -9515,6 +9728,8 @@ function saveMarcaje() {
   var fecha = document.getElementById('mc-fecha').value;
   if (!loteDest) { toast('Seleccioná el lote destino', 'error'); return; }
   if (!fecha) { toast('Ingresá fecha de marcaje', 'error'); return; }
+  // FIX v1.4.34: no permitir fechas futuras
+  if (!validateNotFuture(fecha, 'fecha de marcaje')) return;
 
   // Validar: todos deben tener ID y peso
   var sinId = _mcAnimals.filter(function(a) { return !String(a.id || '').trim(); });
@@ -9830,6 +10045,11 @@ function deleteCompraGanado(id) {
   var msg = '¿Eliminar esta compra de ganado?';
   if (loteCuar) msg += '\n\nTambién se eliminará el lote ' + loteCuar + ' (' + (compra.animal_count||0) + ' animales en cuarentena).';
   if (!confirm(msg)) return;
+  
+  // FIX v1.4.35: audit log para deleteCompraGanado
+  var _delRec_deleteCompraGanado = (db.compras_ganado || []).find(function(r){ return String(r.id) === String(id); });
+  var _delSummary_deleteCompraGanado = _delRec_deleteCompraGanado ? _summarizeRecord('compras_ganado', _delRec_deleteCompraGanado) : 'Compra ganado #' + id;
+  try { auditLog('delete', 'compras_ganado', id, _delSummary_deleteCompraGanado); } catch(e){}
   trackDeletion(id, 'compras_ganado');
   db.compras_ganado = (db.compras_ganado || []).filter(function(c) { return c.id !== id; });
   // Si tenía lote de cuarentena asociado, borrarlo también
@@ -10587,7 +10807,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.33'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.36'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -14313,6 +14533,8 @@ function guardarCuenta() {
   var detalle=((document.getElementById('cu-detalle')||{}).value||'').trim();
   var monto=parseFloat((document.getElementById('cu-monto')||{}).value)||0;
   if(!cuenta||!fecha||!monto){toast('Completa cuenta, fecha y monto','error');return;}
+  // FIX v1.4.34: no permitir fechas futuras
+  if(!validateNotFuture(fecha, 'fecha del asiento')) return;
   if(!db.cuentas)db.cuentas=[];
   db.cuentas.push({
     id:Date.now(),cuenta:cuenta,subcuenta:subcuenta,tipo:tipo,tipo_gasto:tipo,
@@ -14325,6 +14547,11 @@ function guardarCuenta() {
 
 function deleteCuenta(id) {
   if(!confirm('Eliminar este registro?'))return;
+  
+  // FIX v1.4.35: audit log para deleteCuenta
+  var _delRec_deleteCuenta = (db.cuentas || []).find(function(r){ return String(r.id) === String(id); });
+  var _delSummary_deleteCuenta = _delRec_deleteCuenta ? _summarizeRecord('cuentas', _delRec_deleteCuenta) : 'Cuenta contable #' + id;
+  try { auditLog('delete', 'cuentas', id, _delSummary_deleteCuenta); } catch(e){}
   trackDeletion(id, 'cuentas');
   db.cuentas=db.cuentas.filter(function(r){return r.id!==id;});
   saveDB();renderContabilidad();toast('Eliminado','success');
@@ -14532,6 +14759,8 @@ function guardarKardex(){
   var precio=parseFloat((document.getElementById('kx-precio')||{}).value)||0;
   var desc=((document.getElementById('kx-desc')||{}).value||'').trim();
   if(!lote||!fecha||!cab){toast('Completa lote, fecha y cabezas','error');return;}
+  // FIX v1.4.34: no permitir fechas futuras
+  if(!validateNotFuture(fecha, 'fecha del asiento')) return;
   if(!db.kardex)db.kardex=[];
 
   db.kardex.push({
@@ -14688,7 +14917,7 @@ function renderHistorialSueldos() {
       var mesesPagados=regsEmp.filter(function(r){return r.estado==='pagado';}).length;
       return '<div style="background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:14px">'+
         '<div style="font-family:Syne,sans-serif;font-size:13px;font-weight:700;margin-bottom:2px">'+escH(emp.name)+'</div>'+
-        '<div style="font-size:10px;color:var(--muted);margin-bottom:10px">'+capFirst(emp.role)+' · Bs. '+(emp.salary||0).toLocaleString()+'/mes</div>'+
+        '<div style="font-size:10px;color:var(--muted);margin-bottom:10px">'+roleLabel(emp.role)+' · Bs. '+(emp.salary||0).toLocaleString()+'/mes</div>'+
         '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid rgba(48,54,61,.3)">'+
           '<span style="color:var(--muted)">Meses pagados '+filterYear+'</span><span style="font-weight:600">'+mesesPagados+'/12</span></div>'+
         '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0">'+
@@ -14766,7 +14995,7 @@ function renderPsEmpleados() {
       ? '<span style="background:rgba(57,211,83,.12);color:var(--green);padding:3px 8px;border-radius:6px;font-size:10px;font-weight:600">Pagado</span>'
       : '<span style="background:rgba(212,160,23,.12);color:var(--amber2);padding:3px 8px;border-radius:6px;font-size:10px;font-weight:600">Pendiente</span>';
     tr.innerHTML='<td style="padding:8px;text-align:center">'+checkHtml+'</td>'+
-      '<td style="padding:8px"><div style="font-weight:600">'+escH(emp.name)+'</div><div style="font-size:10px;color:var(--muted)">'+escH(capFirst(emp.role||''))+'</div></td>'+
+      '<td style="padding:8px"><div style="font-weight:600">'+escH(emp.name)+'</div><div style="font-size:10px;color:var(--muted)">'+escH(roleLabel(emp.role||''))+'</div></td>'+
       '<td style="padding:8px;text-align:right;font-family:DM Mono,monospace">Bs. '+salario.toLocaleString()+'</td>'+
       '<td style="padding:8px;text-align:right;font-family:DM Mono,monospace;color:'+(totalAdv>0?'var(--amber2)':'var(--muted)')+'">Bs. '+totalAdv.toLocaleString()+'</td>'+
       '<td style="padding:8px;text-align:right;font-family:DM Mono,monospace;color:var(--green);font-weight:700">Bs. '+neto.toLocaleString()+'</td>'+
@@ -14802,6 +15031,8 @@ function guardarPagoSueldo(){
   var notas=((document.getElementById('ps-notas')||{}).value||'').trim();
   if(!mes){toast('Selecciona el mes','error');return;}
   if(!fecha){toast('Selecciona la fecha de pago','error');return;}
+  // FIX v1.4.34: no permitir fechas futuras
+  if(!validateNotFuture(fecha, 'fecha de pago')) return;
   if(!db.historial_sueldos)db.historial_sueldos=[];
 
   var seleccionados=[];
@@ -14844,9 +15075,16 @@ function guardarPagoSueldo(){
   toast(registrados+' pago'+(registrados===1?'':'s')+' registrado'+(registrados===1?'':'s'),'success');
   // Push al server
   try{replaceTableInRailway('historial_sueldos',db.historial_sueldos);}catch(e){}
+  // FIX v1.4.35: audit log para pago de sueldos (batch — un log con resumen)
+  try { auditLog('create', 'historial_sueldos', 'batch_' + Date.now(), 'Pago de sueldos: ' + registrados + ' empleado' + (registrados===1?'':'s') + ' · ' + mes + ' · fecha ' + fecha); } catch(e){}
 }
 function deletePagoSueldo(id) {
   if(!confirm('Eliminar?')) return;
+  
+  // FIX v1.4.35: audit log para deletePagoSueldo
+  var _delRec_deletePagoSueldo = (db.historial_sueldos || []).find(function(r){ return String(r.id) === String(id); });
+  var _delSummary_deletePagoSueldo = _delRec_deletePagoSueldo ? _summarizeRecord('historial_sueldos', _delRec_deletePagoSueldo) : 'Pago sueldo #' + id;
+  try { auditLog('delete', 'historial_sueldos', id, _delSummary_deletePagoSueldo); } catch(e){}
   trackDeletion(id, 'historial_sueldos');
   db.historial_sueldos=db.historial_sueldos.filter(function(r){return r.id!==id;});
   saveDB();renderHistorialSueldos();toast('Eliminado','success');
@@ -15146,6 +15384,11 @@ function saveMaq() {
 
 function deleteMaq(id) {
   if (!confirm('¿Eliminar este equipo?')) return;
+  
+  // FIX v1.4.35: audit log para deleteMaq
+  var _delRec_deleteMaq = (db.maquinaria || []).find(function(r){ return String(r.id) === String(id); });
+  var _delSummary_deleteMaq = _delRec_deleteMaq ? _summarizeRecord('maquinaria', _delRec_deleteMaq) : 'Maquinaria #' + id;
+  try { auditLog('delete', 'maquinaria', id, _delSummary_deleteMaq); } catch(e){}
   trackDeletion(id, 'maquinaria');
   db.maquinaria = (db.maquinaria||[]).filter(function(m){return m.id!==id;});
   saveDB();
@@ -15568,6 +15811,8 @@ function calcDieselTotal() {
 function saveDiesel() {
   var type=(document.getElementById('diesel-tx-type')||{}).value||'despacho';
   var fecha=(document.getElementById('diesel-fecha')||{}).value||'';
+  // FIX v1.4.34: no permitir fechas futuras
+  if(!validateNotFuture(fecha, 'fecha del despacho')) return;
   var litros=parseFloat((document.getElementById('diesel-litros')||{}).value)||0;
   var obs=((document.getElementById('diesel-obs')||{}).value||'').trim();
   if(!fecha||!litros){toast('Completa fecha y litros','error');return;}
@@ -15682,6 +15927,11 @@ function deleteDiesel(id) {
   } else {
     if(!confirm('Eliminar registro? Se recalculará el nivel del tanque.')) return;
   }
+  
+  // FIX v1.4.35: audit log para deleteDiesel
+  var _delRec_deleteDiesel = (db.diesel || []).find(function(r){ return String(r.id) === String(id); });
+  var _delSummary_deleteDiesel = _delRec_deleteDiesel ? _summarizeRecord('diesel', _delRec_deleteDiesel) : 'Diesel #' + id;
+  try { auditLog('delete', 'diesel', id, _delSummary_deleteDiesel); } catch(e){}
   trackDeletion(id, 'diesel');
   if (pairId) {
     // Borrar todos los registros con ese traspaso_pair
@@ -15755,6 +16005,8 @@ function onAceiteStockChange() {
 
 function saveAceite() {
   var fecha=(document.getElementById('aceite-fecha')||{}).value||'';
+  // FIX v1.4.34: no permitir fechas futuras
+  if(!validateNotFuture(fecha, 'fecha del cambio')) return;
   var vehiculo=((document.getElementById('aceite-vehiculo')||{}).value||'').trim();
   var kmhr=((document.getElementById('aceite-kmhr')||{}).value||'').trim();
   var tipo=((document.getElementById('aceite-tipo')||{}).value||'').trim();
@@ -15804,6 +16056,11 @@ function saveAceite() {
 }
 function deleteAceite(id) {
   if(!confirm('Eliminar?')) return;
+  
+  // FIX v1.4.35: audit log para deleteAceite
+  var _delRec_deleteAceite = (db.aceite || []).find(function(r){ return String(r.id) === String(id); });
+  var _delSummary_deleteAceite = _delRec_deleteAceite ? _summarizeRecord('aceite', _delRec_deleteAceite) : 'Aceite #' + id;
+  try { auditLog('delete', 'aceite', id, _delSummary_deleteAceite); } catch(e){}
   trackDeletion(id, 'aceite');
   db.aceite=db.aceite.filter(function(r){return String(r.id)!==String(id);});
   saveDB(); renderDieselDesktop();
@@ -15966,6 +16223,11 @@ function openEvalPastoDetailDesktop(evalId) {
 function deleteEvalPastoDesktop() {
   if (!_evpDetailId) return;
   if (!confirm('¿Eliminar esta evaluación?')) return;
+  
+  // FIX v1.4.35: audit log para deleteEvalPastoDesktop
+  var _delRec_deleteEvalPastoDesktop = (db.pasture_evals || []).find(function(r){ return String(r.id) === String(id); });
+  var _delSummary_deleteEvalPastoDesktop = _delRec_deleteEvalPastoDesktop ? _summarizeRecord('pasture_evals', _delRec_deleteEvalPastoDesktop) : 'Evaluación pasto #' + id;
+  try { auditLog('delete', 'pasture_evals', id, _delSummary_deleteEvalPastoDesktop); } catch(e){}
   trackDeletion(_evpDetailId, 'pasture_evals');
   db.pasture_evals = (db.pasture_evals||[]).filter(function(e){ return String(e.id) !== String(_evpDetailId); });
   saveDB();
@@ -16157,6 +16419,8 @@ function saveEvalPasto() {
   _evpPhoto = null; _evpResultText = '';
   renderEvalPasto();
   toast('Evaluación guardada','success');
+  // FIX v1.4.35: audit log para evaluación de pasto
+  try { auditLog('create', 'pasture_evals', rec.id, _summarizeRecord('pasture_evals', rec)); } catch(e){}
 }
 
 function exportEvalPastoCSV() {
@@ -16579,6 +16843,8 @@ function openModalLluviaDesktop() {
 
 function saveLluviaDesktop() {
   var fecha=(document.getElementById('lluvia-d-fecha')||{}).value||'';
+  // FIX v1.4.34: no permitir fechas futuras
+  if(!validateNotFuture(fecha, 'fecha de lluvia')) return;
   var obs=((document.getElementById('lluvia-d-obs')||{}).value||'').trim();
   if(!fecha){toast('Ingresa la fecha','error');return;}
   // Read all pluvio values dynamically
@@ -16609,11 +16875,21 @@ function saveLluviaDesktop() {
   // por lo que al EDITAR una lluvia el cambio se perdía tras el próximo pull.
   // replaceTableInRailway hace REPLACE total y persiste correctamente.
   replaceTableInRailway('lluvias', db.lluvias || []);
+  // FIX v1.4.35: audit log para lluvia
+  try {
+    var lluviaSummary = 'Lluvia ' + fecha + ': ' + pluvios.map(function(p){ return p.label+' '+values[p.key]+'mm'; }).join(' · ');
+    auditLog(existing ? 'update' : 'create', 'lluvias', (existing ? existing.id : (db.lluvias[db.lluvias.length-1]||{}).id), lluviaSummary);
+  } catch(e){}
   closeModal('modal-lluvia-desktop'); renderLluviasDesktop();
 }
 
 function deleteLluvia(id) {
   if(!confirm('Eliminar este registro?')) return;
+  
+  // FIX v1.4.35: audit log para deleteLluvia
+  var _delRec_deleteLluvia = (db.lluvias || []).find(function(r){ return String(r.id) === String(id); });
+  var _delSummary_deleteLluvia = _delRec_deleteLluvia ? _summarizeRecord('lluvias', _delRec_deleteLluvia) : 'Lluvia #' + id;
+  try { auditLog('delete', 'lluvias', id, _delSummary_deleteLluvia); } catch(e){}
   trackDeletion(id, 'lluvias');
   db.lluvias=db.lluvias.filter(function(r){return String(r.id)!==String(id);});
   saveDB(); renderLluviasDesktop();
@@ -16837,6 +17113,9 @@ function saveMaint() {
   }
 
   var editId = (document.getElementById('mnt-edit-id')||{}).value;
+  // FIX v1.4.34: no permitir fechas futuras
+  var mntDateVal = (document.getElementById('mnt-date')||{}).value||localDate();
+  if(!validateNotFuture(mntDateVal, 'fecha del trabajo')) return;
   var recData = {
     category: (document.getElementById('mnt-cat')||{}).value||'otro',
     equipo: ((document.getElementById('mnt-equipo')||{}).value||'').trim(),
@@ -16844,7 +17123,7 @@ function saveMaint() {
     desc: desc.trim(),
     who: (document.getElementById('mnt-who')||{}).value.trim(),
     cost: parseFloat((document.getElementById('mnt-cost')||{}).value)||0,
-    date: (document.getElementById('mnt-date')||{}).value||localDate(),
+    date: mntDateVal,
     location: (document.getElementById('mnt-location')||{}).value.trim(),
     notes: (document.getElementById('mnt-notes')||{}).value.trim(),
     by: 'Desktop',
@@ -16979,6 +17258,11 @@ function pushTableToRailway(tableName, records) {
 }
 function deleteMaint(id) {
   if (!confirm('00bfEliminar este registro?')) return;
+  
+  // FIX v1.4.35: audit log para deleteMaint
+  var _delRec_deleteMaint = (db.maintenance || []).find(function(r){ return String(r.id) === String(id); });
+  var _delSummary_deleteMaint = _delRec_deleteMaint ? _summarizeRecord('maintenance', _delRec_deleteMaint) : 'Mantenimiento #' + id;
+  try { auditLog('delete', 'maintenance', id, _delSummary_deleteMaint); } catch(e){}
   trackDeletion(id, 'maintenance');
   db.maintenance = db.maintenance.filter(function(m){ return m.id!==id; });
   saveDB(); renderMantenimiento();
@@ -18084,6 +18368,8 @@ function renderPesajes() {
 function savePesaje() {
   var lotCode = (document.getElementById('pesaje-lot')||{}).value;
   var date    = (document.getElementById('pesaje-date')||{}).value||today();
+  // FIX v1.4.34: no permitir fechas futuras
+  if(!validateNotFuture(date, 'fecha del pesaje')) return;
   var count   = parseInt((document.getElementById('pesaje-count')||{}).value)||0;
   var avg     = parseFloat((document.getElementById('pesaje-avg')||{}).value)||0;
   var min     = parseFloat((document.getElementById('pesaje-min')||{}).value)||0;
@@ -18443,6 +18729,8 @@ function saveSubmodule(type) {
   var by     = (document.getElementById(prefix+'-by')||{}).value||'Cesar Moreno';
 
   if (!lot) { toast('Selecciona un lote','error'); return; }
+  // FIX v1.4.34: no permitir fechas futuras (cubre agua, sal, conteo, parto, alimento)
+  if (!validateNotFuture(date, 'fecha del registro')) return;
 
   if (!db[cfg.table]) db[cfg.table] = [];
   if (!db.next_ids[type]) db.next_ids[type] = 1;
@@ -18572,6 +18860,16 @@ function saveSubmodule(type) {
   renderSubmodule(type);
   if (type==='partos') renderLotes();
   toast('Registro guardado', 'success');
+  // FIX v1.4.35: audit log para submódulos (agua/sal/conteo/parto/alimento)
+  try {
+    var subMsg = '';
+    if (type === 'agua') subMsg = 'Agua: Lote ' + lot + ' · ' + (record.estado||'?');
+    else if (type === 'sal') subMsg = 'Sal: Lote ' + lot + ' · ' + (record.qty||0) + ' kg ' + (record.tipo||'');
+    else if (type === 'conteo') subMsg = 'Conteo: Lote ' + lot + ' · ' + (record.counted||0) + '/' + (record.ref||0) + ' (diff ' + (record.diff||0) + ')';
+    else if (type === 'partos') subMsg = 'Parto: Lote ' + lot + ' · ' + (record.sexo||'') + (record.estado==='muerto'?' (mortinato)':' #' + (record.cria_id||'?'));
+    else if (type === 'alimento') subMsg = 'Alimento: Lote ' + lot + ' · ' + (record.qty||0) + ' kg ' + (record.tipo||'');
+    auditLog('create', cfg.table, record.id, subMsg);
+  } catch(e){}
 }
 
 function renderSubmodule(type) {
@@ -18925,6 +19223,8 @@ function confirmarMoverAnimal() {
   var date = (document.getElementById('mover-date')||{}).value || localDate();
   var motivo = (document.getElementById('mover-motivo')||{}).value || '';
   if(!toLot) { toast('Selecciona el lote destino','error'); return; }
+  // FIX v1.4.34: no permitir fechas futuras
+  if(!validateNotFuture(date, 'fecha de movimiento')) return;
   if(!_moverAnimalId || !_moverFromLot) return;
 
   // Validar capacidad del potrero destino
@@ -19105,6 +19405,8 @@ function calcVentaCarne() {
 function saveVentaCarne() {
   var bajaId = ((document.getElementById('vc-baja-id')||{}).value||'').trim();
   var fecha = (document.getElementById('vc-fecha')||{}).value || '';
+  // FIX v1.4.34: no permitir fechas futuras
+  if(!validateNotFuture(fecha, 'fecha de venta')) return;
   var comprador = ((document.getElementById('vc-comprador')||{}).value || '').trim();
   var kg = parseFloat((document.getElementById('vc-kg')||{}).value) || 0;
   var precio = parseFloat((document.getElementById('vc-precio')||{}).value) || 0;
@@ -19116,7 +19418,7 @@ function saveVentaCarne() {
   // Register as sale
   if (!db.sales) db.sales = [];
   if (!db.next_ids.sale) db.next_ids.sale = db.sales.length + 1;
-  db.sales.push({
+  var ventaCarneRec = {
     id: db.next_ids.sale++,
     date: fecha,
     lot_code: baja.lot_code,
@@ -19129,7 +19431,8 @@ function saveVentaCarne() {
     notes: '🪦 Venta carne post-baja Animal #' + baja.animal_id + (obs ? ' - ' + obs : ''),
     by: 'Desktop',
     created_at: new Date().toISOString()
-  });
+  };
+  db.sales.push(ventaCarneRec);
   // Mark baja as sale registered
   baja.venta_registrada = true;
   baja.venta_kg = kg;
@@ -19141,6 +19444,8 @@ function saveVentaCarne() {
   renderBajasDesktop();
   renderDashboard();
   toast('💰 Venta registrada: ' + kg + ' kg × Bs.' + precio + ' = Bs.' + total.toLocaleString(), 'success');
+  // FIX v1.4.35: audit log para venta de carne (operación con dinero)
+  try { auditLog('create', 'sales', ventaCarneRec.id, 'Venta carne post-baja: Animal #' + baja.animal_id + ' · ' + kg + 'kg · Bs ' + total); } catch(e){}
 }
 
 function viewBajaPhoto(txId) {
@@ -19189,13 +19494,93 @@ function viewBajaPhoto(txId) {
 }
 
 function deleteBaja(id) {
-  if (!confirm('¿Eliminar este registro de baja?')) return;
+  // FIX v1.4.35 BUG-LOT-1: al eliminar una baja, restaurar el animal en el lote, incrementar
+  // animal_count, y crear contra-asiento en kardex. Antes solo se borraba el registro de baja
+  // dejando los datos inconsistentes: el animal seguía descontado del lote pero la baja no
+  // existía → animal "perdido" en limbo. Especialmente grave si el bot/sync ya había
+  // pusheado el animal_count al server.
+  var baja = (db.bajas || []).find(function(b){ return String(b.id) === String(id); });
+  if (!baja) { toast('Baja no encontrada', 'error'); return; }
+
+  var puedeRestaurar = !!baja.animal_snapshot;
+  var msg = '¿Eliminar este registro de baja?';
+  if (puedeRestaurar) {
+    msg = '⚠ Esto eliminará la baja Y restaurará al animal #' + baja.animal_id +
+          ' en el lote "' + baja.lot_code + '"' +
+          '. También se anulará el asiento de kardex relacionado.\n\n¿Continuar?';
+  } else {
+    msg = '⚠ Atención: esta baja es de versión vieja (sin snapshot del animal).\n\n' +
+          'Eliminarla SOLO borrará el registro pero NO restaurará al animal en el lote ' +
+          '(el animal seguirá descontado).\n\n¿Continuar de todas formas?';
+  }
+  if (!confirm(msg)) return;
+
+  // 1. Si tiene snapshot, restaurar el animal en e5m_animals
+  if (puedeRestaurar) {
+    try {
+      var adb = getAnimalesDB();
+      if (!adb[baja.lot_code]) adb[baja.lot_code] = [];
+      // Verificar que no exista ya (idempotencia)
+      var yaExiste = adb[baja.lot_code].some(function(a){
+        return String(a.id || a.animal_id || '') === String(baja.animal_id);
+      });
+      if (!yaExiste) {
+        adb[baja.lot_code].push(baja.animal_snapshot);
+        saveAnimalesDB(adb);
+      }
+    } catch(e) { console.error('[deleteBaja] Error restaurando animal:', e.message); }
+
+    // 2. Incrementar animal_count del lote
+    var lot = (db.lots || []).find(function(l){ return l.code === baja.lot_code; });
+    if (lot) {
+      lot.animal_count = (lot.animal_count || 0) + 1;
+      // Si el lote estaba marcado como vendido por animal_count=0, reactivarlo
+      if (lot.status === 'vendido' && lot.animal_count > 0) {
+        lot.status = 'active';
+        console.warn('[deleteBaja] Lote ' + lot.code + ' reactivado (estaba vendido)');
+      }
+      lot.updated_at = new Date().toISOString();
+    }
+  }
+
+  // 3. Crear contra-asiento en kardex (reversa) y marcar el original como anulado
+  if (baja.kardex_ref_id && db.kardex) {
+    var originalK = db.kardex.find(function(k){ return k.id === baja.kardex_ref_id; });
+    if (originalK) {
+      originalK.anulado = true;
+      originalK.anulado_at = new Date().toISOString();
+    }
+    db.kardex.push({
+      id: Date.now() + 7,
+      lote: baja.lot_code || '',
+      tipo: 'reversa_baja',
+      fecha: localDate(),
+      cabezas: 1,
+      precio: 0,
+      total: 0,
+      desc: 'REVERSA de baja Animal #' + baja.animal_id + ' (' + (baja.causa||'?') + ')',
+      by: 'Desktop',
+      created_at: new Date().toISOString(),
+      auto: true,
+      reverses_id: baja.kardex_ref_id
+    });
+  }
+
+  // 4. Borrar el registro de baja
   trackDeletion(id, 'bajas');
-  db.bajas = (db.bajas||[]).filter(function(b){ return String(b.id) !== String(id); });
-  saveDB();
+  db.bajas = (db.bajas || []).filter(function(b){ return String(b.id) !== String(id); });
+
+  // 5. Persistir todo
+  saveDB(true);
   replaceTableInRailway('bajas', db.bajas || []);
+  if (puedeRestaurar) {
+    replaceTableInRailway('lots', db.lots || []);
+    replaceTableInRailway('kardex', db.kardex || []);
+  }
   renderBajasDesktop();
-  toast('Registro de baja eliminado', 'success');
+  renderLotes();
+  try { auditLog('delete', 'bajas', id, 'Baja eliminada (Animal #' + baja.animal_id + ', lote ' + baja.lot_code + ')' + (puedeRestaurar ? ' — animal restaurado' : ' — sin restore (snapshot ausente)')); } catch(e){}
+  toast(puedeRestaurar ? 'Baja eliminada y animal restaurado al lote' : 'Baja eliminada (animal NO restaurado)', 'success');
 }
 
 var _bajaAnimalId = null;
@@ -19296,6 +19681,8 @@ function confirmarBajaAnimal() {
   var obs = ((document.getElementById('baja-obs') || {}).value || '').trim();
   var ventaCarne = (document.getElementById('baja-venta-carne') || {}).checked || false;
   if (!fecha) { toast('Ingresa la fecha', 'error'); return; }
+  // FIX v1.4.34: no permitir fechas futuras
+  if (!validateNotFuture(fecha, 'fecha de muerte')) return;
   if (!obs) { toast('Ingresa observaciones', 'error'); return; }
   // If opened from Bajas tab (selectors mode)
   if (!_bajaAnimalId) {
@@ -19331,12 +19718,17 @@ function confirmarBajaAnimal() {
     venta_carne: ventaCarne,
     has_photo: !!_bajaPhotoBase64,
     by: 'Desktop',
-    created_at: new Date().toISOString()
+    created_at: new Date().toISOString(),
+    // FIX v1.4.35 BUG-LOT-1: guardar snapshot del animal completo para poder restaurarlo
+    // si la baja se elimina por error (deleteBaja). Sin este snapshot, el animal y su
+    // historial (pesajes, entry_date, raza) se perdían permanentemente.
+    animal_snapshot: animal ? JSON.parse(JSON.stringify(animal)) : null,
+    kardex_ref_id: Date.now()+2  // ID del kardex asociado (para reversa)
   };
   db.bajas.push(bajaRecord);
   // Auto-Kardex
   if (!db.kardex) db.kardex = [];
-  db.kardex.push({id:Date.now()+2,lote:bajaRecord.lot_code||'',tipo:'muerte',fecha:bajaRecord.fecha||localDate(),cabezas:1,precio:0,total:0,desc:'Baja: '+(bajaRecord.causa||'')+ ' — Animal #'+(bajaRecord.animal_id||'?'),by:'Desktop',created_at:new Date().toISOString(),auto:true});
+  db.kardex.push({id:bajaRecord.kardex_ref_id,lote:bajaRecord.lot_code||'',tipo:'muerte',fecha:bajaRecord.fecha||localDate(),cabezas:1,precio:0,total:0,desc:'Baja: '+(bajaRecord.causa||'')+ ' — Animal #'+(bajaRecord.animal_id||'?'),by:'Desktop',created_at:new Date().toISOString(),auto:true,baja_id:bajaRecord.id});
 
   // 3. Remove from animales DB
   adb[_bajaFromLot] = animals.filter(function(a) { return (a.id || a.animal_id || '').toString() !== _bajaAnimalId.toString(); });
@@ -19382,6 +19774,8 @@ function confirmarBajaAnimal() {
   var msg = '🪦 Baja registrada: Animal #' + _bajaAnimalId + ' (' + causa + ')';
   if (ventaCarne) msg += ' — Venta de carne pendiente en pestaña Bajas';
   toast(msg, 'success');
+  // FIX v1.4.35: audit log para baja
+  try { auditLog('create', 'bajas', bajaRecord.id, _summarizeRecord('bajas', bajaRecord)); } catch(e){}
   _bajaAnimalId = null;
   _bajaFromLot = null;
 }
@@ -19575,6 +19969,8 @@ function savePesajeAnimal(){
   var peso=parseFloat((document.getElementById("pa-peso")||{}).value||"0");
   var fecha=((document.getElementById("pa-fecha")||{}).value||"");
   if(!animalId||!peso||!fecha){toast("Completa animal, peso y fecha","error");return;}
+  // FIX v1.4.34: no permitir fechas futuras
+  if(!validateNotFuture(fecha, 'fecha del pesaje')) return;
   var all=getAnimalesDB();var animals=all[lotCode]||[];
   var animal=animals.find(function(a){return a.id===animalId;});
   if(!animal){toast("Animal no encontrado","error");return;}
@@ -19966,6 +20362,8 @@ function confirmImportPesajes() {
   if (!validos.length) { toast("No hay pesajes válidos", "error"); return; }
 
   var fecha = (document.getElementById("ip-fecha-global") || {}).value || localDate();
+  // FIX v1.4.34: no permitir fechas futuras
+  if (!validateNotFuture(fecha, 'fecha del pesaje')) return;
   var all = getAnimalesDB();
   var animals = all[_ipLotCode] || [];
 
@@ -21959,6 +22357,8 @@ function confirmBulkAnimals() {
   var lotCode = (document.getElementById('bulk-lot-select') || {}).value;
   var date = (document.getElementById('bulk-pesaje-date') || {}).value || today();
   if (!lotCode) { toast('Selecciona un lote destino', 'error'); return; }
+  // FIX v1.4.34: no permitir fechas futuras
+  if (!validateNotFuture(date, 'fecha del pesaje')) return;
   if (!_bulkAnimals.length) { toast('No hay animales para cargar', 'error'); return; }
   var lot = db.lots.find(function(l) { return l.code === lotCode; });
   if (!lot) { toast('Lote no encontrado', 'error'); return; }
@@ -22196,6 +22596,8 @@ function recalcTotalMerma() {
 
 function saveConteoInventario(overlay) {
   var date = (document.getElementById('ic-date-dyn') || {}).value || today();
+  // FIX v1.4.34: no permitir fechas futuras
+  if(!validateNotFuture(date, 'fecha del conteo')) return;
   var by = (document.getElementById('ic-by-dyn') || {}).value || '';
   var ajustar = (document.getElementById('ic-ajustar-dyn') || {}).checked;
   var items = [];
@@ -23790,6 +24192,8 @@ function openAddPrecio() {
 
 function savePrecio() {
   var fecha = (document.getElementById('precio-fecha')||{}).value || today();
+  // FIX v1.4.34: no permitir fechas futuras
+  if(!validateNotFuture(fecha, 'fecha del precio')) return;
   var valor = parseFloat((document.getElementById('precio-valor')||{}).value) || 0;
   if (!valor) { toast('Ingresa el precio','error'); return; }
   var precios = JSON.parse(localStorage.getItem('e5m_market_prices') || '[]');
@@ -23810,11 +24214,15 @@ function savePrecio() {
 function deletePrecio(id) {
   if (!confirm('Eliminar este registro de precio?')) return;
   var precios = JSON.parse(localStorage.getItem('e5m_market_prices') || '[]');
+  // FIX v1.4.35: capturar el record antes de borrar para audit log
+  var _delPrecio = precios.find(function(p){ return p.id === id; });
   precios = precios.filter(function(p){return p.id !== id;});
   localStorage.setItem('e5m_market_prices', JSON.stringify(precios));
   replaceTableInRailway('market_prices', precios);
   renderPrecios();
   toast('Precio eliminado','success');
+  // FIX v1.4.35: audit log
+  try { auditLog('delete', 'market_prices', id, _delPrecio ? ('Precio ' + (_delPrecio.fecha||'?') + ' · Bs ' + (_delPrecio.precio||0) + '/kg') : ('Precio #' + id)); } catch(e){}
 }
 
 
