@@ -10807,7 +10807,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.36'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.37'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -24530,6 +24530,38 @@ function showEvalDetail(evalId) {
   document.body.appendChild(overlay);
 }
 
+// ═══════════════════════════════════════════════════════════════
+// FIX v1.4.37: rediseño de renderRotacion
+// - KPI header: 4 contadores (Ocupados, Listos, Descansando, A rotar)
+// - Jerarquía: acción inmediata → listos → ocupados → descansando agrupado
+// - Inferencia automática de zonas por afinidad de palabras del nombre
+//   (override opcional via p.zone si está definida en config)
+// - Descansando colapsado por zona, chips compactos
+// ═══════════════════════════════════════════════════════════════
+
+// Helper: infiere zona del nombre del potrero o usa p.zone si está definida.
+// Reglas:
+//   1. Si p.zone está definida → ese gana
+//   2. Si no, primera palabra del nombre que no sea genérica
+//   3. Si la primera es genérica (Lote, Potrero, Sector, Campo, Pradera, Corral) → segunda palabra
+//   4. Si nada califica → 'Otros'
+function inferZone(p) {
+  if (p.zone && String(p.zone).trim()) return String(p.zone).trim();
+  var name = String(p.name || '').trim();
+  if (!name) return 'Otros';
+  // Limpiar separadores y números aislados
+  var palabras = name.split(/[\s\-\:\/]+/).filter(function(w){
+    return w && !/^\d+$/.test(w);
+  });
+  if (palabras.length === 0) return 'Otros';
+  var GENERICAS = ['lote','potrero','sector','campo','pradera','corral','area','area'];
+  var primera = palabras[0];
+  if (primera.length < 4 || GENERICAS.indexOf(primera.toLowerCase()) >= 0) {
+    return palabras[1] || 'Otros';
+  }
+  return primera;
+}
+
 function renderRotacion() {
   var el = document.getElementById('rotacion-content');
   if (!el) return;
@@ -24543,17 +24575,12 @@ function renderRotacion() {
   var lots = db.lots || [];
   var today = new Date();
 
-  var html = '';
-
-  // Status cards for each potrero
-  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:16px">';
-  potreros.forEach(function(p) {
-    // Find current occupation
+  // ─── Procesar cada potrero ────────────────────────────────
+  var enriched = potreros.map(function(p) {
     var activeEntry = history.find(function(r) { return r.potrero === p.name && !r.exit_date; });
     var isOccupied = !!activeEntry;
     var currentLot = isOccupied ? activeEntry.lot_code : null;
     var currentCab = isOccupied ? activeEntry.cabezas : 0;
-    // Recalculate from actual lot data
     if (currentLot) {
       var lotObj = lots.find(function(l){return l.code === currentLot;});
       if (lotObj) currentCab = lotObj.animal_count || currentCab;
@@ -24565,7 +24592,6 @@ function renderRotacion() {
     var maxOcc = p.max_occupation_days || 30;
     var occPct = Math.min(100, Math.round(daysOccupied / maxOcc * 100));
 
-    // Find last exit (for rest days calculation)
     var lastExit = null;
     if (!isOccupied) {
       var exits = history.filter(function(r) { return r.potrero === p.name && r.exit_date; });
@@ -24584,61 +24610,192 @@ function renderRotacion() {
     var capPct = p.capacity ? Math.round(currentCab / p.capacity * 100) : 0;
     var isOverCap = p.capacity && currentCab > p.capacity;
 
-    // Card color
-    var borderColor = isOverdue ? 'var(--red)' : isOccupied ? 'var(--amber2)' : isReady ? 'var(--green)' : 'var(--bor)';
-    var statusIcon = isOverdue ? '🔴' : isOccupied ? '🟡' : isReady ? '🟢' : '⚪';
-    var statusText = isOverdue ? 'ROTAR YA' : isOccupied ? 'OCUPADO' : isReady ? 'LISTO' : 'DESCANSANDO';
+    var status = isOverdue ? 'overdue' : isOccupied ? 'occupied' : isReady ? 'ready' : 'resting';
 
-    html += '<div class="card" style="padding:14px;border-left:4px solid '+borderColor+'">';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
-    html += '<div><div style="font-size:14px;font-weight:700">'+statusIcon+' '+escH(p.name)+'</div>';
-    html += '<div style="font-size:10px;color:var(--muted)">'+(p.hectares?p.hectares+' ha · ':'')+escH(p.grass_type||'')+'</div></div>';
-    html += '<div style="text-align:right"><div style="font-size:11px;font-weight:700;color:'+borderColor+'">'+statusText+'</div>';
-    html += '<div style="font-size:10px;color:var(--muted)">'+(p.capacity?'Cap: '+p.capacity+' cab':'')+'</div></div>';
-    html += '</div>';
-
-    if (isOccupied) {
-      html += '<div style="font-size:12px;margin-bottom:6px">🐄 <b>'+escH(currentLot)+'</b> — '+currentCab+' cabezas</div>';
-      // Occupation progress bar
-      var barColor = isOverdue ? 'var(--red)' : occPct > 80 ? 'var(--amber2)' : 'var(--green)';
-      html += '<div style="font-size:10px;color:var(--muted);margin-bottom:3px">Ocupación: '+daysOccupied+'/'+maxOcc+' días</div>';
-      html += '<div style="height:8px;background:var(--sur2);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+Math.min(100,occPct)+'%;background:'+barColor+';border-radius:4px;transition:width .3s"></div></div>';
-      if (isOverdue) html += '<div style="font-size:10px;color:var(--red);font-weight:700;margin-top:4px">⚠️ Excedido por '+(daysOccupied-maxOcc)+' días — rotar para evitar degradación del pasto</div>';
-      if (isOverCap) html += '<div style="font-size:10px;color:var(--red);font-weight:700;margin-top:4px">⚠️ Sobrecarga: '+currentCab+'/'+p.capacity+' cabezas ('+capPct+'%)</div>';
-    } else {
-      // Rest progress bar
-      var restPct = Math.min(100, Math.round(daysResting / minRest * 100));
-      var restColor = isReady ? 'var(--green)' : 'var(--amber2)';
-      html += '<div style="font-size:10px;color:var(--muted);margin-bottom:3px">Descanso: '+daysResting+'/'+minRest+' días</div>';
-      html += '<div style="height:8px;background:var(--sur2);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+restPct+'%;background:'+restColor+';border-radius:4px;transition:width .3s"></div></div>';
-      if (isReady) html += '<div style="font-size:10px;color:var(--green);font-weight:700;margin-top:4px">✅ Pasto recuperado — puede recibir ganado</div>';
-      else html += '<div style="font-size:10px;color:var(--amber2);margin-top:4px">Faltan '+(minRest - daysResting)+' días de descanso</div>';
-    }
-    html += '</div>';
+    return {
+      p: p, zone: inferZone(p),
+      status: status, isOccupied: isOccupied, isOverdue: isOverdue, isReady: isReady,
+      currentLot: currentLot, currentCab: currentCab,
+      daysOccupied: daysOccupied, maxOcc: maxOcc, occPct: occPct,
+      daysResting: daysResting, minRest: minRest,
+      capPct: capPct, isOverCap: isOverCap
+    };
   });
+
+  // ─── Reagrupar zonas con 1 potrero a "Otros" ──────────────
+  var zoneCounts = {};
+  enriched.forEach(function(e){ zoneCounts[e.zone] = (zoneCounts[e.zone]||0) + 1; });
+  enriched.forEach(function(e){ if (zoneCounts[e.zone] === 1) e.zone = 'Otros'; });
+
+  // ─── Separar por status ───────────────────────────────────
+  var overdueList = enriched.filter(function(e){ return e.status === 'overdue'; });
+  var readyList = enriched.filter(function(e){ return e.status === 'ready'; });
+  var occupiedList = enriched.filter(function(e){ return e.status === 'occupied'; });
+  var restingList = enriched.filter(function(e){ return e.status === 'resting'; });
+  var totalCabOccupied = occupiedList.concat(overdueList).reduce(function(s,e){ return s + (e.currentCab||0); }, 0);
+
+  var html = '';
+
+  // ─── KPI HEADER ───────────────────────────────────────────
+  html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">';
+  html += '<div style="background:var(--sur2);border-radius:8px;padding:10px 12px"><div style="font-size:11px;color:var(--muted);margin-bottom:2px">Ocupados</div><div style="font-size:20px;font-weight:600;color:var(--amber2)">'+(occupiedList.length + overdueList.length)+'</div></div>';
+  html += '<div style="background:var(--sur2);border-radius:8px;padding:10px 12px"><div style="font-size:11px;color:var(--muted);margin-bottom:2px">Listos</div><div style="font-size:20px;font-weight:600;color:var(--green)">'+readyList.length+'</div></div>';
+  html += '<div style="background:var(--sur2);border-radius:8px;padding:10px 12px"><div style="font-size:11px;color:var(--muted);margin-bottom:2px">Descansando</div><div style="font-size:20px;font-weight:600">'+restingList.length+'</div></div>';
+  html += '<div style="background:'+(overdueList.length?'rgba(229,75,75,.08)':'var(--sur2)')+';border-radius:8px;padding:10px 12px"><div style="font-size:11px;color:'+(overdueList.length?'var(--red)':'var(--muted)')+';margin-bottom:2px">A rotar</div><div style="font-size:20px;font-weight:600;color:'+(overdueList.length?'var(--red)':'var(--muted)')+'">'+overdueList.length+'</div></div>';
   html += '</div>';
 
-  // Rotation history table
+  // ─── ACCIÓN INMEDIATA (overdue) ──────────────────────────
+  if (overdueList.length) {
+    html += '<div style="margin-bottom:14px">';
+    html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span style="font-size:12px">⚠️</span><span style="font-size:11px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:.5px">Acción inmediata</span></div>';
+    overdueList.forEach(function(e){
+      html += '<div style="background:rgba(229,75,75,.08);border-left:4px solid var(--red);border-radius:0 8px 8px 0;padding:12px 14px;margin-bottom:6px">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:start;gap:12px">';
+      html += '<div style="flex:1;min-width:0">';
+      html += '<div style="font-size:15px;font-weight:700">'+escH(e.p.name)+'</div>';
+      html += '<div style="font-size:12px;color:var(--red);margin-top:2px"><b>'+escH(e.currentLot||'')+'</b> · '+e.currentCab+' cab · '+e.daysOccupied+'/'+e.maxOcc+' días ocupado</div>';
+      html += '<div style="font-size:11px;color:var(--red);margin-top:4px">Excedido por '+(e.daysOccupied-e.maxOcc)+' días — riesgo de degradación del pasto</div>';
+      if (e.isOverCap) html += '<div style="font-size:11px;color:var(--red);margin-top:2px">Sobrecarga: '+e.currentCab+'/'+e.p.capacity+' cab ('+e.capPct+'%)</div>';
+      html += '</div>';
+      html += '<button class="btn btn-sm" style="background:var(--red);color:#fff;border:none;white-space:nowrap" onclick="abrirMoverLote(\''+escH(e.currentLot||'')+'\')">Rotar lote →</button>';
+      html += '</div></div>';
+    });
+    html += '</div>';
+  }
+
+  // ─── LISTOS PARA RECIBIR GANADO ──────────────────────────
+  if (readyList.length) {
+    html += '<div style="margin-bottom:14px">';
+    html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">';
+    html += '<span style="font-size:12px">✅</span><span style="font-size:11px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.5px">Listos para recibir ganado</span>';
+    html += '<span style="font-size:10px;color:var(--muted);margin-left:auto">'+readyList.length+' potreros</span>';
+    html += '</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px">';
+    readyList.forEach(function(e){
+      html += '<div style="background:rgba(99,153,34,.08);border-radius:8px;padding:10px 12px">';
+      html += '<div style="font-size:14px;font-weight:600">'+escH(e.p.name)+'</div>';
+      html += '<div style="font-size:11px;color:var(--green);margin-top:2px">';
+      if (e.p.capacity) html += 'Cap: '+e.p.capacity+' · ';
+      html += e.daysResting+' días descanso';
+      html += '</div>';
+      if (e.p.hectares) html += '<div style="font-size:10px;color:var(--muted);margin-top:2px">'+e.p.hectares+' ha</div>';
+      html += '</div>';
+    });
+    html += '</div></div>';
+  }
+
+  // ─── OCUPADOS (en buen estado) ────────────────────────────
+  if (occupiedList.length) {
+    html += '<div style="margin-bottom:14px">';
+    html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">';
+    html += '<span style="font-size:12px">🐄</span><span style="font-size:11px;font-weight:700;color:var(--amber2);text-transform:uppercase;letter-spacing:.5px">Ocupados</span>';
+    html += '<span style="font-size:10px;color:var(--muted);margin-left:auto">'+occupiedList.length+' potreros · '+totalCabOccupied+' cabezas</span>';
+    html += '</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:4px">';
+    occupiedList.forEach(function(e){
+      var barColor = e.occPct > 80 ? 'var(--amber2)' : 'var(--green)';
+      html += '<div style="background:var(--sur);border:1px solid var(--bor);border-left:3px solid var(--amber2);border-radius:0 8px 8px 0;padding:10px 12px;display:grid;grid-template-columns:1fr 130px 80px 90px;gap:12px;align-items:center">';
+      html += '<div><div style="font-size:13px;font-weight:600">'+escH(e.p.name)+'</div>';
+      html += '<div style="font-size:11px;color:var(--muted)"><b>'+escH(e.currentLot||'')+'</b> · '+e.currentCab+' cab</div></div>';
+      html += '<div><div style="font-size:11px;color:var(--muted)">'+e.daysOccupied+'/'+e.maxOcc+' días</div>';
+      html += '<div style="height:4px;background:var(--sur2);border-radius:2px;margin-top:4px;overflow:hidden"><div style="height:100%;width:'+Math.min(100,e.occPct)+'%;background:'+barColor+';border-radius:2px"></div></div></div>';
+      html += '<div style="font-size:11px;color:'+(e.isOverCap?'var(--red)':'var(--muted)')+';text-align:right">'+(e.p.capacity?e.capPct+'% cap':'—')+'</div>';
+      html += '<button class="btn btn-sm" style="font-size:11px;padding:4px 8px" onclick="abrirMoverLote(\''+escH(e.currentLot||'')+'\')">Rotar →</button>';
+      html += '</div>';
+    });
+    html += '</div></div>';
+  }
+
+  // ─── DESCANSANDO (agrupado por zona, colapsable) ─────────
+  if (restingList.length) {
+    // Agrupar por zona
+    var byZone = {};
+    restingList.forEach(function(e){
+      if (!byZone[e.zone]) byZone[e.zone] = [];
+      byZone[e.zone].push(e);
+    });
+    // Ordenar zonas alfabéticamente, "Otros" al final
+    var zoneNames = Object.keys(byZone).sort(function(a,b){
+      if (a === 'Otros') return 1;
+      if (b === 'Otros') return -1;
+      return a.localeCompare(b);
+    });
+
+    html += '<div style="margin-bottom:14px">';
+    html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">';
+    html += '<span style="font-size:12px">💤</span><span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Descansando</span>';
+    html += '<span style="font-size:10px;color:var(--muted);margin-left:auto">'+restingList.length+' potreros · '+zoneNames.length+' zonas</span>';
+    html += '</div>';
+
+    zoneNames.forEach(function(zone, zIdx){
+      var list = byZone[zone];
+      // Solo la primera zona arranca abierta
+      var openAttr = zIdx === 0 ? ' open' : '';
+      html += '<details'+openAttr+' style="border:1px solid var(--bor);border-radius:8px;margin-bottom:6px;overflow:hidden">';
+      html += '<summary style="padding:8px 12px;cursor:pointer;font-size:12px;font-weight:600;background:var(--sur2);list-style:none;display:flex;align-items:center;gap:8px">';
+      html += '<span style="font-size:14px">▸</span>';
+      html += '<span>'+escH(zone)+'</span><span style="color:var(--muted);font-weight:400">— '+list.length+' potreros</span>';
+      html += '</summary>';
+      html += '<div style="padding:8px 12px;display:flex;flex-wrap:wrap;gap:6px">';
+      list.forEach(function(e){
+        var pctRest = Math.min(100, Math.round(e.daysResting / e.minRest * 100));
+        var faltan = Math.max(0, e.minRest - e.daysResting);
+        var tooltip = faltan > 0 ? 'Faltan '+faltan+' días para que esté listo' : 'Listo';
+        html += '<span title="'+tooltip+'" style="background:var(--sur2);padding:3px 8px;border-radius:8px;font-size:11px;border:1px solid var(--bor)">';
+        html += escH(e.p.name)+' · <span style="color:var(--muted)">'+e.daysResting+'d</span></span>';
+      });
+      html += '</div></details>';
+    });
+
+    html += '</div>';
+  }
+
+  // ─── Link al historial ───────────────────────────────────
+  html += '<div style="text-align:center;padding:8px 0">';
+  html += '<a href="javascript:void(0)" onclick="toggleHistorialRotacion()" style="font-size:12px;color:var(--muted);text-decoration:none;border-bottom:1px solid var(--bor)">📋 Ver historial completo de rotaciones</a>';
+  html += '</div>';
+
+  // ─── Historial (oculto por defecto) ──────────────────────
   var recent = history.slice().sort(function(a,b){return (b.entry_date||'').localeCompare(a.entry_date||'');}).slice(0,20);
   if (recent.length) {
-    html += '<div class="card" style="padding:14px"><div style="font-size:13px;font-weight:700;margin-bottom:10px">📋 Historial de Rotación</div>';
-    html += '<table class="tbl" style="font-size:11px"><thead><tr><th>Fecha entrada</th><th>Potrero</th><th>Lote</th><th>Cab.</th><th>Días</th><th>Fecha salida</th><th>Motivo</th></tr></thead><tbody>';
+    html += '<div id="historial-rotacion-table" style="display:none;margin-top:14px"><div class="card" style="padding:14px">';
+    html += '<div style="font-size:13px;font-weight:700;margin-bottom:10px">📋 Historial de Rotación (últimas 20)</div>';
+    html += '<table class="tbl" style="font-size:11px"><thead><tr><th>Entrada</th><th>Potrero</th><th>Lote</th><th>Cab.</th><th>Días</th><th>Salida</th><th>Motivo</th></tr></thead><tbody>';
     recent.forEach(function(r) {
       var rowColor = r.exit_date ? '' : 'background:rgba(245,166,35,.06)';
       html += '<tr style="'+rowColor+'">';
       html += '<td>'+escH(r.entry_date||'')+'</td>';
-      html += '<td style="font-weight:700">'+escH(r.potrero||'')+'</td>';
+      html += '<td style="font-weight:600">'+escH(r.potrero||'')+'</td>';
       html += '<td>'+escH(r.lot_code||'')+'</td>';
       html += '<td>'+escH(r.cabezas||'')+'</td>';
-      html += '<td>'+(r.exit_date ? (r.days_occupied||'?')+' d' : '<span style="color:var(--amber2);font-weight:700">'+Math.max(1,Math.round((new Date()-new Date(r.entry_date))/86400000))+' d ▶</span>')+'</td>';
+      html += '<td>'+(r.exit_date ? (r.days_occupied||'?')+' d' : '<span style="color:var(--amber2);font-weight:600">'+Math.max(1,Math.round((new Date()-new Date(r.entry_date))/86400000))+' d ▶</span>')+'</td>';
       html += '<td>'+(r.exit_date||'<span style="color:var(--amber2)">En curso</span>')+'</td>';
       html += '<td style="font-size:10px;color:var(--muted)">'+escH(r.reason||'')+'</td>';
       html += '</tr>';
     });
-    html += '</tbody></table></div>';
+    html += '</tbody></table></div></div>';
   }
 
   el.innerHTML = html;
+}
+
+// FIX v1.4.37: helper para toggle del historial colapsable
+function toggleHistorialRotacion() {
+  var el = document.getElementById('historial-rotacion-table');
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+// FIX v1.4.37: helper para abrir el modal de mover lote desde botones de rotación
+function abrirMoverLote(lotCode) {
+  if (!lotCode) { toast('No hay lote asignado a este potrero', 'warning'); return; }
+  // Buscar el lote por code → id, y reusar openMoveLot existente
+  var lot = (db.lots || []).find(function(l){ return l.code === lotCode; });
+  if (!lot) { toast('Lote "' + lotCode + '" no encontrado', 'error'); return; }
+  if (typeof openMoveLot === 'function') {
+    openMoveLot(lot.id);
+  } else {
+    toast('Funcionalidad de mover lote no disponible', 'error');
+  }
 }
 
 function checkRotationAlerts() {
