@@ -552,7 +552,7 @@ function publishTasksToPWA() {
   <div class="nav-sec">
     <div class="nav-lbl">Principal</div>
     <button class="nav-btn active" onclick="showPage('dashboard',this)"><span class="nav-icon">📊</span>Dashboard</button>
-    <button class="nav-btn" onclick="showPage('stock',this)"><span class="nav-icon">📦</span>Stock Vet.</button>
+    <button class="nav-btn" onclick="showPage('stock',this)"><span class="nav-icon">📦</span>Stock</button>
     <button class="nav-btn" onclick="showPage('alertas',this)"><span class="nav-icon">🔔</span>Alertas <span class="nav-badge nb-red" id="nb-alertas">0</span></button>
   </div>
   <div class="nav-sec">
@@ -1129,22 +1129,48 @@ function publishTasksToPWA() {
 
 <!-- ═══ STOCK ═══ -->
 <div id="page-stock" class="page">
+  <!-- v1.4.39: Stock rediseñado con Hub de categorías + lista agrupada -->
   <div class="ph">
-    <div><div class="pt">📦 Stock Veterinario</div><div class="ps">Medicamentos · sal mineral · alertas automaticas</div></div>
+    <div><div class="pt">📦 Stock</div><div class="ps">Insumos veterinarios · sal · aceites · herramientas</div></div>
     <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" onclick="openConteoInventario()" style="background:var(--blue);font-size:12px">📋 Conteo físico</button>
       <button class="btn btn-primary" onclick="openNewProduct()">+ Nuevo producto</button>
-      <button class="btn btn-primary" onclick="openConteoInventario()" style="background:var(--blue);font-size:12px">📋 Conteo Inventario</button>
       <button class="btn btn-ghost" onclick="exportStock()" title="Exportar a Excel">⬇ Excel</button>
     </div>
   </div>
-  <div class="card">
-    <div class="card-body" style="padding:0">
-      <table class="tbl">
-        <thead><tr><th>Producto</th><th>Tipo</th><th>Stock actual</th><th>Minimo</th><th>Nivel</th><th>Vencimiento</th><th>Estado</th><th></th></tr></thead>
-        <tbody id="stock-tbody"></tbody>
-      </table>
+
+  <!-- Alerta global (se llena dinámicamente) -->
+  <div id="stock-global-alert" style="display:none;margin-bottom:14px;padding:10px 14px;background:rgba(163,45,45,.08);border:1px solid rgba(163,45,45,.25);border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+    <div id="stock-global-alert-text" style="font-size:13px;color:var(--red);font-weight:500"></div>
+    <button class="btn btn-sm" onclick="_stockSetFilter('alertas')" style="background:var(--red);color:#fff;font-size:11px;padding:4px 10px;border:none;border-radius:6px;cursor:pointer">Ver todo →</button>
+  </div>
+
+  <!-- Hub de categorías (mosaico tappable) -->
+  <div id="stock-hub" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px"></div>
+
+  <!-- Toolbar de filtros + ordenamiento + búsqueda -->
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+    <div id="stock-chips" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:11px;color:var(--muted);margin-right:4px">Mostrar:</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <select id="stock-sort" onchange="renderStock()" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--sur);color:var(--text);cursor:pointer">
+        <option value="critical">Más críticos</option>
+        <option value="az">A-Z</option>
+        <option value="low">Stock bajo</option>
+        <option value="exp">Próximo a vencer</option>
+        <option value="usage">Más usados</option>
+      </select>
+      <input id="stock-search" oninput="renderStock()" placeholder="Buscar producto..." style="font-size:12px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;width:160px;background:var(--sur);color:var(--text)"/>
     </div>
   </div>
+
+  <!-- Container de la lista (Hub renderiza acá) -->
+  <div id="stock-list-container"></div>
+
+  <!-- Legacy hidden (compatibilidad con audit logs / sync / exports) -->
+  <table style="display:none"><tbody id="stock-tbody"></tbody></table>
+
   <div id="conteo-history-section" style="margin-top:16px;display:none">
     <div class="card">
       <div class="card-hd" style="cursor:pointer" onclick="toggleConteoHistory()">
@@ -3142,7 +3168,7 @@ function publishTasksToPWA() {
   <div class="form-group"><label class="form-label">Costo por unidad (Bs)</label><input class="form-input" type="number" id="prod-cost" step="0.01"></div>
   <div class="form-group"><label class="form-label">Proveedor</label><input class="form-input" id="prod-supplier" placeholder="Ej: Vetsuper"></div>
 </div>
-<div class="form-group"><label class="form-label">Fecha vencimiento</label><input class="form-input" type="date" id="prod-expiry"></div>
+<div class="form-group"><label class="form-label">Fecha vencimiento <span style="color:var(--muted);font-weight:400;font-size:11px">(opcional · dejar vacío si no caduca)</span></label><input class="form-input" type="date" id="prod-expiry"></div>
 <div class="form-actions">
   <button class="btn btn-ghost" onclick="closeModal('modal-product')">Cancelar</button>
   <button class="btn btn-primary" onclick="saveProduct()">Guardar</button>
@@ -3153,7 +3179,7 @@ function publishTasksToPWA() {
 <div class="modal"><h2>📦 Ingreso de Stock</h2>
 <input type="hidden" id="stock-product-id">
 <div class="form-group"><label class="form-label">Producto</label>
-  <div class="form-input" id="stock-product-label" style="background:var(--sur2);color:var(--amber2)">- Seleccionar desde Stock Vet. →</div>
+  <div class="form-input" id="stock-product-label" style="background:var(--sur2);color:var(--amber2)">- Seleccionar desde Stock →</div>
 </div>
 <div class="form-group"><label class="form-label">Cantidad a ingresar</label><input class="form-input" type="number" id="stock-qty" step="0.1" placeholder="Ej: 500"></div>
 <div class="form-group"><label class="form-label">Motivo</label>
@@ -4280,10 +4306,20 @@ function _updateSyncBadge() {
     }
   } catch(e) {}
 }
+// v1.4.40: Lock para evitar ejecuciones concurrentes de flushReplaceQueue
+// Antes: tres disparadores (online event, setInterval 60s, setTimeout 3s al load)
+// podían correr en paralelo y procesar el mismo queue 2 veces, generando
+// double-push al server (visible en logs como cada tabla apareciendo 2x).
+var _flushInProgress = false;
 function flushReplaceQueue() {
   if (!navigator.onLine) return Promise.resolve(false);
+  if (_flushInProgress) {
+    console.log('[ReplaceQueue] Flush ya en curso, skip');
+    return Promise.resolve(false);
+  }
   var q = _replaceQueueGet();
   if (!q.length) return Promise.resolve(true);
+  _flushInProgress = true;
   console.log('[ReplaceQueue] Flushing ' + q.length + ' entries');
   // Procesar secuencialmente para no saturar
   var chain = Promise.resolve();
@@ -4312,7 +4348,15 @@ function flushReplaceQueue() {
       });
     });
   });
-  return chain.then(function() { _updateSyncBadge(); return true; });
+  return chain.then(function() {
+    _updateSyncBadge();
+    _flushInProgress = false;
+    return true;
+  }).catch(function(err) {
+    console.error('[ReplaceQueue] flush error:', err);
+    _flushInProgress = false;
+    return false;
+  });
 }
 // Auto-flush al detectar conexión + cada 60s mientras haya cola
 window.addEventListener('online', function() { setTimeout(flushReplaceQueue, 1500); });
@@ -4425,6 +4469,60 @@ function mergeArrays(local, remote, idField, tableName) {
   return merged;
 }
 
+// v1.4.40: Banner amarillo dismissible que reporta cambios de lotes hechos
+// por otro Desktop (Cesar u otra máquina). Se muestra después del sync-pull
+// solo si hubo cambios significativos. Es dismissible y NO bloquea el uso.
+function _showLotsSyncBanner(report) {
+  if (!report) return;
+  var hasChanges = report.added > 0 || report.advanced.length > 0 || report.countChanged.length > 0 || report.removed > 0;
+  if (!hasChanges) return;
+
+  // Remover banner viejo si existe
+  var existing = document.getElementById('_lots-sync-banner');
+  if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+
+  var lines = [];
+  if (report.added > 0) lines.push('• <strong>'+report.added+'</strong> lote'+(report.added!==1?'s':'')+' nuevo'+(report.added!==1?'s':'')+' incorporado'+(report.added!==1?'s':'')+' del server');
+  if (report.advanced.length > 0) {
+    var advSummary = report.advanced.slice(0,3).map(function(a){ return a.code+' ('+a.from+' → '+a.to+')'; }).join(', ');
+    if (report.advanced.length > 3) advSummary += ' y '+(report.advanced.length-3)+' más';
+    lines.push('• <strong>'+report.advanced.length+'</strong> lote'+(report.advanced.length!==1?'s':'')+' cambió'+(report.advanced.length!==1?'aron':'')+' de estado: '+advSummary);
+  }
+  if (report.countChanged.length > 0) {
+    var ccSummary = report.countChanged.slice(0,3).map(function(c){ return c.code+' ('+c.from+' → '+c.to+' cab.)'; }).join(', ');
+    if (report.countChanged.length > 3) ccSummary += ' y '+(report.countChanged.length-3)+' más';
+    lines.push('• <strong>'+report.countChanged.length+'</strong> lote'+(report.countChanged.length!==1?'s':'')+' con conteo actualizado: '+ccSummary);
+  }
+  if (report.removed > 0) lines.push('• <strong>'+report.removed+'</strong> lote'+(report.removed!==1?'s':'')+' borrado'+(report.removed!==1?'s':'')+' por server');
+
+  var banner = document.createElement('div');
+  banner.id = '_lots-sync-banner';
+  banner.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:9000;max-width:680px;width:calc(100% - 40px);padding:12px 16px;background:#FAEEDA;border:1px solid #BA7517;border-left:4px solid #BA7517;border-radius:10px;box-shadow:0 4px 12px rgba(0,0,0,.15);font-family:var(--font-sans,system-ui)';
+  banner.innerHTML =
+    '<div style="display:flex;align-items:flex-start;gap:10px">' +
+      '<div style="font-size:18px;line-height:1">⚠️</div>' +
+      '<div style="flex:1">' +
+        '<div style="font-size:13px;font-weight:600;color:#412402;margin-bottom:4px">Otro dispositivo hizo cambios en lotes mientras estabas fuera</div>' +
+        '<div style="font-size:12px;color:#633806;line-height:1.6">'+lines.join('<br>')+'</div>' +
+      '</div>' +
+      '<button id="_lots-banner-close" style="background:none;border:none;color:#633806;cursor:pointer;font-size:18px;padding:0;line-height:1;flex-shrink:0">×</button>' +
+    '</div>';
+  document.body.appendChild(banner);
+
+  document.getElementById('_lots-banner-close').addEventListener('click', function(){
+    if (banner.parentNode) banner.parentNode.removeChild(banner);
+  });
+
+  // Auto-dismiss después de 25 segundos
+  setTimeout(function(){
+    if (banner.parentNode) banner.parentNode.removeChild(banner);
+  }, 25000);
+
+  // Refrescar UI por las dudas (el sync ya lo hace, pero por si el banner llega tarde)
+  if (typeof renderLotes === 'function') try { renderLotes(); } catch(e){}
+  if (typeof renderDashboard === 'function') try { renderDashboard(); } catch(e){}
+}
+
 function setSyncStatus(state) {
   var btn = document.getElementById('desktop-sync-btn');
   var icon = document.getElementById('desktop-sync-icon');
@@ -4486,29 +4584,50 @@ function pullFromRailwayDesktop(thenPush) {
         } catch(e) { console.warn('[MinVersion] Error chequeando:', e); }
       }
 
-      // ═══ DESKTOP ES LA FUENTE ÚNICA DE VERDAD ═══
-      // Merge SOLO para tablas donde PWA/campo/bot agregan datos
-      // Los registros borrados en desktop NO regresan (trackDeletion los excluye)
-
-      // Solo actualizar paddock desde el campo (PWA puede mover lotes)
+      // ═══ FIX v1.4.40: Sync de lots con server-wins por progresión monotónica ═══
+      // Antes: solo se actualizaba paddock. Si Cesar marcaba cuarentena desde otro
+      // Desktop, tu Desktop seguía mostrando cuarentena obsoleta + nuevos lotes
+      // creados por él no aparecían. Resultado: data inconsistente al abrir.
+      //
+      // Ahora: el server gana cuando representa "progreso" del lote:
+      //   • status avanzó: cuarentena → marcado_completo → activo → vendido
+      //   • animal_count bajó (marcaje parcial, venta parcial, bajas)
+      // Local gana cuando:
+      //   • vos avanzaste algo que server no sabe (push pendiente)
+      //   • notas locales NO se pisan
+      //   • trackDeletion bloquea resurrección
+      //
+      // Acumulamos cambios para mostrar banner amarillo al usuario.
       if (remote.lots && remote.lots.length) {
-        remote.lots.forEach(function(rl) {
-          var local = db.lots.find(function(l){ return l.code === rl.code; });
-          if (local && rl.paddock && rl.paddock !== local.paddock) {
-            local.paddock = rl.paddock;
-          }
-        });
+        // Tracking de cambios para banner
+        if (!window._lotsSyncReport) window._lotsSyncReport = { added:0, advanced:[], countChanged:[], removed:0 };
+        var _report = window._lotsSyncReport;
 
-        // Reconciliación: borrar lotes locales SOLO si el server explícitamente los marcó como borrados
-        // (vía _deleted_ids). Si solo no están en server.lots pero tampoco en deleted_ids,
-        // probablemente es un lote local que aún no se pusheó — preservar.
+        // Orden de prioridad de status (monotónico)
+        function _statusPriority(s) {
+          var n = String(s || '').toLowerCase();
+          if (n === 'cuarentena') return 1;
+          if (n === 'marcado_completo') return 2;
+          if (n === 'activo' || n === 'active' || n === '') return 3;
+          if (n === 'vendido' || n === 'sold') return 4;
+          return 3; // default activo
+        }
+        function _statusLabel(s) {
+          var n = String(s || '').toLowerCase();
+          if (n === 'cuarentena') return 'cuarentena';
+          if (n === 'marcado_completo') return 'marcado';
+          if (n === 'vendido' || n === 'sold') return 'vendido';
+          return 'activo';
+        }
+
+        // Mapas server + deleted
         var serverLotIds = {};
         var serverLotCodes = {};
+        var serverLotByCode = {};
         remote.lots.forEach(function(rl){
           if (rl.id != null) serverLotIds[String(rl.id)] = true;
-          if (rl.code) serverLotCodes[rl.code] = true;
+          if (rl.code) { serverLotCodes[rl.code] = true; serverLotByCode[rl.code] = rl; }
         });
-        // Mapa de IDs que el server marcó explícitamente como borrados
         var serverDeletedLotIds = {};
         try {
           var _serverDel = remote._deleted_ids || remote.deleted_ids || {};
@@ -4516,6 +4635,71 @@ function pullFromRailwayDesktop(thenPush) {
             if (k.indexOf('lots:') === 0) serverDeletedLotIds[k.substring(5)] = true;
           });
         } catch(e) {}
+        var localDeleted = getDeletedIds('lots');
+
+        // Paso 1: actualizar lotes existentes (local Y server) con reglas server-wins
+        (db.lots || []).forEach(function(localLot) {
+          var serverLot = serverLotByCode[localLot.code];
+          if (!serverLot) return;
+
+          var localPri = _statusPriority(localLot.status);
+          var serverPri = _statusPriority(serverLot.status);
+          var localCount = parseFloat(localLot.animal_count) || 0;
+          var serverCount = parseFloat(serverLot.animal_count) || 0;
+          var localProg = parseFloat(localLot.marcaje_progreso) || 0;
+          var serverProg = parseFloat(serverLot.marcaje_progreso) || 0;
+
+          // ¿Server gana?
+          var serverWinsStatus = serverPri > localPri;
+          var serverWinsCount  = (serverPri === localPri) && (serverCount < localCount);
+          var serverWinsProg   = (serverPri === localPri) && (serverProg > localProg);
+          var serverWins = serverWinsStatus || serverWinsCount || serverWinsProg;
+
+          if (!serverWins) return;
+
+          // Adoptar campos del server (preservar notas locales)
+          var oldStatus = localLot.status;
+          var oldCount = localLot.animal_count;
+
+          if (serverWinsStatus) {
+            localLot.status = serverLot.status;
+            _report.advanced.push({ code: localLot.code, from: _statusLabel(oldStatus), to: _statusLabel(serverLot.status) });
+          }
+          localLot.animal_count = serverCount;
+          if (serverLot.avg_weight != null) localLot.avg_weight = serverLot.avg_weight;
+          if (serverLot.paddock) localLot.paddock = serverLot.paddock;
+          if (serverLot.category) localLot.category = serverLot.category;
+          if (serverLot.breed) localLot.breed = serverLot.breed;
+          if (serverLot.entry_date) localLot.entry_date = serverLot.entry_date;
+          if (serverLot.marcaje_progreso != null) localLot.marcaje_progreso = serverLot.marcaje_progreso;
+          if (serverLot.marcaje_completo_at) localLot.marcaje_completo_at = serverLot.marcaje_completo_at;
+          if (serverLot.marcaje_lot_destino) localLot.marcaje_lot_destino = serverLot.marcaje_lot_destino;
+          // NOTAS LOCALES: NO se pisan (intencional)
+          // localLot.notes se preserva
+
+          if (serverWinsCount && !serverWinsStatus) {
+            _report.countChanged.push({ code: localLot.code, from: oldCount, to: serverCount });
+          }
+        });
+
+        // Paso 2: incorporar lotes nuevos del server (no en local, no en trackDeletion)
+        remote.lots.forEach(function(rl) {
+          if (!rl.code) return;
+          var existsLocal = (db.lots || []).some(function(l){ return l.code === rl.code; });
+          if (existsLocal) return;
+          // Verificar si el usuario lo borró explícitamente
+          var ridStr = String(rl.id || '');
+          if (localDeleted[ridStr]) {
+            console.log('[Sync] Lote ' + rl.code + ' (id ' + rl.id + ') ignorado — está en trackDeletion local');
+            return;
+          }
+          // Agregar al local
+          db.lots.push(rl);
+          _report.added++;
+          console.log('[Sync] Lote nuevo incorporado del server: ' + rl.code + ' (status: ' + (rl.status||'activo') + ')');
+        });
+
+        // Paso 3: reconciliación de borrados (solo los marcados explícitamente por server)
         var beforeLen = (db.lots || []).length;
         db.lots = (db.lots || []).filter(function(l){
           // Mantener si está en server
@@ -4527,6 +4711,7 @@ function pullFromRailwayDesktop(thenPush) {
               var _anim = JSON.parse(localStorage.getItem('e5m_animals') || '{}');
               if (_anim[l.code]) { delete _anim[l.code]; localStorage.setItem('e5m_animals', JSON.stringify(_anim)); }
             } catch(e) {}
+            _report.removed++;
             return false;
           }
           // Sino, mantener (probablemente push pendiente)
@@ -4535,6 +4720,10 @@ function pullFromRailwayDesktop(thenPush) {
         if (beforeLen !== (db.lots || []).length) {
           console.log('[Sync] Reconciliación de lotes: ' + beforeLen + ' → ' + (db.lots || []).length);
         }
+
+        // Mostrar banner si hubo cambios significativos
+        try { _showLotsSyncBanner(_report); } catch(e) { console.warn('[Sync] Banner error:', e); }
+        window._lotsSyncReport = { added:0, advanced:[], countChanged:[], removed:0 };
       }
 
       // Re-sincronizar animal_count: respetando ventas (lotes en status 'vendido' deben quedar en 0)
@@ -5987,213 +6176,617 @@ function deleteTreatment(id) {
 }
 
 // ══════════════════════════════════════════════════
-// STOCK
+// STOCK - v1.4.39 Hub de categorías + lista agrupada
 // ══════════════════════════════════════════════════
-function renderStock() {
-  var tbody = document.getElementById('stock-tbody');
-  var sorted = db.products.slice().sort(function(a,b){ return (a.stock_qty/Math.max(a.stock_min,1))-(b.stock_qty/Math.max(b.stock_min,1)); });
-  tbody.innerHTML = sorted.map(function(p){
-    var pct=Math.min(100,Math.round((p.stock_qty/Math.max(p.stock_min,.1))*100));
-    var isLow=p.stock_qty<=p.stock_min;
-    var expDays=p.expiry_date?Math.round((new Date(p.expiry_date)-new Date())/(86400000)):null;
-    var expCell=p.expiry_date?'<span style="color:'+(expDays!==null&&expDays<60?'var(--amber2)':'var(--muted)')+'">'+p.expiry_date+'</span>':'-';
-    var fillCls=isLow?'pf-red':pct<60?'pf-amber':'pf-green';
-    var colorTd=isLow?'var(--red)':'var(--text)';
-    var wTd=isLow?700:400;
-    return '<tr>'+
-      '<td style="font-weight:500">'+escH(p.name)+'</td>'+
-      '<td><span class="bdg bdg-'+typeColor(p.type)+'">'+typeLabel(p.type)+'</span></td>'+
-      '<td style="font-family:DM Mono,monospace;color:'+colorTd+';font-weight:'+wTd+'">'+p.stock_qty+' '+p.unit+'</td>'+
-      '<td style="font-family:DM Mono,monospace;color:var(--muted)">'+p.stock_min+' '+p.unit+'</td>'+
-      '<td style="width:120px"><div class="prg-bar" style="width:100px"><div class="prg-fill '+fillCls+'" style="width:'+pct+'%"></div></div></td>'+
-      '<td style="font-size:12px">'+expCell+'</td>'+
-      '<td>'+(isLow?'<span class="bdg bdg-red">Critico</span>':'<span class="bdg bdg-green">OK</span>')+'</td>'+
-      '<td style="display:flex;gap:4px">'+
-        '<button class="btn btn-ghost btn-sm" onclick="openEditProduct('+p.id+')">Editar</button>'+
-        '<button class="btn btn-ghost btn-sm" onclick="toggleStockActivity('+p.id+')">Actividad</button>'+
-        '<button class="btn btn-ghost btn-sm" onclick="quickAddStock('+p.id+')">+ Stock</button>'+
-        '<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteProduct('+p.id+')">&#x2715;</button>'+
-      '</td></tr>'+
-      '<tr id="stock-act-'+p.id+'" style="display:none"><td colspan="8" style="padding:0;background:var(--sur2)"><div id="stock-act-inner-'+p.id+'" style="padding:12px 16px"></div></td></tr>';
-  }).join('');
-  if (typeof renderConteoHistory === 'function') renderConteoHistory();
+
+// Estado del filtro y categoría seleccionada (módulo Stock)
+var _stockSelectedCategory = 'all';
+var _stockSelectedFilter = 'active';
+
+// Inferencia automática de categoría por nombre del producto
+// IMPORTANTE: combustible (diesel/gasolina) es módulo aparte (página 'diesel'), no Stock
+function _stockGetCategory(p) {
+  var name = (p.name || '').toLowerCase();
+  var type = (p.type || '').toLowerCase();
+  var search = name + ' ' + type;
+
+  // Veterinarios (vacunas, antibióticos, antiparasitarios, etc)
+  if (/vacuna|vaccin|antibi|antiparasit|ivermec|pour.?on|clostr|aftosa|rabia|jeringa|aguja|sanidad|medicament|vet|dosis|amp|estreptomi|pen|biotic|tetra|oxitetra|fenbenda|albenda|cura|sulfat|hierro|vitamin|complej.b|fipronil|cypermet|piretroide|tatuad|caravan/.test(search)) {
+    return { type:'veterinario', label:'Veterinario', subLabel:'Vacunas · antiparasitarios · medicamentos', bg:'#FBEAF0', fg:'#4B1528', fgMuted:'#72243E', stroke:'#D4537E', icon:'💉' };
+  }
+  // Sal y suplementos minerales
+  if (/sal\b|sal\s|mineral|calcimin|calcio|fosfor|magnesi|suplement|premix|sodio|yest|tabono/.test(search)) {
+    return { type:'sal', label:'Sal y suplementos', subLabel:'Sal mineral · suplementos nutricionales', bg:'#FAEEDA', fg:'#412402', fgMuted:'#633806', stroke:'#BA7517', icon:'🧂' };
+  }
+  // Aceites y lubricantes (NO combustibles — esos van a su propia pestaña Combustible)
+  if (/aceit|lubricant|grasa|hidr[áa]ulic|refrigerant|anticongel/.test(search)) {
+    return { type:'aceite', label:'Aceites y lubricantes', subLabel:'Aceites · lubricantes · refrigerantes', bg:'#E6F1FB', fg:'#042C53', fgMuted:'#0C447C', stroke:'#378ADD', icon:'🛢️' };
+  }
+  // Herramientas e insumos de campo
+  if (/tornill|clav|alambre|martillo|llave|destornill|repuest|tuerca|perno|broca|disco|cuerda|piol[íi]n|herramient|infraest|caravana/.test(search)) {
+    return { type:'herramienta', label:'Herramientas', subLabel:'Herramientas · repuestos · cercos', bg:'#EEEDFE', fg:'#26215C', fgMuted:'#3C3489', stroke:'#7F77DD', icon:'🔧' };
+  }
+  // Por defecto: Otros
+  return { type:'otros', label:'Otros', subLabel:'Sin categoría asignada', bg:'#F1EFE8', fg:'#2C2C2A', fgMuted:'#5F5E5A', stroke:'#888780', icon:'📦' };
 }
 
-function toggleStockActivity(prodId) {
-  var row = document.getElementById('stock-act-' + prodId);
-  var inner = document.getElementById('stock-act-inner-' + prodId);
-  if (!row || !inner) return;
-  var isOpen = row.style.display !== 'none';
-  row.style.display = isOpen ? 'none' : 'table-row';
-  if (isOpen) return;
-  // Armar historial del producto
-  var prod = db.products.find(function(p){ return p.id == prodId; });
-  var entries = [];
-  var prodName = prod ? prod.name : '';
-  var unit = prod ? prod.unit : '';
+// Estado de salud del producto (prioridad: 1=crítico, 2=advertencia, 5=ok)
+// Maneja "Sin vencimiento" (null/string vacío/fecha inválida) como producto no perecedero
+function _stockGetHealth(p) {
+  var today = new Date();
+  var qty = parseFloat(p.stock_qty) || 0;
+  var min = parseFloat(p.stock_min) || 0;
+  var ratio = min > 0 ? qty/min : (qty > 0 ? 999 : 0);
 
-  // Curaciones que usaron este producto
+  var expDays = null;
+  if (p.expiry_date && typeof p.expiry_date === 'string' && p.expiry_date.length >= 8) {
+    var d = new Date(p.expiry_date);
+    if (!isNaN(d.getTime())) expDays = Math.round((d - today) / 86400000);
+  }
+
+  if (qty <= 0) return { status:'sin-stock', label:'Sin stock', color:'#A32D2D', bgFill:'#F7C1C1', barColor:'#A32D2D', priority:1, expDays:expDays };
+  if (expDays !== null && expDays < 0) return { status:'vencido', label:'Vencido', color:'#A32D2D', bgFill:'#F7C1C1', barColor:'#A32D2D', priority:1, expDays:expDays };
+  if (ratio < 1) return { status:'bajo', label:'Bajo', color:'#854F0B', bgFill:'#FAC775', barColor:'#EF9F27', priority:2, expDays:expDays };
+  if (expDays !== null && expDays <= 30) return { status:'por-vencer', label:'Vence pronto', color:'#854F0B', bgFill:'#FAC775', barColor:'#BA7517', priority:3, expDays:expDays };
+  return { status:'ok', label:'OK', color:'#27500A', bgFill:'#C0DD97', barColor:'#639922', priority:5, expDays:expDays };
+}
+
+// Cambia el filtro activo (chips)
+function _stockSetFilter(filter) {
+  _stockSelectedFilter = filter;
+  renderStock();
+}
+
+// Cambia la categoría activa (hub)
+function _stockSetCategory(cat) {
+  _stockSelectedCategory = (_stockSelectedCategory === cat) ? 'all' : cat;
+  renderStock();
+}
+
+// Renderiza el hub de 5 categorías
+function _stockRenderHub() {
+  var hub = document.getElementById('stock-hub');
+  if (!hub) return;
+
+  var products = db.products || [];
+
+  // Agrupar y resumir
+  var cats = {
+    veterinario: { count:0, value:0, unitsByUnit:{}, alerts:0 },
+    sal:         { count:0, value:0, unitsByUnit:{}, alerts:0 },
+    aceite:      { count:0, value:0, unitsByUnit:{}, alerts:0 },
+    herramienta: { count:0, value:0, unitsByUnit:{}, alerts:0 },
+    otros:       { count:0, value:0, unitsByUnit:{}, alerts:0 }
+  };
+  var totalCount = 0, totalValue = 0, totalAlerts = 0;
+
+  products.forEach(function(p){
+    var cat = _stockGetCategory(p);
+    var bucket = cats[cat.type];
+    if (!bucket) return;
+    bucket.count++;
+    totalCount++;
+    var qty = parseFloat(p.stock_qty) || 0;
+    var cost = parseFloat(p.cost) || 0;
+    var v = qty * cost;
+    bucket.value += v;
+    totalValue += v;
+    var u = (p.unit || 'u').toLowerCase();
+    bucket.unitsByUnit[u] = (bucket.unitsByUnit[u]||0) + qty;
+    var h = _stockGetHealth(p);
+    if (h.priority <= 3) { bucket.alerts++; totalAlerts++; }
+  });
+
+  // Formato unidades: muestra hasta 2 unidades distintas, "1,250 ml · 320 dosis"
+  function fmtUnits(unitsByUnit) {
+    var parts = Object.keys(unitsByUnit).map(function(u){ return { u:u, q:unitsByUnit[u] }; })
+      .filter(function(x){ return x.q > 0; })
+      .sort(function(a,b){ return b.q - a.q; })
+      .slice(0,2)
+      .map(function(x){ return _fmtNum(x.q) + ' ' + x.u; });
+    return parts.join(' · ') || '—';
+  }
+
+  // Cards
+  var hubHtml = '';
+  var allActive = _stockSelectedCategory === 'all';
+  hubHtml += _stockHubCard('all', '📦', 'Todos', totalCount + ' productos', 'Bs. ' + _fmtNum(Math.round(totalValue)) + ' total', totalAlerts, allActive, '#F1EFE8', '#2C2C2A', '#5F5E5A');
+
+  [
+    { type:'veterinario', icon:'💉', label:'Veterinario', bg:'#FBEAF0', fg:'#4B1528', fgMuted:'#72243E' },
+    { type:'sal',         icon:'🧂', label:'Sal y suplem.', bg:'#FAEEDA', fg:'#412402', fgMuted:'#633806' },
+    { type:'aceite',      icon:'🛢️', label:'Aceites y lubric.', bg:'#E6F1FB', fg:'#042C53', fgMuted:'#0C447C' },
+    { type:'herramienta', icon:'🔧', label:'Herramientas', bg:'#EEEDFE', fg:'#26215C', fgMuted:'#3C3489' }
+  ].forEach(function(c){
+    var b = cats[c.type];
+    hubHtml += _stockHubCard(c.type, c.icon, c.label, b.count + ' producto'+(b.count!==1?'s':''), 'Bs. ' + _fmtNum(Math.round(b.value)) + ' · ' + fmtUnits(b.unitsByUnit), b.alerts, _stockSelectedCategory === c.type, c.bg, c.fg, c.fgMuted);
+  });
+
+  // Si hay productos en "Otros", agregar una sexta card chica
+  if (cats.otros.count > 0) {
+    hub.style.gridTemplateColumns = 'repeat(6, 1fr)';
+    hubHtml += _stockHubCard('otros', '📦', 'Otros', cats.otros.count + ' productos', 'Bs. ' + _fmtNum(Math.round(cats.otros.value)) + ' · ' + fmtUnits(cats.otros.unitsByUnit), cats.otros.alerts, _stockSelectedCategory === 'otros', '#F1EFE8', '#2C2C2A', '#5F5E5A');
+  } else {
+    hub.style.gridTemplateColumns = 'repeat(5, 1fr)';
+  }
+
+  hub.innerHTML = hubHtml;
+}
+
+function _stockHubCard(catKey, icon, label, line1, line2, alerts, isActive, bg, fg, fgMuted) {
+  var outline = isActive ? ';outline:2px solid '+fg+';outline-offset:-2px' : '';
+  var badge = alerts > 0 ? '<div style="position:absolute;top:6px;right:8px;background:#A32D2D;color:#fff;font-size:9px;font-weight:600;min-width:16px;height:16px;padding:0 4px;border-radius:8px;display:flex;align-items:center;justify-content:center">'+alerts+'</div>' : '';
+  return '<div onclick="_stockSetCategory(\''+catKey+'\')" style="position:relative;padding:12px 10px;border-radius:10px;cursor:pointer;background:'+bg+';color:'+fg+';transition:transform .1s'+outline+'" onmouseover="this.style.transform=\'translateY(-1px)\'" onmouseout="this.style.transform=\'translateY(0)\'">' +
+    badge +
+    '<div style="font-size:18px;margin-bottom:4px">'+icon+'</div>' +
+    '<div style="font-size:12px;font-weight:600;line-height:1.2">'+escH(label)+'</div>' +
+    '<div style="font-size:10px;line-height:1.4;margin-top:6px;color:'+fgMuted+'">' +
+      '<div>'+escH(line1)+'</div>' +
+      '<div style="opacity:.85">'+escH(line2)+'</div>' +
+    '</div>' +
+  '</div>';
+}
+
+// Renderiza los chips de filtros
+function _stockRenderChips() {
+  var chips = document.getElementById('stock-chips');
+  if (!chips) return;
+  var products = db.products || [];
+
+  // Contar productos por filtro (sin aplicar categoría)
+  var counts = { all:0, active:0, alertas:0, 'sin-stock':0, bajo:0, 'por-vencer':0 };
+  products.forEach(function(p){
+    counts.all++;
+    if (p.active !== false) counts.active++;
+    var h = _stockGetHealth(p);
+    if (h.priority <= 3) counts.alertas++;
+    if (h.status === 'sin-stock') counts['sin-stock']++;
+    if (h.status === 'bajo') counts.bajo++;
+    if (h.status === 'por-vencer' || h.status === 'vencido') counts['por-vencer']++;
+  });
+
+  var filters = [
+    { key:'active',     label:'Activos',     count:counts.active },
+    { key:'alertas',    label:'Con alertas', count:counts.alertas },
+    { key:'sin-stock',  label:'Sin stock',   count:counts['sin-stock'] },
+    { key:'bajo',       label:'Bajos',       count:counts.bajo },
+    { key:'por-vencer', label:'Por vencer',  count:counts['por-vencer'] },
+    { key:'all',        label:'Todos',       count:counts.all }
+  ];
+
+  var html = '<span style="font-size:11px;color:var(--muted);margin-right:4px">Mostrar:</span>';
+  html += filters.map(function(f){
+    var active = _stockSelectedFilter === f.key;
+    var bg = active ? 'var(--text)' : 'transparent';
+    var color = active ? 'var(--sur)' : 'var(--text)';
+    var border = active ? 'var(--text)' : 'var(--border)';
+    var lbl = f.label + (f.count > 0 ? ' ('+f.count+')' : '');
+    return '<button onclick="_stockSetFilter(\''+f.key+'\')" style="font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid '+border+';cursor:pointer;background:'+bg+';color:'+color+';font-weight:'+(active?500:400)+'">'+escH(lbl)+'</button>';
+  }).join('');
+
+  chips.innerHTML = html;
+}
+
+// Aplica filtros y ordenamiento a la lista
+function _stockGetFilteredList() {
+  var products = (db.products || []).slice();
+  var search = (document.getElementById('stock-search') || {}).value || '';
+  search = search.toLowerCase().trim();
+  var sort = (document.getElementById('stock-sort') || {}).value || 'critical';
+
+  return products.filter(function(p){
+    // Filtro de categoría
+    if (_stockSelectedCategory !== 'all') {
+      var cat = _stockGetCategory(p);
+      if (cat.type !== _stockSelectedCategory) return false;
+    }
+    // Filtro de estado
+    var h = _stockGetHealth(p);
+    if (_stockSelectedFilter === 'active' && p.active === false) return false;
+    if (_stockSelectedFilter === 'alertas' && h.priority > 3) return false;
+    if (_stockSelectedFilter === 'sin-stock' && h.status !== 'sin-stock') return false;
+    if (_stockSelectedFilter === 'bajo' && h.status !== 'bajo') return false;
+    if (_stockSelectedFilter === 'por-vencer' && h.status !== 'por-vencer' && h.status !== 'vencido') return false;
+    // Búsqueda
+    if (search && (p.name||'').toLowerCase().indexOf(search) === -1) return false;
+    return true;
+  }).sort(function(a,b){
+    var ha = _stockGetHealth(a), hb = _stockGetHealth(b);
+    if (sort === 'critical') return ha.priority - hb.priority || (a.name||'').localeCompare(b.name||'');
+    if (sort === 'az') return (a.name||'').localeCompare(b.name||'');
+    if (sort === 'low') {
+      var ra = (parseFloat(a.stock_min)||0) > 0 ? (parseFloat(a.stock_qty)||0) / parseFloat(a.stock_min) : 999;
+      var rb = (parseFloat(b.stock_min)||0) > 0 ? (parseFloat(b.stock_qty)||0) / parseFloat(b.stock_min) : 999;
+      return ra - rb;
+    }
+    if (sort === 'exp') {
+      var da = ha.expDays === null ? 99999 : ha.expDays;
+      var db_ = hb.expDays === null ? 99999 : hb.expDays;
+      return da - db_;
+    }
+    if (sort === 'usage') {
+      // Sin datos confiables de uso, fallback a stock más bajo
+      return ha.priority - hb.priority;
+    }
+    return 0;
+  });
+}
+
+// Renderiza una fila individual
+function _stockRenderRow(p) {
+  var cat = _stockGetCategory(p);
+  var h = _stockGetHealth(p);
+  var qty = parseFloat(p.stock_qty)||0;
+  var min = parseFloat(p.stock_min)||0;
+  var pct = min > 0 ? Math.min(100, Math.round(qty/min*100)) : (qty>0?100:0);
+  var unit = p.unit || 'u';
+
+  // FIX v1.4.41: bajar intensidad de fondos para no saturar en dark mode
+  // Antes: rgba(247,193,193,.2) y rgba(250,199,117,.18) saturaban en dark
+  // Ahora: solo border-left de color, fila sin tinte de fondo
+  var borderColor = h.priority === 1 ? '#A32D2D' : h.priority <= 3 ? '#BA7517' : '#639922';
+  var rowBg = 'transparent'; // sin tinte — el border-left ya comunica el estado
+
+  // Stock display
+  var stockColor = h.priority === 1 ? '#E24B4A' : h.priority === 2 ? '#EF9F27' : 'var(--text)';
+  var stockHtml = '<div style="font-weight:500;color:'+stockColor+';font-size:12px">'+_fmtNum(qty)+' / '+_fmtNum(min)+' '+escH(unit)+'</div>' +
+    '<div style="height:3px;background:var(--border);border-radius:2px;margin-top:3px;overflow:hidden">' +
+      '<div style="height:100%;width:'+pct+'%;background:'+h.barColor+';border-radius:2px"></div>' +
+    '</div>';
+
+  // FIX v1.4.44: removidos botones contextuales redundantes (Comprar→/+Stock)
+  // La urgencia se comunica con border-left de color + texto en rojo/amber
+  // Los 3 botones de acción (Editar/+Stock/Eliminar) van siempre visibles a la derecha
+  var rightHtml = '';
+  if (h.status === 'vencido') {
+    rightHtml = '<div style="text-align:right;line-height:1.3">' +
+      '<div style="color:var(--red);font-size:10px">Vencido</div>' +
+      '<div style="font-weight:500;color:var(--red);font-size:11px">'+(h.expDays !== null ? 'hace '+Math.abs(h.expDays)+' día'+(Math.abs(h.expDays)!==1?'s':'') : '')+'</div>' +
+    '</div>';
+  } else if (h.status === 'sin-stock') {
+    rightHtml = '<div style="text-align:right;line-height:1.3">' +
+      '<div style="color:var(--red);font-size:10px">Sin stock</div>' +
+      '<div style="font-weight:500;color:var(--red);font-size:11px">comprar</div>' +
+    '</div>';
+  } else if (h.status === 'bajo') {
+    rightHtml = '<div style="text-align:right;line-height:1.3">' +
+      '<div style="color:var(--amber2);font-size:10px">Stock bajo</div>' +
+      '<div style="font-weight:500;color:var(--amber2);font-size:11px">'+_fmtNum(qty)+' de '+_fmtNum(min)+'</div>' +
+    '</div>';
+  } else if (h.status === 'por-vencer') {
+    rightHtml = '<div style="text-align:right;line-height:1.3">' +
+      '<div style="color:var(--amber2);font-size:10px">Vence en</div>' +
+      '<div style="font-weight:500;color:var(--amber2);font-size:11px">'+h.expDays+' día'+(h.expDays!==1?'s':'')+'</div>' +
+    '</div>';
+  } else {
+    if (h.expDays === null) {
+      rightHtml = '<div style="text-align:right;color:var(--muted);font-size:10px;font-style:italic">Sin vencimiento</div>';
+    } else {
+      rightHtml = '<div style="text-align:right;line-height:1.3">' +
+        '<div style="color:var(--muted);font-size:10px">Vence</div>' +
+        '<div style="font-weight:500;font-size:11px">'+escH(p.expiry_date)+'</div>' +
+      '</div>';
+    }
+  }
+
+  var subText = cat.label.toLowerCase() + (p.type ? ' · '+escH(p.type) : '');
+
+  // FIX v1.4.44: 3 botones de acción VISIBLES en la fila (no ocultos en submenu)
+  // - ✎ Editar (texto neutro)
+  // - + Stock (verde, primario porque es el más usado)
+  // - ✕ Eliminar (rojo)
+  // Click en cualquier otra parte de la fila sigue disparando toggle de actividad
+  var actionButtons =
+    '<button title="Editar producto" onclick="event.stopPropagation();openEditProduct('+p.id+')" style="background:transparent;border:1px solid var(--border);cursor:pointer;color:var(--muted);font-size:11px;padding:4px 8px;border-radius:6px;transition:all .12s" onmouseover="this.style.background=\'var(--sur2)\';this.style.color=\'var(--text)\'" onmouseout="this.style.background=\'transparent\';this.style.color=\'var(--muted)\'">✎</button>' +
+    '<button title="Ingreso de stock" onclick="event.stopPropagation();quickAddStock('+p.id+')" style="background:transparent;border:1px solid var(--green);cursor:pointer;color:var(--green);font-size:11px;padding:4px 8px;border-radius:6px;font-weight:600;transition:all .12s" onmouseover="this.style.background=\'var(--green)\';this.style.color=\'#fff\'" onmouseout="this.style.background=\'transparent\';this.style.color=\'var(--green)\'">+ Stock</button>' +
+    '<button title="Eliminar producto" onclick="event.stopPropagation();deleteProduct('+p.id+')" style="background:transparent;border:1px solid var(--border);cursor:pointer;color:var(--red);font-size:11px;padding:4px 8px;border-radius:6px;transition:all .12s" onmouseover="this.style.background=\'rgba(231,75,74,.1)\';this.style.borderColor=\'var(--red)\'" onmouseout="this.style.background=\'transparent\';this.style.borderColor=\'var(--border)\'">✕</button>';
+
+  // FIX v1.4.43: click en fila → toggle de panel inline expandible (NO modal)
+  return '<div data-stock-row="'+p.id+'">' +
+    '<div onclick="_stockToggleActivity('+p.id+')" title="Click para expandir actividad" style="display:grid;grid-template-columns:32px 1fr 130px 100px auto;align-items:center;gap:10px;padding:10px 12px 10px 9px;border-top:1px solid var(--border);border-left:3px solid '+borderColor+';background:'+rowBg+';cursor:pointer;transition:background .12s" onmouseover="this.style.background=\'var(--sur2)\'" onmouseout="this.style.background=\''+rowBg+'\'">' +
+      '<div style="font-size:16px;text-align:center">'+cat.icon+'</div>' +
+      '<div>' +
+        '<div style="font-size:13px;font-weight:500;margin:0">'+escH(p.name||'(sin nombre)')+'</div>' +
+        '<div style="font-size:10px;color:var(--muted);margin:2px 0 0">'+escH(subText)+'</div>' +
+      '</div>' +
+      '<div style="text-align:right">'+stockHtml+'</div>' +
+      '<div>'+rightHtml+'</div>' +
+      '<div style="display:flex;gap:4px;align-items:center">'+actionButtons+'</div>' +
+    '</div>' +
+    '<div id="_stock-activity-'+p.id+'" style="display:none;background:var(--sur2);border-left:3px solid '+borderColor+';padding:0"></div>' +
+  '</div>';
+}
+
+// FIX v1.4.41: menú dropdown DOM (antes usaba prompt() que no funcionaba bien en Electron)
+// Actividad ya tiene su propio botón en la fila, así que el menú solo lleva Editar y Eliminar
+function _stockShowMenu(ev, prodId) {
+  if (ev) { ev.stopPropagation(); }
+  // Si ya hay un menú abierto, cerrarlo
+  var existing = document.getElementById('_stock-row-menu');
+  if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+
+  var p = (db.products||[]).find(function(x){ return String(x.id) === String(prodId); });
+  if (!p) return;
+
+  var trigger = ev && ev.target ? ev.target : null;
+  var rect = trigger && trigger.getBoundingClientRect ? trigger.getBoundingClientRect() : { right: window.innerWidth/2, bottom: window.innerHeight/2 };
+
+  var menu = document.createElement('div');
+  menu.id = '_stock-row-menu';
+  menu.style.cssText = 'position:fixed;z-index:9500;background:var(--sur);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.25);padding:4px;min-width:160px;font-family:var(--font-sans,system-ui)';
+  // Posicionar a la izquierda del icono (para no salirse de pantalla derecha)
+  menu.style.top = Math.min(rect.bottom + 4, window.innerHeight - 120) + 'px';
+  menu.style.left = Math.max(8, rect.right - 160) + 'px';
+
+  function mkItem(label, color, onClickFn) {
+    var item = document.createElement('div');
+    item.style.cssText = 'padding:8px 12px;font-size:12px;color:'+(color||'var(--text)')+';cursor:pointer;border-radius:4px;display:flex;align-items:center;gap:8px';
+    item.innerHTML = label;
+    item.addEventListener('mouseover', function(){ item.style.background = 'var(--sur2)'; });
+    item.addEventListener('mouseout',  function(){ item.style.background = 'transparent'; });
+    item.addEventListener('click', function(e){
+      e.stopPropagation();
+      closeMenu();
+      onClickFn();
+    });
+    return item;
+  }
+
+  menu.appendChild(mkItem('✎ Editar producto', null, function(){ try { openEditProduct(prodId); } catch(e){ console.error(e); } }));
+  menu.appendChild(mkItem('+ Ingreso de stock', null, function(){ try { quickAddStock(prodId); } catch(e){ console.error(e); } }));
+
+  var divider = document.createElement('div');
+  divider.style.cssText = 'height:1px;background:var(--border);margin:4px 0';
+  menu.appendChild(divider);
+
+  menu.appendChild(mkItem('✕ Eliminar producto', 'var(--red)', function(){ try { deleteProduct(prodId); } catch(e){ console.error(e); } }));
+
+  document.body.appendChild(menu);
+
+  // Cerrar al hacer click afuera o tocar Escape
+  function closeMenu() {
+    if (menu.parentNode) menu.parentNode.removeChild(menu);
+    document.removeEventListener('click', onDocClick, true);
+    document.removeEventListener('keydown', onKey);
+  }
+  function onDocClick(e) {
+    if (!menu.contains(e.target)) closeMenu();
+  }
+  function onKey(e) {
+    if (e.key === 'Escape') closeMenu();
+  }
+  // Delay para no capturar el click que abrió el menú
+  setTimeout(function(){
+    document.addEventListener('click', onDocClick, true);
+    document.addEventListener('keydown', onKey);
+  }, 0);
+}
+
+// v1.4.43: Toggle de panel de actividad INLINE (se despliega debajo de la fila, sin modal popup)
+// Reemplaza la versión modal que perdía contexto del resto de productos.
+function _stockToggleActivity(prodId) {
+  var panel = document.getElementById('_stock-activity-' + prodId);
+  if (!panel) return;
+
+  // Si ya está abierto, cerrarlo
+  var isOpen = panel.style.display !== 'none' && panel.innerHTML !== '';
+  if (isOpen) {
+    panel.style.display = 'none';
+    panel.innerHTML = '';
+    return;
+  }
+
+  // Cerrar TODOS los otros paneles abiertos (uno a la vez para no saturar)
+  document.querySelectorAll('[id^="_stock-activity-"]').forEach(function(el){
+    if (el.id !== ('_stock-activity-' + prodId)) {
+      el.style.display = 'none';
+      el.innerHTML = '';
+    }
+  });
+
+  // Recolectar entries del producto desde TODAS las fuentes
+  var prod = (db.products||[]).find(function(p){ return String(p.id) === String(prodId); });
+  if (!prod) return;
+  var entries = [];
+  var prodName = prod.name || '';
+  var unit = prod.unit || '';
+
+  // Curaciones
   (db.treatments||[]).forEach(function(t){
     if (t.product_id == prodId || (t.product_name && t.product_name === prodName)) {
       var qty = parseFloat(t.total) || (parseFloat(t.dose||0) * parseFloat(t.count||0)) || 0;
       var scope = t.scope === 'individual' ? ('Animal '+(t.animal_id||'?')) : ('Lote '+(t.lot_code||'?'));
-      entries.push({
-        date: t.applied_at || t.created_at || '',
-        type: 'Curación',
-        sign: '-',
-        qty: qty,
-        desc: scope + ' · ' + (t.count||1) + ' cab' + (t.diagnosis?' ('+t.diagnosis+')':''),
-        by: t.by || ''
-      });
+      entries.push({ date: t.applied_at || t.created_at || '', type: 'Curación', sign: '-', qty: qty, desc: scope + ' · ' + (t.count||1) + ' cab' + (t.diagnosis?' ('+t.diagnosis+')':''), by: t.by || '' });
     }
   });
-
-  // Compras que repusieron este producto (single + multi-item)
+  // Compras
   (db.purchases||[]).forEach(function(p){
     if (p.product_id == prodId || (p.product_name && p.product_name === prodName)) {
       var qty = parseFloat(p.qty)||0;
-      if (qty) {
-        entries.push({
-          date: p.date || p.created_at || '',
-          type: 'Compra',
-          sign: '+',
-          qty: qty,
-          desc: (p.supplier ? 'a ' + p.supplier : 'Compra'),
-          by: p.by || ''
-        });
-      }
+      if (qty) entries.push({ date: p.date || p.created_at || '', type: 'Compra', sign: '+', qty: qty, desc: (p.supplier ? 'a ' + p.supplier : 'Compra'), by: p.by || '' });
     }
-    // Multi-item: revisar el array items[]
     if (p.items && p.items.length) {
       p.items.forEach(function(it){
         if (it.product_id == prodId || (it.product_name && it.product_name === prodName)) {
-          entries.push({
-            date: p.date || p.created_at || '',
-            type: 'Compra',
-            sign: '+',
-            qty: parseFloat(it.qty)||0,
-            desc: (p.supplier ? 'a ' + p.supplier : 'Compra') + ' (multi-item)',
-            by: p.by || ''
-          });
+          entries.push({ date: p.date || p.created_at || '', type: 'Compra', sign: '+', qty: parseFloat(it.qty)||0, desc: (p.supplier ? 'a ' + p.supplier : 'Compra') + ' (multi-item)', by: p.by || '' });
         }
       });
     }
   });
-
-  // Sal (descuento de stock por suministro a lote)
+  // Sal
   (db.sal||[]).forEach(function(s){
     if (s.stock_product === prodName && s.stock_descontado) {
-      entries.push({
-        date: s.date || s.created_at || '',
-        type: 'Sal',
-        sign: '-',
-        qty: parseFloat(s.stock_descontado)||0,
-        desc: 'Lote ' + (s.lot_code||'?') + (s.tipo?' ('+s.tipo+')':'') + (s.obs?' · '+s.obs:''),
-        by: s.by || ''
-      });
+      entries.push({ date: s.date || s.created_at || '', type: 'Sal', sign: '-', qty: parseFloat(s.stock_descontado)||0, desc: 'Lote ' + (s.lot_code||'?') + (s.tipo?' ('+s.tipo+')':'') + (s.obs?' · '+s.obs:''), by: s.by || '' });
     }
   });
-
-  // Alimento (descuento de stock por suministro a lote)
+  // Alimento
   (db.alimento||[]).forEach(function(a){
     if (a.stock_product === prodName && a.stock_descontado) {
-      entries.push({
-        date: a.date || a.created_at || '',
-        type: 'Alimento',
-        sign: '-',
-        qty: parseFloat(a.stock_descontado)||0,
-        desc: 'Lote ' + (a.lot_code||'?') + (a.obs?' · '+a.obs:''),
-        by: a.by || ''
-      });
+      entries.push({ date: a.date || a.created_at || '', type: 'Alimento', sign: '-', qty: parseFloat(a.stock_descontado)||0, desc: 'Lote ' + (a.lot_code||'?') + (a.obs?' · '+a.obs:''), by: a.by || '' });
     }
   });
-
   // Conteos manuales (ajustes de inventario)
-  // FIX v1.4.31: inventory_counts tiene estructura { items: [{product_id, stock_fisico, diferencia, ...}] },
-  // no campos product_id/qty al nivel raíz. Antes la condición nunca matcheaba, por lo que los
-  // ajustes por conteo físico no aparecían en el historial pero sí afectaban el stock real.
-  // Esto explicaba divergencias entre (entradas - salidas) y stock_actual.
   (db.inventory_counts||[]).forEach(function(c){
-    if (!c.ajustado) return; // solo conteos que efectivamente ajustaron stock
+    if (!c.ajustado) return;
     (c.items || []).forEach(function(item){
       var matchById = item.product_id == prodId;
       var matchByName = item.product_name && item.product_name === prodName;
       if (!matchById && !matchByName) return;
       var diff = parseFloat(item.diferencia) || 0;
       if (diff === 0) return;
-      entries.push({
-        date: c.date || c.created_at || '',
-        type: 'Conteo',
-        sign: diff > 0 ? '+' : '-',
-        qty: Math.abs(diff),
-        desc: 'Ajuste por conteo físico (sistema: ' + (item.stock_teorico||item.stock_sistema||0) + ', físico: ' + (item.stock_fisico||0) + ')' + (item.motivo?' · '+item.motivo:''),
-        by: c.by || ''
-      });
+      entries.push({ date: c.date || c.created_at || '', type: 'Conteo', sign: diff > 0 ? '+' : '-', qty: Math.abs(diff), desc: 'Ajuste por conteo físico (sistema: ' + (item.stock_teorico||item.stock_sistema||0) + ', físico: ' + (item.stock_fisico||0) + ')' + (item.motivo?' · '+item.motivo:''), by: c.by || '' });
     });
   });
-
-  // Mantenimiento (descuento de stock por uso de insumo)
+  // Mantenimiento
   (db.maintenance||[]).forEach(function(m){
     var matchById = m.stock_product_id == prodId;
     var matchByName = m.stock_product && m.stock_product === prodName;
     if ((matchById || matchByName) && m.stock_descontado) {
-      entries.push({
-        date: m.date || m.created_at || '',
-        type: 'Mantenim.',
-        sign: '-',
-        qty: parseFloat(m.stock_descontado)||0,
-        desc: (m.equipo ? m.equipo + ' · ' : '') + (m.desc || 'Mantenimiento').slice(0,50),
-        by: m.who || m.by || ''
-      });
+      entries.push({ date: m.date || m.created_at || '', type: 'Mantenim.', sign: '-', qty: parseFloat(m.stock_descontado)||0, desc: (m.equipo ? m.equipo + ' · ' : '') + (m.desc || 'Mantenimiento').slice(0,50), by: m.who || m.by || '' });
     }
   });
-
-  // Aceite (descuento de stock por cambio de aceite)
+  // Aceite
   (db.aceite||[]).forEach(function(a){
     var matchById = a.stock_product_id == prodId;
     var matchByName = a.stock_product && a.stock_product === prodName;
     if ((matchById || matchByName) && a.stock_descontado) {
-      entries.push({
-        date: a.fecha || a.created_at || '',
-        type: 'Aceite',
-        sign: '-',
-        qty: parseFloat(a.stock_descontado)||0,
-        desc: (a.vehiculo || '?') + (a.tipo ? ' (' + a.tipo + ')' : ''),
-        by: a.by || ''
-      });
+      entries.push({ date: a.fecha || a.created_at || '', type: 'Aceite', sign: '-', qty: parseFloat(a.stock_descontado)||0, desc: (a.vehiculo || '?') + (a.tipo ? ' (' + a.tipo + ')' : ''), by: a.by || '' });
     }
   });
 
   entries.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
-  if (!entries.length) {
-    inner.innerHTML = '<div style="color:var(--muted);font-size:12px">Sin actividad registrada para este producto</div>';
+
+  var totalIn  = entries.filter(function(e){return e.sign==='+';}).reduce(function(s,e){return s+e.qty;},0);
+  var totalOut = entries.filter(function(e){return e.sign==='-';}).reduce(function(s,e){return s+e.qty;},0);
+
+  var rowsHtml = entries.length ? entries.map(function(e){
+    var typeColors = { 'Compra':'#27500A', 'Curación':'#854F0B', 'Sal':'#7F77DD', 'Alimento':'#1D9E75', 'Conteo':'#185FA5', 'Mantenim.':'#5F5E5A', 'Aceite':'#BA7517' };
+    var typeColor = typeColors[e.type] || 'var(--muted)';
+    var qtyColor = e.sign==='+'?'var(--green)':'var(--red)';
+    return '<div style="display:grid;grid-template-columns:90px 80px 90px 1fr;gap:8px;padding:6px 16px;border-bottom:1px solid var(--border);font-size:11px;align-items:center">' +
+      '<span style="color:var(--muted);font-family:DM Mono,monospace">'+(e.date||'').slice(0,10)+'</span>' +
+      '<span style="font-size:10px;padding:2px 6px;background:rgba(0,0,0,.06);color:'+typeColor+';font-weight:600;border-radius:6px;text-align:center">'+escH(e.type)+'</span>' +
+      '<span style="font-family:DM Mono,monospace;color:'+qtyColor+';font-weight:600;text-align:right">'+e.sign+_fmtNum(e.qty)+' '+escH(unit)+'</span>' +
+      '<span style="color:var(--text)">'+escH(e.desc)+(e.by?' · <span style="color:var(--muted);font-size:10px">'+escH(e.by)+'</span>':'')+'</span>' +
+    '</div>';
+  }).join('') : '<div style="padding:14px;text-align:center;color:var(--muted);font-size:12px">Sin movimientos registrados</div>';
+
+  // Header del panel inline con resumen
+  panel.innerHTML =
+    '<div style="display:flex;gap:14px;padding:10px 16px;background:rgba(0,0,0,.04);border-bottom:1px solid var(--border);font-size:11px;align-items:center">' +
+      '<span style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:600">📊 Actividad</span>' +
+      '<span><span style="color:var(--muted);text-transform:uppercase;font-size:10px">↗ Entradas</span> <span style="color:var(--green);font-weight:600;font-family:DM Mono,monospace">+'+_fmtNum(totalIn)+' '+escH(unit)+'</span></span>' +
+      '<span><span style="color:var(--muted);text-transform:uppercase;font-size:10px">↘ Salidas</span> <span style="color:var(--red);font-weight:600;font-family:DM Mono,monospace">-'+_fmtNum(totalOut)+' '+escH(unit)+'</span></span>' +
+      '<span style="margin-left:auto;color:var(--muted);font-size:10px">'+entries.length+' movimiento'+(entries.length!==1?'s':'')+'</span>' +
+    '</div>' +
+    rowsHtml;
+  panel.style.display = 'block';
+}
+
+// Stub para compatibilidad con cualquier código viejo que llame al modal
+function _stockShowActivityModal(prodId) {
+  _stockToggleActivity(prodId);
+}
+
+// Renderiza la lista (agrupada si "Todos", plana si una categoría)
+function _stockRenderList(items) {
+  var container = document.getElementById('stock-list-container');
+  if (!container) return;
+
+  if (!items.length) {
+    container.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--muted);font-size:13px">No hay productos que coincidan con los filtros</div>';
     return;
   }
 
-  // Resumen
-  var totalIn  = entries.filter(function(e){return e.sign==='+';}).reduce(function(s,e){return s+e.qty;},0);
-  var totalOut = entries.filter(function(e){return e.sign==='-';}).reduce(function(s,e){return s+e.qty;},0);
-  var summary = '<div style="display:flex;gap:14px;padding:8px 0 12px;border-bottom:1px solid var(--bor);margin-bottom:8px">';
-  summary += '<div><span style="color:var(--muted);font-size:10px;text-transform:uppercase">↗ Entradas</span> <span style="color:var(--green);font-weight:600;font-family:DM Mono,monospace">+'+totalIn.toFixed(2).replace(/\.00$/,'')+' '+escH(unit)+'</span></div>';
-  summary += '<div><span style="color:var(--muted);font-size:10px;text-transform:uppercase">↘ Salidas</span> <span style="color:var(--red);font-weight:600;font-family:DM Mono,monospace">-'+totalOut.toFixed(2).replace(/\.00$/,'')+' '+escH(unit)+'</span></div>';
-  summary += '<div style="margin-left:auto"><span style="color:var(--muted);font-size:10px;text-transform:uppercase">Stock actual</span> <span style="color:var(--text);font-weight:600;font-family:DM Mono,monospace">'+(prod?prod.stock_qty:0)+' '+escH(unit)+'</span></div>';
-  summary += '</div>';
+  // Si una categoría está seleccionada -> lista plana
+  if (_stockSelectedCategory !== 'all') {
+    var rows = items.map(_stockRenderRow).join('');
+    container.innerHTML = '<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">'+rows+'</div>';
+    return;
+  }
 
-  inner.innerHTML = '<div style="font-size:11px;color:var(--muted);margin-bottom:8px;font-weight:600">HISTORIAL DE ACTIVIDAD — ' + escH(prodName.toUpperCase()) + '</div>' +
-    summary +
-    entries.map(function(e){
-      var typeColors = { 'Compra':'var(--green)', 'Curación':'var(--amber2)', 'Sal':'#A371F7', 'Alimento':'#56D364', 'Conteo':'var(--blue)', 'Mantenim.':'#8B949E', 'Aceite':'#D29922' };
-      var typeColor = typeColors[e.type] || 'var(--muted)';
-      var qtyColor = e.sign==='+'?'var(--green)':e.sign==='-'?'var(--red)':'var(--amber2)';
-      return '<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid rgba(48,54,61,.3);font-size:11px;align-items:center">' +
-        '<span style="font-family:DM Mono,monospace;color:var(--muted);min-width:80px">'+(e.date||'').slice(0,10)+'</span>' +
-        '<span class="bdg" style="background:rgba(255,255,255,.04);color:'+typeColor+';font-weight:600;min-width:70px;text-align:center">'+e.type+'</span>' +
-        '<span style="font-family:DM Mono,monospace;color:'+qtyColor+';font-weight:600;min-width:80px">'+e.sign+e.qty.toFixed(2).replace(/\.00$/,'')+' '+escH(unit)+'</span>' +
-        '<span style="flex:1;color:var(--text)">'+escH(e.desc)+'</span>' +
-        (e.by?'<span style="color:var(--muted);font-size:10px">'+escH(e.by)+'</span>':'') +
-      '</div>';
-    }).join('');
+  // Si "Todos" -> agrupar por categoría
+  var groups = { veterinario:[], sal:[], aceite:[], herramienta:[], otros:[] };
+  items.forEach(function(p){
+    var cat = _stockGetCategory(p);
+    if (groups[cat.type]) groups[cat.type].push(p);
+  });
+
+  var order = [
+    { key:'veterinario', icon:'💉', label:'Veterinario',         bg:'#FBEAF0', fg:'#4B1528', fgMuted:'#72243E' },
+    { key:'sal',         icon:'🧂', label:'Sal y suplementos',   bg:'#FAEEDA', fg:'#412402', fgMuted:'#633806' },
+    { key:'aceite',      icon:'🛢️', label:'Aceites y lubricantes', bg:'#E6F1FB', fg:'#042C53', fgMuted:'#0C447C' },
+    { key:'herramienta', icon:'🔧', label:'Herramientas',        bg:'#EEEDFE', fg:'#26215C', fgMuted:'#3C3489' },
+    { key:'otros',       icon:'📦', label:'Otros',               bg:'#F1EFE8', fg:'#2C2C2A', fgMuted:'#5F5E5A' }
+  ];
+
+  var html = '';
+  order.forEach(function(g){
+    var list = groups[g.key];
+    if (!list.length) return;
+    var alerts = list.filter(function(p){ return _stockGetHealth(p).priority <= 3; }).length;
+    var alertBadge = alerts > 0 ? '<span style="font-size:10px;padding:2px 7px;background:rgba(163,45,45,.15);color:#A32D2D;border-radius:8px;margin-left:8px;font-weight:500">'+alerts+' alerta'+(alerts!==1?'s':'')+'</span>' : '';
+    var totalValue = list.reduce(function(s,p){ return s + (parseFloat(p.stock_qty)||0)*(parseFloat(p.cost)||0); }, 0);
+    var rows = list.map(_stockRenderRow).join('');
+    html += '<details open style="margin-bottom:10px;border:1px solid var(--border);border-radius:10px;overflow:hidden">' +
+      '<summary style="list-style:none;display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;background:'+g.bg+';color:'+g.fg+'">' +
+        '<span style="font-size:14px">'+g.icon+'</span>' +
+        '<span style="font-size:13px;font-weight:600;flex:1">'+escH(g.label)+'</span>' +
+        alertBadge +
+        '<span style="font-size:11px;color:'+g.fgMuted+'">'+list.length+' producto'+(list.length!==1?'s':'')+' · Bs. '+_fmtNum(Math.round(totalValue))+'</span>' +
+      '</summary>' +
+      rows +
+    '</details>';
+  });
+
+  container.innerHTML = html;
 }
+
+// Renderiza la alerta global
+function _stockRenderGlobalAlert() {
+  var products = db.products || [];
+  var counts = { 'sin-stock':0, 'bajo':0, 'vencido':0, 'por-vencer':0 };
+  products.forEach(function(p){
+    var h = _stockGetHealth(p);
+    if (counts[h.status] !== undefined) counts[h.status]++;
+  });
+  var total = counts['sin-stock'] + counts['bajo'] + counts['vencido'] + counts['por-vencer'];
+  var el = document.getElementById('stock-global-alert');
+  if (!el) return;
+  if (total === 0) { el.style.display = 'none'; return; }
+  var parts = [];
+  if (counts['sin-stock']) parts.push(counts['sin-stock']+' sin stock');
+  if (counts['bajo']) parts.push(counts['bajo']+' bajo'+(counts['bajo']!==1?'s':''));
+  if (counts['vencido']) parts.push(counts['vencido']+' vencido'+(counts['vencido']!==1?'s':''));
+  if (counts['por-vencer']) parts.push(counts['por-vencer']+' por vencer');
+  document.getElementById('stock-global-alert-text').innerHTML = '⚠️ <strong>'+total+' producto'+(total!==1?'s':'')+' requiere'+(total!==1?'n':'')+' atención:</strong> ' + parts.join(' · ');
+  el.style.display = 'flex';
+}
+
+// Helper formato de números
+function _fmtNum(n) {
+  if (typeof n !== 'number') n = parseFloat(n) || 0;
+  if (n === 0) return '0';
+  if (n >= 1000) return n.toLocaleString('es-BO', { maximumFractionDigits: 0 });
+  if (n % 1 === 0) return String(n);
+  return n.toFixed(1).replace(/\.0$/, '');
+}
+
+// Función principal — invocada desde otros lugares (curaciones, compras, sync, etc.)
+function renderStock() {
+  _stockRenderGlobalAlert();
+  _stockRenderHub();
+  _stockRenderChips();
+  var items = _stockGetFilteredList();
+  _stockRenderList(items);
+  if (typeof renderConteoHistory === 'function') try { renderConteoHistory(); } catch(e){}
+}
+
+// Stub para toggleStockActivity (lugares legacy que la llamen no rompen)
+function toggleStockActivity(prodId) {
+  _stockShowActivityModal(prodId);
+}
+
 
 function toggleTreatmentHistory(treatId, prodId, lote) {
   var row = document.getElementById('tr-hist-' + treatId);
@@ -10807,7 +11400,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.37'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.50'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -16199,12 +16792,15 @@ function openEvalPastoDetailDesktop(evalId) {
   html += '<div style="font-size:11px;color:var(--muted);font-family:DM Mono,monospace;margin-bottom:12px">'+escH(dtFmt)+(ev.by?' · '+escH(ev.by):'')+'</div>';
 
   // Foto si está disponible
+  // FIX v1.4.38: validar que el base64 sea real (mínimo 100 chars y caracteres válidos)
+  // Bug observado: a veces photo_base64 contiene el id de la evaluación (data corrupto)
   var photoSrc = ev.photo_base64 || ev.photo || '';
-  if (photoSrc && photoSrc.indexOf('data:') !== 0) photoSrc = 'data:image/jpeg;base64,' + photoSrc;
-  if (photoSrc) {
+  var isValidBase64 = photoSrc && photoSrc.length > 100 && /^[A-Za-z0-9+/=,:;A-Za-z]+$/.test(photoSrc.substring(0, 200));
+  if (isValidBase64) {
+    if (photoSrc.indexOf('data:') !== 0) photoSrc = 'data:image/jpeg;base64,' + photoSrc;
     html += '<div style="margin-bottom:12px;text-align:center"><img src="'+photoSrc+'" style="max-width:100%;max-height:300px;border-radius:8px;border:1px solid var(--bor)"></div>';
   } else if (ev.has_photo) {
-    html += '<div style="background:var(--sur2);border:1px dashed var(--bor);border-radius:8px;padding:14px;text-align:center;color:var(--muted);font-size:11px;margin-bottom:12px">📷 Foto en servidor (no descargada)</div>';
+    html += '<div style="background:var(--sur2);border:1px dashed var(--bor);border-radius:8px;padding:14px;text-align:center;color:var(--muted);font-size:11px;margin-bottom:12px">📷 Foto no disponible (no descargada o data corrupta)</div>';
   }
 
   // Resultado IA
@@ -16224,10 +16820,10 @@ function deleteEvalPastoDesktop() {
   if (!_evpDetailId) return;
   if (!confirm('¿Eliminar esta evaluación?')) return;
   
-  // FIX v1.4.35: audit log para deleteEvalPastoDesktop
-  var _delRec_deleteEvalPastoDesktop = (db.pasture_evals || []).find(function(r){ return String(r.id) === String(id); });
-  var _delSummary_deleteEvalPastoDesktop = _delRec_deleteEvalPastoDesktop ? _summarizeRecord('pasture_evals', _delRec_deleteEvalPastoDesktop) : 'Evaluación pasto #' + id;
-  try { auditLog('delete', 'pasture_evals', id, _delSummary_deleteEvalPastoDesktop); } catch(e){}
+  // FIX v1.4.35 + v1.4.38: audit log para deleteEvalPastoDesktop (corregido: id → _evpDetailId)
+  var _delRec_deleteEvalPastoDesktop = (db.pasture_evals || []).find(function(r){ return String(r.id) === String(_evpDetailId); });
+  var _delSummary_deleteEvalPastoDesktop = _delRec_deleteEvalPastoDesktop ? _summarizeRecord('pasture_evals', _delRec_deleteEvalPastoDesktop) : 'Evaluación pasto #' + _evpDetailId;
+  try { auditLog('delete', 'pasture_evals', _evpDetailId, _delSummary_deleteEvalPastoDesktop); } catch(e){}
   trackDeletion(_evpDetailId, 'pasture_evals');
   db.pasture_evals = (db.pasture_evals||[]).filter(function(e){ return String(e.id) !== String(_evpDetailId); });
   saveDB();
@@ -23263,8 +23859,8 @@ var _TOUR_STEPS = [
     text: 'Tratamientos veterinarios:\n• Seleccionar **producto**, lote y cantidad\n• **Descuenta automáticamente** del stock\n• Registra costo en contabilidad\n• El **bot WhatsApp** también puede registrar tratamientos por voz',
   },
   {
-    page: 'stock', title: '💊 Stock Veterinario',
-    text: 'Inventario de insumos:\n• **Agregar productos** con stock mínimo\n• **Alertas automáticas** cuando baja del mínimo\n• **Conteo de inventario** con ajuste automático\n• La merma se contabiliza como costo en CREA',
+    page: 'stock', title: '📦 Stock',
+    text: 'Inventario de insumos (veterinarios, sal, aceites, herramientas):\n• **Hub de categorías** con conteos y alertas por tipo\n• **Categorización automática** por nombre del producto\n• **Alertas combinadas**: sin stock, bajos, vencidos, por vencer\n• **Conteo de inventario** con ajuste automático\n• La merma se contabiliza como costo en CREA',
   },
   {
     page: 'compras', title: '🛒 Compras',
