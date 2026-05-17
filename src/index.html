@@ -11400,7 +11400,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.50'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.51'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -25172,22 +25172,50 @@ function renderRotacion() {
   var today = new Date();
 
   // ─── Procesar cada potrero ────────────────────────────────
+  // FIX v1.4.50: soportar MÚLTIPLES lotes en el mismo potrero.
+  // Antes: .find() devolvía solo UN entry y los demás lotes desaparecían
+  // (ej: CASA Casita con CABAÑA + LECHERIA + ENFERMERIA mostraba solo 1).
+  // Ahora: .filter() acumula todos los lotes activos en `currentLots`.
+  // entry_date del potrero = MIN de los lotes; daysOccupied se calcula desde ahí.
   var enriched = potreros.map(function(p) {
-    var activeEntry = history.find(function(r) { return r.potrero === p.name && !r.exit_date; });
-    var isOccupied = !!activeEntry;
-    var currentLot = isOccupied ? activeEntry.lot_code : null;
-    var currentCab = isOccupied ? activeEntry.cabezas : 0;
-    if (currentLot) {
-      var lotObj = lots.find(function(l){return l.code === currentLot;});
-      if (lotObj) currentCab = lotObj.animal_count || currentCab;
-    }
+    var activeEntries = history.filter(function(r) { return r.potrero === p.name && !r.exit_date; });
+    var isOccupied = activeEntries.length > 0;
+
+    // Acumular lotes activos en el potrero con sus datos individuales
+    var currentLots = activeEntries.map(function(ae) {
+      var lotObj = lots.find(function(l){ return l.code === ae.lot_code; });
+      var cab = (lotObj && lotObj.animal_count) || ae.cabezas || 0;
+      var lotDays = 0;
+      if (ae.entry_date) {
+        lotDays = Math.max(1, Math.round((today - new Date(ae.entry_date)) / 86400000));
+      }
+      return {
+        code: ae.lot_code,
+        cab: cab,
+        days_occupied: lotDays,
+        entry_date: ae.entry_date,
+        lot_obj: lotObj || null
+      };
+    });
+
+    // Totales del potrero
+    var currentCab = currentLots.reduce(function(s, cl){ return s + (cl.cab || 0); }, 0);
+
+    // Entry date del potrero = MIN de los lotes (el primero que entró marca la ocupación)
+    var earliestEntry = null;
+    activeEntries.forEach(function(ae) {
+      if (ae.entry_date) {
+        if (!earliestEntry || ae.entry_date < earliestEntry) earliestEntry = ae.entry_date;
+      }
+    });
     var daysOccupied = 0;
-    if (isOccupied && activeEntry.entry_date) {
-      daysOccupied = Math.max(1, Math.round((today - new Date(activeEntry.entry_date)) / 86400000));
+    if (isOccupied && earliestEntry) {
+      daysOccupied = Math.max(1, Math.round((today - new Date(earliestEntry)) / 86400000));
     }
     var maxOcc = p.max_occupation_days || 30;
     var occPct = Math.min(100, Math.round(daysOccupied / maxOcc * 100));
 
+    // Exit date: MAX de todas las salidas (la última)
     var lastExit = null;
     if (!isOccupied) {
       var exits = history.filter(function(r) { return r.potrero === p.name && r.exit_date; });
@@ -25208,10 +25236,15 @@ function renderRotacion() {
 
     var status = isOverdue ? 'overdue' : isOccupied ? 'occupied' : isReady ? 'ready' : 'resting';
 
+    // Legacy fields (mantener para compatibilidad con código que no se actualizó):
+    // currentLot/currentCab para casos de 1 solo lote (caso más común)
+    var currentLot = currentLots.length === 1 ? currentLots[0].code : (currentLots.length > 1 ? '(' + currentLots.length + ' lotes)' : null);
+
     return {
       p: p, zone: inferZone(p),
       status: status, isOccupied: isOccupied, isOverdue: isOverdue, isReady: isReady,
       currentLot: currentLot, currentCab: currentCab,
+      currentLots: currentLots,  // ← nuevo: array completo con todos los lotes del potrero
       daysOccupied: daysOccupied, maxOcc: maxOcc, occPct: occPct,
       daysResting: daysResting, minRest: minRest,
       capPct: capPct, isOverCap: isOverCap
@@ -25241,20 +25274,44 @@ function renderRotacion() {
   html += '</div>';
 
   // ─── ACCIÓN INMEDIATA (overdue) ──────────────────────────
+  // FIX v1.4.50: si hay múltiples lotes en el potrero, mostrar todos
   if (overdueList.length) {
     html += '<div style="margin-bottom:14px">';
     html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span style="font-size:12px">⚠️</span><span style="font-size:11px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:.5px">Acción inmediata</span></div>';
     overdueList.forEach(function(e){
+      var hasMultiple = e.currentLots && e.currentLots.length > 1;
       html += '<div style="background:rgba(229,75,75,.08);border-left:4px solid var(--red);border-radius:0 8px 8px 0;padding:12px 14px;margin-bottom:6px">';
-      html += '<div style="display:flex;justify-content:space-between;align-items:start;gap:12px">';
+      // Header del potrero
+      html += '<div style="display:flex;justify-content:space-between;align-items:start;gap:12px;'+(hasMultiple?'margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(229,75,75,.2)':'')+'">';
       html += '<div style="flex:1;min-width:0">';
       html += '<div style="font-size:15px;font-weight:700">'+escH(e.p.name)+'</div>';
-      html += '<div style="font-size:12px;color:var(--red);margin-top:2px"><b>'+escH(e.currentLot||'')+'</b> · '+e.currentCab+' cab · '+e.daysOccupied+'/'+e.maxOcc+' días ocupado</div>';
+      if (hasMultiple) {
+        html += '<div style="font-size:12px;color:var(--red);margin-top:2px">'+e.currentLots.length+' lotes · '+e.currentCab+' cab total · '+e.daysOccupied+'/'+e.maxOcc+' días ocupado</div>';
+      } else if (e.currentLots && e.currentLots.length === 1) {
+        var cl0 = e.currentLots[0];
+        html += '<div style="font-size:12px;color:var(--red);margin-top:2px"><b>'+escH(cl0.code||'')+'</b> · '+cl0.cab+' cab · '+e.daysOccupied+'/'+e.maxOcc+' días ocupado</div>';
+      }
       html += '<div style="font-size:11px;color:var(--red);margin-top:4px">Excedido por '+(e.daysOccupied-e.maxOcc)+' días — riesgo de degradación del pasto</div>';
       if (e.isOverCap) html += '<div style="font-size:11px;color:var(--red);margin-top:2px">Sobrecarga: '+e.currentCab+'/'+e.p.capacity+' cab ('+e.capPct+'%)</div>';
       html += '</div>';
-      html += '<button class="btn btn-sm" style="background:var(--red);color:#fff;border:none;white-space:nowrap" onclick="abrirMoverLote(\''+escH(e.currentLot||'')+'\')">Rotar lote →</button>';
-      html += '</div></div>';
+      // Si hay 1 solo lote, el botón "Rotar" va al lado del header
+      if (!hasMultiple && e.currentLots && e.currentLots.length === 1) {
+        html += '<button class="btn btn-sm" style="background:var(--red);color:#fff;border:none;white-space:nowrap" onclick="abrirMoverLote(\''+escH(e.currentLots[0].code||'')+'\')">Rotar lote →</button>';
+      }
+      html += '</div>';
+
+      // Sub-líneas con botón "Rotar →" por cada lote si hay múltiples
+      if (hasMultiple) {
+        e.currentLots.forEach(function(cl, idx){
+          var isLast = idx === e.currentLots.length - 1;
+          html += '<div style="padding:6px 0 6px 12px;display:grid;grid-template-columns:1fr 100px 90px;gap:12px;align-items:center;'+(!isLast?'border-bottom:1px dashed rgba(229,75,75,.15)':'')+'">';
+          html += '<div style="font-size:12px"><b>'+escH(cl.code||'')+'</b> <span style="color:var(--red);opacity:.8">· '+cl.cab+' cab</span></div>';
+          html += '<div style="font-size:10px;color:var(--red);opacity:.7">'+cl.days_occupied+' días en lote</div>';
+          html += '<button class="btn btn-sm" style="background:var(--red);color:#fff;border:none;font-size:11px;padding:4px 8px" onclick="abrirMoverLote(\''+escH(cl.code||'')+'\')">Rotar →</button>';
+          html += '</div>';
+        });
+      }
+      html += '</div>';
     });
     html += '</div>';
   }
@@ -25281,22 +25338,45 @@ function renderRotacion() {
   }
 
   // ─── OCUPADOS (en buen estado) ────────────────────────────
+  // FIX v1.4.50: render jerárquico - 1 fila por potrero con sub-líneas por lote
   if (occupiedList.length) {
     html += '<div style="margin-bottom:14px">';
     html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">';
     html += '<span style="font-size:12px">🐄</span><span style="font-size:11px;font-weight:700;color:var(--amber2);text-transform:uppercase;letter-spacing:.5px">Ocupados</span>';
     html += '<span style="font-size:10px;color:var(--muted);margin-left:auto">'+occupiedList.length+' potreros · '+totalCabOccupied+' cabezas</span>';
     html += '</div>';
-    html += '<div style="display:flex;flex-direction:column;gap:4px">';
+    html += '<div style="display:flex;flex-direction:column;gap:6px">';
     occupiedList.forEach(function(e){
       var barColor = e.occPct > 80 ? 'var(--amber2)' : 'var(--green)';
-      html += '<div style="background:var(--sur);border:1px solid var(--bor);border-left:3px solid var(--amber2);border-radius:0 8px 8px 0;padding:10px 12px;display:grid;grid-template-columns:1fr 130px 80px 90px;gap:12px;align-items:center">';
-      html += '<div><div style="font-size:13px;font-weight:600">'+escH(e.p.name)+'</div>';
-      html += '<div style="font-size:11px;color:var(--muted)"><b>'+escH(e.currentLot||'')+'</b> · '+e.currentCab+' cab</div></div>';
+      var hasMultiple = e.currentLots && e.currentLots.length > 1;
+      // === Fila header del potrero ===
+      html += '<div style="background:var(--sur);border:1px solid var(--bor);border-left:3px solid var(--amber2);border-radius:0 8px 8px 0;overflow:hidden">';
+      html += '<div style="padding:10px 12px;display:grid;grid-template-columns:1fr 140px 90px;gap:12px;align-items:center;'+(hasMultiple?'border-bottom:1px solid var(--bor);background:var(--sur2)':'')+'">';
+      html += '<div>';
+      html += '<div style="font-size:13px;font-weight:600">'+escH(e.p.name)+'</div>';
+      if (hasMultiple) {
+        html += '<div style="font-size:11px;color:var(--muted);margin-top:2px">'+e.currentLots.length+' lotes · '+e.currentCab+' cab total</div>';
+      } else if (e.currentLots && e.currentLots.length === 1) {
+        html += '<div style="font-size:11px;color:var(--muted);margin-top:2px"><b>'+escH(e.currentLots[0].code||'')+'</b> · '+e.currentLots[0].cab+' cab</div>';
+      }
+      html += '</div>';
+      // Días ocupado del POTRERO (desde la primera entrada)
       html += '<div><div style="font-size:11px;color:var(--muted)">'+e.daysOccupied+'/'+e.maxOcc+' días</div>';
       html += '<div style="height:4px;background:var(--sur2);border-radius:2px;margin-top:4px;overflow:hidden"><div style="height:100%;width:'+Math.min(100,e.occPct)+'%;background:'+barColor+';border-radius:2px"></div></div></div>';
       html += '<div style="font-size:11px;color:'+(e.isOverCap?'var(--red)':'var(--muted)')+';text-align:right">'+(e.p.capacity?e.capPct+'% cap':'—')+'</div>';
-      html += '<button class="btn btn-sm" style="font-size:11px;padding:4px 8px" onclick="abrirMoverLote(\''+escH(e.currentLot||'')+'\')">Rotar →</button>';
+      html += '</div>';
+
+      // === Sub-líneas: 1 por lote ===
+      if (e.currentLots && e.currentLots.length > 0) {
+        e.currentLots.forEach(function(cl, idx){
+          var isLast = idx === e.currentLots.length - 1;
+          html += '<div style="padding:8px 12px 8px 24px;display:grid;grid-template-columns:1fr 100px 90px;gap:12px;align-items:center;'+(!isLast?'border-bottom:1px dashed var(--bor)':'')+'">';
+          html += '<div style="font-size:12px"><b>'+escH(cl.code||'')+'</b> <span style="color:var(--muted)">· '+cl.cab+' cab</span></div>';
+          html += '<div style="font-size:10px;color:var(--muted)">'+cl.days_occupied+' días en lote</div>';
+          html += '<button class="btn btn-sm" style="font-size:11px;padding:4px 8px" onclick="abrirMoverLote(\''+escH(cl.code||'')+'\')">Rotar →</button>';
+          html += '</div>';
+        });
+      }
       html += '</div>';
     });
     html += '</div></div>';
