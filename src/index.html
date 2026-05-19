@@ -1977,22 +1977,14 @@ function publishTasksToPWA() {
   <label class="form-label">Notas adicionales</label>
   <input class="form-input" id="mnt-notes" placeholder="Materiales usados, proximo mantenimiento, etc.">
 </div>
-<!-- Producto del stock (opcional) -->
+<!-- Insumos del stock (opcional) — v1.4.54 multi-item -->
 <div class="card" style="background:var(--sur2);padding:12px;margin-bottom:12px;border:1px dashed var(--bor)">
-  <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">📦 Insumo del stock (opcional)</div>
-  <div class="form-row">
-    <div class="form-group">
-      <label class="form-label">Producto a descontar</label>
-      <select class="form-select" id="mnt-stock-product" onchange="onMntStockChange()">
-        <option value="">— Sin descontar stock —</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Cantidad</label>
-      <input class="form-input" type="number" id="mnt-stock-qty" placeholder="0" step="0.01" min="0" disabled>
-    </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px">📦 Insumos del stock (opcional)</div>
+    <button type="button" class="btn btn-ghost btn-sm" id="mnt-add-stock-row" onclick="addMntStockRow()" style="font-size:11px;padding:4px 10px">+ Agregar insumo</button>
   </div>
-  <div id="mnt-stock-info" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
+  <div id="mnt-stock-items-list"></div>
+  <div id="mnt-stock-readonly-note" style="font-size:11px;color:var(--muted);margin-top:6px;font-style:italic;display:none">Los insumos descontados al crear no son editables. El descuento ya fue aplicado al stock.</div>
 </div>
 <div class="form-group">
   <label class="form-label">Fotos de evidencia</label>
@@ -2008,6 +2000,22 @@ function publishTasksToPWA() {
   <button class="btn btn-ghost" onclick="closeModal('modal-maint')">Cancelar</button>
   <button class="btn btn-primary" onclick="saveMaint()">Guardar trabajo</button>
 </div></div></div>
+
+<!-- ═══ MODAL VER DETALLE MANTENIMIENTO ═══ v1.4.54 -->
+<div class="modal-overlay" id="modal-maint-detail">
+<div class="modal" style="width:640px;max-height:90vh;overflow-y:auto">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <h2 id="mntd-title" style="margin:0">🔧 Detalle del trabajo</h2>
+    <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-maint-detail')" style="font-size:18px;padding:4px 12px">×</button>
+  </div>
+  <div id="mntd-body"></div>
+  <div class="form-actions" style="margin-top:16px">
+    <button class="btn btn-ghost" onclick="closeModal('modal-maint-detail')">Cerrar</button>
+    <button class="btn btn-ghost" id="mntd-edit-btn" style="color:var(--blue)">✎ Editar</button>
+    <button class="btn btn-ghost" id="mntd-del-btn" style="color:var(--red)">✕ Eliminar</button>
+  </div>
+</div>
+</div>
 
 <!-- ═══ COSTOS ═══ -->
 <div id="page-costos" class="page">
@@ -3156,6 +3164,7 @@ function publishTasksToPWA() {
     <select class="form-select" id="prod-unit">
       <option value="ml">ml</option><option value="L">L</option><option value="kg">kg</option>
       <option value="g">g</option><option value="dosis">dosis</option><option value="amp">ampolla</option>
+      <option value="frasco">frasco</option><option value="unidad">unidad</option>
     </select>
   </div>
   <div class="form-group"><label class="form-label">Dosis / 50kg</label><input class="form-input" type="number" id="prod-dose" step="0.1" placeholder="Opcional"></div>
@@ -6660,10 +6669,22 @@ function _stockToggleActivity(prodId) {
   });
   // Mantenimiento
   (db.maintenance||[]).forEach(function(m){
-    var matchById = m.stock_product_id == prodId;
-    var matchByName = m.stock_product && m.stock_product === prodName;
-    if ((matchById || matchByName) && m.stock_descontado) {
-      entries.push({ date: m.date || m.created_at || '', type: 'Mantenim.', sign: '-', qty: parseFloat(m.stock_descontado)||0, desc: (m.equipo ? m.equipo + ' · ' : '') + (m.desc || 'Mantenimiento').slice(0,50), by: m.who || m.by || '' });
+    // v1.4.55: nuevo formato multi-item — stock_items[]
+    if (Array.isArray(m.stock_items) && m.stock_items.length) {
+      m.stock_items.forEach(function(it){
+        var matchById = it.product_id == prodId;
+        var matchByName = it.product_name && it.product_name === prodName;
+        if ((matchById || matchByName) && it.qty) {
+          entries.push({ date: m.date || m.created_at || '', type: 'Mantenim.', sign: '-', qty: parseFloat(it.qty)||0, desc: (m.equipo ? m.equipo + ' · ' : '') + (m.desc || 'Mantenimiento').slice(0,50), by: m.who || m.by || '' });
+        }
+      });
+    } else {
+      // Formato viejo single-item (back-compat)
+      var matchById = m.stock_product_id == prodId;
+      var matchByName = m.stock_product && m.stock_product === prodName;
+      if ((matchById || matchByName) && m.stock_descontado) {
+        entries.push({ date: m.date || m.created_at || '', type: 'Mantenim.', sign: '-', qty: parseFloat(m.stock_descontado)||0, desc: (m.equipo ? m.equipo + ' · ' : '') + (m.desc || 'Mantenimiento').slice(0,50), by: m.who || m.by || '' });
+      }
     }
   });
   // Aceite
@@ -11421,7 +11442,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.52'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.55'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
@@ -17558,7 +17579,32 @@ function renderMantenimiento() {
 
   filtered.slice().reverse().forEach(function(m) {
     var card = document.createElement('div');
-    card.style.cssText = 'background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:16px;margin-bottom:12px';
+    // v1.4.54: card clickeable con hover para abrir detalle
+    card.className = 'mnt-card-clickable';
+    card.style.cssText = 'background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:16px;margin-bottom:12px;cursor:pointer;transition:border-color .15s,transform .1s;position:relative';
+    card.title = 'Click para ver detalle completo';
+    card.onmouseenter = function() {
+      this.style.borderColor = 'var(--blue)';
+      var hint = this.querySelector('.mnt-card-hover-hint');
+      if (hint) hint.style.opacity = '1';
+    };
+    card.onmouseleave = function() {
+      this.style.borderColor = 'var(--bor)';
+      var hint = this.querySelector('.mnt-card-hover-hint');
+      if (hint) hint.style.opacity = '0';
+    };
+    card.onclick = (function(id){ return function(ev) {
+      // Solo abrir detalle si el click no fue en un botón
+      if (ev.target.closest('button')) return;
+      openMntDetail(id);
+    }; })(m.id);
+
+    // Hover hint flotante (esquina inferior derecha)
+    var hint = document.createElement('div');
+    hint.className = 'mnt-card-hover-hint';
+    hint.style.cssText = 'position:absolute;bottom:8px;right:12px;font-size:10px;color:var(--blue);opacity:0;transition:opacity .15s;pointer-events:none;font-style:italic';
+    hint.textContent = '👁 Click para ver detalle';
+    card.appendChild(hint);
 
     // Header
     var hdr = document.createElement('div');
@@ -17583,6 +17629,19 @@ function renderMantenimiento() {
     statusLbl.textContent = MNT_STATUS_LABELS[m.status]||m.status;
 
     catRow.appendChild(ico); catRow.appendChild(catLbl); catRow.appendChild(statusLbl);
+
+    // Badge insumos si hay items
+    var itemCount = 0;
+    if (Array.isArray(m.stock_items)) itemCount = m.stock_items.length;
+    else if (m.stock_product_id) itemCount = 1;
+    if (itemCount) {
+      var insumBdg = document.createElement('span');
+      insumBdg.className = 'bdg';
+      insumBdg.style.cssText = 'color:var(--amber2);background:rgba(0,0,0,.2)';
+      insumBdg.textContent = '📦 ' + itemCount + ' insumo' + (itemCount > 1 ? 's' : '');
+      catRow.appendChild(insumBdg);
+    }
+
     left.appendChild(catRow);
 
     var desc = document.createElement('div');
@@ -17599,10 +17658,10 @@ function renderMantenimiento() {
     costEl.textContent = 'Bs. '+(m.cost||0).toLocaleString();
     var delBtn = document.createElement('button');
     delBtn.className='btn btn-ghost btn-sm'; delBtn.style.color='var(--red)'; delBtn.textContent='✕ Eliminar';
-    delBtn.onclick = (function(id){ return function(){ deleteMaint(id); }; })(m.id);
+    delBtn.onclick = (function(id){ return function(ev){ ev.stopPropagation(); deleteMaint(id); }; })(m.id);
     var editBtn = document.createElement('button');
     editBtn.className='btn btn-ghost btn-sm'; editBtn.style.cssText='color:var(--blue);font-size:11px'; editBtn.textContent='✎ Editar';
-    editBtn.onclick = (function(id){ return function(){ editMaint(id); }; })(m.id);
+    editBtn.onclick = (function(id){ return function(ev){ ev.stopPropagation(); editMaint(id); }; })(m.id);
     var btnRow = document.createElement('div');
     btnRow.style.cssText = 'display:flex;gap:6px';
     btnRow.appendChild(editBtn); btnRow.appendChild(delBtn);
@@ -17633,7 +17692,7 @@ function renderMantenimiento() {
       m.photos.forEach(function(p) {
         var img = document.createElement('img');
         img.src=p; img.style.cssText='width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--bor);cursor:pointer';
-        img.onclick=(function(src){ return function(){ openPhotoLightbox(src); }; })(p);
+        img.onclick=(function(src){ return function(ev){ ev.stopPropagation(); openPhotoLightbox(src); }; })(p);
         photosRow.appendChild(img);
       });
       card.appendChild(photosRow);
@@ -17641,6 +17700,152 @@ function renderMantenimiento() {
 
     list.appendChild(card);
   });
+}
+
+// ── v1.4.54 Multi-item stock para mantenimiento ──────────────
+// Estado en memoria del modal: array de {product_id, qty} (qty puede ser '' mientras edita)
+var _mntStockRows = [];
+// Cuando se está editando un registro existente, mostrar items en readonly
+var _mntStockRowsReadonly = false;
+
+function _mntProductsAvailable() {
+  return (db.products || []).slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+}
+
+function renderMntStockRows() {
+  var list = document.getElementById('mnt-stock-items-list');
+  var addBtn = document.getElementById('mnt-add-stock-row');
+  var note = document.getElementById('mnt-stock-readonly-note');
+  if (!list) return;
+  list.innerHTML = '';
+
+  if (_mntStockRowsReadonly) {
+    // Modo readonly: render compacto, sin selects
+    if (addBtn) addBtn.style.display = 'none';
+    if (note) note.style.display = 'block';
+    if (!_mntStockRows.length) {
+      list.innerHTML = '<div style="font-size:11px;color:var(--muted);font-style:italic">Sin insumos descontados</div>';
+      return;
+    }
+    _mntStockRows.forEach(function(row) {
+      var p = (db.products||[]).find(function(x){ return x.id == row.product_id; });
+      var name = (p && p.name) || row.product_name || ('Producto #' + row.product_id);
+      var unit = (p && p.unit) || row.unit || '';
+      var line = document.createElement('div');
+      line.style.cssText = 'padding:6px 8px;background:var(--sur);border:1px solid var(--bor);border-radius:6px;margin-bottom:4px;font-size:12px;display:flex;justify-content:space-between';
+      var l = document.createElement('span'); l.textContent = '📦 ' + name;
+      var r = document.createElement('strong'); r.style.color = 'var(--amber2)'; r.textContent = row.qty + ' ' + unit;
+      line.appendChild(l); line.appendChild(r);
+      list.appendChild(line);
+    });
+    return;
+  }
+
+  // Modo editable
+  if (addBtn) addBtn.style.display = '';
+  if (note) note.style.display = 'none';
+
+  if (!_mntStockRows.length) {
+    var empty = document.createElement('div');
+    empty.style.cssText = 'font-size:11px;color:var(--muted);font-style:italic;padding:4px 0';
+    empty.textContent = 'Ningún insumo agregado. Click en "+ Agregar insumo" para usar productos del stock.';
+    list.appendChild(empty);
+    return;
+  }
+
+  // Productos disponibles que NO estén ya en otras filas, para evitar duplicados
+  var usedIds = {};
+  _mntStockRows.forEach(function(r){ if (r.product_id) usedIds[r.product_id] = true; });
+  var allProds = _mntProductsAvailable();
+
+  _mntStockRows.forEach(function(row, idx) {
+    var rowEl = document.createElement('div');
+    rowEl.style.cssText = 'display:grid;grid-template-columns:1fr 110px 32px;gap:8px;align-items:end;margin-bottom:6px';
+
+    // Select de producto
+    var selWrap = document.createElement('div');
+    var selLbl = document.createElement('label');
+    selLbl.className = 'form-label';
+    selLbl.style.cssText = 'font-size:10px;color:var(--muted)';
+    selLbl.textContent = idx === 0 ? 'Producto' : '';
+    var sel = document.createElement('select');
+    sel.className = 'form-select';
+    sel.dataset.idx = idx;
+    sel.onchange = function() { onMntStockRowProductChange(parseInt(this.dataset.idx)); };
+    var optDefault = document.createElement('option');
+    optDefault.value = ''; optDefault.textContent = '— Selecciona producto —';
+    sel.appendChild(optDefault);
+    allProds.forEach(function(p) {
+      // Solo mostrar si: tiene stock > 0 Y (no está usado en otra fila O es el de esta fila)
+      if ((p.stock_qty || 0) <= 0 && row.product_id != p.id) return;
+      if (usedIds[p.id] && row.product_id != p.id) return;
+      var o = document.createElement('option');
+      o.value = p.id;
+      o.textContent = p.name + ' · ' + (p.stock_qty||0) + ' ' + (p.unit||'');
+      if (row.product_id == p.id) o.selected = true;
+      sel.appendChild(o);
+    });
+    selWrap.appendChild(selLbl); selWrap.appendChild(sel);
+
+    // Input de cantidad
+    var qtyWrap = document.createElement('div');
+    var qtyLbl = document.createElement('label');
+    qtyLbl.className = 'form-label';
+    qtyLbl.style.cssText = 'font-size:10px;color:var(--muted)';
+    qtyLbl.textContent = idx === 0 ? 'Cantidad' : '';
+    var qtyInput = document.createElement('input');
+    qtyInput.type = 'number';
+    qtyInput.className = 'form-input';
+    qtyInput.step = '0.01'; qtyInput.min = '0';
+    qtyInput.value = row.qty || '';
+    qtyInput.dataset.idx = idx;
+    var prodForRow = (db.products||[]).find(function(x){ return x.id == row.product_id; });
+    if (prodForRow) {
+      qtyInput.placeholder = 'Máx ' + prodForRow.stock_qty + ' ' + (prodForRow.unit||'');
+    } else {
+      qtyInput.placeholder = '0';
+      qtyInput.disabled = true;
+    }
+    qtyInput.oninput = function() { _mntStockRows[parseInt(this.dataset.idx)].qty = this.value; };
+    qtyWrap.appendChild(qtyLbl); qtyWrap.appendChild(qtyInput);
+
+    // Botón eliminar fila
+    var delWrap = document.createElement('div');
+    var delLbl = document.createElement('label');
+    delLbl.className = 'form-label';
+    delLbl.style.cssText = 'font-size:10px;color:var(--muted)';
+    delLbl.textContent = idx === 0 ? ' ' : '';
+    var delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'btn btn-ghost btn-sm';
+    delBtn.style.cssText = 'color:var(--red);padding:8px 8px;width:32px';
+    delBtn.textContent = '✕';
+    delBtn.dataset.idx = idx;
+    delBtn.onclick = function() { removeMntStockRow(parseInt(this.dataset.idx)); };
+    delWrap.appendChild(delLbl); delWrap.appendChild(delBtn);
+
+    rowEl.appendChild(selWrap); rowEl.appendChild(qtyWrap); rowEl.appendChild(delWrap);
+    list.appendChild(rowEl);
+  });
+}
+
+function addMntStockRow() {
+  _mntStockRows.push({ product_id: null, qty: '' });
+  renderMntStockRows();
+}
+
+function removeMntStockRow(idx) {
+  _mntStockRows.splice(idx, 1);
+  renderMntStockRows();
+}
+
+function onMntStockRowProductChange(idx) {
+  var sel = document.querySelector('#mnt-stock-items-list select[data-idx="' + idx + '"]');
+  if (!sel) return;
+  var pid = parseInt(sel.value) || null;
+  _mntStockRows[idx].product_id = pid;
+  // Re-render para refrescar placeholders y opciones disponibles en otros selects
+  renderMntStockRows();
 }
 
 function openModalMaint() {
@@ -17656,25 +17861,12 @@ function openModalMaint() {
       sel.appendChild(o);
     });
   }
-  // Poblar dropdown de productos del stock (solo con stock > 0)
-  var stockSel = document.getElementById('mnt-stock-product');
-  if (stockSel) {
-    stockSel.innerHTML = '<option value="">— Sin descontar stock —</option>';
-    var prods = (db.products||[]).filter(function(p){ return (p.stock_qty||0) > 0; })
-      .slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
-    prods.forEach(function(p) {
-      var o = document.createElement('option');
-      o.value = p.id;
-      o.textContent = p.name + ' · ' + (p.stock_qty||0) + ' ' + (p.unit||'');
-      stockSel.appendChild(o);
-    });
-  }
-  // Clear all fields incluyendo el stock
+  // Reset multi-item stock
+  _mntStockRows = [];
+  _mntStockRowsReadonly = false;
+  renderMntStockRows();
+  // Clear all fields
   ['mnt-desc','mnt-who','mnt-cost','mnt-location','mnt-notes'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
-  var stockQtyEl = document.getElementById('mnt-stock-qty');
-  if (stockQtyEl) { stockQtyEl.value = ''; stockQtyEl.disabled = true; }
-  var stockInfoEl = document.getElementById('mnt-stock-info');
-  if (stockInfoEl) stockInfoEl.textContent = '';
   var catEl = document.getElementById('mnt-cat'); if(catEl) catEl.value = 'maquinaria';
   var statusEl = document.getElementById('mnt-status'); if(statusEl) statusEl.value = 'completado';
   var equipoEl = document.getElementById('mnt-equipo'); if(equipoEl) equipoEl.value = '';
@@ -17686,50 +17878,42 @@ function openModalMaint() {
   openModal('modal-maint');
 }
 
-function onMntStockChange() {
-  var sel = document.getElementById('mnt-stock-product');
-  var qtyEl = document.getElementById('mnt-stock-qty');
-  var info = document.getElementById('mnt-stock-info');
-  if (!sel || !qtyEl) return;
-  var pid = parseInt(sel.value)||0;
-  if (!pid) {
-    qtyEl.disabled = true;
-    qtyEl.value = '';
-    if (info) info.textContent = '';
-    return;
-  }
-  var p = (db.products||[]).find(function(x){ return x.id == pid; });
-  if (!p) return;
-  qtyEl.disabled = false;
-  qtyEl.max = p.stock_qty;
-  qtyEl.placeholder = 'Disponible: ' + p.stock_qty + ' ' + (p.unit||'');
-  if (info) info.textContent = 'Stock disponible: ' + p.stock_qty + ' ' + (p.unit||'') + (p.stock_min ? ' · Mínimo: ' + p.stock_min : '');
-  qtyEl.focus();
-}
-
 function saveMaint() {
   var desc = (document.getElementById('mnt-desc')||{}).value||'';
   if (!desc.trim()) { toast('Ingresa una descripcion', 'error'); return; }
   if (!db.maintenance) db.maintenance = [];
 
-  // Producto del stock (opcional)
-  var stockPid = parseInt((document.getElementById('mnt-stock-product')||{}).value)||0;
-  var stockQty = parseFloat((document.getElementById('mnt-stock-qty')||{}).value)||0;
-  var stockInfo = null;
-  if (stockPid && stockQty > 0) {
-    var prod = (db.products||[]).find(function(p){ return p.id == stockPid; });
-    if (!prod) { toast('Producto no encontrado en stock', 'error'); return; }
-    if (stockQty > prod.stock_qty) {
-      toast('⚠ Stock insuficiente de ' + prod.name + ': disponible ' + prod.stock_qty + ' ' + prod.unit, 'error');
-      return;
+  var editId = (document.getElementById('mnt-edit-id')||{}).value;
+
+  // Validar y consolidar items SOLO si es creación nueva (en edit los items son readonly)
+  var stockItems = [];
+  if (!editId) {
+    for (var i = 0; i < _mntStockRows.length; i++) {
+      var row = _mntStockRows[i];
+      var pid = parseInt(row.product_id) || 0;
+      var qty = parseFloat(row.qty) || 0;
+      if (!pid && !qty) continue; // fila vacía: ignorar
+      if (!pid) { toast('Fila ' + (i+1) + ': selecciona un producto o quitá la fila', 'error'); return; }
+      if (qty <= 0) { toast('Fila ' + (i+1) + ': ingresá una cantidad mayor a 0', 'error'); return; }
+      var prod = (db.products||[]).find(function(p){ return p.id == pid; });
+      if (!prod) { toast('Fila ' + (i+1) + ': producto no encontrado', 'error'); return; }
+      if (qty > (prod.stock_qty || 0)) {
+        toast('⚠ Stock insuficiente de ' + prod.name + ': disponible ' + prod.stock_qty + ' ' + (prod.unit||''), 'error');
+        return;
+      }
+      stockItems.push({ product_id: prod.id, product_name: prod.name, qty: qty, unit: prod.unit || '' });
     }
-    stockInfo = { product_id: prod.id, product_name: prod.name, qty: stockQty, unit: prod.unit };
-  } else if (stockPid && stockQty <= 0) {
-    toast('Ingresa una cantidad válida o quitá el producto', 'error');
-    return;
+    // Validación duplicados (defensiva — la UI ya evita pero confirmamos)
+    var seen = {};
+    for (var j = 0; j < stockItems.length; j++) {
+      if (seen[stockItems[j].product_id]) {
+        toast('Producto duplicado: ' + stockItems[j].product_name + '. Consolidá en una sola fila.', 'error');
+        return;
+      }
+      seen[stockItems[j].product_id] = true;
+    }
   }
 
-  var editId = (document.getElementById('mnt-edit-id')||{}).value;
   // FIX v1.4.34: no permitir fechas futuras
   var mntDateVal = (document.getElementById('mnt-date')||{}).value||localDate();
   if(!validateNotFuture(mntDateVal, 'fecha del trabajo')) return;
@@ -17746,18 +17930,12 @@ function saveMaint() {
     by: 'Desktop',
     updated_at: new Date().toISOString(),
   };
-  // Adjuntar info de stock al registro
-  if (stockInfo) {
-    recData.stock_product_id = stockInfo.product_id;
-    recData.stock_product = stockInfo.product_name;
-    recData.stock_descontado = stockInfo.qty;
-    recData.stock_unit = stockInfo.unit;
-  }
 
   if (editId) {
     var existing = db.maintenance.find(function(m){return String(m.id)===String(editId);});
     if (existing) {
       var oldSnap = JSON.parse(JSON.stringify(existing));
+      // En edit: NO modificar stock_items / stock_product_id / etc. del registro
       Object.keys(recData).forEach(function(k){ existing[k] = recData[k]; });
       if (_mntPhotos.length) existing.photos = (existing.photos||[]).concat(_mntPhotos);
       toast('Trabajo actualizado','success');
@@ -17767,20 +17945,38 @@ function saveMaint() {
     recData.id = db.next_ids.maint++;
     recData.photos = _mntPhotos.slice();
     recData.created_at = new Date().toISOString();
-    db.maintenance.push(recData);
-    // Descontar stock SOLO en creación nueva (en edición no, para no doble-descontar)
-    if (stockInfo) {
-      var p = db.products.find(function(x){return x.id == stockInfo.product_id;});
-      if (p) {
-        p.stock_qty = Math.round((p.stock_qty - stockInfo.qty) * 100) / 100;
-        replaceTableInRailway('vet_products', db.products || []);
+    // Adjuntar items consumidos
+    if (stockItems.length) {
+      recData.stock_items = stockItems;
+      // Legacy: si hay un solo item, también poblar campos legacy para compat con renders viejos
+      if (stockItems.length === 1) {
+        recData.stock_product_id = stockItems[0].product_id;
+        recData.stock_product = stockItems[0].product_name;
+        recData.stock_descontado = stockItems[0].qty;
+        recData.stock_unit = stockItems[0].unit;
       }
     }
+    db.maintenance.push(recData);
+    // Descontar stock por cada item
+    var anyStockChange = false;
+    stockItems.forEach(function(item) {
+      var p = db.products.find(function(x){ return x.id == item.product_id; });
+      if (p) {
+        p.stock_qty = Math.round((p.stock_qty - item.qty) * 100) / 100;
+        p.stock_updated_at = new Date().toISOString();
+        anyStockChange = true;
+      }
+    });
+    if (anyStockChange) replaceTableInRailway('vet_products', db.products || []);
     // Registrar actividad
     var activityDesc = '🔧 '+recData.desc+(recData.equipo?' — '+recData.equipo:'')+(recData.cost?' — Bs.'+recData.cost:'');
-    if (stockInfo) activityDesc += ' (usó '+stockInfo.qty+' '+stockInfo.unit+' de '+stockInfo.product_name+')';
+    if (stockItems.length === 1) {
+      activityDesc += ' (usó '+stockItems[0].qty+' '+stockItems[0].unit+' de '+stockItems[0].product_name+')';
+    } else if (stockItems.length > 1) {
+      activityDesc += ' (usó '+stockItems.length+' insumos del stock)';
+    }
     addActivity(recData.who||'Desktop', 'mantenimiento', recData.location||'', activityDesc, recData.date);
-    toast(stockInfo ? 'Trabajo registrado y stock descontado' : 'Trabajo registrado','success');
+    toast(stockItems.length ? 'Trabajo registrado y stock descontado' : 'Trabajo registrado','success');
     try { auditLog('create', 'maintenance', recData.id, _summarizeRecord('maintenance', recData)); } catch(e){}
   }
   saveDB();
@@ -17789,7 +17985,126 @@ function saveMaint() {
   _mntPhotos = [];
   document.getElementById('mnt-photos-preview').innerHTML = '';
   renderMantenimiento();
-  if (typeof renderStock === 'function' && stockInfo) renderStock();
+  if (typeof renderStock === 'function' && stockItems.length) renderStock();
+}
+
+function openMntDetail(id) {
+  var m = (db.maintenance||[]).find(function(r){ return String(r.id) === String(id); });
+  if (!m) { toast('Trabajo no encontrado', 'error'); return; }
+
+  var titleEl = document.getElementById('mntd-title');
+  if (titleEl) titleEl.innerHTML = (MNT_CAT_ICONS[m.category]||'🔧') + ' Detalle del trabajo';
+
+  var body = document.getElementById('mntd-body');
+  if (!body) return;
+  body.innerHTML = '';
+
+  // Helper para agregar una fila de detalle
+  function addRow(label, value, opts) {
+    opts = opts || {};
+    if (value === null || value === undefined || value === '' || (typeof value === 'string' && !value.trim())) return;
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--bor);font-size:13px';
+    var lbl = document.createElement('span');
+    lbl.style.cssText = 'color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px';
+    lbl.textContent = label;
+    var val = document.createElement('span');
+    val.style.cssText = 'color:var(--text);font-weight:500;text-align:right;max-width:60%';
+    if (opts.color) val.style.color = opts.color;
+    if (opts.html) val.innerHTML = value; else val.textContent = value;
+    row.appendChild(lbl); row.appendChild(val);
+    body.appendChild(row);
+  }
+
+  // Estado + categoría (badges en bloque destacado)
+  var hdrBlock = document.createElement('div');
+  hdrBlock.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px';
+  var catBdg = document.createElement('span');
+  catBdg.className = 'bdg bdg-blue';
+  catBdg.textContent = (MNT_CAT_ICONS[m.category]||'🔧') + ' ' + ((m.category||'otro').charAt(0).toUpperCase() + (m.category||'otro').slice(1).replace(/_/g,' '));
+  var stBdg = document.createElement('span');
+  stBdg.className = 'bdg';
+  stBdg.style.color = MNT_STATUS_COLORS[m.status] || 'var(--muted)';
+  stBdg.style.background = 'rgba(0,0,0,.2)';
+  stBdg.textContent = MNT_STATUS_LABELS[m.status] || m.status || '—';
+  hdrBlock.appendChild(catBdg); hdrBlock.appendChild(stBdg);
+  body.appendChild(hdrBlock);
+
+  // Descripción (bloque destacado)
+  if (m.desc) {
+    var descBlock = document.createElement('div');
+    descBlock.style.cssText = 'background:var(--sur);border:1px solid var(--bor);border-radius:8px;padding:12px;margin-bottom:14px;font-size:14px;color:var(--text);line-height:1.5';
+    descBlock.textContent = m.desc;
+    body.appendChild(descBlock);
+  }
+
+  // Filas de metadata
+  addRow('Responsable', m.who);
+  addRow('Equipo', m.equipo);
+  addRow('Ubicación', m.location);
+  addRow('Fecha del trabajo', m.date ? fmtDT(m.date) : null);
+  addRow('Registrado el', m.created_at ? fmtDT(m.created_at) : null);
+  if (m.cost) addRow('Costo', 'Bs. ' + (m.cost || 0).toLocaleString(), { color: 'var(--amber2)' });
+
+  // Insumos consumidos
+  var items = [];
+  if (Array.isArray(m.stock_items) && m.stock_items.length) {
+    items = m.stock_items;
+  } else if (m.stock_product_id) {
+    items = [{ product_id: m.stock_product_id, product_name: m.stock_product, qty: m.stock_descontado, unit: m.stock_unit }];
+  }
+  if (items.length) {
+    var itemsTitle = document.createElement('div');
+    itemsTitle.style.cssText = 'margin-top:14px;margin-bottom:6px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600';
+    itemsTitle.textContent = '📦 Insumos consumidos del stock (' + items.length + ')';
+    body.appendChild(itemsTitle);
+    items.forEach(function(it) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;justify-content:space-between;padding:8px 10px;background:var(--sur);border:1px solid var(--bor);border-radius:6px;margin-bottom:4px;font-size:13px';
+      var l = document.createElement('span'); l.textContent = it.product_name || 'Producto #' + it.product_id;
+      var r = document.createElement('strong'); r.style.color = 'var(--amber2)'; r.textContent = it.qty + ' ' + (it.unit||'');
+      row.appendChild(l); row.appendChild(r);
+      body.appendChild(row);
+    });
+  }
+
+  // Notas
+  if (m.notes && m.notes.trim()) {
+    var notesTitle = document.createElement('div');
+    notesTitle.style.cssText = 'margin-top:14px;margin-bottom:6px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600';
+    notesTitle.textContent = '📝 Notas';
+    body.appendChild(notesTitle);
+    var notesBox = document.createElement('div');
+    notesBox.style.cssText = 'padding:10px 12px;background:var(--sur);border:1px solid var(--bor);border-radius:6px;font-size:13px;line-height:1.5;color:var(--muted);font-style:italic;white-space:pre-wrap';
+    notesBox.textContent = m.notes;
+    body.appendChild(notesBox);
+  }
+
+  // Fotos
+  if (m.photos && m.photos.length) {
+    var photosTitle = document.createElement('div');
+    photosTitle.style.cssText = 'margin-top:14px;margin-bottom:6px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600';
+    photosTitle.textContent = '📷 Fotos de evidencia (' + m.photos.length + ')';
+    body.appendChild(photosTitle);
+    var photosRow = document.createElement('div');
+    photosRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap';
+    m.photos.forEach(function(p) {
+      var img = document.createElement('img');
+      img.src = p;
+      img.style.cssText = 'width:90px;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--bor);cursor:pointer';
+      img.onclick = (function(src){ return function(){ openPhotoLightbox(src); }; })(p);
+      photosRow.appendChild(img);
+    });
+    body.appendChild(photosRow);
+  }
+
+  // Conectar botones de acción del modal
+  var editBtn = document.getElementById('mntd-edit-btn');
+  var delBtn = document.getElementById('mntd-del-btn');
+  if (editBtn) editBtn.onclick = function() { closeModal('modal-maint-detail'); editMaint(id); };
+  if (delBtn) delBtn.onclick = function() { closeModal('modal-maint-detail'); deleteMaint(id); };
+
+  openModal('modal-maint-detail');
 }
 
 function editMaint(id) {
@@ -17829,30 +18144,19 @@ function editMaint(id) {
   f('mnt-date', m.date);
   f('mnt-location', m.location);
   f('mnt-notes', m.notes);
-  // Stock product: poblar dropdown y mostrar (deshabilitado en edición — el descuento ya se hizo)
-  var stockSel = document.getElementById('mnt-stock-product');
-  var stockQtyEl = document.getElementById('mnt-stock-qty');
-  var stockInfoEl = document.getElementById('mnt-stock-info');
-  if (stockSel) {
-    stockSel.innerHTML = '<option value="">— Sin descontar stock —</option>';
-    (db.products||[]).slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');}).forEach(function(p){
-      var o = document.createElement('option');
-      o.value = p.id;
-      o.textContent = p.name + ' · ' + (p.stock_qty||0) + ' ' + (p.unit||'');
-      if (m.stock_product_id == p.id) o.selected = true;
-      stockSel.appendChild(o);
+  // Stock items: cargar como readonly (en edición no se modifican)
+  _mntStockRows = [];
+  _mntStockRowsReadonly = true;
+  if (Array.isArray(m.stock_items) && m.stock_items.length) {
+    // Nuevo formato multi-item
+    m.stock_items.forEach(function(it) {
+      _mntStockRows.push({ product_id: it.product_id, product_name: it.product_name, qty: it.qty, unit: it.unit });
     });
-    stockSel.disabled = !!m.stock_product_id;  // Si ya se descontó, no permitir cambiar
+  } else if (m.stock_product_id) {
+    // Legacy single-item
+    _mntStockRows.push({ product_id: m.stock_product_id, product_name: m.stock_product, qty: m.stock_descontado, unit: m.stock_unit });
   }
-  if (stockQtyEl) {
-    stockQtyEl.value = m.stock_descontado || '';
-    stockQtyEl.disabled = true;  // En edición, no se puede modificar la cantidad descontada
-  }
-  if (stockInfoEl) {
-    stockInfoEl.textContent = m.stock_product_id
-      ? 'Stock descontado al crear: ' + m.stock_descontado + ' ' + (m.stock_unit||'') + ' de ' + m.stock_product + ' (no editable)'
-      : '';
-  }
+  renderMntStockRows();
   // Photos preview
   _mntPhotos = [];
   var preview = document.getElementById('mnt-photos-preview');
