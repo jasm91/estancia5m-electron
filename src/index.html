@@ -4789,7 +4789,11 @@ function pullFromRailwayDesktop(thenPush) {
       if (!db.pasture_evals) db.pasture_evals = [];
 
       // Products: sincronizar stock_qty desde Railway (bot/PWA pueden descontar)
+      // FIX v1.4.51: incorporar productos nuevos del server (antes solo actualizaba existentes,
+      // lo cual hacía Stock quedar vacío al cambiar de tenant o arrancar con cache limpio)
       if (remote.products && remote.products.length) {
+        if (!db.products) db.products = [];
+        var localDeletedProducts = (typeof getDeletedIds === 'function') ? getDeletedIds('products') : {};
         remote.products.forEach(function(rp) {
           var local = db.products.find(function(p) { return p.id == rp.id || p.name === rp.name; });
           if (local) {
@@ -4800,6 +4804,23 @@ function pullFromRailwayDesktop(thenPush) {
               local.stock_qty = rp.stock_qty;
               local.stock_updated_at = rp.stock_updated_at;
             }
+            // Adoptar campos editados en server (nombre, unit, type, min, expiry, cost)
+            if (rp.name && rp.name !== local.name) local.name = rp.name;
+            if (rp.unit && rp.unit !== local.unit) local.unit = rp.unit;
+            if (rp.type && rp.type !== local.type) local.type = rp.type;
+            if (rp.stock_min != null) local.stock_min = rp.stock_min;
+            if (rp.expiry_date !== undefined) local.expiry_date = rp.expiry_date;
+            if (rp.cost != null) local.cost = rp.cost;
+          } else {
+            // Producto NO está en local. ¿Lo borramos explícitamente?
+            var ridStr = String(rp.id || '');
+            if (localDeletedProducts[ridStr]) {
+              console.log('[Sync] Producto ' + rp.name + ' (id ' + rp.id + ') ignorado — está en trackDeletion local');
+              return;
+            }
+            // Producto nuevo del server: incorporar
+            db.products.push(rp);
+            console.log('[Sync] Producto nuevo incorporado del server: ' + rp.name + ' (stock: ' + (rp.stock_qty || 0) + ' ' + (rp.unit || 'u') + ')');
           }
         });
       }
@@ -11400,7 +11421,7 @@ function fmtDT(str) {
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
-var _APP_VERSION = '1.4.51'; // Se actualiza dinámicamente al inicio
+var _APP_VERSION = '1.4.52'; // Se actualiza dinámicamente al inicio
 // Leer versión real desde Electron al cargar
 if (window.estancia && window.estancia.app && window.estancia.app.version) {
   window.estancia.app.version().then(function(v){ _APP_VERSION = v; }).catch(function(){});
