@@ -1,6 +1,6 @@
 {
   "name": "estancia5m",
-  "version": "1.4.63",
+  "version": "1.4.67",
   "description": "Sistema de Gesti\u00f3n Ganadera \u2014 Estancia 5M",
   "main": "main.js",
   "scripts": {
@@ -19,6 +19,7 @@
     "version:minor": "node scripts/bump-version.js minor",
     "version:major": "node scripts/bump-version.js major",
     "release:patch": "node scripts/bump-version.js patch && git add package.json && git commit -m \"bump version\" && node -e \"const p=require('./package.json');require('child_process').execSync('git tag v'+p.version+' && git push origin main --tags')\"",
+    "release:current": "node -e \"const p=require('./package.json');const cp=require('child_process');const v='v'+p.version;try{cp.execSync('git tag '+v);}catch(e){console.log('Tag '+v+' ya existe localmente');}cp.execSync('git push origin '+v,{stdio:'inherit'});console.log('\\n✅ Tag '+v+' pusheado. GitHub Actions ya empezó. Seguilo en: https://github.com/jasm91/estancia5m-electron/actions');\"",
     "build": "npm install pdfkit"
   },
   "build": {

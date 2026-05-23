@@ -603,6 +603,7 @@ function publishTasksToPWA() {
     <div><div class="pt">🏆 Dashboard — Reporte CREA</div><div class="ps">Indicadores productivos y económicos · Metodología AACREA</div></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <select class="form-select" id="crea-periodo" style="width:160px;padding:6px 10px;font-size:12px" onchange="onCREAPeriodoChange()">
+        <option value="ytd" selected>Año en curso</option>
         <option value="year">Último año</option>
         <option value="semester">Último semestre</option>
         <option value="quarter">Último trimestre</option>
@@ -2372,6 +2373,7 @@ function publishTasksToPWA() {
       <select class="form-select" id="ah-lot-select" style="width:240px;padding:6px 10px;font-size:12px" onchange="renderAnalisisHistorico()">
         <option value="">Seleccionar lote vendido...</option>
       </select>
+      <button class="btn btn-ghost" id="ah-pdf-btn" onclick="exportAnalisisHistoricoPDF()" title="Generar PDF" style="display:none">⬇ PDF</button>
     </div>
   </div>
 
@@ -13696,12 +13698,14 @@ function renderAnalisisHistorico() {
   var sel = document.getElementById('ah-lot-select');
   var emptyState = document.getElementById('ah-empty-state');
   var content = document.getElementById('ah-content');
+  var pdfBtn = document.getElementById('ah-pdf-btn');
   if (!sel || !emptyState || !content) return;
 
   var lotCode = sel.value;
   if (!lotCode) {
     emptyState.style.display = 'block';
     content.style.display = 'none';
+    if (pdfBtn) pdfBtn.style.display = 'none';
     if (_ahChartPesos) { try { _ahChartPesos.destroy(); } catch(e){} _ahChartPesos = null; }
     return;
   }
@@ -13711,6 +13715,7 @@ function renderAnalisisHistorico() {
 
   emptyState.style.display = 'none';
   content.style.display = 'block';
+  if (pdfBtn) pdfBtn.style.display = 'inline-flex';
 
   // Recolectar todos los datos asociados al lote
   var pesajes = (db.pesajes || []).filter(function(p) { return p.lot_code === lotCode; });
@@ -13753,15 +13758,117 @@ function renderAnalisisHistorico() {
   var mantenimientos = (db.mantenimientos || []).filter(function(m) { return m.lot_code === lotCode; });
 
   _ahRenderHeader(lot, ventas);
-  _ahRenderResumen(lot, pesajes, ventasDirectas, compras);
-  _ahRenderPerformance(lot, pesajes, ventasDirectas, compras);
-  _ahRenderCostos(lot, treatments, mantenimientos, ventasDirectas, compras);
+  // v1.4.64: pasar TODAS las ventas (directas + compartidas con items[]) a los renders económicos.
+  // Las funciones ya tienen lógica de items[] que extrae la porción del lote en multi-lote.
+  // Antes solo recibían ventasDirectas → ignoraban completamente las multi-lote y desperdiciaban
+  // la lógica de items[] que metimos en v1.4.61. La PWA ya hace esto correctamente.
+  _ahRenderResumen(lot, pesajes, ventas, compras);
+  _ahRenderPerformance(lot, pesajes, ventas, compras);
+  _ahRenderCostos(lot, treatments, mantenimientos, ventas, compras);
   _ahRenderPesos(lot, pesajes, compras, ventasDirectas, ventasCompartidas);
   _ahRenderEventos(lot, compras, ventasDirectas, ventasCompartidas, pesajes);
   _ahRenderSanidad(lot, treatments);
   _ahRenderMovimientos(lot, bajas, partos, conteos, compras);
   _ahRenderVentas(ventasDirectas, ventasCompartidas, lotCode);
   _ahRenderObservaciones(lot, pesajes, treatments, compras, ventasDirectas, ventasCompartidas, bajas, partos, mantenimientos);
+}
+
+// v1.4.65: Atribución EXACTA de venta a un lote (sin prorrateo).
+// Casos en orden:
+//   1. Venta single-lote = ese lote → devolver totales completos
+//   2. Venta con items[] = usar item.lot_code === lot.code (estructura moderna, v1.4.61+)
+//   3. Venta multi-lote sin items[] pero con animal_ids → usar db.pesajes (tipo:'venta')
+//      para identificar EXACTAMENTE qué animales eran de qué lote y sus pesos reales
+//   4. Fallback: prorrateo simple por cabezas (último recurso)
+//
+// Retorna { cabs, kg, kgFacturados, ingreso } o null si la venta no toca este lote.
+function _ahAtribuirVentaALote(venta, lotCode) {
+  var v = venta;
+
+  // CASO 1: venta single-lote = lote analizado
+  var vLotCode = v.lot_code;
+  var isMultiLot = Array.isArray(v.lot_codes) && v.lot_codes.length > 1;
+  if (!isMultiLot && vLotCode === lotCode) {
+    var cabs1 = parseInt(v.animals || v.qty || v.cabezas || v.animal_count || 0) || 0;
+    var kg1 = parseFloat(v.kg || v.kg_total || v.peso_total || v.total_kg || 0) || 0;
+    var kgFact1 = parseFloat(v.kg_facturados || kg1) || 0;
+    var total1 = parseFloat(v.total || 0) || 0;
+    return { cabs: cabs1, kg: kg1, kgFacturados: kgFact1, ingreso: total1 };
+  }
+
+  // CASO 2: items[] disponibles
+  if (Array.isArray(v.items)) {
+    var item = v.items.find(function(i) { return i.lot_code === lotCode; });
+    if (!item) return null;
+    return {
+      cabs: parseInt(item.animals || item.qty || item.cabezas || item.animal_count || 0) || 0,
+      kg: parseFloat(item.kg || item.kg_total || item.peso_total || item.total_kg || 0) || 0,
+      kgFacturados: parseFloat(item.kg_facturados || item.kg || 0) || 0,
+      ingreso: parseFloat(item.total || 0) || 0
+    };
+  }
+
+  // CASO 3: animal_ids + db.pesajes (atribución exacta sin prorrateo)
+  if (Array.isArray(v.animal_ids) && v.animal_ids.length > 0) {
+    var idsSet = {};
+    v.animal_ids.forEach(function(id) { idsSet[String(id)] = true; });
+    var ventaFecha = v.date || '';
+
+    // Filtrar pesajes: tipo 'venta' + animal_id en venta + misma fecha (o sin filtro de fecha si no hay match)
+    var pesajesVenta = (db.pesajes || []).filter(function(p) {
+      return p.tipo === 'venta' &&
+             idsSet[String(p.animal_id)] &&
+             (!ventaFecha || p.date === ventaFecha);
+    });
+
+    // Si no encontramos pesajes con esa fecha, buscar sin restricción de fecha (más permisivo)
+    if (pesajesVenta.length === 0) {
+      pesajesVenta = (db.pesajes || []).filter(function(p) {
+        return p.tipo === 'venta' && idsSet[String(p.animal_id)];
+      });
+    }
+
+    // Agrupar por lot_code del pesaje (el lote REAL al que pertenecía el animal)
+    var cabsLote = 0, kgLote = 0;
+    pesajesVenta.forEach(function(p) {
+      if (p.lot_code === lotCode) {
+        cabsLote++;
+        kgLote += parseFloat(p.peso || 0) || 0;
+      }
+    });
+
+    if (cabsLote === 0) return null;
+
+    // Calcular ingreso atribuible: kg facturados de este lote × price_per_kg
+    var discountPct = parseFloat(v.discount_pct || 0) || 0;
+    var kgFactLote = discountPct > 0 ? kgLote * (1 - discountPct / 100) : kgLote;
+    var pricePerKg = parseFloat(v.price_per_kg || 0) || 0;
+    var ingresoLote = 0;
+    if (pricePerKg > 0) {
+      ingresoLote = kgFactLote * pricePerKg;
+    } else if (v.total && v.kg_facturados) {
+      // Si no hay price_per_kg, derivarlo del total / kg_facturados
+      ingresoLote = kgFactLote * (parseFloat(v.total) / parseFloat(v.kg_facturados));
+    }
+
+    return {
+      cabs: cabsLote,
+      kg: kgLote,
+      kgFacturados: kgFactLote,
+      ingreso: ingresoLote
+    };
+  }
+
+  // CASO 4: Fallback prorrateo simple por cabezas (último recurso, datos pobres)
+  var totalLotes = Array.isArray(v.lot_codes) ? v.lot_codes.length : 1;
+  if (totalLotes <= 1) return null;
+  var fraccion = 1 / totalLotes;
+  return {
+    cabs: Math.round((parseInt(v.animals || v.animal_count || 0) || 0) * fraccion),
+    kg: (parseFloat(v.kg || v.total_kg || 0) || 0) * fraccion,
+    kgFacturados: (parseFloat(v.kg_facturados || v.kg || 0) || 0) * fraccion,
+    ingreso: (parseFloat(v.total || 0) || 0) * fraccion
+  };
 }
 
 function _ahClasificarVentas(ventas, lotCode) {
@@ -13872,16 +13979,10 @@ function _ahRenderResumen(lot, pesajes, ventas, compras) {
   var cabsVendidas = 0;
   var kgVendidos = 0;
   ventas.forEach(function(v) {
-    if (Array.isArray(v.items)) {
-      v.items.forEach(function(i) {
-        if (i.lot_code === lot.code) {
-          cabsVendidas += parseInt(i.animals || i.qty || i.cabezas || i.animal_count || 0) || 0;
-          kgVendidos += parseFloat(i.kg || i.kg_total || i.peso_total || i.total_kg || 0) || 0;
-        }
-      });
-    } else {
-      cabsVendidas += parseInt(v.animals || v.qty || v.cabezas || v.animal_count || 0) || 0;
-      kgVendidos += parseFloat(v.kg || v.kg_total || v.peso_total || v.total_kg || 0) || 0;
+    var a = _ahAtribuirVentaALote(v, lot.code);
+    if (a) {
+      cabsVendidas += a.cabs;
+      kgVendidos += a.kg;
     }
   });
 
@@ -13941,23 +14042,16 @@ function _ahRenderPerformance(lot, pesajes, ventas, compras) {
   var el = document.getElementById('ah-performance');
   if (!el) return;
 
-  // Ingreso total — campos: v.total (canónico). Sumar todas las ventas directas (single-lote).
+  // Ingreso total — usa _ahAtribuirVentaALote para atribución exacta (sin prorrateo)
   var ingresoTotal = 0;
   var pesoVenta = 0;
   var cabsVenta = 0;
   ventas.forEach(function(v) {
-    if (Array.isArray(v.items)) {
-      v.items.forEach(function(i) {
-        if (i.lot_code === lot.code) {
-          ingresoTotal += parseFloat(i.total || 0) || 0;
-          pesoVenta += parseFloat(i.kg || i.kg_total || i.peso_total || i.total_kg || 0) || 0;
-          cabsVenta += parseInt(i.animals || i.qty || i.cabezas || i.animal_count || 0) || 0;
-        }
-      });
-    } else {
-      ingresoTotal += parseFloat(v.total || 0) || 0;
-      pesoVenta += parseFloat(v.kg || v.kg_total || v.peso_total || v.total_kg || 0) || 0;
-      cabsVenta += parseInt(v.animals || v.qty || v.cabezas || v.animal_count || 0) || 0;
+    var a = _ahAtribuirVentaALote(v, lot.code);
+    if (a) {
+      ingresoTotal += a.ingreso;
+      pesoVenta += a.kg;
+      cabsVenta += a.cabs;
     }
   });
 
@@ -14067,6 +14161,48 @@ function _ahRenderPerformance(lot, pesajes, ventas, compras) {
     html += _ahKpiCell('⚡ GDP lote', _ahFmtNum(gdp, 2) + ' kg/día', null, gdpFuente || '');
   } else {
     html += _ahKpiCell('⚡ GDP lote', 'No calculable', 'var(--muted)', gdpReason || '');
+  }
+
+  // v1.4.64: Costo/kg y Margen/kg del lote (paridad con PWA)
+  // Calcular costo total real del lote: compra + sanidad + mantenimiento + indirectos
+  // Reusar lógica de _ahRenderCostos para no duplicar
+  var products = db.products || [];
+  var costoSanidadLote = 0;
+  (db.treatments || []).filter(function(t){ return t.lot_code === lot.code; }).forEach(function(t){
+    var costoT = parseFloat(t.cost || 0);
+    if (costoT > 0) { costoSanidadLote += costoT; return; }
+    var prod = products.find(function(p){ return p.id === t.product_id || p.name === t.product_name; });
+    var uc = prod ? parseFloat(prod.unit_cost || prod.cost || 0) : 0;
+    if (uc > 0) {
+      var q = parseFloat(t.count || t.quantity || 0) || 0;
+      costoSanidadLote += q * uc;
+    }
+  });
+  var costoMantLote = 0;
+  (db.maintenance || []).filter(function(m){ return m.lot_code === lot.code; }).forEach(function(m){
+    if (Array.isArray(m.stock_items)) {
+      m.stock_items.forEach(function(si){
+        var prod = products.find(function(p){ return p.id === si.product_id || p.name === si.product_name; });
+        var uc = prod ? parseFloat(prod.unit_cost || prod.cost || 0) : 0;
+        var q = parseFloat(si.quantity || si.count || 0) || 0;
+        costoMantLote += q * uc;
+      });
+    } else {
+      costoMantLote += parseFloat(m.total || m.costo || 0) || 0;
+    }
+  });
+  var indirectosLote = _ahCalcularIndirectos(lot, ventas, compras);
+  var costoTotalLote = costoCompra + costoSanidadLote + costoMantLote + indirectosLote.total;
+  var costoPorKgLote = pesoVenta > 0 ? (costoTotalLote / pesoVenta) : 0;
+  var margenPorKgLote = (precioPromKg && costoPorKgLote > 0) ? (precioPromKg - costoPorKgLote) : null;
+
+  if (costoPorKgLote > 0) {
+    html += _ahKpiCell('💵 Costo/kg', moneda + ' ' + _ahFmtNum(costoPorKgLote, 2), 'var(--amber)', 'compra + sanidad + indirectos');
+  }
+  if (margenPorKgLote != null) {
+    html += _ahKpiCell('📊 Margen/kg', moneda + ' ' + _ahFmtNum(margenPorKgLote, 2),
+      margenPorKgLote >= 0 ? 'var(--green)' : 'var(--red)',
+      'precio − costo por kg');
   }
 
   el.innerHTML = html;
@@ -14627,13 +14763,8 @@ function _ahRenderCostos(lot, treatments, mantenimientos, ventas, compras) {
   // ─── INGRESOS y COSTO COMPRA ───
   var ingresoTotal = 0;
   ventas.forEach(function(v) {
-    if (Array.isArray(v.items)) {
-      v.items.forEach(function(i) {
-        if (i.lot_code === lot.code) ingresoTotal += parseFloat(i.total || 0) || 0;
-      });
-    } else {
-      ingresoTotal += parseFloat(v.total || 0) || 0;
-    }
+    var a = _ahAtribuirVentaALote(v, lot.code);
+    if (a) ingresoTotal += a.ingreso;
   });
 
   var costoCompra = 0;
@@ -14651,13 +14782,8 @@ function _ahRenderCostos(lot, treatments, mantenimientos, ventas, compras) {
   // ─── CABEZAS VENDIDAS para costo/cab ───
   var cabsVendidas = 0;
   ventas.forEach(function(v) {
-    if (Array.isArray(v.items)) {
-      v.items.forEach(function(i) {
-        if (i.lot_code === lot.code) cabsVendidas += parseInt(i.animals || i.qty || i.cabezas || i.animal_count || 0) || 0;
-      });
-    } else {
-      cabsVendidas += parseInt(v.animals || v.qty || v.cabezas || v.animal_count || 0) || 0;
-    }
+    var a = _ahAtribuirVentaALote(v, lot.code);
+    if (a) cabsVendidas += a.cabs;
   });
 
   // ─── EXPLICACIÓN del prorrateo ───
@@ -15009,9 +15135,9 @@ function _ahRenderObservaciones(lot, pesajes, treatments, compras, ventasDirecta
     obs.push('💵 Este lote NO tiene ventas directas (individuales). Todo se vendió combinado con otros lotes.');
   }
 
-  // 9. Ventas compartidas (multi-lote)
+  // 9. Ventas compartidas (multi-lote) — v1.4.66: ya no son "no asignables", se atribuyen exactamente
   if (ventasCompartidas && ventasCompartidas.length > 0) {
-    obs.push('📋 ' + ventasCompartidas.length + ' venta(s) compartida(s) con otros lotes — totales no asignables a este lote individualmente. Ver detalle abajo.');
+    obs.push('📋 ' + ventasCompartidas.length + ' venta(s) en conjunto con otros lotes — los animales de este lote se identifican por sus pesajes individuales y se atribuyen al análisis.');
   }
 
   // Construir HTML como lista de items
@@ -15030,83 +15156,75 @@ function _ahRenderVentas(ventasDirectas, ventasCompartidas, lotCode) {
   var moneda = _ahMoneda();
   var html = '';
 
-  // ── SECCIÓN 1: VENTAS DIRECTAS ──
-  html += '<div style="margin-bottom:16px">';
-  html += '<div style="font-size:11px;font-weight:600;color:var(--green);margin-bottom:8px">🎯 VENTAS DIRECTAS (lote vendido individual)</div>';
+  // v1.4.66: Listado UNIFICADO de ventas. Muestra SOLO los números atribuidos a este lote.
+  // No mostramos columnas con totales globales de la venta — confunde porque incluyen otros lotes.
+  // Las ventas multi-lote se identifican con un badge pero los datos son SIEMPRE del lote analizado.
+  var todasVentas = (ventasDirectas || []).concat(ventasCompartidas || []);
 
-  if (!ventasDirectas || ventasDirectas.length === 0) {
-    html += '<div style="padding:14px;background:var(--bg);border:1px dashed var(--bor);border-radius:8px;text-align:center;color:var(--muted);font-size:12px">Sin ventas directas registradas para este lote.</div>';
-  } else {
-    html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">';
-    html += '<thead><tr style="border-bottom:1px solid var(--bor);color:var(--muted);text-transform:uppercase;font-size:10px;letter-spacing:.05em">';
-    html += '<th style="text-align:left;padding:8px">Fecha</th>';
-    html += '<th style="text-align:left;padding:8px">Comprador</th>';
-    html += '<th style="text-align:left;padding:8px">Tipo</th>';
-    html += '<th style="text-align:right;padding:8px">Cabezas</th>';
-    html += '<th style="text-align:right;padding:8px">Kg total</th>';
-    html += '<th style="text-align:right;padding:8px">Precio/kg</th>';
-    html += '<th style="text-align:right;padding:8px">Total</th>';
-    html += '</tr></thead><tbody>';
+  if (todasVentas.length === 0) {
+    html += '<div style="padding:14px;background:var(--bg);border:1px dashed var(--bor);border-radius:8px;text-align:center;color:var(--muted);font-size:12px">Sin ventas registradas para este lote.</div>';
+    el.innerHTML = html;
+    return;
+  }
 
-    var totDirCab = 0, totDirKg = 0, totDirImp = 0;
-    ventasDirectas.slice().sort(function(a, b) { return String(b.date || '').localeCompare(String(a.date || '')); }).forEach(function(v) {
-      var cab = parseInt(v.animals || v.qty || v.cabezas || v.animal_count || 0) || 0;
-      var kg = parseFloat(v.kg || v.kg_total || v.peso_total || v.total_kg || 0) || 0;
-      var precio = parseFloat(v.price_per_kg || v.precio || 0) || 0;
-      var total = parseFloat(v.total || 0) || 0;
-      totDirCab += cab; totDirKg += kg; totDirImp += total;
-      html += '<tr style="border-bottom:1px solid var(--bor)">';
-      html += '<td style="padding:8px">' + _ahFmtFecha(v.date) + '</td>';
-      html += '<td style="padding:8px">' + (v.comprador || v.buyer || '-') + '</td>';
-      html += '<td style="padding:8px">' + (v.tipo || v.type || '-') + '</td>';
-      html += '<td style="padding:8px;text-align:right">' + _ahFmtNum(cab) + '</td>';
-      html += '<td style="padding:8px;text-align:right">' + _ahFmtNum(kg, 1) + '</td>';
-      html += '<td style="padding:8px;text-align:right">' + (precio ? moneda + ' ' + _ahFmtNum(precio, 2) : '-') + '</td>';
-      html += '<td style="padding:8px;text-align:right;font-weight:600">' + (total ? moneda + ' ' + _ahFmtNum(total) : '-') + '</td>';
-      html += '</tr>';
-    });
-    // Totales
-    html += '<tr style="background:var(--bg);font-weight:600">';
-    html += '<td style="padding:8px" colspan="3">Subtotal directo</td>';
-    html += '<td style="padding:8px;text-align:right">' + _ahFmtNum(totDirCab) + '</td>';
-    html += '<td style="padding:8px;text-align:right">' + _ahFmtNum(totDirKg, 1) + '</td>';
-    html += '<td style="padding:8px;text-align:right">-</td>';
-    html += '<td style="padding:8px;text-align:right">' + moneda + ' ' + _ahFmtNum(totDirImp) + '</td>';
+  // Calcular atribución por venta y ordenar por fecha (más reciente primero)
+  var filasVentas = todasVentas.map(function(v) {
+    var atr = _ahAtribuirVentaALote(v, lotCode);
+    return { v: v, atr: atr };
+  }).filter(function(r) {
+    return r.atr && r.atr.cabs > 0;  // Solo ventas que realmente aportan al lote
+  }).sort(function(a, b) {
+    return String(b.v.date || '').localeCompare(String(a.v.date || ''));
+  });
+
+  html += '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Cifras atribuidas a <strong style="color:var(--text)">' + escH(lotCode) + '</strong> (animales y kg específicos de este lote en cada venta)</div>';
+  html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">';
+  html += '<thead><tr style="border-bottom:1px solid var(--bor);color:var(--muted);text-transform:uppercase;font-size:10px;letter-spacing:.05em">';
+  html += '<th style="text-align:left;padding:8px">Fecha</th>';
+  html += '<th style="text-align:left;padding:8px">Comprador</th>';
+  html += '<th style="text-align:left;padding:8px">Tipo</th>';
+  html += '<th style="text-align:right;padding:8px">Cabezas</th>';
+  html += '<th style="text-align:right;padding:8px">Kg</th>';
+  html += '<th style="text-align:right;padding:8px">Precio/kg</th>';
+  html += '<th style="text-align:right;padding:8px">Ingreso</th>';
+  html += '</tr></thead><tbody>';
+
+  var totCab = 0, totKg = 0, totImp = 0;
+  filasVentas.forEach(function(r) {
+    var v = r.v;
+    var atr = r.atr;
+    var precio = parseFloat(v.price_per_kg || v.precio || 0) || 0;
+    totCab += atr.cabs; totKg += atr.kg; totImp += atr.ingreso;
+
+    // Badge indicando tipo de venta
+    var badge = '';
+    var esMulti = Array.isArray(v.lot_codes) && v.lot_codes.length > 1;
+    if (esMulti) {
+      var otrosLotes = (v.lot_codes || []).filter(function(c) { return c !== lotCode; });
+      var tooltipTxt = 'Venta multi-lote · ' + otrosLotes.length + ' otro(s) lote(s): ' + otrosLotes.join(', ');
+      badge = ' <span title="' + escH(tooltipTxt) + '" style="font-size:9px;background:rgba(255,180,0,.15);color:var(--amber);padding:1px 6px;border-radius:8px;margin-left:4px;cursor:help">multi-lote</span>';
+    }
+
+    html += '<tr style="border-bottom:1px solid var(--bor)">';
+    html += '<td style="padding:8px">' + _ahFmtFecha(v.date) + '</td>';
+    html += '<td style="padding:8px">' + (v.comprador || v.buyer || '-') + badge + '</td>';
+    html += '<td style="padding:8px">' + (v.tipo || v.type || '-') + '</td>';
+    html += '<td style="padding:8px;text-align:right">' + _ahFmtNum(atr.cabs) + '</td>';
+    html += '<td style="padding:8px;text-align:right">' + _ahFmtNum(atr.kg, 1) + '</td>';
+    html += '<td style="padding:8px;text-align:right">' + (precio ? moneda + ' ' + _ahFmtNum(precio, 2) : '-') + '</td>';
+    html += '<td style="padding:8px;text-align:right;font-weight:600;color:var(--green)">' + moneda + ' ' + _ahFmtNum(atr.ingreso) + '</td>';
     html += '</tr>';
-    html += '</tbody></table></div>';
-  }
-  html += '</div>';
+  });
 
-  // ── SECCIÓN 2: VENTAS COMPARTIDAS ──
-  if (ventasCompartidas && ventasCompartidas.length > 0) {
-    html += '<div style="margin-top:16px">';
-    html += '<div style="font-size:11px;font-weight:600;color:var(--amber);margin-bottom:4px">📋 VENTAS COMPARTIDAS (lote mezclado con otros)</div>';
-    html += '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">⚠️ Estas ventas incluyeron varios lotes simultáneamente. Los totales mostrados son del conjunto, no desglosados por lote. No se suman al análisis económico de este lote individual.</div>';
-    html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">';
-    html += '<thead><tr style="border-bottom:1px solid var(--bor);color:var(--muted);text-transform:uppercase;font-size:10px;letter-spacing:.05em">';
-    html += '<th style="text-align:left;padding:8px">Fecha</th>';
-    html += '<th style="text-align:left;padding:8px">Comprador</th>';
-    html += '<th style="text-align:left;padding:8px">Lotes</th>';
-    html += '<th style="text-align:right;padding:8px">Cabs (total)</th>';
-    html += '<th style="text-align:right;padding:8px">Kg (total)</th>';
-    html += '<th style="text-align:right;padding:8px">Importe (total)</th>';
-    html += '</tr></thead><tbody>';
-
-    ventasCompartidas.slice().sort(function(a, b) { return String(b.date || '').localeCompare(String(a.date || '')); }).forEach(function(v) {
-      var otrosLotes = v._otros_lotes || [];
-      var lotesStr = lotCode + ' + ' + otrosLotes.join(' + ');
-      html += '<tr style="border-bottom:1px solid var(--bor)">';
-      html += '<td style="padding:8px">' + _ahFmtFecha(v.date) + '</td>';
-      html += '<td style="padding:8px">' + (v.comprador || v.buyer || '-') + '</td>';
-      html += '<td style="padding:8px;font-size:11px">' + lotesStr + '</td>';
-      html += '<td style="padding:8px;text-align:right">' + _ahFmtNum(v.animals || v.qty || 0) + '</td>';
-      html += '<td style="padding:8px;text-align:right">' + _ahFmtNum(v.kg || 0, 1) + '</td>';
-      html += '<td style="padding:8px;text-align:right">' + moneda + ' ' + _ahFmtNum(v.total || 0) + '</td>';
-      html += '</tr>';
-    });
-    html += '</tbody></table></div>';
-    html += '</div>';
-  }
+  // Totales
+  html += '<tr style="background:var(--bg);font-weight:600;border-top:2px solid var(--bor)">';
+  html += '<td style="padding:8px" colspan="3">Total ' + escH(lotCode) + '</td>';
+  html += '<td style="padding:8px;text-align:right">' + _ahFmtNum(totCab) + '</td>';
+  html += '<td style="padding:8px;text-align:right">' + _ahFmtNum(totKg, 1) + '</td>';
+  html += '<td style="padding:8px;text-align:right">-</td>';
+  html += '<td style="padding:8px;text-align:right;color:var(--green)">' + moneda + ' ' + _ahFmtNum(totImp) + '</td>';
+  html += '</tr>';
+  html += '</tbody></table></div>';
 
   el.innerHTML = html;
 }
@@ -15114,6 +15232,95 @@ function _ahRenderVentas(ventasDirectas, ventasCompartidas, lotCode) {
 // ═══════════════════════════════════════════════════════════════
 // FIN ANÁLISIS HISTÓRICO
 // ═══════════════════════════════════════════════════════════════
+
+// v1.4.67: Exportar PDF del Análisis Histórico (paridad con CREA)
+function exportAnalisisHistoricoPDF() {
+  var sel = document.getElementById('ah-lot-select');
+  var lotCode = sel ? sel.value : '';
+  if (!lotCode) { toast('Seleccioná un lote primero', 'error'); return; }
+
+  var lot = (db.lots || []).find(function(l){ return l.code === lotCode; });
+  if (!lot) { toast('Lote no encontrado', 'error'); return; }
+
+  // Asegurar que el contenido esté renderizado
+  renderAnalisisHistorico();
+  var content = document.getElementById('ah-content');
+  if (!content || !content.innerHTML.trim()) { toast('Sin datos para exportar', 'error'); return; }
+
+  // Branding y nombre de la estancia
+  var brand = {};
+  try { brand = JSON.parse(localStorage.getItem('e5m_branding')||'{}'); } catch(e){}
+  var estName = brand.name || 'EstanciaPro';
+  var fechaGen = new Date().toLocaleDateString('es-BO',{year:'numeric',month:'long',day:'numeric'});
+  var fechaVenta = _ahDetectarFechaVenta(lot);
+  var fechaVentaLabel = fechaVenta ? _ahFmtFecha(fechaVenta) : '—';
+
+  // Clonar el contenido y reemplazar canvases por imágenes
+  var contentClone = content.cloneNode(true);
+  var canvases = contentClone.querySelectorAll('canvas');
+  var origCanvases = content.querySelectorAll('canvas');
+  canvases.forEach(function(canvas, i) {
+    try {
+      var orig = origCanvases[i];
+      if (orig && orig.toDataURL) {
+        var img = document.createElement('img');
+        img.src = orig.toDataURL('image/png');
+        img.style.cssText = 'max-width:100%;height:auto;display:block';
+        canvas.parentNode.replaceChild(img, canvas);
+      }
+    } catch(e) {}
+  });
+
+  // Quitar botones / inputs / selects del clone
+  contentClone.querySelectorAll('button, input, select').forEach(function(el){ el.remove(); });
+
+  // Estilos del PDF (paridad con exportCREAPDF)
+  var styles = ''
+    + '@page { size: A4; margin: 14mm 12mm; }'
+    + 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; color: #1a1d23; background: #fff; margin: 0; padding: 0; font-size: 11px; line-height: 1.45; }'
+    + '.pdf-header { border-bottom: 2px solid #d29922; padding-bottom: 12px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: flex-end; }'
+    + '.pdf-header h1 { margin: 0; font-size: 22px; color: #1a1d23; font-weight: 700; }'
+    + '.pdf-header .meta { text-align: right; font-size: 10px; color: #5a6470; line-height: 1.5; }'
+    + '.pdf-header .meta b { color: #1a1d23; }'
+    + 'h1, h2, h3, h4 { color: #1a1d23; page-break-after: avoid; }'
+    + '.card { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 10px 14px; margin-bottom: 10px; page-break-inside: avoid; }'
+    + '.card-hd { font-size: 11px; font-weight: 700; color: #1a1d23; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid #eee; text-transform: uppercase; letter-spacing: 0.4px; }'
+    + 'table { width: 100%; border-collapse: collapse; font-size: 10px; margin-top: 6px; page-break-inside: avoid; }'
+    + 'th, td { padding: 5px 7px; text-align: left; border-bottom: 1px solid #eee; }'
+    + 'th { background: #f5f5f5; font-weight: 600; color: #5a6470; font-size: 9px; text-transform: uppercase; letter-spacing: 0.3px; }'
+    + 'td { color: #1a1d23; }'
+    + '.pdf-footer { position: fixed; bottom: 6mm; left: 12mm; right: 12mm; font-size: 8px; color: #999; text-align: center; border-top: 1px solid #eee; padding-top: 4px; }'
+    + '* { color: inherit !important; background-color: transparent !important; border-color: #ddd !important; }'
+    + 'span, div { background: transparent !important; }'
+    + '.bdg, .bdg-blue, .bdg-green, .bdg-red, .bdg-amber { background: #f5f5f5 !important; color: #5a6470 !important; padding: 1px 5px; border-radius: 3px; font-size: 9px; }'
+    + '.no-print { display: none !important; }';
+
+  var titulo = '📦 Análisis Histórico — ' + escH(lotCode);
+  var subtitulo = 'Reporte zootécnico y económico · Lote vendido';
+
+  var pdfHtml = ''
+    + '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Análisis ' + escH(lotCode) + ' — '+escH(estName)+' — '+fechaGen+'</title>'
+    + '<style>'+styles+'</style>'
+    + '</head><body>'
+    + '<div class="pdf-header">'
+    +   '<div><h1>'+titulo+'</h1><div style="font-size:11px;color:#5a6470;margin-top:4px">'+subtitulo+'</div></div>'
+    +   '<div class="meta"><b>'+escH(estName)+'</b><br>Fecha venta: <b>'+fechaVentaLabel+'</b><br>Generado: '+fechaGen+'</div>'
+    + '</div>'
+    + contentClone.innerHTML
+    + '<div class="pdf-footer">EstanciaPro · '+escH(estName)+' · '+escH(lotCode)+' · '+fechaGen+'</div>'
+    + '<scr'+'ipt>window.addEventListener("load", function(){ setTimeout(function(){ window.print(); }, 300); });</scr'+'ipt>'
+    + '</body></html>';
+
+  var w = window.open('', '_blank', 'width=900,height=1100');
+  if (!w) {
+    toast('Bloqueado por el navegador. Permitir ventanas emergentes.', 'error');
+    return;
+  }
+  w.document.open();
+  w.document.write(pdfHtml);
+  w.document.close();
+  toast('Generando PDF — usá "Guardar como PDF" en el diálogo', 'success');
+}
 
 function exportAnalisisLotePDF() {
   toast('Exportación PDF próximamente. Por ahora, usá Cmd/Ctrl+P para imprimir.', 'info');
@@ -20084,6 +20291,29 @@ function showUpdateNotification(version, downloaded) {
 // Convención: máximo 3-5 bullets cortos. Lo que el usuario debe saber, no detalle técnico.
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.4.67': [
+    'Análisis Histórico ahora tiene botón de exportar a PDF (paridad con Reporte CREA)',
+    'El PDF incluye todos los KPIs, costos, gráfico de pesos, ventas y observaciones del lote',
+    'Reporte CREA: Detalle por Lote ahora oculta cuarentenas vacías (sin cabezas)',
+    'Reporte CREA: nuevo filtro "Año en curso" (1 de enero a hoy) — es el valor predeterminado',
+    'Reporte CREA: Composición de Gastos ahora con 2 donuts visuales (Egresos totales + Operativos en detalle) + tabla con números exactos',
+  ],
+  '1.4.66': [
+    'Análisis Histórico: listado de ventas unificado mostrando SOLO los datos atribuidos al lote analizado',
+    'Eliminadas columnas con totales globales que mezclaban kg/cab de otros lotes (confundía)',
+    'Ventas multi-lote ahora marcadas con badge — los números son siempre del lote en análisis',
+  ],
+  '1.4.65': [
+    'Fix: Análisis Histórico ahora atribuye con EXACTITUD las ventas multi-lote',
+    'Usa db.pesajes (tipo:venta) para identificar exactamente qué animales de cada lote se vendieron y sus pesos reales — sin prorrateo',
+    'Ej: si un animal de TROPA 3 pesó 425kg en su venta, ese kg específico se suma a TROPA 3, no se prorratea',
+    'Los números ahora coinciden EXACTAMENTE con la PWA y con el detalle individual de cada animal',
+  ],
+  '1.4.64': [
+    'Análisis Histórico: nuevos KPIs Costo/kg y Margen/kg del lote (paridad con PWA)',
+    'Costo/kg incluye compra + sanidad + mantenimiento + indirectos prorrateados',
+    'Margen/kg = Precio prom venta − Costo/kg (rentabilidad por kilo del ciclo completo)',
+  ],
   '1.4.63': [
     'Costo/Kg ahora separa Operativo (sin compra ganado) y Total (con compra) según criterio AACREA',
     'Operativo mide eficiencia del campo; Total mide rentabilidad del negocio',
@@ -23288,7 +23518,11 @@ function onCREAPeriodoChange() {
     return;
   }
   var now = new Date(); var desde = new Date();
-  if (v === 'year') desde.setFullYear(desde.getFullYear() - 1);
+  if (v === 'ytd') {
+    // Año en curso: del 1 de enero al día de hoy
+    desde = new Date(now.getFullYear(), 0, 1);
+  }
+  else if (v === 'year') desde.setFullYear(desde.getFullYear() - 1);
   else if (v === 'semester') desde.setMonth(desde.getMonth() - 6);
   else if (v === 'month') desde.setMonth(desde.getMonth() - 1);
   else desde.setMonth(desde.getMonth() - 3);
@@ -23392,7 +23626,8 @@ function renderReporteCREA() {
     hasta = new Date(inHasta + 'T23:59:59');
     periodo = 'custom';
   } else {
-    if (periodo === 'year') desde.setFullYear(desde.getFullYear() - 1);
+    if (periodo === 'ytd') desde = new Date(now.getFullYear(), 0, 1);
+    else if (periodo === 'year') desde.setFullYear(desde.getFullYear() - 1);
     else if (periodo === 'semester') desde.setMonth(desde.getMonth() - 6);
     else if (periodo === 'month') desde.setMonth(desde.getMonth() - 1);
     else desde.setMonth(desde.getMonth() - 3); // quarter por defecto
@@ -23771,9 +24006,13 @@ function renderReporteCREA() {
 
   html += '<div style="font-size:14px;font-weight:700;color:var(--amber2);margin:16px 0 10px;border-bottom:1px solid var(--bor);padding-bottom:6px">📋 Detalle por Lote <span style="font-size:11px;font-weight:400;color:var(--muted)">(incluye lotes vendidos durante el período)</span></div>';
   html += '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Lote</th><th>Categoría</th><th>Cabezas</th><th>Peso Prom.</th><th>GDPV</th><th>Prod. kg/ha</th><th>Estado</th></tr></thead><tbody>';
-  // v1.4.63: incluir lotes vendidos durante el período (antes solo activos).
-  // Ordenar: activos primero (orden alfabético), luego vendidos al final
-  var lotesDetalle = lotsAtPeriodStart.slice().sort(function(a, b) {
+  // v1.4.67: filtrar lotes vacíos (cuarentena ya traspasada) — no mostrar en Detalle por Lote
+  var lotesDetalle = lotsAtPeriodStart.slice().filter(function(l) {
+    var st = (l.status || '').toLowerCase();
+    var isSold = (st === 'sold' || st === 'vendido');
+    if (isSold) return true;  // vendidos siempre se muestran
+    return (l.animal_count || 0) > 0;  // activos solo si tienen cabezas
+  }).sort(function(a, b) {
     var stA = (a.status || '').toLowerCase();
     var stB = (b.status || '').toLowerCase();
     var soldA = (stA === 'sold' || stA === 'vendido') ? 1 : 0;
@@ -23828,20 +24067,50 @@ function renderReporteCREA() {
   });
   html += '</tbody></table></div>';
 
-  // COMPOSICIÓN DE GASTOS
+  // COMPOSICIÓN DE GASTOS — v1.4.67: 2 donuts (Total + Operativos) + tabla debajo
   html += '<div style="font-size:14px;font-weight:700;color:var(--amber2);margin:20px 0 10px;border-bottom:1px solid var(--bor);padding-bottom:6px">🧮 Composición de Gastos</div>';
   var gastos = [
-    { rubro: '🏥 Sanidad', total: gastSanidad },
-    { rubro: '🍽️ Alimentación', total: gastAlimento },
-    { rubro: '👷 Personal', total: gastPersonal + gastAdelantos },
-    { rubro: '⛽ Combustible', total: gastDiesel },
-    { rubro: '🔧 Mantenimiento', total: gastMaint },
-    { rubro: '🛒 Compras insumos', total: gastCompras },
-    { rubro: '🛢️ Aceite/Lubricantes', total: gastAceite },
-    { rubro: '🏢 Administración', total: gastoAdmin },
-    { rubro: '🏗️ Estructura', total: gastoEstructura },
-    { rubro: '🐄 Compra de ganado', total: inversionCompras },
+    { rubro: '🏥 Sanidad', total: gastSanidad,         operativo: true,  color: '#f87171' },
+    { rubro: '🍽️ Alimentación', total: gastAlimento,    operativo: true,  color: '#fb923c' },
+    { rubro: '👷 Personal', total: gastPersonal + gastAdelantos, operativo: true, color: '#fbbf24' },
+    { rubro: '⛽ Combustible', total: gastDiesel,       operativo: true,  color: '#a3e635' },
+    { rubro: '🔧 Mantenimiento', total: gastMaint,      operativo: true,  color: '#34d399' },
+    { rubro: '🛒 Compras insumos', total: gastCompras,  operativo: true,  color: '#22d3ee' },
+    { rubro: '🛢️ Aceite/Lubricantes', total: gastAceite, operativo: true, color: '#60a5fa' },
+    { rubro: '🏢 Administración', total: gastoAdmin,    operativo: true,  color: '#a78bfa' },
+    { rubro: '🏗️ Estructura', total: gastoEstructura,   operativo: true,  color: '#f472b6' },
+    { rubro: '🐄 Compra de ganado', total: inversionCompras, operativo: false, color: '#fb7185' },
   ];
+
+  var totalOperativos = gastos.filter(function(g){ return g.operativo; }).reduce(function(s,g){ return s + g.total; }, 0);
+  var hayOperativos = totalOperativos > 0;
+  var hayCompras = inversionCompras > 0;
+
+  // Layout: 2 donuts lado a lado (responsive)
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-bottom:20px">';
+
+  // ── DONUT 1: EGRESOS TOTALES (Compra ganado vs Operativos) ──
+  html += '<div style="background:var(--sur);border:1px solid var(--bor);border-radius:10px;padding:16px">';
+  html += '<div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">💰 Egresos Totales</div>';
+  html += '<div style="font-size:22px;font-weight:700;color:var(--amber2);margin-bottom:12px;font-family:DM Mono,monospace">Bs. ' + Math.round(gastTotales).toLocaleString() + '</div>';
+  html += '<div style="position:relative;height:200px"><canvas id="chart-egresos-total"></canvas></div>';
+  html += '</div>';
+
+  // ── DONUT 2: OPERATIVOS DETALLE ──
+  html += '<div style="background:var(--sur);border:1px solid var(--bor);border-radius:10px;padding:16px">';
+  html += '<div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">⚙️ Operativos (detalle)</div>';
+  html += '<div style="font-size:22px;font-weight:700;color:var(--amber2);margin-bottom:12px;font-family:DM Mono,monospace">Bs. ' + Math.round(totalOperativos).toLocaleString() + '</div>';
+  if (hayOperativos) {
+    html += '<div style="position:relative;height:200px"><canvas id="chart-operativos"></canvas></div>';
+  } else {
+    html += '<div style="height:200px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px">Sin gastos operativos en el período</div>';
+  }
+  html += '</div>';
+
+  html += '</div>';  // fin grid
+
+  // ── TABLA DETALLADA (queda como referencia con números exactos) ──
+  html += '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Detalle por rubro:</div>';
   html += '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Rubro</th><th>Total (Bs)</th><th>% Total</th><th>Por Ha</th><th>Por Cab</th></tr></thead><tbody>';
   gastos.forEach(function(g) {
     var pct = gastTotales > 0 ? Math.round(g.total / gastTotales * 1000) / 10 : 0;
@@ -23849,6 +24118,9 @@ function renderReporteCREA() {
   });
   html += '<tr style="font-weight:700;border-top:2px solid var(--bor)"><td>TOTAL</td><td style="font-family:DM Mono;color:var(--amber2)">Bs. ' + Math.round(gastTotales).toLocaleString() + '</td><td>100%</td><td style="font-family:DM Mono;color:var(--amber2)">' + (ha > 0 ? Math.round(gastTotales / ha) : 0) + '</td><td style="font-family:DM Mono;color:var(--amber2)">' + (existMedia > 0 ? Math.round(gastTotales / existMedia) : 0) + '</td></tr>';
   html += '</tbody></table></div>';
+
+  // Guardar datos para los charts (se renderizan después de innerHTML)
+  window._creaGastosData = { gastos: gastos, totalOperativos: totalOperativos, hayCompras: hayCompras };
 
   // INDICADORES OPERATIVOS
   html += '<div style="font-size:14px;font-weight:700;color:var(--amber2);margin:20px 0 10px;border-bottom:1px solid var(--bor);padding-bottom:6px">📌 Indicadores Operativos del Período</div>';
@@ -23889,6 +24161,110 @@ function renderReporteCREA() {
   html += '<div style="background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.15);border-radius:8px;padding:12px 16px;font-size:11px;color:var(--blue);margin-top:16px;line-height:1.5"><strong>ℹ️ Nota:</strong> Indicadores calculados según metodología AACREA. UA = ' + pesoUA + ' kg. Existencia media = ' + existMedia + ' cabezas. Gastos admin+estructura anualizados.</div>';
 
   el.innerHTML = html;
+
+  // v1.4.67: renderizar los donuts de Composición de Gastos
+  _creaRenderGastosDonuts();
+}
+
+// v1.4.67: Renderiza los 2 donuts de Composición de Gastos
+// (charts globales _creaChartEgresosTotal y _creaChartOperativos para destruir en re-render)
+function _creaRenderGastosDonuts() {
+  if (typeof Chart === 'undefined') return;  // Chart.js no disponible
+  var data = window._creaGastosData;
+  if (!data) return;
+
+  // Destruir charts previos para evitar memory leak
+  try { if (window._creaChartEgresosTotal) window._creaChartEgresosTotal.destroy(); } catch(e){}
+  try { if (window._creaChartOperativos) window._creaChartOperativos.destroy(); } catch(e){}
+
+  var commonOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    cutout: '60%',
+    plugins: {
+      legend: {
+        position: 'right',
+        labels: {
+          color: '#c9d1d9',
+          font: { size: 10 },
+          boxWidth: 12,
+          padding: 6,
+          // v1.4.67: filtrar leyendas con valor 0 para no llenar de "rubros vacíos"
+          filter: function(item, chartData) {
+            var idx = item.index;
+            var val = chartData.datasets[0].data[idx] || 0;
+            return val > 0;
+          }
+        }
+      },
+      tooltip: {
+        callbacks: {
+          label: function(ctx) {
+            var lbl = ctx.label || '';
+            var val = ctx.parsed || 0;
+            var tot = ctx.dataset.data.reduce(function(a,b){ return a + b; }, 0);
+            var pct = tot > 0 ? (val / tot * 100).toFixed(1) : 0;
+            return lbl + ': Bs. ' + Math.round(val).toLocaleString() + ' (' + pct + '%)';
+          }
+        }
+      }
+    }
+  };
+
+  // ── Donut 1: Egresos Totales (Compra ganado vs Operativos como bloque) ──
+  var canvas1 = document.getElementById('chart-egresos-total');
+  if (canvas1) {
+    var labels1 = [];
+    var values1 = [];
+    var colors1 = [];
+    if (data.totalOperativos > 0) {
+      labels1.push('💼 Operativos');
+      values1.push(data.totalOperativos);
+      colors1.push('#60a5fa');
+    }
+    if (data.hayCompras) {
+      var compraData = data.gastos.find(function(g){ return !g.operativo; });
+      labels1.push('🐄 Compra de ganado');
+      values1.push(compraData.total);
+      colors1.push('#fb7185');
+    }
+    if (values1.length > 0) {
+      window._creaChartEgresosTotal = new Chart(canvas1, {
+        type: 'doughnut',
+        data: {
+          labels: labels1,
+          datasets: [{
+            data: values1,
+            backgroundColor: colors1,
+            borderColor: '#0d1117',
+            borderWidth: 2
+          }]
+        },
+        options: commonOptions
+      });
+    }
+  }
+
+  // ── Donut 2: Operativos en detalle (sin compra ganado) ──
+  var canvas2 = document.getElementById('chart-operativos');
+  if (canvas2 && data.totalOperativos > 0) {
+    var operativos = data.gastos.filter(function(g){ return g.operativo && g.total > 0; });
+    // Ordenar por valor descendente para mejor visualización
+    operativos.sort(function(a, b){ return b.total - a.total; });
+    window._creaChartOperativos = new Chart(canvas2, {
+      type: 'doughnut',
+      data: {
+        labels: operativos.map(function(g){ return g.rubro; }),
+        datasets: [{
+          data: operativos.map(function(g){ return g.total; }),
+          backgroundColor: operativos.map(function(g){ return g.color; }),
+          borderColor: '#0d1117',
+          borderWidth: 2
+        }]
+      },
+      options: commonOptions
+    });
+  }
 }
 
 function exportCREAExcel() {
@@ -23925,11 +24301,12 @@ function exportCREAPDF() {
     var inDesde = (document.getElementById('crea-f-desde')||{}).value || '';
     var inHasta = (document.getElementById('crea-f-hasta')||{}).value || '';
     if (p === 'custom' && inDesde && inHasta) return 'Del ' + inDesde + ' al ' + inHasta;
+    if (p === 'ytd') return 'Año en curso (' + new Date().getFullYear() + ')';
     if (p === 'year') return 'Último año';
     if (p === 'semester') return 'Último semestre';
     if (p === 'month') return 'Último mes';
     if (p === 'quarter') return 'Último trimestre';
-    return 'Último año';
+    return 'Año en curso';
   })();
   var fechaGen = new Date().toLocaleDateString('es-BO',{year:'numeric',month:'long',day:'numeric'});
 
