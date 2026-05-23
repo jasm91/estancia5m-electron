@@ -7683,7 +7683,18 @@ function saveSale() {
         if (remainingRaw.length) {
           var pesos = remainingRaw.map(function(a){ return a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length-1].peso : 0; }).filter(function(p){return p>0;});
           thisLot.avg_weight = pesos.length ? Math.round(pesos.reduce(function(s,p){return s+p;},0)/pesos.length*10)/10 : thisLot.avg_weight;
-        } else { thisLot.status = 'vendido'; }
+        } else {
+          thisLot.status = 'vendido';
+          // v1.4.69: cerrar rotation_history del lote para liberar el potrero
+          // (sino el potrero seguía apareciendo como "ocupado" en el tab Rotación)
+          (db.rotation_history || []).forEach(function(rh) {
+            if (rh.lot_code === lc && !rh.exit_date) {
+              rh.exit_date = sale.date || new Date().toISOString().slice(0, 10);
+              rh.exit_reason = 'venta';
+              console.log('[saveSale] rotation_history cerrado para lote', lc, '— potrero', rh.potrero);
+            }
+          });
+        }
         console.log('[saveSale] Lote', lc, 'actualizado — animal_count:', thisLot.animal_count, 'status:', thisLot.status);
       } else {
         console.warn('[saveSale] No se encontró el lote', lc, 'en db.lots para actualizar');
@@ -7811,7 +7822,17 @@ function saveSale() {
     }
     if(saleLot) {
       saleLot.animal_count=Math.max(0,saleLot.animal_count-animals_count);
-      if(saleLot.animal_count===0) saleLot.status='vendido';
+      if(saleLot.animal_count===0) {
+        saleLot.status='vendido';
+        // v1.4.69: cerrar rotation_history para liberar el potrero
+        (db.rotation_history || []).forEach(function(rh) {
+          if (rh.lot_code === lot_code && !rh.exit_date) {
+            rh.exit_date = date || new Date().toISOString().slice(0, 10);
+            rh.exit_reason = 'venta';
+            console.log('[saveSale-scope=lot] rotation_history cerrado para lote', lot_code, '— potrero', rh.potrero);
+          }
+        });
+      }
       // FIX: cuando vendes en scope 'lot' (no individual), e5m_animals queda con todos los animales viejos.
       // El server reconcilia animal_count contra e5m_animals[code], así que si no removemos del cache,
       // el lote "resucita" en el próximo pull con la cantidad pre-venta.
@@ -20424,6 +20445,11 @@ function showUpdateNotification(version, downloaded) {
 // Convención: máximo 3-5 bullets cortos. Lo que el usuario debe saber, no detalle técnico.
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.4.69': [
+    'Fix bug: lotes vendidos seguían apareciendo como ocupando potreros en el tab Rotación',
+    'Solución preventiva: al vender un lote (cualquier scope), se cierra automáticamente rotation_history',
+    'Solución retroactiva: renderRotacion filtra lotes vendidos/inactivos/con 0 cab aunque tengan entry abierto',
+  ],
   '1.4.68': [
     'Análisis Histórico: Costos del Lote ahora con 2 donuts visuales (paridad con Reporte CREA)',
     'Categorías de indirectos siempre visibles aunque estén en 0 (indica dónde faltan registros)',
@@ -27775,12 +27801,27 @@ function renderRotacion() {
 
   // ─── Procesar cada potrero ────────────────────────────────
   // FIX v1.4.50: soportar MÚLTIPLES lotes en el mismo potrero.
-  // Antes: .find() devolvía solo UN entry y los demás lotes desaparecían
-  // (ej: CASA Casita con CABAÑA + LECHERIA + ENFERMERIA mostraba solo 1).
+  // FIX v1.4.69: filtrar lotes vendidos / inactivos / con 0 cab que dejaron entry abierta
+  //              en rotation_history. La venta no siempre cierra el entry, así que
+  //              acá nos protegemos para que un potrero "Vendido" no aparezca como ocupado.
+  // Antes: .find() devolvía solo UN entry y los demás lotes desaparecían.
   // Ahora: .filter() acumula todos los lotes activos en `currentLots`.
   // entry_date del potrero = MIN de los lotes; daysOccupied se calcula desde ahí.
   var enriched = potreros.map(function(p) {
-    var activeEntries = history.filter(function(r) { return r.potrero === p.name && !r.exit_date; });
+    var allEntries = history.filter(function(r) { return r.potrero === p.name && !r.exit_date; });
+
+    // v1.4.69: filtrar entries cuyo lote esté vendido o inactivo
+    var activeEntries = allEntries.filter(function(ae) {
+      var lotObj = lots.find(function(l){ return l.code === ae.lot_code; });
+      if (!lotObj) return false;                                          // lote borrado
+      var status = String(lotObj.status || '').toLowerCase();
+      if (status === 'vendido' || status === 'sold' || status === 'inactivo' || status === 'inactive') return false;
+      // Si el lote sigue activo pero su animal_count está en 0, también se filtra
+      // (ej: cuarentena vacía que se reutilizó como destino y nunca se cerró el entry).
+      if ((lotObj.animal_count || 0) === 0) return false;
+      return true;
+    });
+
     var isOccupied = activeEntries.length > 0;
 
     // Acumular lotes activos en el potrero con sus datos individuales
