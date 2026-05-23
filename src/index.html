@@ -577,7 +577,7 @@ function publishTasksToPWA() {
     <!-- <button class="nav-btn" onclick="showPage('costos',this)"><span class="nav-icon">💰</span>Costos</button>  ← Reemplazado por Contabilidad -->
     <button class="nav-btn" onclick="showPage('trazabilidad',this)"><span class="nav-icon">🔖</span>Trazabilidad</button>
     <!-- <button class="nav-btn" onclick="showPage('reportes',this)"><span class="nav-icon">📊</span>Reportes Gerenciales</button>  ← Obsoleto, info disponible en Contabilidad y CREA -->
-    <button class="nav-btn" onclick="showPage('reporte-crea',this)"><span class="nav-icon">🏆</span>Reporte CREA</button>
+    <!-- Reporte CREA eliminado v1.4.57: ahora está integrado en el Dashboard principal -->
     <button class="nav-btn" onclick="showPage('analisis-lote',this);initAnalisisLote()"><span class="nav-icon">📈</span>Análisis Lote</button>
     <button class="nav-btn" onclick="showPage('analisis-historico',this);initAnalisisHistorico()"><span class="nav-icon">📦</span>Análisis Histórico</button>
     <button class="nav-btn" onclick="showPage('params-reporte',this)"><span class="nav-icon">🎯</span>Params. Reporte</button>
@@ -600,53 +600,25 @@ function publishTasksToPWA() {
 <!-- ═══ DASHBOARD ═══ -->
 <div id="page-dashboard" class="page active">
   <div class="ph">
-    <div><div class="pt">Dashboard General</div><div class="ps" id="dash-date"></div></div>
-  </div>
-  <!-- Period filter bar -->
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-    <div style="display:flex;gap:4px;background:var(--sur2);border:1px solid var(--bor);border-radius:8px;padding:3px">
-      <button class="dash-period-btn active" id="period-dia"    onclick="setDashPeriod('dia',this)">Hoy</button>
-      <button class="dash-period-btn"        id="period-semana" onclick="setDashPeriod('semana',this)">Semana</button>
-      <button class="dash-period-btn"        id="period-mes"    onclick="setDashPeriod('mes',this)">Mes</button>
-      <button class="dash-period-btn"        id="period-todo"   onclick="setDashPeriod('todo',this)">Todo</button>
-      <button class="dash-period-btn"        id="period-custom" onclick="setDashPeriod('custom',this)">📅 Rango</button>
-    </div>
-    <div id="custom-range-inputs" style="display:none;align-items:center;gap:6px">
-      <input type="date" id="range-from" class="form-input" style="width:140px;padding:5px 8px;font-size:12px" onchange="applyCustomRange()">
-      <span style="color:var(--muted);font-size:12px">→</span>
-      <input type="date" id="range-to"   class="form-input" style="width:140px;padding:5px 8px;font-size:12px" onchange="applyCustomRange()">
-    </div>
-    <span style="font-family:DM Mono,monospace;font-size:11px;color:var(--muted)" id="period-label">Hoy</span>
-  </div>
-  <div class="stats">
-    <div class="stat"><div class="stat-icon">🐄</div><div class="stat-val" id="s-total">0</div><div class="stat-lbl">Cabezas activas</div><div class="stat-delta dg" id="s-lotes-info"></div></div>
-    <div class="stat"><div class="stat-icon">⚖️</div><div class="stat-val" id="s-peso">-</div><div class="stat-lbl">Peso prom. (kg)</div><div class="stat-delta dg">Lotes activos</div></div>
-    <div class="stat"><div class="stat-icon">⚠️</div><div class="stat-val" id="s-alerts">0</div><div class="stat-lbl">Alertas activas</div><div class="stat-delta dr" id="s-alerts-lbl">Sin alertas</div></div>
-    <div class="stat"><div class="stat-icon">🐄</div><div class="stat-val" id="s-partos">0</div><div class="stat-lbl">Partos registrados</div><div class="stat-delta" id="s-partos-lbl">este mes</div></div>
-    <div class="stat"><div class="stat-icon">💊</div><div class="stat-val" id="s-lowstock">0</div><div class="stat-lbl">Stock critico</div><div class="stat-delta da" id="s-stock-lbl">Productos</div></div>
-  </div>
-  <div class="g3-1">
-    <div>
-      <div class="card">
-        <div class="card-hd"><div class="card-title">🔔 Alertas activas</div><span id="dash-alert-count" class="bdg bdg-red">0</span></div>
-        <div class="card-body" id="dash-alerts"></div>
-      </div>
-      <div class="card">
-        <div class="card-hd"><div class="card-title">📋 Actividad reciente</div></div>
-        <div class="card-body"><div class="tl" id="dash-activity"></div></div>
-      </div>
-    </div>
-    <div>
-      <div class="card">
-        <div class="card-hd"><div class="card-title">💊 Stock veterinario</div></div>
-        <div class="card-body" id="dash-stock"></div>
-      </div>
-      <div class="card">
-        <div class="card-hd"><div class="card-title">📈 Ventas recientes</div></div>
-        <div class="card-body" id="dash-sales"></div>
-      </div>
+    <div><div class="pt">🏆 Dashboard — Reporte CREA</div><div class="ps">Indicadores productivos y económicos · Metodología AACREA</div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <select class="form-select" id="crea-periodo" style="width:160px;padding:6px 10px;font-size:12px" onchange="onCREAPeriodoChange()">
+        <option value="year">Último año</option>
+        <option value="semester">Último semestre</option>
+        <option value="quarter">Último trimestre</option>
+        <option value="month">Último mes</option>
+        <option value="custom">Personalizado</option>
+      </select>
+      <span style="font-size:10px;color:var(--muted)">Desde</span>
+      <input class="form-input" type="date" id="crea-f-desde" style="width:130px;padding:5px 8px;font-size:11px" onchange="onCREADateChange()">
+      <span style="font-size:10px;color:var(--muted)">Hasta</span>
+      <input class="form-input" type="date" id="crea-f-hasta" style="width:130px;padding:5px 8px;font-size:11px" onchange="onCREADateChange()">
+      <button class="btn btn-ghost" onclick="refreshReporteCREA()" id="btn-crea-refresh" title="Sincronizar con servidor y refrescar">🔄 Actualizar</button>
+      <button class="btn btn-primary" onclick="exportCREAExcel()">⬇ Excel</button>
+      <button class="btn btn-ghost" onclick="exportCREAPDF()" title="Generar PDF">⬇ PDF</button>
     </div>
   </div>
+  <div id="crea-content"></div>
 </div>
 
 <!-- ═══ LOTES ═══ -->
@@ -2599,28 +2571,7 @@ function publishTasksToPWA() {
 </div>
 
 <!-- REPORTE CREA -->
-<div id="page-reporte-crea" class="page">
-  <div class="ph">
-    <div><div class="pt">🏆 Reporte CREA</div><div class="ps">Indicadores productivos y económicos · Metodología AACREA</div></div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <select class="form-select" id="crea-periodo" style="width:160px;padding:6px 10px;font-size:12px" onchange="onCREAPeriodoChange()">
-        <option value="year">Último año</option>
-        <option value="semester">Último semestre</option>
-        <option value="quarter">Último trimestre</option>
-        <option value="month">Último mes</option>
-        <option value="custom">Personalizado</option>
-      </select>
-      <span style="font-size:10px;color:var(--muted)">Desde</span>
-      <input class="form-input" type="date" id="crea-f-desde" style="width:130px;padding:5px 8px;font-size:11px" onchange="onCREADateChange()">
-      <span style="font-size:10px;color:var(--muted)">Hasta</span>
-      <input class="form-input" type="date" id="crea-f-hasta" style="width:130px;padding:5px 8px;font-size:11px" onchange="onCREADateChange()">
-      <button class="btn btn-ghost" onclick="refreshReporteCREA()" id="btn-crea-refresh" title="Sincronizar con servidor y refrescar">🔄 Actualizar</button>
-      <button class="btn btn-primary" onclick="exportCREAExcel()">⬇ Excel</button>
-      <button class="btn btn-ghost" onclick="exportCREAPDF()" title="Generar PDF">⬇ PDF</button>
-    </div>
-  </div>
-  <div id="crea-content"></div>
-</div>
+<!-- page-reporte-crea eliminado v1.4.57: ahora vive como page-dashboard (primera pantalla) -->
 
 
 <!-- ROTACION DE POTREROS -->
@@ -5424,7 +5375,7 @@ function showPage_dup(name, btn) {
 
 function renderPage(name) {
   const renders = {
-    dashboard: renderDashboard,
+    dashboard: renderReporteCREA,  // v1.4.57: Dashboard = Reporte CREA
     lotes: renderLotes,
     sanidad: renderSanidad,
     stock: renderStock,
@@ -5439,7 +5390,7 @@ function renderPage(name) {
     mantenimiento: renderMantenimiento,
     maquinaria: renderMaquinaria,
     reportes: renderReportesGerenciales,
-    'reporte-crea': renderReporteCREA,
+    // 'reporte-crea': renderReporteCREA,  // v1.4.57: eliminado, ahora vive en 'dashboard'
     'rotacion': renderRotacion,
     'params-reporte': renderParamsReporte,
     lluvias: renderLluviasDesktop,
@@ -5481,136 +5432,45 @@ function updateHeaderBranding() {
 }
 
 function renderDashboard() {
+  // v1.4.57: Dashboard fusionado con Reporte CREA.
+  // Esta función ahora cumple 2 roles:
+  //  1) Actualizar los badges del menú lateral y del header (siguen existiendo fuera del dashboard)
+  //  2) Re-renderizar el contenido CREA en #crea-content
+  // Se llama desde +20 sitios (post-save de ventas, compras, etc.) — todos siguen funcionando.
+
   updateHeaderBranding();
-  const today = new Date();
-  document.getElementById('dash-date').textContent = today.toLocaleDateString('es-BO',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 
-  // Recalcular animal_count desde e5m_animals (igual que renderLotes)
-  var _dashAnimDB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
-  db.lots.forEach(function(lt) {
-    var anims = _dashAnimDB[lt.code];
-    if (anims && anims.length > 0) {
-      lt.animal_count = Math.max(lt.animal_count || 0, anims.length);
-      var ws = anims.map(function(a){ return a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length-1].peso : 0; }).filter(function(w){ return w > 0; });
-      if (ws.length) lt.avg_weight = Math.round(ws.reduce(function(s,w){return s+w;},0)/ws.length*10)/10;
+  // ── Actualizar badges del menú lateral y header (elementos que sobrevivieron al rediseño) ──
+  try {
+    // Recalcular animal_count desde e5m_animals (igual que antes, para consistencia con renderLotes)
+    var _dashAnimDB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
+    if (db && db.lots) {
+      db.lots.forEach(function(lt) {
+        var anims = _dashAnimDB[lt.code];
+        if (anims && anims.length > 0) {
+          lt.animal_count = Math.max(lt.animal_count || 0, anims.length);
+          var ws = anims.map(function(a){ return a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length-1].peso : 0; }).filter(function(w){ return w > 0; });
+          if (ws.length) lt.avg_weight = Math.round(ws.reduce(function(s,w){return s+w;},0)/ws.length*10)/10;
+        }
+      });
+
+      var activeLots = db.lots.filter(function(l){ return !l.status || l.status === 'activo' || l.status === 'active'; });
+      var activeAlerts = (db.alerts || []).filter(function(a){ return !a.resolved; }).length;
+
+      // Badges que SÍ siguen existiendo en el header y menú lateral
+      var badge = document.getElementById('alertCountBadge');
+      if (badge) badge.textContent = activeAlerts + ' alerta' + (activeAlerts !== 1 ? 's' : '');
+      var nbAlertas = document.getElementById('nb-alertas');
+      if (nbAlertas) nbAlertas.textContent = activeAlerts;
+      var nbLotes = document.getElementById('nb-lotes');
+      if (nbLotes) nbLotes.textContent = activeLots.length;
     }
-  });
-  const activeLots = db.lots.filter(l=>!l.status||l.status==='activo'||l.status==='active');
-  const totalAnimals = activeLots.reduce((s,l)=>s+l.animal_count,0);
-  const avgWeight = activeLots.length ? Math.round(activeLots.reduce((s,l)=>s+(l.avg_weight*l.animal_count),0)/totalAnimals) : 0;
-  const activeAlerts = db.alerts.filter(a=>!a.resolved).length;
-  const lowStock = db.products.filter(p=>p.stock_qty<=p.stock_min).length;
+  } catch(e) { /* defensive: no romper si algo cambió de estructura */ }
 
-  document.getElementById('s-total').textContent = totalAnimals;
-  document.getElementById('s-lotes-info').textContent = activeLots.length+' lotes activos';
-  document.getElementById('s-peso').textContent = avgWeight;
-  document.getElementById('s-alerts').textContent = activeAlerts;
-  document.getElementById('s-alerts-lbl').textContent = activeAlerts>0?'Requieren atencion':'Sin alertas pendientes';
-  // Partos del mes actual
-  var mesActual = localDate().slice(0,7);
-  var partosEl = document.getElementById('s-partos');
-  var partosLbl = document.getElementById('s-partos-lbl');
-  if(partosEl) {
-    var partosMes = (db.partos||[]).filter(function(p){return (p.date||'').startsWith(mesActual)&&p.estado!=='muerto';}).length;
-    var partosTot = (db.partos||[]).filter(function(p){return p.estado!=='muerto';}).length;
-    partosEl.textContent = partosTot;
-    if(partosLbl) partosLbl.textContent = partosMes+' este mes';
-  }
-  document.getElementById('s-lowstock').textContent = lowStock;
-  document.getElementById('s-stock-lbl').textContent = lowStock>0?'con stock critico':'Todos en nivel OK';
-
-  // Alert count badges
-  const badge = document.getElementById('alertCountBadge');
-  badge.textContent = activeAlerts+' alerta'+(activeAlerts!==1?'s':'');
-  document.getElementById('nb-alertas').textContent = activeAlerts;
-  document.getElementById('nb-lotes').textContent = activeLots.length;
-  document.getElementById('dash-alert-count').textContent = activeAlerts;
-
-  // Alerts panel
-  const al = document.getElementById('dash-alerts');
-  const alerts = db.alerts.filter(a=>!a.resolved).slice(0,4);
-  if(!alerts.length){al.innerHTML='<div style="color:var(--muted);font-family:\'DM Mono\',monospace;font-size:12px;text-align:center;padding:12px">✓ Sin alertas activas</div>';return;}
-  al.innerHTML='';
-  alerts.forEach(function(a){
-    var div=document.createElement('div');
-    div.className='alert-item ai-'+(a.severity==='critical'?'red':'amber');
-    var btn=document.createElement('button');
-    btn.className='btn btn-ghost btn-sm';
-    btn.style.marginLeft='auto';btn.style.flexShrink='0';
-    btn.textContent='✓';
-    btn.onclick=(function(id){return function(){resolveAlert(id);};})(a.id);
-    div.innerHTML='<div class="ai-icon">'+(a.severity==='critical'?'🚨':'⚠️')+'</div><div><div class="ai-title">'+escH(a.title)+'</div><div class="ai-body">'+escH(a.message)+'</div></div><div id="btn-placeholder-'+a.id+'"></div>';
-    div.lastElementChild.replaceWith(btn);
-    al.appendChild(div);
-  });
-
-  // Recent activity - combinar actividades de campo + submodulos
-  const act = document.getElementById('dash-activity');
-  var allActivities = [];
-  // Actividades del desktop/campo
-  (db.activities||[]).forEach(function(a){
-    allActivities.push({date:a.date||a.created_at||'',ca:a.created_at||a.date||'',desc:a.desc||a.description||'',lot:a.lot||'',by:a.employee||a.by||'',icon:'📋'});
-  });
-  // Agua
-  (db.agua||[]).forEach(function(r){
-    var estados={lleno:'✅ Lleno',medio:'⚠️ Medio',bajo:'🔴 Bajo',seco:'❌ Seco',roto:'🔧 Roto'};
-    allActivities.push({date:r.date,ca:r.created_at||r.date||'',desc:'Agua - '+escH(r.lot_code)+': '+(estados[r.estado]||r.estado),lot:r.lot_code,by:r.by||'',icon:'💧'});
-  });
-  // Sal
-  (db.sal||[]).forEach(function(r){
-    allActivities.push({date:r.date,ca:r.created_at||r.date||'',desc:'Sal - '+escH(r.lot_code)+': '+(r.qty||0)+' kg'+(r.tipo?' ('+escH(r.tipo)+')':''),lot:r.lot_code,by:r.by||'',icon:'🧂'});
-  });
-  // Conteo
-  (db.conteo||[]).forEach(function(r){
-    var diff=r.diff||0;var signo=diff>0?'+':'';
-    allActivities.push({date:r.date,ca:r.created_at||r.date||'',desc:'Conteo - '+escH(r.lot_code)+': '+r.counted+' cab. (sistema: '+r.ref+', dif: '+signo+diff+')',lot:r.lot_code,by:r.by||'',icon:'🔢'});
-  });
-  // Partos
-  (db.partos||[]).forEach(function(r){
-    allActivities.push({date:r.date,ca:r.created_at||r.date||'',desc:'Parto - '+escH(r.lot_code)+': '+(r.sexo==='macho'?'🐂 Macho':'🐄 Hembra')+(r.peso?' · '+r.peso+' kg':''),lot:r.lot_code,by:r.by||'',icon:'🐄'});
-  });
-  // Alimento
-  (db.alimento||[]).forEach(function(r){
-    allActivities.push({date:r.date,ca:r.created_at||r.date||'',desc:'Alimento - '+escH(r.lot_code)+': '+(r.qty||0)+' kg '+(r.tipo||'').replace(/_/g,' '),lot:r.lot_code,by:r.by||'',icon:'🌿'});
-  });
-  // Pesajes
-  (db.pesajes||[]).forEach(function(r){
-    var descPesaje = (r.tipo==='venta'||r.nota==='Peso al momento de venta')
-        ? 'Pesaje venta - Animal '+(r.animal_id||'?')+': '+(r.peso||'?')+' kg'
-        : 'Pesaje - '+escH(r.lot_code)+': '+(r.avg_weight||'?')+' kg prom · '+(r.animal_count||'?')+' animales';
-      allActivities.push({date:r.date,ca:r.created_at||r.date||'',desc:descPesaje,lot:r.lot_code,by:r.by||'',icon:'⚖️'});
-  });
-  // Ordenar por fecha desc y tomar 6
-  allActivities.sort(function(a,b){return (b.ca||b.date||'').localeCompare(a.ca||a.date||'');});
-  act.innerHTML=allActivities.slice(0,6).map(function(a){
-    var srcColors = {Desktop:'#6366F1',Campo:'#22C55E',WhatsApp:'#25D366',Bot:'#25D366',Auto:'#9CA3AF'};
-    var srcLabel = a.by || 'Auto';
-    var srcColor = srcColors[srcLabel] || (srcLabel.indexOf('WhatsApp')===0?'#25D366':srcLabel.indexOf('Campo')===0?'#22C55E':'var(--muted)');
-    return '<div class="tl-item done"><div class="tl-date">'+fmtDT(a.ca||a.date)+' <span style="font-size:9px;padding:1px 6px;border-radius:4px;background:'+srcColor+';color:#fff;font-weight:600;margin-left:4px">'+escH(srcLabel)+'</span></div><div class="tl-ttl">'+a.icon+' '+a.desc+'</div>'+(a.lot?'<div class="tl-sub">Lote '+escH(a.lot)+'</div>':'')+'</div>';
-  }).join('') || '<div style="color:var(--muted);font-size:12px;text-align:center;padding:12px">Sin actividad reciente</div>';
-
-  // Stock
-  const st = document.getElementById('dash-stock');
-  st.innerHTML=db.products.map(function(p){
-    var pct=Math.min(100,Math.round((p.stock_qty/Math.max(p.stock_min,1))*100));
-    var cls=p.stock_qty<=p.stock_min?'pf-red':pct<60?'pf-amber':'pf-green';
-    var dr=p.stock_qty<=p.stock_min?'dr':'';
-    return '<div class="prg-wrap">'+
-      '<div class="prg-top"><span class="prg-name">'+escH(p.name)+'</span><span class="prg-val '+dr+'">'+p.stock_qty+' '+p.unit+'</span></div>'+
-      '<div class="prg-bar"><div class="prg-fill '+cls+'" style="width:'+pct+'%"></div></div>'+
-    '</div>';
-  }).join('');
-
-  // Sales
-  const sv = document.getElementById('dash-sales');
-  var salesHtml = db.sales.slice(0,3).map(function(s){
-    return '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(48,54,61,.4);font-size:12px">'+
-      '<span style="color:var(--text)">Lote '+escH(s.lot_code)+' - '+escH(s.buyer)+'</span>'+
-      '<span style="color:var(--amber2);font-family:DM Mono,monospace">Bs. '+s.total.toLocaleString()+'</span>'+
-    '</div>';
-  }).join('');
-  var salesTotal = db.sales.reduce(function(s,v){ return s+v.total; }, 0);
-  sv.innerHTML = salesHtml + '<div style="margin-top:12px;font-family:DM Mono,monospace;font-size:11px;color:var(--muted)">Total: Bs. '+salesTotal.toLocaleString()+'</div>';
+  // ── Delegar el render del contenido a CREA ──
+  try {
+    if (typeof renderReporteCREA === 'function') renderReporteCREA();
+  } catch(e) { console.warn('renderReporteCREA falló:', e); }
 }
 
 // ══════════════════════════════════════════════════
@@ -23108,6 +22968,32 @@ function renderReporteCREA() {
   var totalCab = activeLots.reduce(function(s, l) { return s + (l.animal_count || 0); }, 0);
   var animalesDB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
 
+  // v1.4.59: Lotes que existían al INICIO del período = activos hoy + vendidos DURANTE el período.
+  // Sin esto, los lotes vendidos no contaban en stockInicialKg y la Producción CREA se inflaba.
+  // Helper para detectar fecha de venta de un lote (reusa lógica de Análisis Histórico)
+  function _creaFechaVenta(l) {
+    if (l.sold_at) return String(l.sold_at).slice(0, 10);
+    var ventas = (db.sales || []).filter(function(s) {
+      if (s.lot_code === l.code) return true;
+      if (Array.isArray(s.lot_codes) && s.lot_codes.indexOf(l.code) >= 0) return true;
+      if (Array.isArray(s.items)) return s.items.some(function(i) { return i.lot_code === l.code; });
+      return false;
+    });
+    if (ventas.length === 0) return l.updated_at ? String(l.updated_at).slice(0, 10) : null;
+    ventas.sort(function(a, b) { return String(b.date || '').localeCompare(String(a.date || '')); });
+    return ventas[0].date;
+  }
+  var lotsAtPeriodStart = db.lots.filter(function(l) {
+    var st = (l.status || '').toLowerCase();
+    if (st === 'sold' || st === 'vendido') {
+      var fv = _creaFechaVenta(l);
+      // Si fue vendido durante o después del inicio del período, estaba activo al inicio
+      return fv && fv >= desdeStr;
+    }
+    // Activos y cuarentena: estaban al inicio (asumiendo que existían antes de desdeStr)
+    return !st || st === 'activo' || st === 'active' || st === 'marcado_completo' || st === 'cuarentena';
+  });
+
   // Existencia media (promedio simple)
   var existMedia = totalCab;
 
@@ -23129,6 +23015,7 @@ function renderReporteCREA() {
   var inversionCompras = comprasGanadoPeriodo.reduce(function(s, c) { return s + (c.total || 0); }, 0);
 
   // Stock actual en kg (desde e5m_animals - último pesaje de cada animal)
+  // v1.4.59: solo lotes ACTIVOS hoy (stock final = foto del momento)
   var stockFinalKg = 0;
   activeLots.forEach(function(lot) {
     var anims = animalesDB[lot.code] || [];
@@ -23139,23 +23026,44 @@ function renderReporteCREA() {
   });
 
   // Stock inicial estimado: usar pesaje más cercano a desdeStr
+  // v1.4.59: incluye lotes vendidos durante el período (lotsAtPeriodStart) — antes solo activos.
+  // Para lotes vendidos, usamos el primer pesaje del lote como aproximación (peso al ingreso).
   var stockInicialKg = 0;
-  activeLots.forEach(function(lot) {
-    var anims = animalesDB[lot.code] || [];
-    anims.forEach(function(a) {
-      if (a.pesajes && a.pesajes.length) {
-        // Buscar pesaje más cercano a desdeStr
-        var closest = a.pesajes[0];
-        var closestDist = Math.abs(new Date(closest.fecha || closest.date || desdeStr).getTime() - new Date(desdeStr).getTime());
-        a.pesajes.forEach(function(p) {
-          var d = Math.abs(new Date(p.fecha || p.date || desdeStr).getTime() - new Date(desdeStr).getTime());
-          if (d < closestDist) { closest = p; closestDist = d; }
-        });
-        stockInicialKg += closest.peso || 0;
+  lotsAtPeriodStart.forEach(function(lot) {
+    var st = (lot.status || '').toLowerCase();
+    var esVendido = (st === 'sold' || st === 'vendido');
+    if (esVendido) {
+      // Lote vendido: usar peso al ingreso desde db.compras_ganado del lote, o avg_weight
+      var compras = (db.compras_ganado || []).filter(function(c) {
+        if (c.lot_code === lot.code) return true;
+        if (Array.isArray(c.lote_destinos) && c.lote_destinos.indexOf(lot.code) >= 0) return true;
+        return false;
+      });
+      if (compras.length) {
+        // Sumar kg comprados como aproximación de stock inicial del lote
+        var kgComprasLot = compras.reduce(function(s, c) { return s + (parseFloat(c.total_kg) || 0); }, 0);
+        stockInicialKg += kgComprasLot;
       } else {
-        stockInicialKg += 300;
+        // Fallback: cabezas × avg_weight del lote (o 300 si no hay)
+        stockInicialKg += (lot.animal_count || 0) * (parseFloat(lot.avg_weight) || 300);
       }
-    });
+    } else {
+      // Lote activo: usar pesaje más cercano a desdeStr para cada animal
+      var anims = animalesDB[lot.code] || [];
+      anims.forEach(function(a) {
+        if (a.pesajes && a.pesajes.length) {
+          var closest = a.pesajes[0];
+          var closestDist = Math.abs(new Date(closest.fecha || closest.date || desdeStr).getTime() - new Date(desdeStr).getTime());
+          a.pesajes.forEach(function(p) {
+            var d = Math.abs(new Date(p.fecha || p.date || desdeStr).getTime() - new Date(desdeStr).getTime());
+            if (d < closestDist) { closest = p; closestDist = d; }
+          });
+          stockInicialKg += closest.peso || 0;
+        } else {
+          stockInicialKg += 300;
+        }
+      });
+    }
   });
   if (stockInicialKg === 0) stockInicialKg = stockFinalKg + kgVendidos - kgComprados;
 
@@ -25480,7 +25388,7 @@ var _AI_PROMPT = 'Eres el asistente inteligente de EstanciaPro, sistema ganadero
 '- Cuando pregunten por animales en un rango de peso, responde con los IDs individuales y sus lotes (tienes la distribucion por rango en los datos). Ejemplo: 500+ kg: 15 cab → A01-0023(A-01):512kg, B02-0044(B-02):505kg...' +
 '- Si preguntan cuantos hay arriba/debajo de X kg, cuenta los IDs del rango correspondiente.\n' +
 'NAVEGACION:' +
-'Dashboard[NAV:dashboard:Dashboard] Lotes[NAV:lotes/list:Lotes] Animales[NAV:lotes/animales:Animales] Bajas[NAV:lotes/bajas:Bajas] Pesajes[NAV:lotes/pesajes:Pesajes] Sanidad[NAV:sanidad:Sanidad] Stock[NAV:stock:Stock] Ventas[NAV:ventas:Ventas] Combustible[NAV:diesel:Combustible] Lluvias[NAV:lluvias:Lluvias] Compras[NAV:compras:Compras] Personal[NAV:personal:Personal] Alertas[NAV:alertas:Alertas] CREA[NAV:reporte-crea:CREA] Config[NAV:config:Config] Tareas[NAV:tareas:Tareas]' +
+'Dashboard[NAV:dashboard:Dashboard CREA] Lotes[NAV:lotes/list:Lotes] Animales[NAV:lotes/animales:Animales] Bajas[NAV:lotes/bajas:Bajas] Pesajes[NAV:lotes/pesajes:Pesajes] Sanidad[NAV:sanidad:Sanidad] Stock[NAV:stock:Stock] Ventas[NAV:ventas:Ventas] Combustible[NAV:diesel:Combustible] Lluvias[NAV:lluvias:Lluvias] Compras[NAV:compras:Compras] Personal[NAV:personal:Personal] Alertas[NAV:alertas:Alertas] Config[NAV:config:Config] Tareas[NAV:tareas:Tareas]' +
 '\nACCIONES COMUNES:\n' +
 'Muerte/Baja: Lotes > Animales > boton 🪦 Baja' +
 'Venta carne post-muerte: Lotes > 🪦 Bajas > boton 💰 Vender carne [NAV:lotes/bajas:Ir a Bajas]. NUNCA dirigir a Ventas para esto.' +
@@ -25499,8 +25407,8 @@ var _AI_PROMPT = 'Eres el asistente inteligente de EstanciaPro, sistema ganadero
 var _tourStep = -1;
 var _TOUR_STEPS = [
   {
-    page: 'dashboard', title: '📊 Dashboard',
-    text: 'Pantalla principal con vista completa:\n• **Total de cabezas** y peso promedio\n• **KPIs del mes**: ventas, compras, diesel, lluvia\n• **🌤️ Clima en tiempo real**: temperatura, humedad, THI (estrés calórico), pronóstico 7 días\n• **Alertas climáticas** automáticas (calor, helada, viento, lluvia intensa)\n• Gráficos de peso y actividad reciente\n• Auto-sync cada 5 minutos con el servidor',
+    page: 'dashboard', title: '🏆 Dashboard (Reporte CREA)',
+    text: 'Pantalla principal con **Indicadores CREA** (metodología AACREA):\n• **Costo por kg producido** por lote\n• **Desglose de egresos vs ingresos** con % por categoría\n• **Personal** se calcula con pagos reales (historial_sueldos), no estimación de salario × meses\n• **Compras se distribuyen** por categoría según subcuenta (sanidad, combustible, mantenimiento, alimento, etc.) — coincide con Contabilidad\n• Solo recargas de diesel como costo (no despachos)\n• **Merma diesel y stock vet** contabilizadas\n• **Venta de carne de baja** como ingreso separado\n• Filtros de período: año/semestre/trimestre/mes/personalizado\n• Botón **🔄 Actualizar** para re-renderizar tras cambios\n• Exportable a **Excel** y **PDF**',
   },
   {
     page: 'lotes/list', title: '🐄 Lotes',
@@ -25558,10 +25466,7 @@ var _TOUR_STEPS = [
     page: 'actividades', title: '📝 Actividades',
     text: 'Timeline de **18 tipos de transacciones**:\n• Curaciones, pesajes, agua, sal, conteo, partos, alimento, mantenimiento, compras, ventas, bajas, diesel, **lluvias, aceite, movimientos, tareas completadas**\n• **Filtro por tipo** y por período\n• **Badge de origen**: Desktop, Campo, WhatsApp\n• **Botón 👁️** en cada registro para ver el detalle completo (incluye items[] de compras multi-item)',
   },
-  {
-    page: 'reporte-crea', title: '📊 Indicadores CREA',
-    text: 'Indicadores productivos y económicos:\n• **Costo por kg producido** por lote\n• **Desglose de egresos vs ingresos** con % por categoría\n• **Personal** se calcula con pagos reales (historial_sueldos), no estimación de salario × meses\n• **Compras se distribuyen** por categoría según subcuenta (sanidad, combustible, mantenimiento, alimento, etc.) — coincide con Contabilidad\n• Solo recargas de diesel como costo (no despachos)\n• **Merma diesel y stock vet** contabilizadas\n• **Venta de carne de baja** como ingreso separado\n• Botón **🔄 Actualizar** para re-renderizar tras cambios',
-  },
+  // v1.4.57: entrada 'reporte-crea' eliminada — su contenido se fusionó con 'dashboard'
   {
     page: 'analisis-lote', title: '📈 Análisis por Lote',
     text: 'Dashboard analítico por lote (sidebar **📈 Análisis Lote**):\n\n**📊 KPIs principales**: Cabezas, peso promedio, GMD, kg totales, días en lote\n**📊 Histograma de pesos** con buckets dinámicos y boxplot (mediana, cuartiles, outliers)\n**📈 Curva de crecimiento** del lote en el tiempo\n**⚡ GMD individual** ordenado de mejor a peor (verde/amber/rojo según rendimiento)\n\n**🎯 Proyección a faena** (NUEVO v1.4.23):\n• **Target editable** (peso de venta) y **GMD editable** (kg/día)\n• **Cap automático** si la GMD calculada es absurda (>3 kg/d)\n• **Botón ↺** para volver a GMD real\n• **4 KPIs**: Días a faena · Ya superaron target · No llegan en 6m (rezagados) · Valor estimado\n\n**💡 Insights** con alertas accionables · **📋 Detalle por animal** filtrable (Top performers / Rezagados) · **💉 Sanidad** del lote (curaciones, vacunas) · **📊 Comparativo** con otros lotes',
