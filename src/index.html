@@ -14806,6 +14806,50 @@ function _ahRenderCostos(lot, treatments, mantenimientos, ventas, compras) {
   // ─── RENDER UNIFICADO (una sola card, directos + indirectos juntos) ───
   var html = '';
 
+  // v1.4.67: 2 DONUTS al inicio — visión global y operativa (paridad con CREA)
+  // El donut "Total" compara compra ganado vs operativos del lote.
+  // El donut "Operativos" desglosa por categoría.
+  // Muestra todas las categorías aunque estén en 0, para indicar dónde faltan datos.
+  var operativosLote = costoDirecto + indirectos.total;  // todo menos compra de ganado
+  var hayCompra = costoCompra > 0;
+
+  html += '<div style="grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:8px">';
+
+  // Donut 1: Costos totales del lote
+  html += '<div style="background:rgba(48,54,61,.3);border:1px solid var(--bor);border-radius:10px;padding:14px">';
+  html += '<div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">💰 Costos totales del lote</div>';
+  html += '<div style="font-size:18px;font-weight:700;color:var(--amber2);margin-bottom:10px;font-family:DM Mono,monospace">' + moneda + ' ' + _ahFmtNum(costoCompra + operativosLote) + '</div>';
+  html += '<div style="position:relative;height:170px"><canvas id="ah-chart-costos-total"></canvas></div>';
+  html += '</div>';
+
+  // Donut 2: Operativos detalle
+  html += '<div style="background:rgba(48,54,61,.3);border:1px solid var(--bor);border-radius:10px;padding:14px">';
+  html += '<div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">⚙️ Operativos del lote (detalle)</div>';
+  html += '<div style="font-size:18px;font-weight:700;color:var(--amber2);margin-bottom:10px;font-family:DM Mono,monospace">' + moneda + ' ' + _ahFmtNum(operativosLote) + '</div>';
+  if (operativosLote > 0) {
+    html += '<div style="position:relative;height:170px"><canvas id="ah-chart-operativos"></canvas></div>';
+  } else {
+    html += '<div style="height:170px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px;text-align:center;padding:0 20px">Sin gastos operativos cargados en el período del lote</div>';
+  }
+  html += '</div>';
+
+  html += '</div>';  // fin grid donuts
+
+  // Guardar datos para render asíncrono de los charts
+  window._ahCostosData = {
+    costoCompra: costoCompra,
+    operativosLote: operativosLote,
+    operativos: [
+      { label: '🩹 Sanidad',         value: costoSanidad,         color: '#f87171' },
+      { label: '🔧 Mantenimiento',   value: costoMantenimiento,   color: '#34d399' },
+      { label: '👷 Sueldos',         value: indirectos.sueldos,   color: '#fbbf24' },
+      { label: '⛽ Diesel',          value: indirectos.diesel,    color: '#a3e635' },
+      { label: '🔧 Mant. general',   value: indirectos.mantGeneral, color: '#60a5fa' },
+      { label: '📦 Insumos s/lote',  value: indirectos.compras,   color: '#22d3ee' },
+      { label: '🚜 Maquinaria',      value: indirectos.maquinaria, color: '#a78bfa' }
+    ]
+  };
+
   // GRUPO 1: DIRECTOS (subtítulo + KPIs)
   html += '<div style="grid-column:1/-1;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:4px;padding-bottom:4px;border-bottom:1px solid var(--bor)">Directos</div>';
   html += _ahKpiCell('🩹 Sanidad', moneda + ' ' + _ahFmtNum(costoSanidad, 2), null,
@@ -14815,22 +14859,24 @@ function _ahRenderCostos(lot, treatments, mantenimientos, ventas, compras) {
   html += _ahKpiCell('💸 Subtotal directo', moneda + ' ' + _ahFmtNum(costoDirecto, 2), 'var(--amber)',
     cabsVendidas > 0 ? moneda + ' ' + _ahFmtNum(costoDirecto / cabsVendidas, 2) + '/cab' : '');
 
-  // GRUPO 2: INDIRECTOS (subtítulo + KPIs)
-  if (indirectos.total > 0) {
-    html += '<div style="grid-column:1/-1;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:12px;padding-bottom:4px;border-bottom:1px solid var(--bor)">Indirectos prorrateados (' + indirectos.fraccionPct.toFixed(2) + '%)</div>';
-    if (indirectos.sueldos > 0) html += _ahKpiCell('👷 Sueldos', moneda + ' ' + _ahFmtNum(indirectos.sueldos, 2), null,
-      'de ' + moneda + ' ' + _ahFmtNum(indirectos.sueldos_total, 0));
-    if (indirectos.diesel > 0) html += _ahKpiCell('⛽ Diesel', moneda + ' ' + _ahFmtNum(indirectos.diesel, 2), null,
-      'de ' + moneda + ' ' + _ahFmtNum(indirectos.diesel_total, 0));
-    if (indirectos.mantGeneral > 0) html += _ahKpiCell('🔧 Mant. general', moneda + ' ' + _ahFmtNum(indirectos.mantGeneral, 2), null,
-      'de ' + moneda + ' ' + _ahFmtNum(indirectos.mantGeneral_total, 0));
-    if (indirectos.compras > 0) html += _ahKpiCell('📦 Insumos s/lote', moneda + ' ' + _ahFmtNum(indirectos.compras, 2), null,
-      'de ' + moneda + ' ' + _ahFmtNum(indirectos.compras_total, 0));
-    if (indirectos.maquinaria > 0) html += _ahKpiCell('🚜 Maquinaria', moneda + ' ' + _ahFmtNum(indirectos.maquinaria, 2), null,
-      'de ' + moneda + ' ' + _ahFmtNum(indirectos.maquinaria_total, 0));
-    html += _ahKpiCell('📊 Subtotal indirecto', moneda + ' ' + _ahFmtNum(indirectos.total, 2), 'var(--amber)',
-      cabsVendidas > 0 ? moneda + ' ' + _ahFmtNum(indirectos.total / cabsVendidas, 2) + '/cab' : '');
+  // GRUPO 2: INDIRECTOS — v1.4.67: muestra TODAS las categorías aunque estén en 0
+  // (antes solo se mostraba si total > 0; ahora siempre se muestra el bloque para
+  // que el usuario vea dónde podría agregar datos retroactivamente)
+  html += '<div style="grid-column:1/-1;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:12px;padding-bottom:4px;border-bottom:1px solid var(--bor)">Indirectos prorrateados' + (indirectos.fraccionPct > 0 ? ' (' + indirectos.fraccionPct.toFixed(2) + '%)' : '') + '</div>';
+  function _ahIndirCell(label, valor, valorTotal) {
+    if (valor > 0) {
+      return _ahKpiCell(label, moneda + ' ' + _ahFmtNum(valor, 2), null,
+        'de ' + moneda + ' ' + _ahFmtNum(valorTotal, 0));
+    }
+    return _ahKpiCell(label, moneda + ' 0', 'var(--muted)', 'sin registros en el período');
   }
+  html += _ahIndirCell('👷 Sueldos', indirectos.sueldos, indirectos.sueldos_total);
+  html += _ahIndirCell('⛽ Diesel', indirectos.diesel, indirectos.diesel_total);
+  html += _ahIndirCell('🔧 Mant. general', indirectos.mantGeneral, indirectos.mantGeneral_total);
+  html += _ahIndirCell('📦 Insumos s/lote', indirectos.compras, indirectos.compras_total);
+  html += _ahIndirCell('🚜 Maquinaria', indirectos.maquinaria, indirectos.maquinaria_total);
+  html += _ahKpiCell('📊 Subtotal indirecto', moneda + ' ' + _ahFmtNum(indirectos.total, 2), 'var(--amber)',
+    cabsVendidas > 0 ? moneda + ' ' + _ahFmtNum(indirectos.total / cabsVendidas, 2) + '/cab' : '');
 
   // GRUPO 3: TOTAL + MARGEN
   html += '<div style="grid-column:1/-1;font-size:10px;color:var(--amber2);text-transform:uppercase;letter-spacing:.08em;margin-top:12px;padding-bottom:4px;border-bottom:1px solid var(--amber2);font-weight:600">Resultado del lote</div>';
@@ -14850,6 +14896,93 @@ function _ahRenderCostos(lot, treatments, mantenimientos, ventas, compras) {
   }
 
   el.innerHTML = html;
+
+  // v1.4.67: renderizar los donuts después del innerHTML
+  _ahRenderCostosDonuts();
+}
+
+// v1.4.67: Renderiza los 2 donuts de Costos del Lote (paridad con CREA)
+function _ahRenderCostosDonuts() {
+  if (typeof Chart === 'undefined') return;
+  var data = window._ahCostosData;
+  if (!data) return;
+
+  try { if (window._ahChartCostosTotal) window._ahChartCostosTotal.destroy(); } catch(e){}
+  try { if (window._ahChartCostosOperativos) window._ahChartCostosOperativos.destroy(); } catch(e){}
+
+  var commonOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    cutout: '60%',
+    plugins: {
+      legend: {
+        position: 'right',
+        labels: {
+          color: '#c9d1d9',
+          font: { size: 10 },
+          boxWidth: 12,
+          padding: 4,
+          filter: function(item, chartData) {
+            var val = chartData.datasets[0].data[item.index] || 0;
+            return val > 0;
+          }
+        }
+      },
+      tooltip: {
+        callbacks: {
+          label: function(ctx) {
+            var lbl = ctx.label || '';
+            var val = ctx.parsed || 0;
+            var tot = ctx.dataset.data.reduce(function(a, b){ return a + b; }, 0);
+            var pct = tot > 0 ? (val / tot * 100).toFixed(1) : 0;
+            return lbl + ': Bs. ' + Math.round(val).toLocaleString() + ' (' + pct + '%)';
+          }
+        }
+      }
+    }
+  };
+
+  // Donut 1: Costos totales del lote
+  var canvas1 = document.getElementById('ah-chart-costos-total');
+  if (canvas1 && (data.costoCompra > 0 || data.operativosLote > 0)) {
+    var labels1 = [];
+    var values1 = [];
+    var colors1 = [];
+    if (data.operativosLote > 0) {
+      labels1.push('💼 Operativos lote');
+      values1.push(data.operativosLote);
+      colors1.push('#60a5fa');
+    }
+    if (data.costoCompra > 0) {
+      labels1.push('🐄 Compra de ganado');
+      values1.push(data.costoCompra);
+      colors1.push('#fb7185');
+    }
+    window._ahChartCostosTotal = new Chart(canvas1, {
+      type: 'doughnut',
+      data: { labels: labels1, datasets: [{ data: values1, backgroundColor: colors1, borderColor: '#0d1117', borderWidth: 2 }] },
+      options: commonOptions
+    });
+  }
+
+  // Donut 2: Operativos detalle (incluye categorías con 0 — para que se vea qué falta)
+  var canvas2 = document.getElementById('ah-chart-operativos');
+  if (canvas2 && data.operativosLote > 0) {
+    var operativosOrdenados = data.operativos.slice().sort(function(a, b){ return b.value - a.value; });
+    window._ahChartCostosOperativos = new Chart(canvas2, {
+      type: 'doughnut',
+      data: {
+        labels: operativosOrdenados.map(function(o){ return o.label; }),
+        datasets: [{
+          data: operativosOrdenados.map(function(o){ return o.value; }),
+          backgroundColor: operativosOrdenados.map(function(o){ return o.color; }),
+          borderColor: '#0d1117',
+          borderWidth: 2
+        }]
+      },
+      options: commonOptions
+    });
+  }
 }
 
 // v1.4.62 (Idea 38): Calcular costos indirectos prorrateados por cabezas-días.
@@ -20291,6 +20424,11 @@ function showUpdateNotification(version, downloaded) {
 // Convención: máximo 3-5 bullets cortos. Lo que el usuario debe saber, no detalle técnico.
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.4.68': [
+    'Análisis Histórico: Costos del Lote ahora con 2 donuts visuales (paridad con Reporte CREA)',
+    'Categorías de indirectos siempre visibles aunque estén en 0 (indica dónde faltan registros)',
+    'Donut 1: compra ganado vs operativos del lote · Donut 2: detalle de operativos',
+  ],
   '1.4.67': [
     'Análisis Histórico ahora tiene botón de exportar a PDF (paridad con Reporte CREA)',
     'El PDF incluye todos los KPIs, costos, gráfico de pesos, ventas y observaciones del lote',
