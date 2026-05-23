@@ -2407,10 +2407,10 @@ function publishTasksToPWA() {
       <div id="ah-performance" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px"></div>
     </div>
 
-    <!-- Costos directos -->
+    <!-- Costos directos + indirectos (Idea 38, una sola card) -->
     <div style="background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:16px;margin-bottom:12px">
-      <div style="font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">💸 Costos directos del lote</div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Solo costos con lot_code explícito (sin prorrateo de gastos generales)</div>
+      <div style="font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">💸 Costos del lote</div>
+      <div id="ah-costos-explicacion" style="font-size:11px;color:var(--muted);margin-bottom:12px"></div>
       <div id="ah-costos-resumen" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px"></div>
     </div>
 
@@ -3131,6 +3131,10 @@ function publishTasksToPWA() {
   </div>
   <div class="form-group" id="tr-lot-wrap"><label class="form-label">Lote</label>
     <select class="form-select" id="tr-lot" onchange="onTrLotChange(this.value)"><option value="">Seleccionar...</option></select>
+    <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:var(--muted);cursor:pointer">
+      <input type="checkbox" id="tr-retroactive" onchange="onRetroactiveToggle('tr-lot', this.checked)" style="margin:0">
+      <span>Lote ya vendido (carga retroactiva)</span>
+    </label>
   </div>
 </div>
 <div id="tr-animal-wrap" style="display:none">
@@ -3994,6 +3998,10 @@ function publishTasksToPWA() {
 <div class="form-row">
   <div class="form-group"><label class="form-label">Lote</label>
     <select class="form-select" id="sal-lot"><option value="">Seleccionar...</option></select>
+    <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:var(--muted);cursor:pointer">
+      <input type="checkbox" id="sal-retroactive" onchange="onRetroactiveToggle('sal-lot', this.checked)" style="margin:0">
+      <span>Lote ya vendido (carga retroactiva)</span>
+    </label>
   </div>
   <div class="form-group"><label class="form-label">Fecha</label>
     <input class="form-input" type="date" id="sal-date">
@@ -4106,6 +4114,10 @@ function publishTasksToPWA() {
 <div class="form-row">
   <div class="form-group"><label class="form-label">Lote</label>
     <select class="form-select" id="alimento-lot"><option value="">Seleccionar...</option></select>
+    <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:var(--muted);cursor:pointer">
+      <input type="checkbox" id="alimento-retroactive" onchange="onRetroactiveToggle('alimento-lot', this.checked)" style="margin:0">
+      <span>Lote ya vendido (carga retroactiva)</span>
+    </label>
   </div>
   <div class="form-group"><label class="form-label">Fecha</label>
     <input class="form-input" type="date" id="alimento-date">
@@ -5913,6 +5925,11 @@ function renderSanidad() {
       var scopeCell = t.scope==='lot'
         ? '<span style="background:var(--sur2);padding:2px 7px;border-radius:4px;color:var(--amber2)">'+escH(t.lot_code)+'</span>'
         : '<span style="color:var(--blue)">'+escH(t.animal_id)+'</span>';
+      // v1.4.61: badge RETROACTIVO para registros cargados sobre lotes vendidos
+      var retroBadge = t.retroactive
+        ? ' <span style="background:rgba(168,85,247,.15);color:#A855F7;border:1px solid #A855F7;padding:1px 5px;border-radius:3px;font-size:9px">🕐 RETRO</span>'
+        : '';
+      scopeCell = scopeCell + retroBadge;
       var nextCell = t.next_app
         ? '<span style="color:'+(t.next_app<=todayV?'var(--red)':'var(--text)')+'">'+t.next_app+'</span>'
         : '-';
@@ -6069,6 +6086,42 @@ function validateTrCount() {
   if (warn) warn.style.display = (lot && count > lot.animal_count) ? 'block' : 'none';
 }
 
+// v1.4.61: Helper común para el toggle "Lote ya vendido (carga retroactiva)".
+// Cuando includeSold=true, repuebla el dropdown con TODOS los lotes (incluyendo vendidos)
+// con tag visual [VENDIDO]. Si false, vuelve solo a los activos.
+function onRetroactiveToggle(selectId, includeSold) {
+  var sel = document.getElementById(selectId);
+  if (!sel) return;
+  var currentVal = sel.value;  // recordar selección actual
+
+  var filtered;
+  if (includeSold) {
+    filtered = db.lots.filter(function(l) { return true; });
+  } else {
+    filtered = db.lots.filter(function(l) {
+      var st = (l.status || '').toLowerCase();
+      return !st || st === 'activo' || st === 'active';
+    });
+  }
+
+  var opts = filtered.map(function(l) {
+    var st = (l.status || '').toLowerCase();
+    var tag = '';
+    if (st === 'sold' || st === 'vendido') tag = ' [VENDIDO]';
+    else if (st === 'cuarentena') tag = ' [CUAR]';
+    else if (st === 'marcado_completo') tag = ' [MARCADO]';
+    var count = l.animal_count != null ? ' (' + l.animal_count + ' cab.)' : '';
+    return '<option value="' + escH(l.code) + '">' + escH(l.code) + ' - ' + escH(l.category || '') + tag + count + '</option>';
+  }).join('');
+
+  sel.innerHTML = '<option value="">Seleccionar...</option>' + opts;
+  // Re-seleccionar valor previo si todavía existe en las opciones
+  if (currentVal) {
+    var stillExists = filtered.some(function(l) { return l.code === currentVal; });
+    if (stillExists) sel.value = currentVal;
+  }
+}
+
 function saveTreatment() {
   const product_id = parseInt(document.getElementById('tr-product').value);
   const scope = document.getElementById('tr-scope').value;
@@ -6084,8 +6137,11 @@ function saveTreatment() {
   if(!product_id||!dose||!date){toast('Completa producto, dosis y fecha','error');return;}
   // FIX v1.4.34: no permitir fechas futuras (tr-next sí puede ser futuro)
   if(!validateNotFuture(date, 'fecha aplicación')) return;
+  // v1.4.61: detectar si es carga retroactiva (lote vendido)
+  var isRetroactive = (document.getElementById('tr-retroactive') || {}).checked || false;
   if(scope==='lot'&&!lot_code){toast('Selecciona un lote','error');return;}
-  if(scope==='lot'&&lot_code) {
+  if(scope==='lot'&&lot_code&&!isRetroactive) {
+    // Validaciones normales solo si NO es retroactivo
     var treatLot = db.lots.find(function(l){return l.code===lot_code;});
     if (treatLot && treatLot.animal_count === 0) {
       toast('El lote '+lot_code+' no tiene animales activos','error'); return;
@@ -6113,7 +6169,8 @@ function saveTreatment() {
     applied_at:date,next_app:next||null,
     diagnosis:diag,notes,
     by:(document.getElementById('tr-by')||{value:'Cesar Moreno'}).value||'Cesar Moreno',
-    cost:Math.round(totalUsed*(prod.unit_cost||0)*100)/100
+    cost:Math.round(totalUsed*(prod.unit_cost||0)*100)/100,
+    retroactive: isRetroactive  // v1.4.61: marca para auditoría
   };
   db.treatments.push(t);
 
@@ -7635,6 +7692,38 @@ function saveSale() {
     sale.kg_facturados = discountPct > 0 ? Math.round(totalKg * (1 - discountPct/100) * 10) / 10 : sale.kg;
     sale.total = Math.round(sale.kg_facturados * price * 100) / 100;
     sale.animal_ids = _saleSelectedAnimals.slice();
+
+    // v1.4.61: GUARDAR DESGLOSE POR LOTE en sale.items[] para reportes precisos.
+    // Esto se calcula EN BACKEND (sin cambiar UX) sumando los pesos reales de cada animal vendido
+    // por lote. La fracción de ingreso se prorratea por kg de cada lote vs kg totales.
+    // Ventas single-lote también guardan items (con un solo elemento), uniforme.
+    sale.items = Object.keys(byLot).map(function(lc) {
+      var idsLot = byLot[lc];
+      var kgLot = 0;
+      idsLot.forEach(function(id) {
+        var pesoReal = _salePesoMap[id] || 0;
+        if (!pesoReal) {
+          // Fallback: usar último pesaje del animal si _salePesoMap no lo tiene
+          var animalEnLote = (animalesDB[lc] || []).find(function(x) { return String(x.animal_id || x.id || '') === String(id); });
+          if (animalEnLote && animalEnLote.pesajes && animalEnLote.pesajes.length) {
+            pesoReal = animalEnLote.pesajes[animalEnLote.pesajes.length - 1].peso || 0;
+          }
+        }
+        kgLot += pesoReal;
+      });
+      var fraccion = totalKg > 0 ? (kgLot / totalKg) : (idsLot.length / _saleSelectedAnimals.length);
+      var kgFactLot = discountPct > 0 ? kgLot * (1 - discountPct / 100) : kgLot;
+      return {
+        lot_code: lc,
+        animals: idsLot.length,
+        kg: Math.round(kgLot * 10) / 10,
+        kg_facturados: Math.round(kgFactLot * 10) / 10,
+        total: Math.round(kgFactLot * price * 100) / 100,
+        animal_ids: idsLot.slice()
+      };
+    });
+    console.log('[saveSale] sale.items[] =', sale.items);
+
     if (isMultiLot) {
       // Para venta multi-lote, dejamos lot_code como '__all__' pero guardamos info de lotes tocados
       sale.lot_codes = allTouchedLots;
@@ -7684,6 +7773,17 @@ function saveSale() {
     sale.kg_facturados = discountPct > 0 ? Math.round(kg * (1 - discountPct/100) * 10) / 10 : kg;
     sale.total=Math.round(sale.kg_facturados*price*100)/100;
     sale.animal_ids=[];
+
+    // v1.4.61: scope='lot' siempre es single-lote (un solo lote en lot_code).
+    // Igualmente guardamos sale.items[] para uniformidad y reportes futuros.
+    sale.items = [{
+      lot_code: lot_code,
+      animals: animals_count,
+      kg: kg,
+      kg_facturados: sale.kg_facturados,
+      total: sale.total,
+      animal_ids: []
+    }];
     // Si se ingresó peso por animal, registrar pesaje en los primeros N animales del lote
     if(pesoPorAnimal>0) {
       var lotAnimals=animalesDB[lot_code]||[];
@@ -9402,6 +9502,16 @@ function openModal(id) {
     if(!_isFilterOrFutureOk(d.id)) d.max = dtl;
   });
   if (id === 'modal-pesaje' && typeof populatePesajeModal === 'function') populatePesajeModal();
+  // v1.4.61: resetear checkboxes "retroactive" al abrir cualquier modal (evitar arrastrar estado)
+  ['tr-retroactive', 'sal-retroactive', 'alimento-retroactive'].forEach(function(cbId) {
+    var cb = el.querySelector('#' + cbId);
+    if (cb && cb.checked) {
+      cb.checked = false;
+      // Repoblar el dropdown asociado (solo activos)
+      var targetId = cbId.replace('-retroactive', '-lot');
+      if (typeof onRetroactiveToggle === 'function') onRetroactiveToggle(targetId, false);
+    }
+  });
 }
 
 function closeModal(id) {
@@ -9447,6 +9557,15 @@ function populateSelects() {
   if (saleLotEl) {
     saleLotEl.innerHTML = '<option value="">Seleccionar...</option><option value="__all__">🌐 Todos los lotes (mix)</option>'+lotOpts;
   }
+
+  // v1.4.61: dropdowns adicionales con misma lista de lotes activos
+  ['sal-lot', 'alimento-lot', 'conteo-lot', 'parto-lot'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el && !el.innerHTML.includes('value="')) {
+      // Solo poblar si está vacío (los otros dropdowns se pueblan en otros lados)
+      el.innerHTML = '<option value="">Seleccionar...</option>' + lotOpts;
+    }
+  });
 
   // Vincular compras a stock
   var purProdLink = document.getElementById('pur-product-link');
@@ -14464,18 +14583,12 @@ function _ahRenderCostos(lot, treatments, mantenimientos, ventas, compras) {
   var moneda = _ahMoneda();
   var products = db.products || [];
 
-  // 1. Costo sanidad (treatments × cost de productos)
-  // Modelo real: t.cost (costo total ya calculado), o fallback a t.count × prod.unit_cost
-  // Quantity field varies: t.count (ml usados) o t.quantity (legacy)
+  // ─── COSTOS DIRECTOS DEL LOTE ───
+  // 1. Sanidad (treatments × cost de productos)
   var costoSanidad = 0;
   (treatments || []).forEach(function(t) {
-    // Si el tratamiento tiene un cost ya calculado, usarlo directamente
     var costoT = parseFloat(t.cost || 0);
-    if (costoT > 0) {
-      costoSanidad += costoT;
-      return;
-    }
-    // Fallback: calcular desde producto
+    if (costoT > 0) { costoSanidad += costoT; return; }
     var prod = products.find(function(p) { return p.id === t.product_id || p.name === t.product_name; });
     var unitCost = prod ? parseFloat(prod.unit_cost || prod.cost || 0) : 0;
     if (unitCost > 0) {
@@ -14484,10 +14597,9 @@ function _ahRenderCostos(lot, treatments, mantenimientos, ventas, compras) {
     }
   });
 
-  // 2. Costo mantenimientos del lote
+  // 2. Mantenimientos del lote
   var costoMantenimiento = 0;
   (mantenimientos || []).forEach(function(m) {
-    // Sumar items si hay (estructura multi-item)
     if (Array.isArray(m.stock_items)) {
       m.stock_items.forEach(function(si) {
         var prod = products.find(function(p) { return p.id === si.product_id || p.name === si.product_name; });
@@ -14496,15 +14608,18 @@ function _ahRenderCostos(lot, treatments, mantenimientos, ventas, compras) {
         costoMantenimiento += qty * cost;
       });
     } else {
-      // Fallback: total directo si existe
       costoMantenimiento += parseFloat(m.total || m.costo || 0) || 0;
     }
   });
 
-  // 3. Costo total directo
-  var costoTotal = costoSanidad + costoMantenimiento;
+  var costoDirecto = costoSanidad + costoMantenimiento;
 
-  // 4. Calcular ingreso y costo compra para margen neto
+  // ─── COSTOS INDIRECTOS PRORRATEADOS (Idea 38) ───
+  var indirectos = _ahCalcularIndirectos(lot, ventas, compras);
+
+  var costoTotal = costoDirecto + indirectos.total;
+
+  // ─── INGRESOS y COSTO COMPRA ───
   var ingresoTotal = 0;
   ventas.forEach(function(v) {
     if (Array.isArray(v.items)) {
@@ -14515,20 +14630,20 @@ function _ahRenderCostos(lot, treatments, mantenimientos, ventas, compras) {
       ingresoTotal += parseFloat(v.total || 0) || 0;
     }
   });
+
   var costoCompra = 0;
   compras.forEach(function(c) {
     costoCompra += parseFloat(c.total || c.precio_total || 0) || 0;
   });
 
-  // 5. Margen neto (solo si hay compra registrada)
-  var margenNeto = null;
-  var margenPct = null;
+  // ─── MARGEN NETO ───
+  var margenNeto = null, margenPct = null;
   if (costoCompra > 0) {
     margenNeto = ingresoTotal - costoCompra - costoTotal;
     margenPct = (margenNeto / costoCompra) * 100;
   }
 
-  // Calcular cabezas vendidas para el costo/cab
+  // ─── CABEZAS VENDIDAS para costo/cab ───
   var cabsVendidas = 0;
   ventas.forEach(function(v) {
     if (Array.isArray(v.items)) {
@@ -14539,23 +14654,263 @@ function _ahRenderCostos(lot, treatments, mantenimientos, ventas, compras) {
       cabsVendidas += parseInt(v.animals || v.qty || v.cabezas || v.animal_count || 0) || 0;
     }
   });
-  var costoPorCab = cabsVendidas > 0 ? (costoTotal / cabsVendidas) : null;
 
+  // ─── EXPLICACIÓN del prorrateo ───
+  var elExpl = document.getElementById('ah-costos-explicacion');
+  if (elExpl) {
+    if (indirectos.cabDiasLote > 0 && indirectos.cabDiasTotal > 0) {
+      elExpl.innerHTML =
+        '<strong>Directos:</strong> sanidad y mantenimiento atribuidos a este lote.&nbsp;&nbsp;' +
+        '<strong>Indirectos:</strong> sueldos, diesel, mantenimiento general, compras de insumos y maquinaria del período del lote, ' +
+        'prorrateados por <strong>cabezas-días</strong> (este lote: ' +
+        _ahFmtNum(indirectos.cabDiasLote, 0) + ' cab-días de ' + _ahFmtNum(indirectos.cabDiasTotal, 0) + ' totales del rebaño · ' +
+        '<strong>' + indirectos.fraccionPct.toFixed(2) + '%</strong>).';
+    } else {
+      elExpl.innerHTML =
+        '<strong>Directos:</strong> sanidad y mantenimiento atribuidos a este lote.&nbsp;&nbsp;' +
+        '<strong>Indirectos:</strong> ' + (indirectos.razon || 'no disponibles');
+    }
+  }
+
+  // ─── RENDER UNIFICADO (una sola card, directos + indirectos juntos) ───
   var html = '';
+
+  // GRUPO 1: DIRECTOS (subtítulo + KPIs)
+  html += '<div style="grid-column:1/-1;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:4px;padding-bottom:4px;border-bottom:1px solid var(--bor)">Directos</div>';
   html += _ahKpiCell('🩹 Sanidad', moneda + ' ' + _ahFmtNum(costoSanidad, 2), null,
     (treatments || []).length + ' tratamiento(s)');
-  html += _ahKpiCell('🔧 Mantenimientos', moneda + ' ' + _ahFmtNum(costoMantenimiento, 2), null,
+  html += _ahKpiCell('🔧 Mantenimiento', moneda + ' ' + _ahFmtNum(costoMantenimiento, 2), null,
     (mantenimientos || []).length + ' registros');
-  html += _ahKpiCell('💸 Total directo', moneda + ' ' + _ahFmtNum(costoTotal, 2), 'var(--amber)',
-    costoPorCab != null ? moneda + ' ' + _ahFmtNum(costoPorCab, 2) + '/cab' : '');
+  html += _ahKpiCell('💸 Subtotal directo', moneda + ' ' + _ahFmtNum(costoDirecto, 2), 'var(--amber)',
+    cabsVendidas > 0 ? moneda + ' ' + _ahFmtNum(costoDirecto / cabsVendidas, 2) + '/cab' : '');
+
+  // GRUPO 2: INDIRECTOS (subtítulo + KPIs)
+  if (indirectos.total > 0) {
+    html += '<div style="grid-column:1/-1;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:12px;padding-bottom:4px;border-bottom:1px solid var(--bor)">Indirectos prorrateados (' + indirectos.fraccionPct.toFixed(2) + '%)</div>';
+    if (indirectos.sueldos > 0) html += _ahKpiCell('👷 Sueldos', moneda + ' ' + _ahFmtNum(indirectos.sueldos, 2), null,
+      'de ' + moneda + ' ' + _ahFmtNum(indirectos.sueldos_total, 0));
+    if (indirectos.diesel > 0) html += _ahKpiCell('⛽ Diesel', moneda + ' ' + _ahFmtNum(indirectos.diesel, 2), null,
+      'de ' + moneda + ' ' + _ahFmtNum(indirectos.diesel_total, 0));
+    if (indirectos.mantGeneral > 0) html += _ahKpiCell('🔧 Mant. general', moneda + ' ' + _ahFmtNum(indirectos.mantGeneral, 2), null,
+      'de ' + moneda + ' ' + _ahFmtNum(indirectos.mantGeneral_total, 0));
+    if (indirectos.compras > 0) html += _ahKpiCell('📦 Insumos s/lote', moneda + ' ' + _ahFmtNum(indirectos.compras, 2), null,
+      'de ' + moneda + ' ' + _ahFmtNum(indirectos.compras_total, 0));
+    if (indirectos.maquinaria > 0) html += _ahKpiCell('🚜 Maquinaria', moneda + ' ' + _ahFmtNum(indirectos.maquinaria, 2), null,
+      'de ' + moneda + ' ' + _ahFmtNum(indirectos.maquinaria_total, 0));
+    html += _ahKpiCell('📊 Subtotal indirecto', moneda + ' ' + _ahFmtNum(indirectos.total, 2), 'var(--amber)',
+      cabsVendidas > 0 ? moneda + ' ' + _ahFmtNum(indirectos.total / cabsVendidas, 2) + '/cab' : '');
+  }
+
+  // GRUPO 3: TOTAL + MARGEN
+  html += '<div style="grid-column:1/-1;font-size:10px;color:var(--amber2);text-transform:uppercase;letter-spacing:.08em;margin-top:12px;padding-bottom:4px;border-bottom:1px solid var(--amber2);font-weight:600">Resultado del lote</div>';
+  html += _ahKpiCell('💵 Costo total', moneda + ' ' + _ahFmtNum(costoTotal, 2), 'var(--amber2)',
+    cabsVendidas > 0 ? moneda + ' ' + _ahFmtNum(costoTotal / cabsVendidas, 2) + '/cab' : '');
   if (margenNeto != null) {
-    html += _ahKpiCell('💎 Margen neto', moneda + ' ' + _ahFmtNum(margenNeto),
+    html += _ahKpiCell('🎯 Margen neto real', moneda + ' ' + _ahFmtNum(margenNeto),
       margenNeto >= 0 ? 'var(--green)' : 'var(--red)',
       _ahFmtNum(margenPct, 1) + '% s/inversión');
   } else {
-    html += _ahKpiCell('💎 Margen neto', 'N/D', 'var(--muted)', 'sin compra registrada');
+    html += _ahKpiCell('🎯 Margen neto real', 'N/D', 'var(--muted)', 'sin compra registrada');
   }
+  if (ingresoTotal > 0) {
+    var costoSobreIngreso = (costoTotal / ingresoTotal) * 100;
+    var colorRatio = costoSobreIngreso < 50 ? 'var(--green)' : (costoSobreIngreso < 80 ? 'var(--amber)' : 'var(--red)');
+    html += _ahKpiCell('📉 Costos / ingreso', _ahFmtNum(costoSobreIngreso, 1) + '%', colorRatio, '');
+  }
+
   el.innerHTML = html;
+}
+
+// v1.4.62 (Idea 38): Calcular costos indirectos prorrateados por cabezas-días.
+// Método estándar AACREA. Categorías: sueldos, diesel, mantenimiento general,
+// compras de insumos sin lote, maquinaria.
+function _ahCalcularIndirectos(lot, ventas, compras) {
+  var result = {
+    sueldos: 0, sueldos_total: 0,
+    diesel: 0, diesel_total: 0,
+    mantGeneral: 0, mantGeneral_total: 0,
+    compras: 0, compras_total: 0,
+    maquinaria: 0, maquinaria_total: 0,
+    total: 0,
+    cabDiasLote: 0, cabDiasTotal: 0,
+    fraccionPct: 0,
+    razon: null
+  };
+
+  // ── 1. Determinar período del lote ──
+  var fechaEntrada = null;
+  if (Array.isArray(compras) && compras.length > 0) {
+    compras.forEach(function(c) {
+      var f = c.date || c.fecha;
+      if (f && (!fechaEntrada || f < fechaEntrada)) fechaEntrada = f;
+    });
+  }
+  if (!fechaEntrada) fechaEntrada = lot.entry_date;
+
+  var fechaEgreso = null;
+  if (Array.isArray(ventas) && ventas.length > 0) {
+    ventas.forEach(function(v) {
+      var f = v.date || v.fecha;
+      if (f && (!fechaEgreso || f > fechaEgreso)) fechaEgreso = f;
+    });
+  }
+  if (!fechaEgreso) fechaEgreso = today();
+
+  if (!fechaEntrada || !fechaEgreso) {
+    result.razon = 'sin fecha de entrada/egreso para calcular cab-días';
+    return result;
+  }
+
+  fechaEntrada = String(fechaEntrada).slice(0, 10);
+  fechaEgreso = String(fechaEgreso).slice(0, 10);
+
+  var dInicio = new Date(fechaEntrada);
+  var dFin = new Date(fechaEgreso);
+  var diasLote = Math.max(1, Math.round((dFin - dInicio) / 86400000));
+
+  // ── 2. Cabezas-días del lote ──
+  var cabsCompradas = 0;
+  (compras || []).forEach(function(c) {
+    cabsCompradas += parseInt(c.animal_count || c.cabezas || 0) || 0;
+  });
+  var cabsVendidas = 0;
+  (ventas || []).forEach(function(v) {
+    if (Array.isArray(v.items)) {
+      v.items.forEach(function(i) {
+        if (i.lot_code === lot.code) cabsVendidas += parseInt(i.animals || 0) || 0;
+      });
+    } else {
+      cabsVendidas += parseInt(v.animals || v.animal_count || 0) || 0;
+    }
+  });
+
+  var cabsFinales = lot.animal_count || 0;
+  var cabsPromedio;
+  if (cabsCompradas > 0) {
+    cabsPromedio = (cabsCompradas + cabsFinales) / 2;
+  } else if (cabsVendidas > 0) {
+    cabsPromedio = cabsVendidas / 2;
+  } else {
+    cabsPromedio = cabsFinales;
+  }
+
+  result.cabDiasLote = Math.round(cabsPromedio * diasLote);
+
+  // ── 3. Cabezas-días totales del rebaño en el mismo período ──
+  var cabDiasTotal = 0;
+  (db.lots || []).forEach(function(l) {
+    var lotEntry = l.entry_date ? new Date(l.entry_date) : dInicio;
+    var lotExit = dFin;
+    if (l.status === 'vendido' || l.status === 'sold') {
+      var ultVenta = null;
+      (db.sales || []).forEach(function(s) {
+        var matchSingle = s.lot_code === l.code;
+        var matchMulti = Array.isArray(s.lot_codes) && s.lot_codes.indexOf(l.code) >= 0;
+        var matchItems = Array.isArray(s.items) && s.items.some(function(i) { return i.lot_code === l.code; });
+        if (matchSingle || matchMulti || matchItems) {
+          var f = s.date || s.fecha;
+          if (f && (!ultVenta || f > ultVenta)) ultVenta = f;
+        }
+      });
+      if (ultVenta) lotExit = new Date(String(ultVenta).slice(0, 10));
+    }
+
+    var solapInicio = lotEntry > dInicio ? lotEntry : dInicio;
+    var solapFin = lotExit < dFin ? lotExit : dFin;
+    if (solapFin < solapInicio) return;
+
+    var diasSolap = Math.max(0, Math.round((solapFin - solapInicio) / 86400000));
+    if (diasSolap === 0) return;
+
+    var lAnim = l.animal_count || 0;
+    if (l.status === 'vendido' || l.status === 'sold') {
+      var compraOrig = (db.compras_ganado || []).find(function(c) { return c.lot_code === l.code || (Array.isArray(c.lote_destinos) && c.lote_destinos.indexOf(l.code) >= 0); });
+      if (compraOrig && compraOrig.animal_count) lAnim = compraOrig.animal_count;
+      else lAnim = 50;
+    }
+
+    cabDiasTotal += lAnim * diasSolap;
+  });
+
+  result.cabDiasTotal = cabDiasTotal;
+
+  if (cabDiasTotal === 0) {
+    result.razon = 'no hay otros lotes activos en el período para prorratear';
+    return result;
+  }
+
+  var fraccion = result.cabDiasLote / cabDiasTotal;
+  result.fraccionPct = fraccion * 100;
+
+  // ── 4. Sumar costos indirectos del período ──
+  function _estaEnPeriodo(fecha) {
+    if (!fecha) return false;
+    var f = String(fecha).slice(0, 10);
+    return f >= fechaEntrada && f <= fechaEgreso;
+  }
+
+  // 4.1 Sueldos: historial_sueldos
+  (db.historial_sueldos || []).forEach(function(s) {
+    if (_estaEnPeriodo(s.fecha || s.date)) {
+      result.sueldos_total += parseFloat(s.monto || s.total || 0) || 0;
+    }
+  });
+
+  // 4.2 Diesel: despachos del período
+  (db.diesel || []).forEach(function(d) {
+    if ((d.type === 'despacho' || d.tipo === 'despacho') && _estaEnPeriodo(d.date || d.fecha)) {
+      var qty = parseFloat(d.qty || d.litros || 0) || 0;
+      var precio = parseFloat(d.precio_unit || d.unit_cost || d.precio || 0) || 0;
+      var valor = parseFloat(d.total || d.costo || (qty * precio)) || 0;
+      result.diesel_total += valor;
+    }
+  });
+
+  // 4.3 Mantenimiento general (sin lot_code)
+  (db.maintenance || []).forEach(function(m) {
+    var enPeriodo = _estaEnPeriodo(m.date || m.fecha);
+    var sinLote = !m.lot_code || m.lot_code === '';
+    if (enPeriodo && sinLote) {
+      var costoM = 0;
+      if (Array.isArray(m.stock_items)) {
+        m.stock_items.forEach(function(si) {
+          var prod = (db.products || []).find(function(p) { return p.id === si.product_id || p.name === si.product_name; });
+          var unitCost = prod ? parseFloat(prod.unit_cost || prod.cost || 0) : 0;
+          var qty = parseFloat(si.quantity || si.count || 0) || 0;
+          costoM += qty * unitCost;
+        });
+      }
+      costoM += parseFloat(m.cost || m.costo_mano_obra || m.total || 0) || 0;
+      result.mantGeneral_total += costoM;
+    }
+  });
+
+  // 4.4 Compras de insumos sin lote (db.purchases)
+  (db.purchases || []).forEach(function(p) {
+    var enPeriodo = _estaEnPeriodo(p.date || p.fecha);
+    var sinLote = !p.lot_code || p.lot_code === '';
+    if (enPeriodo && sinLote) {
+      result.compras_total += parseFloat(p.total || p.precio_total || p.cost || 0) || 0;
+    }
+  });
+
+  // 4.5 Maquinaria (db.maquinaria — gastos asociados a equipos)
+  (db.maquinaria || []).forEach(function(m) {
+    var enPeriodo = _estaEnPeriodo(m.date || m.fecha || m.created_at);
+    if (enPeriodo) {
+      result.maquinaria_total += parseFloat(m.cost || m.costo || m.total || 0) || 0;
+    }
+  });
+
+  // ── 5. Aplicar fracción a cada categoría ──
+  result.sueldos     = result.sueldos_total     * fraccion;
+  result.diesel      = result.diesel_total      * fraccion;
+  result.mantGeneral = result.mantGeneral_total * fraccion;
+  result.compras     = result.compras_total     * fraccion;
+  result.maquinaria  = result.maquinaria_total  * fraccion;
+  result.total = result.sueldos + result.diesel + result.mantGeneral + result.compras + result.maquinaria;
+
+  return result;
 }
 
 function _ahRenderObservaciones(lot, pesajes, treatments, compras, ventasDirectas, ventasCompartidas, bajas, partos, mantenimientos) {
@@ -14867,7 +15222,7 @@ function checkForAppUpdate() {
     window.estancia.app.checkUpdate().then(function(res) {
       if (btn) btn.disabled = false;
       if (res.status === 'available') {
-        setUpdateStatus('✅ <strong>Nueva versión disponible:</strong> v' + res.version + ' (actual: v' + res.currentVersion + ')<br><span style="font-size:10px;color:var(--muted)">Haz click en "Actualizar ahora" para descargar</span>', 'var(--green)');
+        setUpdateStatus('✅ <strong>Nueva versión disponible:</strong> v' + res.version + ' (actual: v' + res.currentVersion + ')<br><span style="font-size:10px;color:var(--muted)">Haz click en "Actualizar ahora" para descargar</span>' + renderChangelogHTML(res.version), 'var(--green)');
         var forceBtn = document.getElementById('btn-force-update');
         if (forceBtn) forceBtn.style.animation = 'pulse 1.5s infinite';
       } else if (res.status === 'current') {
@@ -14894,7 +15249,7 @@ function checkForAppUpdate() {
           var latestVersion = data.tag_name.replace('v','');
           var currentVersion = _APP_VERSION || '0.0.0';
           if (latestVersion !== currentVersion) {
-            setUpdateStatus('✅ <strong>Nueva versión:</strong> v' + latestVersion + ' (actual: v' + currentVersion + ')<br><span style="font-size:10px;color:var(--muted)">Haz click en "Actualizar ahora" para descargar</span>', 'var(--green)');
+            setUpdateStatus('✅ <strong>Nueva versión:</strong> v' + latestVersion + ' (actual: v' + currentVersion + ')<br><span style="font-size:10px;color:var(--muted)">Haz click en "Actualizar ahora" para descargar</span>' + renderChangelogHTML(latestVersion), 'var(--green)');
           } else {
             setUpdateStatus('✅ Versión actual: <strong>v' + currentVersion + '</strong> (la más reciente)', 'var(--green)');
           }
@@ -14922,7 +15277,7 @@ function checkForAppUpdate() {
     window.estancia.app.onUpdateDownloaded(function(info) {
       window._updateReceived = true;
       if (window._updateTimer) clearInterval(window._updateTimer);
-      setUpdateStatus('✅ <strong>v' + info.version + ' descargada.</strong> La app se actualizará al cerrar, o click "Instalar y reiniciar".', 'var(--green)');
+      setUpdateStatus('✅ <strong>v' + info.version + ' descargada.</strong> La app se actualizará al cerrar, o click "Instalar y reiniciar".' + renderChangelogHTML(info.version), 'var(--green)');
       var btn = document.getElementById('btn-force-update');
       if (btn) { btn.disabled = false; btn.textContent = '⬇️ Actualizar ahora'; btn.style.animation = ''; }
       var installBtn = document.getElementById('btn-install-update');
@@ -19691,6 +20046,56 @@ function showUpdateNotification(version, downloaded) {
 }
 
 // ══════════════════════════════════════════════════
+// CHANGELOG_VERSIONS — Resumen breve de cada release.
+// Mostrado en Configuración » Actualizaciones cuando hay nueva versión.
+// Convención: máximo 3-5 bullets cortos. Lo que el usuario debe saber, no detalle técnico.
+// ══════════════════════════════════════════════════
+var CHANGELOG_VERSIONS = {
+  '1.4.63': [
+    'Mismo contenido que v1.4.62 — repackage para resolver problema de unzip en macOS',
+  ],
+  '1.4.62': [
+    'Análisis Histórico ahora incluye costos indirectos prorrateados (sueldos, diesel, mantenimiento general, insumos, maquinaria)',
+    'Margen Neto Real: ahora ves el margen incluyendo TODOS los costos del lote, no solo los directos',
+    'Ventas multi-lote: guardan automáticamente el desglose exacto de cabezas/kg/total por cada lote',
+    'Carga retroactiva: podés cargar sanidad, sal y alimento a lotes ya vendidos para histórico',
+  ],
+  '1.4.61': [
+    'Sale.items[] automático: las ventas multi-lote ahora guardan desglose por lote (cabezas, kg, total)',
+    'Toggle "Lote vendido (carga retroactiva)" en modales de Sanidad, Sal y Alimento',
+    'Registros retroactivos marcados con badge 🕐 RETRO para auditoría',
+  ],
+  '1.4.60': [
+    'Reporte CREA promovido a Dashboard principal',
+    'Stock inicial CREA: ahora incluye lotes vendidos durante el período (fix cálculo de producción)',
+  ],
+  '1.4.59': [
+    'Stock inicial CREA: incluye lotes vendidos durante el período',
+  ],
+};
+
+// Devuelve un array de bullets para la versión dada, o array vacío.
+function getChangelogFor(version) {
+  if (!version) return [];
+  // Limpiar "v" prefix si viene
+  var v = String(version).replace(/^v/i, '');
+  return CHANGELOG_VERSIONS[v] || [];
+}
+
+// Renderiza el changelog como HTML compacto para mostrar dentro del banner.
+function renderChangelogHTML(version) {
+  var bullets = getChangelogFor(version);
+  if (!bullets.length) return '';
+  var items = bullets.map(function(b) {
+    return '<li style="margin:2px 0">' + b + '</li>';
+  }).join('');
+  return '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--bor);font-size:11px;color:var(--text)">' +
+    '<div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Novedades</div>' +
+    '<ul style="margin:0;padding-left:18px;line-height:1.5">' + items + '</ul>' +
+  '</div>';
+}
+
+// ══════════════════════════════════════════════════
 // PARÁMETROS (Potreros, Categorias, Razas, Actividades)
 // ══════════════════════════════════════════════════
 
@@ -20847,6 +21252,8 @@ function saveSubmodule(type) {
   var date   = (document.getElementById(prefix+'-date')||{}).value||today();
   var obs    = (document.getElementById(prefix+'-obs')||{}).value||'';
   var by     = (document.getElementById(prefix+'-by')||{}).value||'Cesar Moreno';
+  // v1.4.61: detectar carga retroactiva (lote vendido)
+  var isRetroactive = (document.getElementById(prefix+'-retroactive')||{}).checked || false;
 
   if (!lot) { toast('Selecciona un lote','error'); return; }
   // FIX v1.4.34: no permitir fechas futuras (cubre agua, sal, conteo, parto, alimento)
@@ -20855,7 +21262,7 @@ function saveSubmodule(type) {
   if (!db[cfg.table]) db[cfg.table] = [];
   if (!db.next_ids[type]) db.next_ids[type] = 1;
 
-  var record = { id: db.next_ids[type]++, lot_code: lot, date: date, obs: obs, by: by, created_at: new Date().toISOString() };
+  var record = { id: db.next_ids[type]++, lot_code: lot, date: date, obs: obs, by: by, created_at: new Date().toISOString(), retroactive: isRetroactive };
 
   // Extra fields per type
   if (type==='agua') {
