@@ -6329,13 +6329,15 @@ function _stockRenderHub() {
   // Cards
   var hubHtml = '';
   var allActive = _stockSelectedCategory === 'all';
-  hubHtml += _stockHubCard('all', '📦', 'Todos', totalCount + ' productos', 'Bs. ' + _fmtNum(Math.round(totalValue)) + ' total', totalAlerts, allActive, '#F1EFE8', '#2C2C2A', '#5F5E5A');
+  // v1.4.63: paleta de colores adaptada al dark theme (antes pastel chocaban con el resto de la app)
+  // Cada categoría: fondo oscuro sutil + acento de color en icono y valor
+  hubHtml += _stockHubCard('all', '📦', 'Todos', totalCount + ' productos', 'Bs. ' + _fmtNum(Math.round(totalValue)) + ' total', totalAlerts, allActive, 'rgba(48,54,61,.5)', '#c9d1d9', '#8b949e');
 
   [
-    { type:'veterinario', icon:'💉', label:'Veterinario', bg:'#FBEAF0', fg:'#4B1528', fgMuted:'#72243E' },
-    { type:'sal',         icon:'🧂', label:'Sal y suplem.', bg:'#FAEEDA', fg:'#412402', fgMuted:'#633806' },
-    { type:'aceite',      icon:'🛢️', label:'Aceites y lubric.', bg:'#E6F1FB', fg:'#042C53', fgMuted:'#0C447C' },
-    { type:'herramienta', icon:'🔧', label:'Herramientas', bg:'#EEEDFE', fg:'#26215C', fgMuted:'#3C3489' }
+    { type:'veterinario', icon:'💉', label:'Veterinario',        bg:'rgba(248,113,113,.10)', fg:'#fca5a5', fgMuted:'#8b949e' },
+    { type:'sal',         icon:'🧂', label:'Sal y suplem.',      bg:'rgba(251,191,36,.10)',  fg:'#fcd34d', fgMuted:'#8b949e' },
+    { type:'aceite',      icon:'🛢️', label:'Aceites y lubric.',  bg:'rgba(96,165,250,.10)',  fg:'#93c5fd', fgMuted:'#8b949e' },
+    { type:'herramienta', icon:'🔧', label:'Herramientas',       bg:'rgba(167,139,250,.10)', fg:'#c4b5fd', fgMuted:'#8b949e' }
   ].forEach(function(c){
     var b = cats[c.type];
     hubHtml += _stockHubCard(c.type, c.icon, c.label, b.count + ' producto'+(b.count!==1?'s':''), 'Bs. ' + _fmtNum(Math.round(b.value)) + ' · ' + fmtUnits(b.unitsByUnit), b.alerts, _stockSelectedCategory === c.type, c.bg, c.fg, c.fgMuted);
@@ -6344,7 +6346,7 @@ function _stockRenderHub() {
   // Si hay productos en "Otros", agregar una sexta card chica
   if (cats.otros.count > 0) {
     hub.style.gridTemplateColumns = 'repeat(6, 1fr)';
-    hubHtml += _stockHubCard('otros', '📦', 'Otros', cats.otros.count + ' productos', 'Bs. ' + _fmtNum(Math.round(cats.otros.value)) + ' · ' + fmtUnits(cats.otros.unitsByUnit), cats.otros.alerts, _stockSelectedCategory === 'otros', '#F1EFE8', '#2C2C2A', '#5F5E5A');
+    hubHtml += _stockHubCard('otros', '📦', 'Otros', cats.otros.count + ' productos', 'Bs. ' + _fmtNum(Math.round(cats.otros.value)) + ' · ' + fmtUnits(cats.otros.unitsByUnit), cats.otros.alerts, _stockSelectedCategory === 'otros', 'rgba(48,54,61,.5)', '#c9d1d9', '#8b949e');
   } else {
     hub.style.gridTemplateColumns = 'repeat(5, 1fr)';
   }
@@ -6353,9 +6355,11 @@ function _stockRenderHub() {
 }
 
 function _stockHubCard(catKey, icon, label, line1, line2, alerts, isActive, bg, fg, fgMuted) {
-  var outline = isActive ? ';outline:2px solid '+fg+';outline-offset:-2px' : '';
+  // v1.4.63: borde sutil para que las cards se integren con el dark theme
+  var border = isActive ? '1px solid ' + fg : '1px solid rgba(48,54,61,.4)';
+  var outline = isActive ? ';box-shadow:0 0 0 1px '+fg+' inset' : '';
   var badge = alerts > 0 ? '<div style="position:absolute;top:6px;right:8px;background:#A32D2D;color:#fff;font-size:9px;font-weight:600;min-width:16px;height:16px;padding:0 4px;border-radius:8px;display:flex;align-items:center;justify-content:center">'+alerts+'</div>' : '';
-  return '<div onclick="_stockSetCategory(\''+catKey+'\')" style="position:relative;padding:12px 10px;border-radius:10px;cursor:pointer;background:'+bg+';color:'+fg+';transition:transform .1s'+outline+'" onmouseover="this.style.transform=\'translateY(-1px)\'" onmouseout="this.style.transform=\'translateY(0)\'">' +
+  return '<div onclick="_stockSetCategory(\''+catKey+'\')" style="position:relative;padding:12px 10px;border:'+border+';border-radius:10px;cursor:pointer;background:'+bg+';color:'+fg+';transition:transform .1s,border-color .1s'+outline+'" onmouseover="this.style.transform=\'translateY(-1px)\'" onmouseout="this.style.transform=\'translateY(0)\'">' +
     badge +
     '<div style="font-size:18px;margin-bottom:4px">'+icon+'</div>' +
     '<div style="font-size:12px;font-weight:600;line-height:1.2">'+escH(label)+'</div>' +
@@ -6763,12 +6767,13 @@ function _stockRenderList(items) {
     if (groups[cat.type]) groups[cat.type].push(p);
   });
 
+  // v1.4.63: colores adaptados al dark theme (consistentes con _stockRenderHub)
   var order = [
-    { key:'veterinario', icon:'💉', label:'Veterinario',         bg:'#FBEAF0', fg:'#4B1528', fgMuted:'#72243E' },
-    { key:'sal',         icon:'🧂', label:'Sal y suplementos',   bg:'#FAEEDA', fg:'#412402', fgMuted:'#633806' },
-    { key:'aceite',      icon:'🛢️', label:'Aceites y lubricantes', bg:'#E6F1FB', fg:'#042C53', fgMuted:'#0C447C' },
-    { key:'herramienta', icon:'🔧', label:'Herramientas',        bg:'#EEEDFE', fg:'#26215C', fgMuted:'#3C3489' },
-    { key:'otros',       icon:'📦', label:'Otros',               bg:'#F1EFE8', fg:'#2C2C2A', fgMuted:'#5F5E5A' }
+    { key:'veterinario', icon:'💉', label:'Veterinario',           bg:'rgba(248,113,113,.10)', fg:'#fca5a5', fgMuted:'#8b949e' },
+    { key:'sal',         icon:'🧂', label:'Sal y suplementos',     bg:'rgba(251,191,36,.10)',  fg:'#fcd34d', fgMuted:'#8b949e' },
+    { key:'aceite',      icon:'🛢️', label:'Aceites y lubricantes', bg:'rgba(96,165,250,.10)',  fg:'#93c5fd', fgMuted:'#8b949e' },
+    { key:'herramienta', icon:'🔧', label:'Herramientas',          bg:'rgba(167,139,250,.10)', fg:'#c4b5fd', fgMuted:'#8b949e' },
+    { key:'otros',       icon:'📦', label:'Otros',                 bg:'rgba(48,54,61,.5)',     fg:'#c9d1d9', fgMuted:'#8b949e' }
   ];
 
   var html = '';
@@ -18415,19 +18420,47 @@ function openEvalPastoDetailDesktop(evalId) {
 function deleteEvalPastoDesktop() {
   if (!_evpDetailId) return;
   if (!confirm('¿Eliminar esta evaluación?')) return;
-  
-  // FIX v1.4.35 + v1.4.38: audit log para deleteEvalPastoDesktop (corregido: id → _evpDetailId)
-  var _delRec_deleteEvalPastoDesktop = (db.pasture_evals || []).find(function(r){ return String(r.id) === String(_evpDetailId); });
-  var _delSummary_deleteEvalPastoDesktop = _delRec_deleteEvalPastoDesktop ? _summarizeRecord('pasture_evals', _delRec_deleteEvalPastoDesktop) : 'Evaluación pasto #' + _evpDetailId;
-  try { auditLog('delete', 'pasture_evals', _evpDetailId, _delSummary_deleteEvalPastoDesktop); } catch(e){}
-  trackDeletion(_evpDetailId, 'pasture_evals');
-  db.pasture_evals = (db.pasture_evals||[]).filter(function(e){ return String(e.id) !== String(_evpDetailId); });
+
+  // FIX v1.4.63: usar endpoint dedicado /api/pasture-eval/:id que maneja
+  // _deleted_ids de forma atómica server-side. Antes usaba replaceTableInRailway
+  // que tenía race conditions con la PWA Campo (la PWA podía re-pushear la eval
+  // antes de que el _deleted_ids llegara al server).
+  var idToDelete = _evpDetailId;
+  var _delRec = (db.pasture_evals || []).find(function(r){ return String(r.id) === String(idToDelete); });
+  var _delSummary = _delRec ? _summarizeRecord('pasture_evals', _delRec) : 'Evaluación pasto #' + idToDelete;
+  try { auditLog('delete', 'pasture_evals', idToDelete, _delSummary); } catch(e){}
+
+  // 1. Trackear local primero (atomic, sin red)
+  trackDeletion(idToDelete, 'pasture_evals');
+  db.pasture_evals = (db.pasture_evals||[]).filter(function(e){ return String(e.id) !== String(idToDelete); });
   saveDB();
-  replaceTableInRailway('pasture_evals', db.pasture_evals || []);
   closeModal('modal-evalpasto-detail');
   _evpDetailId = null;
   renderEvalPasto();
-  toast('Evaluación eliminada','success');
+
+  // 2. Llamar al endpoint dedicado del server (que también actualiza _deleted_ids)
+  try {
+    var apiUrl = (typeof getApiUrl === 'function') ? getApiUrl() : (localStorage.getItem('e5m_api_url') || 'https://estancia5m-api-production.up.railway.app/api');
+    var token = localStorage.getItem('e5m_api_token') || '';
+    if (apiUrl && token && navigator.onLine) {
+      fetch(apiUrl + '/pasture-eval/' + encodeURIComponent(idToDelete), {
+        method: 'DELETE',
+        headers: { 'Authorization': 'Bearer ' + token }
+      }).then(function(r){ return r.json(); }).then(function(d){
+        if (d && d.ok) {
+          console.log('[Pasto] DELETE server OK:', idToDelete, '(before:', d.before, '→ after:', d.after, ')');
+        } else {
+          console.warn('[Pasto] DELETE server respondió sin ok:', d);
+        }
+      }).catch(function(e){
+        console.warn('[Pasto] DELETE server falló (queda local):', e.message);
+      });
+    }
+  } catch(e) {
+    console.warn('[Pasto] DELETE server exception:', e.message);
+  }
+
+  toast('Evaluación eliminada', 'success');
 }
 
 function openModalEvalPasto() {
@@ -20052,7 +20085,13 @@ function showUpdateNotification(version, downloaded) {
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
   '1.4.63': [
-    'Mismo contenido que v1.4.62 — repackage para resolver problema de unzip en macOS',
+    'Costo/Kg ahora separa Operativo (sin compra ganado) y Total (con compra) según criterio AACREA',
+    'Operativo mide eficiencia del campo; Total mide rentabilidad del negocio',
+    'Sincronización con PWA para mismos números en ambos sistemas',
+    'Fix bug: Eficiencia de Stock ahora calcula producción kg / stock medio kg × 100 (antes daba números absurdos)',
+    'Detalle por Lote ahora incluye lotes vendidos durante el período (con cabezas y kg de la venta, marcados como vendidos)',
+    'Fix bug evaluaciones de pasto que volvían a aparecer después de borrar — ahora usa endpoint dedicado del server',
+    'Stock: paleta de cards de categorías adaptada al dark theme (antes pastel claros, ahora colores sutiles consistentes con el resto de la app)',
   ],
   '1.4.62': [
     'Análisis Histórico ahora incluye costos indirectos prorrateados (sueldos, diesel, mantenimiento general, insumos, maquinaria)',
@@ -23611,13 +23650,21 @@ function renderReporteCREA() {
     });
   });
   var gdpv = allGmds.length ? Math.round(allGmds.reduce(function(s, g) { return s + g; }, 0) / allGmds.length * 1000) / 1000 : 0;
-  var eficStock = existMedia > 0 ? Math.round(produccionCREA / existMedia * 1000) / 10 : 0;
+  // v1.4.63: Fix eficiencia de stock — usar stock medio en kg (no cabezas).
+  // Antes: produccionCREA / cabezas × 100 daba números absurdos (38,616%).
+  // Correcto AACREA: kg producidos / kg de stock medio × 100.
+  var stockMedioKg = (stockInicialKg + stockFinalKg) / 2;
+  var eficStock = stockMedioKg > 0 ? Math.round(produccionCREA / stockMedioKg * 1000) / 10 : 0;
   var prodCab = existMedia > 0 ? Math.round(produccionCREA / existMedia * 10) / 10 : 0;
   var tasaExtraccion = existMedia > 0 ? Math.round(cabVendidas / existMedia * 1000) / 10 : 0;
   var salPorCab = existMedia > 0 ? Math.round(salKg / existMedia * 10) / 10 : 0;
 
   // INDICADORES ECONÓMICOS
-  var costoKg = produccionCREA > 0 ? Math.round(gastTotales / produccionCREA * 100) / 100 : 0;
+  // v1.4.63: Separar Costo Operativo (sin compra ganado) y Costo Total (con compra)
+  // según criterio AACREA. PWA y Desktop ahora consistentes.
+  var gastosOperativos = gastDirectos + gastoAdmin + gastoEstructura;  // sin inversionCompras
+  var costoOperativoKg = produccionCREA > 0 ? Math.round(gastosOperativos / produccionCREA * 100) / 100 : 0;
+  var costoKg = produccionCREA > 0 ? Math.round(gastTotales / produccionCREA * 100) / 100 : 0;  // total (con inversión)
   var margenBruto = ha > 0 ? Math.round((ingresoVentas - gastDirectos) / ha * 100) / 100 : 0;
   var resultOp = ha > 0 ? Math.round((ingresoVentas - gastTotales) / ha * 100) / 100 : 0;
   var gastoCabMes = existMedia > 0 && meses > 0 ? Math.round(gastDirectos / existMedia / meses * 100) / 100 : 0;
@@ -23646,7 +23693,7 @@ function renderReporteCREA() {
   html += kpi('Producción de Carne', prodCarne, 'kg / ha / año', 'kg vendidos ÷ hectáreas', 'var(--green)');
   html += kpi('Carga Animal', cargaAnimal, 'UA / ha', 'existencia (UA) ÷ hectáreas', 'var(--amber)');
   html += kpi('GDPV', gdpv, 'kg / cab / día', 'ganancia peso ÷ días', 'var(--green)');
-  html += kpi('Eficiencia de Stock', eficStock, '%', 'producción ÷ exist. media × 100', 'var(--blue)');
+  html += kpi('Eficiencia de Stock', eficStock, '%', 'producción kg ÷ stock medio kg × 100', 'var(--blue)');
   html += kpi('Producción por Cabeza', prodCab, 'kg / cab / año', 'producción total ÷ exist. media', 'var(--amber)');
   html += kpi('Tasa de Extracción', tasaExtraccion, '%', 'cab vendidas ÷ exist. media × 100', 'var(--blue)');
   // Mortandad (placeholder - se puede calcular cuando se registren muertes)
@@ -23659,7 +23706,22 @@ function renderReporteCREA() {
   // ECONÓMICOS
   html += '<div style="font-size:14px;font-weight:700;color:var(--amber2);margin:16px 0 10px;border-bottom:1px solid var(--bor);padding-bottom:6px">💰 Indicadores Económicos</div>';
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:16px">';
-  html += '<div class="card" style="padding:16px;grid-column:span 2;border-left:3px solid var(--amber);position:relative"><div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px">Costo por Kg Vivo</div><div style="font-size:32px;font-weight:800;font-family:DM Mono,monospace">Bs. ' + costoKg + '</div><div style="font-size:11px;color:var(--muted)">Bs / kg producido — El indicador más consultado</div><div style="font-size:9px;color:var(--muted);margin-top:4px;font-family:DM Mono,monospace;opacity:.6">gastos totales ÷ producción total (kg)</div></div>';
+  html += '<div class="card" style="padding:16px;grid-column:span 2;border-left:3px solid var(--amber);position:relative">' +
+    '<div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px">Costo por Kg Vivo (AACREA)</div>' +
+    '<div style="display:flex;gap:24px;align-items:flex-end;flex-wrap:wrap">' +
+      '<div>' +
+        '<div style="font-size:32px;font-weight:800;font-family:DM Mono,monospace;line-height:1">Bs. ' + costoOperativoKg + '</div>' +
+        '<div style="font-size:11px;color:var(--amber2);margin-top:6px;font-weight:600">OPERATIVO · sin compra ganado</div>' +
+        '<div style="font-size:10px;color:var(--muted);font-family:DM Mono,monospace;opacity:.7">eficiencia del campo</div>' +
+      '</div>' +
+      '<div style="opacity:.4;font-size:24px">|</div>' +
+      '<div>' +
+        '<div style="font-size:28px;font-weight:700;font-family:DM Mono,monospace;color:var(--muted);line-height:1">Bs. ' + costoKg + '</div>' +
+        '<div style="font-size:11px;color:var(--muted);margin-top:6px">TOTAL · con compra ganado</div>' +
+        '<div style="font-size:10px;color:var(--muted);font-family:DM Mono,monospace;opacity:.7">rentabilidad del negocio</div>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
   html += kpi('Margen Bruto', 'Bs. ' + margenBruto.toLocaleString(), 'Bs / ha / año', 'ingreso neto − gastos directos', 'var(--green)');
   html += kpi('Resultado Operativo', 'Bs. ' + resultOp.toLocaleString(), 'Bs / ha / año', 'margen bruto − admin − estructura', resultOp >= 0 ? 'var(--green)' : 'var(--red)');
   html += kpi('Gasto por Cab/Mes', 'Bs. ' + gastoCabMes, 'Bs / cab / mes', 'gastos directos ÷ exist. media ÷ meses', 'var(--amber)');
@@ -23707,13 +23769,62 @@ function renderReporteCREA() {
   html += '<div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 0;margin-top:6px;border-top:2px solid var(--bor)"><span style="font-weight:700">BALANCE</span><span style="font-weight:800;color:' + (balance >= 0 ? 'var(--green)' : 'var(--red)') + '">Bs. ' + Math.round(balance).toLocaleString() + '</span></div>';
   html += '</div></div>';
 
-  html += '<div style="font-size:14px;font-weight:700;color:var(--amber2);margin:16px 0 10px;border-bottom:1px solid var(--bor);padding-bottom:6px">📋 Detalle por Lote</div>';
+  html += '<div style="font-size:14px;font-weight:700;color:var(--amber2);margin:16px 0 10px;border-bottom:1px solid var(--bor);padding-bottom:6px">📋 Detalle por Lote <span style="font-size:11px;font-weight:400;color:var(--muted)">(incluye lotes vendidos durante el período)</span></div>';
   html += '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Lote</th><th>Categoría</th><th>Cabezas</th><th>Peso Prom.</th><th>GDPV</th><th>Prod. kg/ha</th><th>Estado</th></tr></thead><tbody>';
-  activeLots.forEach(function(lot) {
+  // v1.4.63: incluir lotes vendidos durante el período (antes solo activos).
+  // Ordenar: activos primero (orden alfabético), luego vendidos al final
+  var lotesDetalle = lotsAtPeriodStart.slice().sort(function(a, b) {
+    var stA = (a.status || '').toLowerCase();
+    var stB = (b.status || '').toLowerCase();
+    var soldA = (stA === 'sold' || stA === 'vendido') ? 1 : 0;
+    var soldB = (stB === 'sold' || stB === 'vendido') ? 1 : 0;
+    if (soldA !== soldB) return soldA - soldB;  // activos primero
+    return String(a.code || '').localeCompare(String(b.code || ''));
+  });
+  lotesDetalle.forEach(function(lot) {
+    var st = (lot.status || '').toLowerCase();
+    var isSold = (st === 'sold' || st === 'vendido');
     var lotGmd = calcLotGmd(lot, animalesDB);
     var lotProdHa = ha > 0 ? Math.round((lot.avg_weight || 0) * (lot.animal_count || 0) / ha * 10) / 10 : 0;
-    var estado = lotGmd >= 0.65 ? '<span style="color:var(--green)">✓ Óptimo</span>' : lotGmd >= 0.45 ? '<span style="color:var(--amber)">⚠ Revisar</span>' : '<span style="color:var(--red)">✕ Bajo</span>';
-    html += '<tr><td><span style="font-family:DM Mono,monospace;color:var(--amber2);font-weight:700">' + lot.code + '</span></td><td>' + (lot.category || '') + '</td><td style="font-family:DM Mono;font-weight:600">' + (lot.animal_count || 0) + '</td><td style="font-family:DM Mono">' + (lot.avg_weight || 0) + ' kg</td><td style="font-family:DM Mono;color:' + (lotGmd >= 0.65 ? 'var(--green)' : lotGmd >= 0.45 ? 'var(--amber)' : 'var(--red)') + '">' + lotGmd + ' kg/d</td><td style="font-family:DM Mono">' + lotProdHa + '</td><td>' + estado + '</td></tr>';
+
+    // Para vendidos: animal_count actual = 0. Reconstruir desde sales[] (items[] cuando exista, sino totales)
+    var cabsDisplay = lot.animal_count || 0;
+    var pesoDisplay = lot.avg_weight || 0;
+    if (isSold) {
+      var cabsVendidasLot = 0;
+      var kgVendidosLot = 0;
+      (db.sales || []).forEach(function(s) {
+        if (Array.isArray(s.items)) {
+          s.items.forEach(function(i) {
+            if (i.lot_code === lot.code) {
+              cabsVendidasLot += parseInt(i.animals || 0) || 0;
+              kgVendidosLot += parseFloat(i.kg || i.total_kg || 0) || 0;
+            }
+          });
+        } else if (s.lot_code === lot.code) {
+          cabsVendidasLot += parseInt(s.animals || s.animal_count || 0) || 0;
+          kgVendidosLot += parseFloat(s.kg || s.total_kg || 0) || 0;
+        }
+      });
+      if (cabsVendidasLot > 0) {
+        cabsDisplay = cabsVendidasLot;
+        pesoDisplay = Math.round(kgVendidosLot / cabsVendidasLot);
+        lotProdHa = ha > 0 ? Math.round(kgVendidosLot / ha * 10) / 10 : 0;
+      }
+    }
+
+    var estado;
+    if (isSold) {
+      var fvLot = _creaFechaVenta(lot);
+      estado = '<span style="color:var(--muted)">📦 Vendido ' + (fvLot ? fvLot : '') + '</span>';
+    } else {
+      estado = lotGmd >= 0.65 ? '<span style="color:var(--green)">✓ Óptimo</span>' : lotGmd >= 0.45 ? '<span style="color:var(--amber)">⚠ Revisar</span>' : '<span style="color:var(--red)">✕ Bajo</span>';
+    }
+    var rowStyle = isSold ? ' style="opacity:.7"' : '';
+    var codeColor = isSold ? 'var(--muted)' : 'var(--amber2)';
+    var gdpvDisplay = isSold ? '—' : (lotGmd + ' kg/d');
+    var gdpvColor = isSold ? 'var(--muted)' : (lotGmd >= 0.65 ? 'var(--green)' : lotGmd >= 0.45 ? 'var(--amber)' : 'var(--red)');
+    html += '<tr' + rowStyle + '><td><span style="font-family:DM Mono,monospace;color:' + codeColor + ';font-weight:700">' + lot.code + '</span></td><td>' + (lot.category || '') + '</td><td style="font-family:DM Mono;font-weight:600">' + cabsDisplay + '</td><td style="font-family:DM Mono">' + pesoDisplay + ' kg</td><td style="font-family:DM Mono;color:' + gdpvColor + '">' + gdpvDisplay + '</td><td style="font-family:DM Mono">' + lotProdHa + '</td><td>' + estado + '</td></tr>';
   });
   html += '</tbody></table></div>';
 
