@@ -14865,6 +14865,7 @@ function _ahRenderCostos(lot, treatments, mantenimientos, ventas, compras) {
       { label: '🔧 Mantenimiento',   value: costoMantenimiento,   color: '#34d399' },
       { label: '👷 Sueldos',         value: indirectos.sueldos,   color: '#fbbf24' },
       { label: '⛽ Diesel',          value: indirectos.diesel,    color: '#a3e635' },
+      { label: '🍽️ Alimentación',    value: indirectos.alimento,  color: '#fb923c' },
       { label: '🔧 Mant. general',   value: indirectos.mantGeneral, color: '#60a5fa' },
       { label: '📦 Insumos s/lote',  value: indirectos.compras,   color: '#22d3ee' },
       { label: '🚜 Maquinaria',      value: indirectos.maquinaria, color: '#a78bfa' }
@@ -14883,6 +14884,8 @@ function _ahRenderCostos(lot, treatments, mantenimientos, ventas, compras) {
   // GRUPO 2: INDIRECTOS — v1.4.67: muestra TODAS las categorías aunque estén en 0
   // (antes solo se mostraba si total > 0; ahora siempre se muestra el bloque para
   // que el usuario vea dónde podría agregar datos retroactivamente)
+  // v1.4.70: agregada subcategoría Alimentación (sal+suplementos+balanceado+heno+etc) —
+  // paridad conceptual con CREA donde subcuenta='Sal'/'Alimento' va a categoría alimento.
   html += '<div style="grid-column:1/-1;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:12px;padding-bottom:4px;border-bottom:1px solid var(--bor)">Indirectos prorrateados' + (indirectos.fraccionPct > 0 ? ' (' + indirectos.fraccionPct.toFixed(2) + '%)' : '') + '</div>';
   function _ahIndirCell(label, valor, valorTotal) {
     if (valor > 0) {
@@ -14893,6 +14896,7 @@ function _ahRenderCostos(lot, treatments, mantenimientos, ventas, compras) {
   }
   html += _ahIndirCell('👷 Sueldos', indirectos.sueldos, indirectos.sueldos_total);
   html += _ahIndirCell('⛽ Diesel', indirectos.diesel, indirectos.diesel_total);
+  html += _ahIndirCell('🍽️ Alimentación', indirectos.alimento, indirectos.alimento_total);
   html += _ahIndirCell('🔧 Mant. general', indirectos.mantGeneral, indirectos.mantGeneral_total);
   html += _ahIndirCell('📦 Insumos s/lote', indirectos.compras, indirectos.compras_total);
   html += _ahIndirCell('🚜 Maquinaria', indirectos.maquinaria, indirectos.maquinaria_total);
@@ -15013,6 +15017,7 @@ function _ahCalcularIndirectos(lot, ventas, compras) {
   var result = {
     sueldos: 0, sueldos_total: 0,
     diesel: 0, diesel_total: 0,
+    alimento: 0, alimento_total: 0,
     mantGeneral: 0, mantGeneral_total: 0,
     compras: 0, compras_total: 0,
     maquinaria: 0, maquinaria_total: 0,
@@ -15171,11 +15176,28 @@ function _ahCalcularIndirectos(lot, ventas, compras) {
   });
 
   // 4.4 Compras de insumos sin lote (db.purchases)
+  // v1.4.70: separar ALIMENTACIÓN como subcategoría propia (sal + alimento + suplementos
+  // nutricionales). Paridad conceptual con CREA, donde subcuenta='Sal'/'Sal mineral'/'Alimento'
+  // va a la categoría 'alimento'. Los registros de db.sal son operativos (descuento de stock),
+  // no contables — el costo monetario vive en db.purchases.
+  function _esAlimento(p) {
+    var nombre = (p.product_name || p.name || p.descripcion || p.descripción || '').toLowerCase();
+    var tipo = (p.product_type || p.type || p.tipo || '').toLowerCase();
+    var cuenta = (p.subcuenta || p.cuenta || p.category || '').toLowerCase();
+    var bag = nombre + ' ' + tipo + ' ' + cuenta;
+    // Sal mineral, suplementos y alimentos del paquete nutricional
+    return /\bsal\b|mineral|calcimin|calcio|fosfor|magnesi|suplement|premix|sodio|tabono|alimento|alimentaci|balanceado|concentrado|pellet|ensilaje|ensilado|silaje|heno|forraj|n[úu]cleo|raci[óo]n|melaza|afrechill?o|maiz molido|sorgo|expeller|harina de soja|harina soja/.test(bag);
+  }
   (db.purchases || []).forEach(function(p) {
     var enPeriodo = _estaEnPeriodo(p.date || p.fecha);
     var sinLote = !p.lot_code || p.lot_code === '';
     if (enPeriodo && sinLote) {
-      result.compras_total += parseFloat(p.total || p.precio_total || p.cost || 0) || 0;
+      var monto = parseFloat(p.total || p.precio_total || p.cost || 0) || 0;
+      if (_esAlimento(p)) {
+        result.alimento_total += monto;
+      } else {
+        result.compras_total += monto;
+      }
     }
   });
 
@@ -15190,10 +15212,11 @@ function _ahCalcularIndirectos(lot, ventas, compras) {
   // ── 5. Aplicar fracción a cada categoría ──
   result.sueldos     = result.sueldos_total     * fraccion;
   result.diesel      = result.diesel_total      * fraccion;
+  result.alimento    = result.alimento_total    * fraccion;
   result.mantGeneral = result.mantGeneral_total * fraccion;
   result.compras     = result.compras_total     * fraccion;
   result.maquinaria  = result.maquinaria_total  * fraccion;
-  result.total = result.sueldos + result.diesel + result.mantGeneral + result.compras + result.maquinaria;
+  result.total = result.sueldos + result.diesel + result.alimento + result.mantGeneral + result.compras + result.maquinaria;
 
   return result;
 }
@@ -20445,6 +20468,11 @@ function showUpdateNotification(version, downloaded) {
 // Convención: máximo 3-5 bullets cortos. Lo que el usuario debe saber, no detalle técnico.
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.4.70': [
+    'Análisis Histórico: nueva subcategoría Alimentación (sal+suplementos+balanceado+heno+forraje+etc)',
+    'Detección automática desde db.purchases por nombre, tipo o subcuenta',
+    'Paridad conceptual con Reporte CREA (subcuenta=Sal/Alimento ya iba a categoría alimento)',
+  ],
   '1.4.69': [
     'Fix bug: lotes vendidos seguían apareciendo como ocupando potreros en el tab Rotación',
     'Solución preventiva: al vender un lote (cualquier scope), se cierra automáticamente rotation_history',
