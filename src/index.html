@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EstanciaPro - Sistema de Gestión Ganadera</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=Lora:ital,wght@0,400;0,500;1,400&family=Noto+Color+Emoji&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-<noscript><link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=Lora:ital,wght@0,400;0,500;1,400&family=Noto+Color+Emoji&display=swap" rel="stylesheet"></noscript>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=DM+Mono:wght@300;400;500&family=Noto+Color+Emoji&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=DM+Mono:wght@300;400;500&family=Noto+Color+Emoji&display=swap" rel="stylesheet"></noscript>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -18,12 +18,13 @@
   --text:#E6EDF3;--muted:#7D8590;--muted2:#484F58;
 }
 html{scroll-behavior:smooth}
-body{background:var(--bg);color:var(--text);font-family:'Lora','Segoe UI Emoji','Apple Color Emoji','Noto Color Emoji','Segoe UI Symbol',serif;font-size:14px;line-height:1.6;min-height:100vh;overflow-x:hidden}
+body{background:var(--bg);color:var(--text);font-family:Inter,'Segoe UI Emoji','Apple Color Emoji','Noto Color Emoji','Segoe UI Symbol',-apple-system,BlinkMacSystemFont,sans-serif;font-size:14px;line-height:1.55;min-height:100vh;overflow-x:hidden;font-feature-settings:'cv02','cv03','cv04','cv11','tnum';-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
 /* Forzar uso de la fuente de emoji color en spans con la clase emoji */
 .emoji,.emj{font-family:'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif}
 
-/* LAYOUT */
-.app{display:grid;grid-template-columns:220px 1fr;grid-template-rows:56px 1fr;min-height:100vh}
+/* LAYOUT — v1.4.71 sidebar colapsable */
+.app{display:grid;grid-template-columns:var(--sidebar-w,224px) 1fr;grid-template-rows:56px 1fr;min-height:100vh;transition:grid-template-columns .25s cubic-bezier(.4,0,.2,1)}
+.app.sidebar-collapsed{--sidebar-w:64px}
 .topbar{grid-column:1/-1;background:var(--sur);border-bottom:1px solid var(--bor);display:flex;align-items:center;padding:0 24px;gap:16px;position:sticky;top:0;z-index:100}
 .logo{font-weight:800;font-size:16px;color:var(--amber);letter-spacing:.05em}
 .logo span{color:var(--text);font-weight:400}
@@ -34,17 +35,76 @@ body{background:var(--bg);color:var(--text);font-family:'Lora','Segoe UI Emoji',
 .dot{width:8px;height:8px;background:var(--green);border-radius:50%;box-shadow:0 0 6px var(--green);animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 
-/* SIDEBAR */
-.sidebar{background:var(--sur);border-right:1px solid var(--bor);padding:20px 0;position:sticky;top:56px;height:calc(100vh - 56px);overflow-y:auto}
-.nav-sec{padding:0 12px;margin-bottom:24px}
-.nav-lbl{font-family:DM Mono,monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted2);padding:0 8px;margin-bottom:6px}
-.nav-btn{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;cursor:pointer;transition:all .15s;font-family:DM Mono,monospace;font-size:12px;color:var(--muted);border:none;background:none;width:100%;text-align:left}
+/* SIDEBAR — v1.4.71 premium look */
+.sidebar{background:var(--sur);border-right:1px solid var(--bor);padding:14px 0 18px;position:sticky;top:56px;height:calc(100vh - 56px);overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column}
+.sidebar::-webkit-scrollbar{width:6px}
+.sidebar::-webkit-scrollbar-track{background:transparent}
+.sidebar::-webkit-scrollbar-thumb{background:var(--bor);border-radius:3px}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--muted2)}
+
+/* Toggle button — minimal, top-right of sidebar */
+.sidebar-toggle{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;border:1px solid var(--bor);background:var(--sur2);color:var(--muted);font-size:13px;cursor:pointer;transition:all .2s;margin:0 12px 12px auto;flex-shrink:0;font-family:'Segoe UI Symbol',sans-serif;line-height:1}
+.sidebar-toggle:hover{background:var(--amber);color:#0d1117;border-color:var(--amber);transform:scale(1.05)}
+.app.sidebar-collapsed .sidebar-toggle{margin:0 auto 12px}
+
+/* Sections */
+.nav-sec{padding:0 12px;margin-bottom:14px;position:relative}
+.nav-sec + .nav-sec::before{content:"";position:absolute;top:-7px;left:16px;right:16px;height:1px;background:linear-gradient(90deg,transparent,var(--bor) 30%,var(--bor) 70%,transparent)}
+.app.sidebar-collapsed .nav-sec + .nav-sec::before{left:10px;right:10px}
+
+/* v1.4.79: Section header con chevron — collapsible */
+.nav-lbl-btn{display:flex;align-items:center;justify-content:space-between;width:100%;padding:6px 10px;border:none;background:none;cursor:pointer;border-radius:6px;transition:background .15s;margin-bottom:4px}
+.nav-lbl-btn:hover{background:rgba(255,255,255,.03)}
+.nav-lbl{font-family:DM Mono,monospace;font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted2);transition:opacity .15s,height .25s;overflow:hidden;white-space:nowrap;flex:1;text-align:left}
+.nav-lbl-chevron{font-size:10px;color:var(--muted2);transition:transform .2s;line-height:1;flex-shrink:0;margin-left:8px}
+.nav-sec.collapsed .nav-lbl-chevron{transform:rotate(-90deg)}
+.nav-sec-body{display:flex;flex-direction:column;gap:1px;overflow:hidden;transition:max-height .25s ease-out,opacity .15s;max-height:600px}
+.nav-sec.collapsed .nav-sec-body{max-height:0;opacity:0;pointer-events:none}
+.app.sidebar-collapsed .nav-lbl-btn{display:none}
+.app.sidebar-collapsed .nav-sec-body{max-height:none !important;opacity:1 !important;pointer-events:auto !important}
+
+/* Nav buttons */
+.nav-btn{display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer;transition:background .15s,color .15s,padding .2s;font-family:DM Mono,monospace;font-size:12px;color:var(--muted);border:none;background:none;width:100%;text-align:left;position:relative;overflow:hidden;white-space:nowrap}
 .nav-btn:hover{background:var(--sur2);color:var(--text)}
-.nav-btn.active{background:rgba(212,160,23,.12);color:var(--amber2)}
-.nav-icon{font-size:15px;width:20px;text-align:center}
-.nav-badge{margin-left:auto;font-size:9px;padding:2px 6px;border-radius:10px;font-weight:600}
-.nb-red{background:var(--red);color:#fff}
-.nb-green{background:#1A7C3A;color:#fff}
+.nav-btn.active{background:linear-gradient(90deg,rgba(212,160,23,.15),rgba(212,160,23,.05));color:var(--amber2);font-weight:600}
+.nav-btn.active::before{content:"";position:absolute;left:0;top:6px;bottom:6px;width:3px;background:var(--amber);border-radius:0 3px 3px 0}
+
+/* Icon — bigger and more present */
+.nav-icon{font-size:16px;width:22px;text-align:center;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;line-height:1;transition:transform .15s}
+.nav-btn:hover .nav-icon{transform:scale(1.1)}
+
+/* Label text inside button */
+.nav-text{flex:1;overflow:hidden;text-overflow:ellipsis;transition:opacity .15s}
+.app.sidebar-collapsed .nav-text{opacity:0;width:0;flex:initial}
+
+/* Center icon when collapsed */
+.app.sidebar-collapsed .nav-btn{padding:10px 0;justify-content:center;gap:0}
+.app.sidebar-collapsed .nav-btn::before{display:none}
+.app.sidebar-collapsed .nav-btn.active{background:rgba(212,160,23,.18)}
+.app.sidebar-collapsed .nav-btn.active .nav-icon{filter:drop-shadow(0 0 6px rgba(212,160,23,.5))}
+
+/* Badge */
+.nav-badge{margin-left:auto;font-size:9px;padding:2px 7px;border-radius:10px;font-weight:700;font-family:DM Mono,monospace;line-height:1.3;transition:all .2s;flex-shrink:0}
+.nb-red{background:var(--red);color:#fff;box-shadow:0 0 0 1px rgba(248,81,73,.2)}
+.nb-green{background:#1A7C3A;color:#fff;box-shadow:0 0 0 1px rgba(26,124,58,.2)}
+.nb-amber{background:#9E6A03;color:#fff;box-shadow:0 0 0 1px rgba(158,106,3,.2)}
+
+/* Collapsed: badge becomes a dot top-right of icon */
+.app.sidebar-collapsed .nav-badge{position:absolute;top:6px;right:8px;min-width:8px;width:auto;height:14px;padding:0 4px;font-size:8px;border-radius:7px;line-height:14px;margin:0;text-align:center}
+
+/* Tooltip — only when collapsed */
+.app.sidebar-collapsed .nav-btn[data-label]::after{content:attr(data-label);position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%) translateX(-6px);background:#0d1117;color:var(--text);font-family:DM Mono,monospace;font-size:11px;padding:6px 10px;border-radius:6px;border:1px solid var(--bor);white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s,transform .15s;z-index:200;box-shadow:0 4px 12px rgba(0,0,0,.4)}
+.app.sidebar-collapsed .nav-btn[data-label]:hover::after{opacity:1;transform:translateY(-50%) translateX(0)}
+
+/* Mobile auto-collapse */
+@media (max-width:1024px){
+  .app{--sidebar-w:64px}
+  .app .nav-lbl{opacity:0;height:0;margin:0;pointer-events:none}
+  .app .nav-text{opacity:0;width:0;flex:initial}
+  .app .nav-btn{padding:10px 0;justify-content:center;gap:0}
+  .app .nav-btn::before{display:none}
+  .app .nav-badge{position:absolute;top:6px;right:8px;min-width:8px;width:auto;height:14px;padding:0 4px;font-size:8px;border-radius:7px;line-height:14px;margin:0;text-align:center}
+}
 
 /* MAIN */
 .main{padding:28px 32px;overflow-y:auto}
@@ -132,7 +192,7 @@ body{background:var(--bg);color:var(--text);font-family:'Lora','Segoe UI Emoji',
 /* FORM */
 .form-group{margin-bottom:16px}
 .form-label{display:block;font-family:DM Mono,monospace;font-size:11px;color:var(--muted);letter-spacing:.08em;margin-bottom:6px;text-transform:uppercase}
-.form-input,.form-select,.form-textarea{width:100%;background:var(--sur2);border:1px solid var(--bor);border-radius:8px;padding:10px 12px;font-family:'Lora',serif;font-size:14px;color:var(--text);outline:none;transition:border-color .2s;appearance:none}
+.form-input,.form-select,.form-textarea{width:100%;background:var(--sur2);border:1px solid var(--bor);border-radius:8px;padding:10px 12px;font-size:14px;color:var(--text);outline:none;transition:border-color .2s;appearance:none}
 .form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--amber)}
 .form-textarea{resize:vertical;min-height:80px}
 .form-select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237D8590' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;cursor:pointer}
@@ -438,6 +498,115 @@ function validateNotFuture(dateStr, fieldLabel){
 }
 // fmtDT está definida más abajo (línea ~9769)
 
+// v1.4.73: tabs en página Personal (Adelantos / Historial de Sueldos)
+function showPersonalTab(tabName, btn) {
+  var tabs = ['adelantos', 'sueldos'];
+  tabs.forEach(function(t) {
+    var el = document.getElementById('pers-tab-' + t);
+    if (el) el.style.display = t === tabName ? 'block' : 'none';
+  });
+  document.querySelectorAll('[id^="pers-tab-"][id$="-btn"]').forEach(function(b) { b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  // Render data on demand
+  if (tabName === 'sueldos' && typeof renderHistorialSueldos === 'function') {
+    try { renderHistorialSueldos(); } catch(e){}
+  }
+  if (tabName === 'adelantos' && typeof renderAdvances === 'function') {
+    try { renderAdvances(); } catch(e){}
+  }
+  // Persistir última tab usada
+  try { localStorage.setItem('e5m_personal_tab', tabName); } catch(e){}
+}
+
+// v1.4.74: acceso rápido a Rotación desde el sidebar (atajo a sub-pestaña dentro de Lotes)
+function goToRotacion(navBtn) {
+  // 1. Ir a la página Lotes
+  showPage('lotes', null);
+  // 2. Marcar como activo el botón del sidebar de Rotación (no el de Lotes)
+  document.querySelectorAll('.nav-btn').forEach(function(b){ b.classList.remove('active'); });
+  if (navBtn) navBtn.classList.add('active');
+  // 3. Activar la sub-pestaña Rotación dentro de Lotes
+  setTimeout(function() {
+    var rotBtn = document.getElementById('lotes-tab-rotacion-btn');
+    if (rotBtn && typeof showLotesTab === 'function') {
+      showLotesTab('lotes-tab-rotacion', rotBtn);
+    }
+    if (typeof renderRotacion === 'function') {
+      try { renderRotacion(); } catch(e){}
+    }
+  }, 50);
+}
+
+// v1.4.75: click en "Lotes" del sidebar siempre lleva a la sub-pestaña Lotes (lista)
+// Antes: si venías de Rotación, quedabas atrapado en esa sub-pestaña al volver a clic "Lotes"
+function goToLotes(navBtn) {
+  showPage('lotes', navBtn);
+  // Forzar la sub-pestaña Lotes activa (la lista de lotes)
+  setTimeout(function() {
+    var lotesBtn = document.getElementById('lotes-tab-list-btn');
+    if (lotesBtn && typeof showLotesTab === 'function') {
+      showLotesTab('lotes-tab-list', lotesBtn);
+    }
+  }, 50);
+}
+
+// v1.4.79: acceso rápido a Animales desde el sidebar
+function goToAnimales(navBtn) {
+  showPage('lotes', null);
+  document.querySelectorAll('.nav-btn').forEach(function(b){ b.classList.remove('active'); });
+  if (navBtn) navBtn.classList.add('active');
+  setTimeout(function() {
+    var animBtn = document.getElementById('lotes-tab-animales-btn');
+    if (animBtn && typeof showLotesTab === 'function') {
+      showLotesTab('lotes-tab-animales', animBtn);
+    }
+    if (typeof renderAnimalesLote === 'function') {
+      try { renderAnimalesLote(); } catch(e){}
+    }
+  }, 50);
+}
+
+// v1.4.79: toggle collapsable de secciones del sidebar
+function toggleNavSec(secKey) {
+  var sec = document.querySelector('.nav-sec[data-sec="' + secKey + '"]');
+  if (!sec) return;
+  sec.classList.toggle('collapsed');
+  // Persistir estado por sección
+  try {
+    var collapsed = JSON.parse(localStorage.getItem('e5m_nav_collapsed_secs') || '{}');
+    collapsed[secKey] = sec.classList.contains('collapsed');
+    localStorage.setItem('e5m_nav_collapsed_secs', JSON.stringify(collapsed));
+  } catch(e){}
+}
+
+// v1.4.79: aplicar estados guardados al cargar (default: solo Operación Principal expandida)
+(function initNavSections() {
+  function apply() {
+    var saved;
+    try { saved = JSON.parse(localStorage.getItem('e5m_nav_collapsed_secs') || 'null'); } catch(e){ saved = null; }
+    // Si nunca se configuró → por defecto solo Operación Principal expandida
+    if (!saved) {
+      saved = {
+        'inicio': true,
+        'operacion-principal': false,  // expandida por default
+        'operacion-secundaria': true,
+        'reportes': true,
+        'equipo': true,
+        'sistema': true
+      };
+    }
+    Object.keys(saved).forEach(function(key) {
+      var sec = document.querySelector('.nav-sec[data-sec="' + key + '"]');
+      if (sec && saved[key]) sec.classList.add('collapsed');
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', apply, { once: true });
+  } else {
+    apply();
+  }
+})();
+
 
 function publishTasksToPWA() {
   var apiUrl = getApiUrl();
@@ -473,10 +642,10 @@ function publishTasksToPWA() {
   <div class="topbar-right">
     <span class="user-chip" id="header-user">Propietario</span>
     <span class="alert-count" id="alertCountBadge" onclick="showPage('alertas')">0 alertas</span>
-    <span id="header-update-badge" onclick="showPage('config')" style="display:none;background:linear-gradient(135deg,#39d353,#1a7f37);color:#fff;border-radius:8px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:Syne,sans-serif;font-weight:700;animation:pulse-update 1.5s infinite;border:1px solid rgba(57,211,83,.4);box-shadow:0 0 8px rgba(57,211,83,.3)" title="Click para actualizar">
+    <span id="header-update-badge" onclick="showPage('config')" style="display:none;background:linear-gradient(135deg,#39d353,#1a7f37);color:#fff;border-radius:8px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:Inter,sans-serif;font-weight:700;animation:pulse-update 1.5s infinite;border:1px solid rgba(57,211,83,.4);box-shadow:0 0 8px rgba(57,211,83,.3)" title="Click para actualizar">
       ⬇️ Nueva versión
     </span>
-    <button id="desktop-sync-btn" onclick="manualSync()" style="background:var(--sur2);border:1px solid var(--bor);color:var(--text);border-radius:8px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:Syne,sans-serif;font-weight:600;display:flex;align-items:center;gap:6px">
+    <button id="desktop-sync-btn" onclick="manualSync()" style="background:var(--sur2);border:1px solid var(--bor);color:var(--text);border-radius:8px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:Inter,sans-serif;font-weight:600;display:flex;align-items:center;gap:6px">
       <span id="desktop-sync-icon">↻</span> <span id="desktop-sync-label">Sync</span>
     </button>
     <div class="dot" id="sync-dot"></div>
@@ -549,48 +718,67 @@ function publishTasksToPWA() {
 
 <!-- SIDEBAR -->
 <aside class="sidebar">
-  <div class="nav-sec">
-    <div class="nav-lbl">Principal</div>
-    <button class="nav-btn active" onclick="showPage('dashboard',this)"><span class="nav-icon">📊</span>Dashboard</button>
-    <button class="nav-btn" onclick="showPage('stock',this)"><span class="nav-icon">📦</span>Stock</button>
-    <button class="nav-btn" onclick="showPage('alertas',this)"><span class="nav-icon">🔔</span>Alertas <span class="nav-badge nb-red" id="nb-alertas">0</span></button>
+  <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" title="Colapsar/expandir sidebar (Cmd+B)">«</button>
+
+  <div class="nav-sec" data-sec="inicio">
+    <button class="nav-lbl-btn" onclick="toggleNavSec('inicio')"><span class="nav-lbl">Inicio</span><span class="nav-lbl-chevron">▾</span></button>
+    <div class="nav-sec-body">
+    <button class="nav-btn active" data-label="Dashboard" onclick="showPage('dashboard',this)"><span class="nav-icon">📊</span><span class="nav-text">Dashboard</span></button>
+    <button class="nav-btn" data-label="Stock" onclick="showPage('stock',this)"><span class="nav-icon">📦</span><span class="nav-text">Stock</span></button>
+    <button class="nav-btn" data-label="Alertas" onclick="showPage('alertas',this)"><span class="nav-icon">🔔</span><span class="nav-text">Alertas</span><span class="nav-badge nb-red" id="nb-alertas">0</span></button>
+    </div>
   </div>
-  <div class="nav-sec">
-    <div class="nav-lbl">Operacion</div>
-    <button class="nav-btn" onclick="showPage('compra-ganado',this)"><span class="nav-icon">🐂</span>Compra Ganado</button>
-    <button class="nav-btn" onclick="showPage('ventas',this)"><span class="nav-icon">🤝</span>Venta Ganado</button>
-    <button class="nav-btn" onclick="showPage('lotes',this)"><span class="nav-icon">🐄</span>Lotes <span class="nav-badge nb-green" id="nb-lotes">0</span></button>
-    <button class="nav-btn" onclick="showPage('evalpasto',this)"><span class="nav-icon">🌿</span>Eval. Pasto <span class="nav-badge nb-amber" id="nb-evalpasto" style="display:none">0</span></button>
-    <button class="nav-btn" onclick="showPage('sanidad',this)"><span class="nav-icon">💉</span>Sanidad</button>
-    <button class="nav-btn" onclick="showPage('compras',this)"><span class="nav-icon">🛒</span>Compras Insumos</button>
-    <button class="nav-btn" onclick="showPage('mantenimiento',this)"><span class="nav-icon">🔧</span>Mantenimiento</button>
-    <button class="nav-btn" onclick="showPage('maquinaria',this)"><span class="nav-icon">🚜</span>Maquinaria</button>
-    <button class="nav-btn" onclick="showPage('lluvias',this)"><span class="nav-icon">🌧</span>Pluviometria</button>
-    <button class="nav-btn" onclick="showPage('diesel',this)"><span class="nav-icon">⛽</span>Combustible</button>
-    <button class="nav-btn" onclick="showPage('personal',this)"><span class="nav-icon">👷</span>Personal</button>
+
+  <div class="nav-sec" data-sec="operacion-principal">
+    <button class="nav-lbl-btn" onclick="toggleNavSec('operacion-principal')"><span class="nav-lbl">Operación Principal</span><span class="nav-lbl-chevron">▾</span></button>
+    <div class="nav-sec-body">
+    <button class="nav-btn" data-label="Compra Ganado" onclick="showPage('compra-ganado',this)"><span class="nav-icon">🐂</span><span class="nav-text">Compra Ganado</span></button>
+    <button class="nav-btn" data-label="Venta Ganado" onclick="showPage('ventas',this)"><span class="nav-icon">🤝</span><span class="nav-text">Venta Ganado</span></button>
+    <button class="nav-btn" data-label="Lotes" onclick="goToLotes(this)"><span class="nav-icon">🐄</span><span class="nav-text">Lotes</span><span class="nav-badge nb-green" id="nb-lotes">0</span></button>
+    <button class="nav-btn" data-label="Rotación" onclick="goToRotacion(this)"><span class="nav-icon">🔄</span><span class="nav-text">Rotación</span></button>
+    <button class="nav-btn" data-label="Animales" onclick="goToAnimales(this)"><span class="nav-icon">🐮</span><span class="nav-text">Animales</span></button>
+    <button class="nav-btn" data-label="Sanidad" onclick="showPage('sanidad',this)"><span class="nav-icon">💉</span><span class="nav-text">Sanidad</span></button>
+    <button class="nav-btn" data-label="Compras Insumos" onclick="showPage('compras',this)"><span class="nav-icon">🛒</span><span class="nav-text">Compras Insumos</span></button>
+    <button class="nav-btn" data-label="Personal" onclick="showPage('personal',this)"><span class="nav-icon">👷</span><span class="nav-text">Personal</span></button>
+    </div>
   </div>
-  <div class="nav-sec">
-    <div class="nav-lbl">Reportes</div>
-    <button class="nav-btn" onclick="showPage('kardex',this)"><span class="nav-icon">📒</span>Kardex</button>
-    <!-- Rotacion moved to Lotes tab -->
-    <button class="nav-btn" onclick="showPage('contabilidad',this)"><span class="nav-icon">📊</span>Contabilidad</button>
-    <!-- <button class="nav-btn" onclick="showPage('costos',this)"><span class="nav-icon">💰</span>Costos</button>  ← Reemplazado por Contabilidad -->
-    <button class="nav-btn" onclick="showPage('trazabilidad',this)"><span class="nav-icon">🔖</span>Trazabilidad</button>
-    <!-- <button class="nav-btn" onclick="showPage('reportes',this)"><span class="nav-icon">📊</span>Reportes Gerenciales</button>  ← Obsoleto, info disponible en Contabilidad y CREA -->
-    <!-- Reporte CREA eliminado v1.4.57: ahora está integrado en el Dashboard principal -->
-    <button class="nav-btn" onclick="showPage('analisis-lote',this);initAnalisisLote()"><span class="nav-icon">📈</span>Análisis Lote</button>
-    <button class="nav-btn" onclick="showPage('analisis-historico',this);initAnalisisHistorico()"><span class="nav-icon">📦</span>Análisis Histórico</button>
-    <button class="nav-btn" onclick="showPage('params-reporte',this)"><span class="nav-icon">🎯</span>Params. Reporte</button>
+
+  <div class="nav-sec" data-sec="operacion-secundaria">
+    <button class="nav-lbl-btn" onclick="toggleNavSec('operacion-secundaria')"><span class="nav-lbl">Operación Secundaria</span><span class="nav-lbl-chevron">▾</span></button>
+    <div class="nav-sec-body">
+    <button class="nav-btn" data-label="Eval. Pasto" onclick="showPage('evalpasto',this)"><span class="nav-icon">🌿</span><span class="nav-text">Eval. Pasto</span><span class="nav-badge nb-amber" id="nb-evalpasto" style="display:none">0</span></button>
+    <button class="nav-btn" data-label="Mantenimiento" onclick="showPage('mantenimiento',this)"><span class="nav-icon">🔧</span><span class="nav-text">Mantenimiento</span></button>
+    <button class="nav-btn" data-label="Maquinaria" onclick="showPage('maquinaria',this)"><span class="nav-icon">🚜</span><span class="nav-text">Maquinaria</span></button>
+    <button class="nav-btn" data-label="Pluviometría" onclick="showPage('lluvias',this)"><span class="nav-icon">🌧</span><span class="nav-text">Pluviometría</span></button>
+    <button class="nav-btn" data-label="Combustible" onclick="showPage('diesel',this)"><span class="nav-icon">⛽</span><span class="nav-text">Combustible</span></button>
+    </div>
   </div>
-  <div class="nav-sec">
-    <div class="nav-lbl">Equipo</div>
-    <button class="nav-btn" onclick="showPage('tareas',this)"><span class="nav-icon">📋</span>Tareas <span class="nav-badge nb-red" id="nb-tareas" style="display:none"></span></button>
-    <button class="nav-btn" onclick="showPage('actividades',this)"><span class="nav-icon">📝</span>Actividades</button>
-    <!-- <button class="nav-btn" onclick="showPage('inteligencia',this);initInteligencia()"><span class="nav-icon">📡</span>Inteligencia</button> -->
+
+  <div class="nav-sec" data-sec="reportes">
+    <button class="nav-lbl-btn" onclick="toggleNavSec('reportes')"><span class="nav-lbl">Reportes</span><span class="nav-lbl-chevron">▾</span></button>
+    <div class="nav-sec-body">
+    <button class="nav-btn" data-label="Kardex" onclick="showPage('kardex',this)"><span class="nav-icon">📒</span><span class="nav-text">Kardex</span></button>
+    <button class="nav-btn" data-label="Contabilidad" onclick="showPage('contabilidad',this)"><span class="nav-icon">📊</span><span class="nav-text">Contabilidad</span></button>
+    <button class="nav-btn" data-label="Trazabilidad" onclick="showPage('trazabilidad',this)"><span class="nav-icon">🔖</span><span class="nav-text">Trazabilidad</span></button>
+    <button class="nav-btn" data-label="Análisis Lote" onclick="showPage('analisis-lote',this);initAnalisisLote()"><span class="nav-icon">📈</span><span class="nav-text">Análisis Lote</span></button>
+    <button class="nav-btn" data-label="Análisis Histórico" onclick="showPage('analisis-historico',this);initAnalisisHistorico()"><span class="nav-icon">📦</span><span class="nav-text">Análisis Histórico</span></button>
+    <button class="nav-btn" data-label="Params. Reporte" onclick="showPage('params-reporte',this)"><span class="nav-icon">🎯</span><span class="nav-text">Params. Reporte</span></button>
+    </div>
   </div>
-  <div class="nav-sec">
-    <div class="nav-lbl">Sistema</div>
-    <button class="nav-btn" id="nav-config" onclick="showPage('config',this)"><span class="nav-icon">⚙️</span>Configuracion <span id="cfg-dot" style="width:7px;height:7px;border-radius:50%;background:var(--muted2);display:inline-block;margin-left:4px"></span></button>
+
+  <div class="nav-sec" data-sec="equipo">
+    <button class="nav-lbl-btn" onclick="toggleNavSec('equipo')"><span class="nav-lbl">Equipo</span><span class="nav-lbl-chevron">▾</span></button>
+    <div class="nav-sec-body">
+    <button class="nav-btn" data-label="Tareas" onclick="showPage('tareas',this)"><span class="nav-icon">📋</span><span class="nav-text">Tareas</span><span class="nav-badge nb-red" id="nb-tareas" style="display:none"></span></button>
+    <button class="nav-btn" data-label="Actividades" onclick="showPage('actividades',this)"><span class="nav-icon">📝</span><span class="nav-text">Actividades</span></button>
+    </div>
+  </div>
+
+  <div class="nav-sec" data-sec="sistema">
+    <button class="nav-lbl-btn" onclick="toggleNavSec('sistema')"><span class="nav-lbl">Sistema</span><span class="nav-lbl-chevron">▾</span></button>
+    <div class="nav-sec-body">
+    <button class="nav-btn" id="nav-config" data-label="Configuración" onclick="showPage('config',this)"><span class="nav-icon">⚙️</span><span class="nav-text">Configuración</span><span id="cfg-dot" style="width:7px;height:7px;border-radius:50%;background:var(--muted2);display:inline-block;margin-left:4px"></span></button>
+    </div>
   </div>
 </aside>
 
@@ -679,7 +867,7 @@ function publishTasksToPWA() {
   <!-- AGUA TAB -->
   <div id="lotes-tab-agua" class="tab-pane" style="display:none">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <div><div style="font-family:Syne,sans-serif;font-size:15px;font-weight:700">💧 Control de Agua</div>
+      <div><div style="font-family:Inter,sans-serif;font-size:15px;font-weight:700">💧 Control de Agua</div>
       <div style="font-size:11px;color:var(--muted)">Verificacion de bebederos por potrero</div></div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-primary btn-sm" onclick="openModal('modal-agua')">+ Registrar</button>
@@ -695,7 +883,7 @@ function publishTasksToPWA() {
   <!-- SAL TAB -->
   <div id="lotes-tab-sal" class="tab-pane" style="display:none">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <div><div style="font-family:Syne,sans-serif;font-size:15px;font-weight:700">🧂 Sal Mineral</div>
+      <div><div style="font-family:Inter,sans-serif;font-size:15px;font-weight:700">🧂 Sal Mineral</div>
       <div style="font-size:11px;color:var(--muted)">Deposito de sal por lote y potrero</div></div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-primary btn-sm" onclick="openModal('modal-sal')">+ Registrar</button>
@@ -711,7 +899,7 @@ function publishTasksToPWA() {
   <!-- CONTEO TAB -->
   <div id="lotes-tab-conteo" class="tab-pane" style="display:none">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <div><div style="font-family:Syne,sans-serif;font-size:15px;font-weight:700">🔢 Conteo de Animales</div>
+      <div><div style="font-family:Inter,sans-serif;font-size:15px;font-weight:700">🔢 Conteo de Animales</div>
       <div style="font-size:11px;color:var(--muted)">Verificacion de cabezas vs registro del sistema</div></div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-primary btn-sm" onclick="openModal('modal-conteo')">+ Registrar conteo</button>
@@ -727,7 +915,7 @@ function publishTasksToPWA() {
   <!-- PARTOS TAB -->
   <div id="lotes-tab-partos" class="tab-pane" style="display:none">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <div><div style="font-family:Syne,sans-serif;font-size:15px;font-weight:700">🐄 Partos y Nacimientos</div>
+      <div><div style="font-family:Inter,sans-serif;font-size:15px;font-weight:700">🐄 Partos y Nacimientos</div>
       <div style="font-size:11px;color:var(--muted)">Registro de crias nacidas</div></div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-primary btn-sm" onclick="openModal('modal-parto')">+ Registrar parto</button>
@@ -743,7 +931,7 @@ function publishTasksToPWA() {
   <!-- ALIMENTO TAB -->
   <div id="lotes-tab-alimento" class="tab-pane" style="display:none">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <div><div style="font-family:Syne,sans-serif;font-size:15px;font-weight:700">🌿 Alimentacion y Suplementos</div>
+      <div><div style="font-family:Inter,sans-serif;font-size:15px;font-weight:700">🌿 Alimentacion y Suplementos</div>
       <div style="font-size:11px;color:var(--muted)">Registro de suplementacion por lote</div></div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-primary btn-sm" onclick="openModal('modal-alimento')">+ Registrar</button>
@@ -760,7 +948,7 @@ function publishTasksToPWA() {
   <div id="lotes-tab-animales" class="tab-pane" style="display:none">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
       <div>
-        <div style="font-family:Syne,sans-serif;font-size:15px;font-weight:700">Animales del Lote</div>
+        <div style="font-family:Inter,sans-serif;font-size:15px;font-weight:700">Animales del Lote</div>
         <div style="font-size:11px;color:var(--muted)" id="animales-subtitle">Selecciona un lote para ver sus animales</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -783,8 +971,34 @@ function publishTasksToPWA() {
         <button class="btn btn-ghost btn-sm" onclick="openModalPesajeAnimal()">+ Pesaje</button>
       </div>
     </div>
+    <!-- v1.4.76: Sticky action bar para selección múltiple -->
+    <div id="animales-bulk-bar" style="display:none;position:sticky;top:56px;z-index:50;background:linear-gradient(180deg,var(--sur) 0%,var(--sur2) 100%);border:1px solid var(--amber);border-radius:10px;padding:10px 14px;margin-bottom:12px;box-shadow:0 4px 12px rgba(212,160,23,.15);align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:240px">
+        <span style="background:var(--amber);color:#0d1117;font-weight:700;padding:3px 10px;border-radius:14px;font-size:12px;font-family:DM Mono,monospace" id="bulk-count-badge">0 seleccionados</span>
+        <span id="bulk-stats" style="font-size:11px;color:var(--muted);font-family:DM Mono,monospace"></span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="bulkSelectByRange()">⚖️ Por rango de peso</button>
+        <button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="bulkClearSelection()">✕ Limpiar</button>
+        <button class="btn btn-primary btn-sm" style="font-size:11px;font-weight:700" onclick="openBulkMover()">📤 Mover selección</button>
+      </div>
+    </div>
+
     <!-- Stats del lote seleccionado -->
     <div id="animales-stats" style="display:none;display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap"></div>
+
+    <!-- v1.4.78: Histograma de pesos para decidir separación -->
+    <div id="animales-histograma-card" style="display:none;background:var(--sur);border:1px solid var(--bor);border-radius:10px;padding:14px 16px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:13px;font-weight:700;color:var(--text)">📊 Distribución de pesos</div>
+          <div style="font-size:11px;color:var(--muted)" id="animales-hist-subtitle">Click en una barra para seleccionar el grupo</div>
+        </div>
+        <div id="animales-hist-insight" style="font-size:11px;color:var(--muted);font-family:DM Mono,monospace"></div>
+      </div>
+      <div style="position:relative;height:200px"><canvas id="animales-hist-chart"></canvas></div>
+    </div>
+
     <div class="card"><div class="card-body" style="padding:0"><div id="animales-list"></div></div></div>
   </div>
 
@@ -792,7 +1006,7 @@ function publishTasksToPWA() {
   <div id="lotes-tab-bajas" class="tab-pane" style="display:none">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
       <div>
-        <div style="font-family:Syne,sans-serif;font-size:15px;font-weight:700">🪦 Registro de Bajas</div>
+        <div style="font-family:Inter,sans-serif;font-size:15px;font-weight:700">🪦 Registro de Bajas</div>
         <div style="font-size:11px;color:var(--muted)" id="bajas-subtitle">Muertes registradas · Control de mortandad</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
@@ -820,7 +1034,7 @@ function publishTasksToPWA() {
   <div id="lotes-tab-historial" class="tab-pane" style="display:none">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
       <div>
-        <div style="font-family:Syne,sans-serif;font-size:15px;font-weight:700">Historial de Animales</div>
+        <div style="font-family:Inter,sans-serif;font-size:15px;font-weight:700">Historial de Animales</div>
         <div style="font-size:11px;color:var(--muted)" id="historial-subtitle">Timeline completo: pesajes, curaciones y ventas por animal</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
@@ -842,7 +1056,7 @@ function publishTasksToPWA() {
   <div id="lotes-tab-actividad" class="tab-pane" style="display:none">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
       <div>
-        <div style="font-family:Syne,sans-serif;font-size:15px;font-weight:700">📅 Actividad del Lote</div>
+        <div style="font-family:Inter,sans-serif;font-size:15px;font-weight:700">📅 Actividad del Lote</div>
         <div style="font-size:11px;color:var(--muted)">Historial completo de registros</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
@@ -1329,12 +1543,13 @@ function publishTasksToPWA() {
     <select class="form-select" id="kardex-lote-sel" style="width:200px;padding:6px 10px;font-size:12px" onchange="renderKardex()">
       <option value="">Todos los lotes</option>
     </select>
-    <select class="form-select" id="kardex-type-sel" style="width:150px;padding:6px 10px;font-size:12px" onchange="renderKardex()">
+    <select class="form-select" id="kardex-type-sel" style="width:170px;padding:6px 10px;font-size:12px" onchange="renderKardex()">
       <option value="">Todos los tipos</option>
       <option value="compra">Compra</option>
       <option value="venta">Venta</option>
       <option value="ajuste">Ajuste</option>
       <option value="muerte">Muerte/Baja</option>
+      <option value="transferencia_interna">Transferencia interna</option>
     </select>
     <div style="display:flex;align-items:center;gap:6px">
       <span style="font-size:11px;color:var(--muted)">Desde:</span>
@@ -2053,10 +2268,17 @@ function publishTasksToPWA() {
       </table>
     </div>
   </div>
-  <!-- Adelantos de salario -->
-  <div style="margin-top:24px">
+
+  <!-- v1.4.73: Tabs Adelantos / Sueldos -->
+  <div style="margin-top:24px;border-bottom:1px solid var(--bor);display:flex;gap:4px;padding:0 4px">
+    <button class="tab-btn active" id="pers-tab-adel-btn" onclick="showPersonalTab('adelantos',this)">💵 Control de Adelantos</button>
+    <button class="tab-btn" id="pers-tab-sueldos-btn" onclick="showPersonalTab('sueldos',this)">📅 Historial de Sueldos</button>
+  </div>
+
+  <!-- TAB 1: Adelantos -->
+  <div id="pers-tab-adelantos" style="margin-top:18px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-      <div style="font-size:16px;font-weight:700">💵 Control de Adelantos</div>
+      <div style="font-size:13px;color:var(--muted)">Adelantos entregados al personal · se descuentan automáticamente del próximo sueldo</div>
       <button class="btn btn-primary btn-sm" onclick="openModal('modal-advance')">+ Adelanto</button>
     </div>
 
@@ -2095,16 +2317,16 @@ function publishTasksToPWA() {
     <div id="adv-period-summary" style="text-align:right;padding:8px 4px;font-size:12px;color:var(--muted)"></div>
   </div>
 
-  <!-- Historial Sueldos Anual -->
-  <div style="margin-top:28px">
+  <!-- TAB 2: Sueldos -->
+  <div id="pers-tab-sueldos" style="margin-top:18px;display:none">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-      <div style="font-size:16px;font-weight:700">📅 Historial de Sueldos</div>
+      <div style="font-size:13px;color:var(--muted)">Pagos mensuales de sueldos · adelantos descontados automáticamente</div>
       <div style="display:flex;gap:8px;align-items:center">
         <select class="form-select" id="hs-emp-filter" style="width:180px;padding:6px 10px;font-size:12px" onchange="renderHistorialSueldos()">
           <option value="">Todos los empleados</option>
         </select>
         <select class="form-select" id="hs-year-filter" style="width:90px;padding:6px 10px;font-size:12px" onchange="renderHistorialSueldos()"></select>
-        <button class="btn btn-ghost btn-sm" onclick="registrarPagoSueldo()">+ Pago</button>
+        <button class="btn btn-primary btn-sm" onclick="registrarPagoSueldo()">+ Pago</button>
       </div>
     </div>
     <!-- Resumen anual por empleado -->
@@ -3688,6 +3910,116 @@ function publishTasksToPWA() {
   </div>
 </div></div>
 
+<!-- v1.4.76: Modal Mover Selección Múltiple -->
+<div class="modal-overlay" id="modal-bulk-mover">
+<div class="modal" style="max-width:540px">
+  <h2>📤 Mover selección</h2>
+
+  <!-- Summary -->
+  <div style="background:rgba(212,160,23,.08);border:1px solid rgba(212,160,23,.22);border-radius:10px;padding:12px 14px;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+      <span style="font-size:11px;color:var(--muted);font-family:DM Mono,monospace">SELECCIÓN</span>
+      <span id="bulk-mover-count" style="font-family:DM Mono,monospace;color:var(--amber2);font-weight:700;font-size:18px">0 animales</span>
+    </div>
+    <div style="font-size:11px;color:var(--muted);font-family:DM Mono,monospace">
+      Origen: <span id="bulk-mover-from" style="color:var(--text)">-</span> · Peso prom: <span id="bulk-mover-avg" style="color:var(--text)">-</span> · Total: <span id="bulk-mover-total" style="color:var(--green)">-</span>
+    </div>
+  </div>
+
+  <!-- Destino — tabs -->
+  <div style="display:flex;gap:0;border-bottom:1px solid var(--bor);margin-bottom:14px">
+    <button class="bulk-dest-tab tab-btn active" data-dest="existing" onclick="bulkSwitchDest('existing',this)">📋 Lote existente</button>
+    <button class="bulk-dest-tab tab-btn" data-dest="new" onclick="bulkSwitchDest('new',this)">+ Crear nuevo lote</button>
+  </div>
+
+  <!-- Opción 1: lote existente -->
+  <div id="bulk-dest-existing">
+    <div class="form-group">
+      <label class="form-label">Lote destino</label>
+      <select class="form-select" id="bulk-to-lot">
+        <option value="">Seleccionar lote...</option>
+      </select>
+      <div class="form-hint">Solo se muestran lotes activos distintos del origen</div>
+    </div>
+  </div>
+
+  <!-- Opción 2: crear nuevo lote -->
+  <div id="bulk-dest-new" style="display:none">
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Código del nuevo lote</label>
+        <input class="form-input" id="bulk-new-code" placeholder="Ej: SSD3-A">
+        <div class="form-hint" id="bulk-code-hint">Código único (se sugiere automáticamente)</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Categoría</label>
+        <select class="form-select" id="bulk-new-cat">
+          <option value="Novillo">Novillo</option>
+          <option value="Ternero">Ternero</option>
+          <option value="Vaquilla">Vaquilla</option>
+          <option value="Vaca">Vaca</option>
+          <option value="Toro">Toro</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Raza</label>
+        <input class="form-input" id="bulk-new-raza" placeholder="Nelore">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Potrero destino</label>
+        <select class="form-select" id="bulk-new-paddock">
+          <option value="">Seleccionar potrero...</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Comunes -->
+  <div class="form-row">
+    <div class="form-group">
+      <label class="form-label">Fecha del movimiento</label>
+      <input class="form-input" type="date" id="bulk-mover-date">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Motivo (opcional)</label>
+      <input class="form-input" id="bulk-mover-motivo" placeholder="Ej: Afinidad de peso 360-370 kg">
+    </div>
+  </div>
+
+  <div class="form-actions">
+    <button class="btn btn-ghost" onclick="closeModal('modal-bulk-mover')">Cancelar</button>
+    <button class="btn btn-primary" onclick="confirmarBulkMover()" id="bulk-mover-btn">Mover animales</button>
+  </div>
+</div></div>
+
+<!-- v1.4.76: Modal Seleccionar por Rango de Peso -->
+<div class="modal-overlay" id="modal-bulk-range">
+<div class="modal" style="max-width:380px">
+  <h2>⚖️ Seleccionar por rango</h2>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:14px">
+    Marcará todos los animales cuyo último peso esté en el rango.
+  </div>
+  <div class="form-row">
+    <div class="form-group">
+      <label class="form-label">Mín. (kg)</label>
+      <input class="form-input" type="number" id="bulk-range-min" oninput="bulkRangePreview()">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Máx. (kg)</label>
+      <input class="form-input" type="number" id="bulk-range-max" oninput="bulkRangePreview()">
+    </div>
+  </div>
+  <div style="background:var(--sur2);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-family:DM Mono,monospace;font-size:13px;text-align:center">
+    <span id="bulk-range-preview" style="color:var(--amber2);font-weight:700">Ingresá un rango</span>
+  </div>
+  <div class="form-actions">
+    <button class="btn btn-ghost" onclick="closeModal('modal-bulk-range')">Cancelar</button>
+    <button class="btn btn-primary" onclick="bulkApplyRange()">Seleccionar</button>
+  </div>
+</div></div>
+
 <!-- Modal Baja (muerte) -->
 <div class="modal-overlay" id="modal-baja-animal">
 <div class="modal" style="max-width:480px">
@@ -4164,6 +4496,62 @@ function publishTasksToPWA() {
 
 <script>
 // ══════════════════════════════════════════════════
+// SIDEBAR — v1.4.71 collapse/expand with persistence
+// ══════════════════════════════════════════════════
+(function initSidebarEarly() {
+  // Aplicar estado guardado ANTES del paint para evitar flash
+  try {
+    var saved = localStorage.getItem('e5m_sidebar_collapsed');
+    if (saved === '1') {
+      // Esperar a que .app exista (puede no estar al ejecutar inline script en head)
+      var apply = function() {
+        var app = document.querySelector('.app');
+        if (app) app.classList.add('sidebar-collapsed');
+      };
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', apply, { once: true });
+      } else {
+        apply();
+      }
+    }
+  } catch(e) {}
+})();
+
+function toggleSidebar() {
+  var app = document.querySelector('.app');
+  if (!app) return;
+  var collapsed = app.classList.toggle('sidebar-collapsed');
+  try { localStorage.setItem('e5m_sidebar_collapsed', collapsed ? '1' : '0'); } catch(e){}
+  // Actualizar icono del toggle (« cuando expandido, » cuando colapsado)
+  var btn = document.getElementById('sidebar-toggle');
+  if (btn) btn.textContent = collapsed ? '»' : '«';
+  // Forzar resize para que los charts (Chart.js) se reajusten al nuevo ancho
+  setTimeout(function() {
+    try { window.dispatchEvent(new Event('resize')); } catch(e){}
+  }, 280);  // un poco más que la transición CSS (.25s)
+}
+
+// Atajo de teclado Cmd/Ctrl + B
+document.addEventListener('keydown', function(e) {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b' && !e.shiftKey && !e.altKey) {
+    // Solo si no estás en un input/textarea
+    var tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target && e.target.isContentEditable)) return;
+    e.preventDefault();
+    toggleSidebar();
+  }
+});
+
+// Sincronizar el ícono del botón con el estado al cargar
+document.addEventListener('DOMContentLoaded', function() {
+  var app = document.querySelector('.app');
+  var btn = document.getElementById('sidebar-toggle');
+  if (app && btn) btn.textContent = app.classList.contains('sidebar-collapsed') ? '»' : '«';
+});
+</script>
+
+<script>
+// ══════════════════════════════════════════════════
 // DATA STORE - localStorage persistence
 // ══════════════════════════════════════════════════
 const DB_KEY = 'estancia5m_v1';
@@ -4425,10 +4813,85 @@ function flushReplaceQueue() {
   });
 }
 // Auto-flush al detectar conexión + cada 60s mientras haya cola
-window.addEventListener('online', function() { setTimeout(flushReplaceQueue, 1500); });
+window.addEventListener('online', function() {
+  setTimeout(flushReplaceQueue, 1500);
+  setTimeout(retryPendingBulkMoves, 2000);  // v1.4.81
+});
 setInterval(function() {
   if (_replaceQueueGet().length > 0) flushReplaceQueue();
 }, 60000);
+
+// v1.4.81: Reintentar bulk moves pendientes de sync
+// Se invoca: al cargar la app (después del init), al volver online, y cada 5 min.
+function retryPendingBulkMoves() {
+  if (!navigator.onLine) return;
+  var pending = (db.animal_movements || []).filter(function(m) {
+    return m && m._sync_retry_pending && !m._synced;
+  });
+  if (pending.length === 0) return;
+  console.log('[bulk-move retry] ' + pending.length + ' batches pendientes de sync');
+
+  var apiUrl = getApiUrl();
+  var token = localStorage.getItem('e5m_api_token') || '';
+
+  pending.forEach(function(batch) {
+    var newLotData = batch.created_new_lot
+      ? (db.lots || []).find(function(l){return l.code === batch.to_lot;})
+      : null;
+
+    // v1.4.84: armar animals_payload para el retry (resiliente a desincronización)
+    var adbSnapshot = getAnimalesDB();
+    var batchAnimalsArr = (adbSnapshot[batch.to_lot] || []).filter(function(a) {
+      return (batch.animal_ids || []).indexOf(String(a.id || a.animal_id || '')) >= 0;
+    });
+    var animalsPayload = batchAnimalsArr.map(function(a) {
+      return {
+        animal_id: String(a.id || a.animal_id || ''),
+        breed: a.breed || a.raza || '',
+        pesajes: a.pesajes || [],
+        _movements: a._movements || []
+      };
+    });
+
+    fetch(apiUrl + '/animal-movements/bulk', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + token,
+        'x-app-version': '1.4.84'
+      },
+      body: JSON.stringify({
+        batch_id: batch.id,
+        from_lot: batch.from_lot,
+        to_lot: batch.to_lot,
+        animal_ids: batch.animal_ids,
+        animals_payload: animalsPayload,
+        date: batch.date,
+        motivo: batch.reason,
+        created_new_lot: batch.created_new_lot,
+        new_lot_data: newLotData,
+        by: batch.by,
+        source: batch.source
+      })
+    })
+      .then(function(r) { return r.json().then(function(d){ return { ok: r.ok, data: d }; }); })
+      .then(function(res) {
+        if (res.ok && res.data && res.data.ok) {
+          batch._synced = true;
+          batch._synced_at = new Date().toISOString();
+          delete batch._sync_retry_pending;
+          delete batch._sync_error;
+          saveDB();
+          console.log('[bulk-move retry] OK: ' + batch.id);
+        }
+      })
+      .catch(function(err) {
+        console.warn('[bulk-move retry] still failing for ' + batch.id + ':', err.message);
+      });
+  });
+}
+// Reintento periódico cada 5 min
+setInterval(retryPendingBulkMoves, 5 * 60 * 1000);
 
 // Implementación interna: si fromQueue=true, no re-encolar al fallar (evitar loop).
 function _doReplace(tableName, records, fromQueue) {
@@ -5150,6 +5613,7 @@ function pushDesktopRecords() {
       maquinaria:       db.maquinaria || [],
       rotation_history: db.rotation_history || [],
       pasture_evals:    db.pasture_evals || [],
+      animal_movements: db.animal_movements || [],
       tasks_list:       tasks,
     },
     preserve_lots: true
@@ -5568,6 +6032,40 @@ function renderLotes() {
       if (compra.total) partes.push('💰 Bs. ' + compra.total.toLocaleString());
       if (compra.notes) partes.push(compra.notes);
       detalleTxt = partes.join(' · ');
+    }
+    // v1.4.80: si el lote nació de un movimiento batch, mostrar el lote padre como "origen"
+    // y trazar la cadena hasta el lote original (con proveedor real si hay).
+    if (!compra && lot._createdViaBulkMove) {
+      var move = (db.animal_movements || []).find(function(m){ return m.to_lot === lot.code; });
+      if (move) {
+        // Buscar la cadena hacia atrás hasta el lote original que sí tenga compra
+        var chain = [];
+        var curLot = move.from_lot;
+        var guard = 10;
+        while (curLot && guard-- > 0) {
+          chain.push(curLot);
+          var compraPadre = findCompraForLot(curLot);
+          if (compraPadre && compraPadre.proveedor) {
+            // Encontrado: chain muestra la trazabilidad, proveedor real al final
+            proveedorTxt = compraPadre.proveedor + ' ← ' + chain.reverse().join(' ← ');
+            break;
+          }
+          // Buscar otro movimiento que haya creado curLot
+          var prevMove = (db.animal_movements || []).find(function(m){ return m.to_lot === curLot; });
+          if (!prevMove) {
+            proveedorTxt = '← ' + chain.reverse().join(' ← ');
+            break;
+          }
+          curLot = prevMove.from_lot;
+        }
+        if (proveedorTxt === '-') proveedorTxt = '← ' + move.from_lot;
+        // Detalle: fecha + cantidad + motivo
+        var partes2 = [];
+        if (move.date) partes2.push('🗓 ' + move.date);
+        partes2.push('📤 ' + move.count + ' cab');
+        if (move.reason) partes2.push(move.reason);
+        if (!detalleTxt || detalleTxt === '-') detalleTxt = partes2.join(' · ');
+      }
     }
     if (!detalleTxt) detalleTxt = lot.notes ? escH(lot.notes) : '-';
     // Si es marcado_completo y hay lote destino, mostrarlo en detalles
@@ -8396,6 +8894,12 @@ function showPurchaseDetail(p) {
 function renderPersonal() {
   renderAdvances();
   renderHistorialSueldos();
+  // v1.4.73: restaurar última tab usada (default: adelantos)
+  try {
+    var savedTab = localStorage.getItem('e5m_personal_tab') || 'adelantos';
+    var btn = document.getElementById('pers-tab-' + (savedTab === 'sueldos' ? 'sueldos' : 'adel') + '-btn');
+    if (typeof showPersonalTab === 'function') showPersonalTab(savedTab, btn);
+  } catch(e){}
   var empTbody = document.getElementById('employees-tbody');
   if (empTbody) {
     empTbody.innerHTML = '';
@@ -8724,7 +9228,7 @@ function renderAdvances() {
       card.style.cssText = 'background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:14px';
 
       var nameEl = document.createElement('div');
-      nameEl.style.cssText = 'font-family:"Syne",sans-serif;font-size:13px;font-weight:700;margin-bottom:2px';
+      nameEl.style.cssText = 'font-family:Inter,sans-serif;font-size:13px;font-weight:700;margin-bottom:2px';
       nameEl.textContent = emp.name;
 
       var roleEl = document.createElement('div');
@@ -17217,11 +17721,34 @@ function renderKardex() {
     resEl.innerHTML=lotsToShow.map(function(lot){
       // El resumen del card ignora filtro de fecha (siempre muestra el total histórico del lote)
       var lotMovs=db.kardex.filter(function(m){return m.lote===lot.code;});
-      var debe=lotMovs.filter(function(m){return m.tipo==='compra'||m.tipo==='ajuste';}).reduce(function(s,m){return s+(m.total||0);},0);
-      var haber=lotMovs.filter(function(m){return m.tipo==='venta';}).reduce(function(s,m){return s+(m.total||0);},0);
+      // v1.4.83: incluir 'transferencia_interna' en DEBE/HABER
+      // Si el lote es el destino (recibe), el monto va a DEBE.
+      // Si el lote es el origen (entrega), el monto va a HABER.
+      // El campo m._transfer_role lo seteamos al crear el asiento ('entrada' o 'salida').
+      var debe=lotMovs.filter(function(m){
+        return m.tipo==='compra' || m.tipo==='ajuste' ||
+               (m.tipo==='transferencia_interna' && m._transfer_role==='entrada');
+      }).reduce(function(s,m){return s+(m.total||0);},0);
+      var haber=lotMovs.filter(function(m){
+        return m.tipo==='venta' ||
+               (m.tipo==='transferencia_interna' && m._transfer_role==='salida');
+      }).reduce(function(s,m){return s+(m.total||0);},0);
       var saldo=debe-haber;
+      // Cabezas adquiridas: compras directas + transferencias entrantes
       var cabCompradas=lotMovs.filter(function(m){return m.tipo==='compra';}).reduce(function(s,m){return s+(m.cabezas||0);},0);
-      var promPorCab=cabCompradas?Math.round(debe/cabCompradas):0;
+      var cabTransferidas=lotMovs.filter(function(m){
+        return m.tipo==='transferencia_interna' && m._transfer_role==='entrada';
+      }).reduce(function(s,m){return s+(m.cabezas||0);},0);
+      var cabTotal=cabCompradas+cabTransferidas;
+      var promPorCab=cabTotal?Math.round(debe/cabTotal):0;
+      // Linaje contable (de qué compra hereda este lote)
+      var costOriginLine='';
+      if (lot.cost_origin && lot.cost_origin.from_lot) {
+        costOriginLine='<div style="font-size:10px;color:var(--muted);margin-top:3px">' +
+          '↩ Origen contable: <span style="color:var(--blue)">' + escH(lot.cost_origin.from_lot) + '</span>' +
+          (lot.cost_origin.precio_kg ? ' · ' + lot.cost_origin.precio_kg.toFixed(2) + ' Bs/kg' : '') +
+        '</div>';
+      }
       var isVendido = lot.status==='vendido' || lot.status==='sold';
       var isCuarentena = lot.status==='cuarentena';
       var statusBadge = '';
@@ -17229,11 +17756,12 @@ function renderKardex() {
       else if (isCuarentena) statusBadge = '<span class="bdg" style="background:rgba(168,85,247,.15);color:#A855F7;border:1px solid #A855F7;font-size:9px;margin-left:6px">Cuarentena</span>';
       var cardOpacity = isVendido ? 'opacity:0.78;' : '';
       return '<div style="background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:14px;'+cardOpacity+'">'+
-        '<div style="font-family:Syne,sans-serif;font-size:13px;font-weight:700;color:var(--amber2);margin-bottom:8px">'+escH(lot.code)+statusBadge+'</div>'+
+        '<div style="font-family:Inter,sans-serif;font-size:13px;font-weight:700;color:var(--amber2);margin-bottom:8px">'+escH(lot.code)+statusBadge+'</div>'+
         '<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid rgba(48,54,61,.3)"><span style="color:var(--muted)">DEBE</span><span style="font-weight:600">Bs. '+debe.toLocaleString()+'</span></div>'+
         '<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid rgba(48,54,61,.3)"><span style="color:var(--muted)">HABER</span><span style="font-weight:600;color:var(--green)">Bs. '+haber.toLocaleString()+'</span></div>'+
         '<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;margin-top:4px"><span style="color:var(--muted);font-weight:600">SALDO</span><span style="font-weight:700;color:'+(saldo>0?'var(--amber2)':'var(--green)')+'">Bs. '+saldo.toLocaleString()+'</span></div>'+
-        '<div style="font-size:10px;color:var(--muted);margin-top:6px">Prom/cab: Bs. '+promPorCab.toLocaleString()+' · '+cabCompradas+' cab. compradas</div>'+
+        '<div style="font-size:10px;color:var(--muted);margin-top:6px">Prom/cab: Bs. '+promPorCab.toLocaleString()+' · '+cabTotal+' cab.</div>'+
+        costOriginLine +
       '</div>';
     }).join('');
   }
@@ -17245,14 +17773,27 @@ function renderKardex() {
   var sorted=movs.slice().sort(function(a,b){return (a.fecha||'').localeCompare(b.fecha||'');});
   sorted.forEach(function(m){
     if(!saldoMap[m.lote])saldoMap[m.lote]=0;
-    var debe=(m.tipo==='compra'||m.tipo==='ajuste')?(m.total||0):0;
-    var haber=m.tipo==='venta'?(m.total||0):0;
+    // v1.4.83: transferencia_interna agrega DEBE en entrada / HABER en salida
+    var debe=0, haber=0;
+    if (m.tipo==='compra' || m.tipo==='ajuste') debe = m.total||0;
+    else if (m.tipo==='venta') haber = m.total||0;
+    else if (m.tipo==='transferencia_interna') {
+      if (m._transfer_role==='entrada') debe = m.total||0;
+      else if (m._transfer_role==='salida') haber = m.total||0;
+    }
     saldoMap[m.lote]+=(debe-haber);
     m._saldo=saldoMap[m.lote];m._debe=debe;m._haber=haber;
   });
   sorted.slice().reverse().forEach(function(m){
     var tr=document.createElement('tr');
-    var tipoColor={compra:'var(--blue)',venta:'var(--green)',ajuste:'var(--amber2)',muerte:'var(--red)'};
+    // v1.4.83: agregar tipo transferencia_interna (cyan/teal)
+    var tipoColor={compra:'var(--blue)',venta:'var(--green)',ajuste:'var(--amber2)',muerte:'var(--red)',transferencia_interna:'#22d3ee'};
+    // Etiqueta visual con dirección (↓ entrada / ↑ salida)
+    var tipoLabel = m.tipo;
+    if (m.tipo === 'transferencia_interna') {
+      tipoLabel = m._transfer_role === 'entrada' ? '↓ Transf. entrada' : '↑ Transf. salida';
+    }
+    m._tipoLabel = tipoLabel;
     var delBtn=document.createElement('button');
     delBtn.className='btn btn-ghost btn-sm';
     delBtn.style.cssText='color:var(--red);border:1px solid var(--red);padding:4px 10px;font-size:12px;font-weight:600;border-radius:6px';
@@ -17261,7 +17802,7 @@ function renderKardex() {
     delBtn.onclick=(function(id){return function(){deleteKardex(id);};})(m.id);
     tr.innerHTML='<td style="font-family:DM Mono,monospace;font-size:11px">'+escH(m.fecha||'')+'</td>'+
       '<td style="font-weight:600;color:var(--amber2)">'+escH(m.lote||'')+'</td>'+
-      '<td><span style="color:'+(tipoColor[m.tipo]||'var(--muted)')+'">'+capFirst(m.tipo||'')+'</span></td>'+
+      '<td><span style="color:'+(tipoColor[m.tipo]||'var(--muted)')+'">'+escH(m._tipoLabel||capFirst(m.tipo||''))+'</span></td>'+
       '<td style="text-align:center">'+((m.cabezas||0))+'</td>'+
       '<td style="font-family:DM Mono,monospace">Bs. '+((m.precio||0).toLocaleString())+'</td>'+
       '<td style="font-family:DM Mono,monospace;font-weight:600">Bs. '+((m.total||0).toLocaleString())+'</td>'+
@@ -17494,7 +18035,7 @@ function renderHistorialSueldos() {
       var totalPagado=regsEmp.filter(function(r){return r.estado==='pagado';}).reduce(function(s,r){return s+(r.pago_neto||0);},0);
       var mesesPagados=regsEmp.filter(function(r){return r.estado==='pagado';}).length;
       return '<div style="background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:14px">'+
-        '<div style="font-family:Syne,sans-serif;font-size:13px;font-weight:700;margin-bottom:2px">'+escH(emp.name)+'</div>'+
+        '<div style="font-family:Inter,sans-serif;font-size:13px;font-weight:700;margin-bottom:2px">'+escH(emp.name)+'</div>'+
         '<div style="font-size:10px;color:var(--muted);margin-bottom:10px">'+roleLabel(emp.role)+' · Bs. '+(emp.salary||0).toLocaleString()+'/mes</div>'+
         '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid rgba(48,54,61,.3)">'+
           '<span style="color:var(--muted)">Meses pagados '+filterYear+'</span><span style="font-weight:600">'+mesesPagados+'/12</span></div>'+
@@ -20468,6 +21009,97 @@ function showUpdateNotification(version, downloaded) {
 // Convención: máximo 3-5 bullets cortos. Lo que el usuario debe saber, no detalle técnico.
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.4.84': [
+    'Fix bulk move: el desktop ahora envia animals_payload con datos completos al server',
+    'Server v4.4.2 tolera desincronizacion: si los animales no estan en server, los acepta del payload',
+    'Maneja el caso comun: bulk-move se dispara antes que termine el push de animales',
+    'Mensaje de error mejorado: muestra IDs requeridos vs IDs en server cuando hay mismatch real',
+  ],
+  '1.4.83': [
+    'Bulk move ahora genera asientos contables en Kardex (transferencia interna dual)',
+    '  - Salida en lote origen (HABER) — sale el costo',
+    '  - Entrada en lote destino (DEBE) — entra el costo',
+    'Costeo ponderado por peso: precio_kg_origen × sumaPesos animales movidos',
+    '  - Los animales mas pesados transfieren mas costo (justo y realista)',
+    'Lote destino guarda cost_origin con linaje (de que compra/lote viene contablemente)',
+    'Card de lote muestra: Origen contable: SSD3 · 35.69 Bs/kg',
+    'Kardex filtro: nueva opcion Transferencia interna',
+  ],
+  '1.4.82': [
+    'Filtro Animales: lotes en cuarentena y marcados ya no aparecen en el dropdown ni cuentan en "Todos los lotes"',
+    'Vendidos siguen disponibles solo con toggle dedicado',
+  ],
+  '1.4.81': [
+    'Server: nuevo endpoint /api/animal-movements/bulk con validacion server-side completa',
+    '  - Idempotente (mismo batch_id no se procesa dos veces)',
+    '  - Valida from_lot/to_lot, conflict de codigo de lote nuevo, animales missing',
+    '  - Persiste atomicamente: animal_movements, animals (lot_code update), lots (animal_count + avg_weight)',
+    '  - Stamp granular _movements[] en cada animal afectado',
+    '  - Audit log automatico',
+    'Desktop: ahora confirma escritura en server antes de declarar exito',
+    '  - Si sync falla por red, marca batch como _sync_retry_pending y reintenta al volver online + cada 5min',
+    '  - Si server reporta missing_ids, avisa al usuario',
+    'Garantiza que el movimiento sea correcto en server y consistente entre dispositivos',
+  ],
+  '1.4.80': [
+    'Fix sync de movimientos batch: ahora usa /sync-push (endpoint que existe) en lugar de /animal-movements/bulk (404)',
+    'db.animal_movements ahora viaja en el payload general de sync — visible desde otras PCs',
+    'Tabla de Lotes: columna Proveedor muestra cadena de origen cuando viene de un movimiento batch',
+    '  Ej: lote SSD3-A creado desde SSD3 → muestra "SSD12 ← SSD3" (proveedor original ← lote padre)',
+  ],
+  '1.4.79': [
+    'Sidebar: nuevo acceso directo Animales bajo Rotacion en Operacion Principal',
+    'Todas las secciones son colapsables con chevron — click en el header expande/colapsa',
+    'Default al primer inicio: solo Operacion Principal expandida (las demas colapsadas)',
+    'Estado por seccion persistido — recuerda como dejaste cada una',
+  ],
+  '1.4.78': [
+    'Fix dropdown Potrero destino: ahora carga desde params.potreros (estaba leyendo db.potreros inexistente)',
+    'Histograma de pesos en pestaña Animales — visible al seleccionar un lote especifico',
+    'Colores semaforo: verde core / amber moderado / naranja alejado / rojo outlier',
+    'Insight automatico: CV<8% uniforme / 8-15% considerar separar / >15% recomendable separar',
+    'Click en una barra → selecciona todos los animales del bucket (atajo para separar)',
+  ],
+  '1.4.77': [
+    'Fix dropdown Mover Seleccion: solo muestra lotes activos (excluye cuarentena, marcados, vendidos, inactivos)',
+  ],
+  '1.4.76': [
+    'Animales: seleccion multiple con checkboxes + barra de accion sticky',
+    'Boton "Por rango de peso" — seleccionar todos los animales en un rango (ej: 360-370 kg)',
+    'Mover seleccion masivo a lote existente O crear nuevo lote desde el mismo modal',
+    'Historial granular: cada movimiento queda registrado en el animal con fecha+peso+motivo',
+    'Resumen por evento en db.animal_movements (auditoria completa: batch_id, lote origen/destino, IDs, conteo, peso prom)',
+    'Vista de Historial Animal enriquecida — linea de tiempo desde la compra hasta la venta',
+  ],
+  '1.4.75': [
+    'Fix: click en Lotes del sidebar siempre lleva a la lista de lotes',
+    '(antes si venias de Rotacion quedabas atrapado en esa sub-pestana)',
+  ],
+  '1.4.74': [
+    'Sidebar: acceso rapido a Rotacion bajo Lotes en Operacion Principal',
+    'Un click te lleva directo al tab de rotacion (antes habia que entrar a Lotes y buscar la sub-pestana)',
+  ],
+  '1.4.73': [
+    'Personal: dos sub-pestanas separadas',
+    '  - Control de Adelantos: balance por empleado, filtros, registro rapido',
+    '  - Historial de Sueldos: pagos mensuales con descuento automatico de adelantos',
+    'La app recuerda en que sub-pestana estabas la ultima vez',
+  ],
+  '1.4.72': [
+    'Sistema tipografico unificado: Inter (UI/contenido) + DM Mono (KPIs/sidebar/badges)',
+    'Eliminadas Lora, Syne e Instrument Sans — consistencia visual completa',
+    'Numbers tabulares (tnum) para que las cifras alineen en columnas',
+    'Character variants modernos de Inter (cv02-cv11) para mejor legibilidad',
+    'Antialiasing mejorado para pantallas Retina/HiDPI',
+  ],
+  '1.4.71': [
+    'Sidebar premium: colapsable con boton « / » + atajo Cmd+B',
+    'Nueva organizacion: Inicio · Operacion Principal · Operacion Secundaria · Reportes · Equipo · Sistema',
+    'Iconos animados al hover, indicador activo con barra lateral ambar y glow al colapsar',
+    'Tooltips automaticos al pasar el mouse en modo colapsado',
+    'Auto-colapso responsivo en pantallas menores a 1024px (laptop pequena, tablet)',
+    'Estado persistido en localStorage — la app recuerda como lo dejaste',
+  ],
   '1.4.70': [
     'Análisis Histórico: nueva subcategoría Alimentación (sal+suplementos+balanceado+heno+forraje+etc)',
     'Detección automática desde db.purchases por nombre, tipo o subcuenta',
@@ -22034,12 +22666,19 @@ if (typeof updateHeaderBranding === 'function') updateHeaderBranding();
 
 function renderAnimalesLote(){
   var lotSel=document.getElementById("animales-lot-filter");
-  // Construir set de códigos de lotes existentes y vendidos
+  // v1.4.82: construir set de códigos por categoría de status
+  // Filtro estricto en "Todos los lotes": solo activos.
+  // Solo aparecen lotes no-activos en el dropdown si tienen toggle dedicado (vendidos).
   var existingLotCodes = {};
   var soldLotCodes = {};
+  var inactiveLotCodes = {};  // cuarentena, marcado, inactivo (cualquier no-activo que no sea vendido)
   (db.lots||[]).forEach(function(l){
     existingLotCodes[l.code] = true;
-    if (l.status === 'vendido' || l.status === 'sold') soldLotCodes[l.code] = true;
+    if (l.status === 'vendido' || l.status === 'sold') {
+      soldLotCodes[l.code] = true;
+    } else if (l.status && l.status !== 'activo' && l.status !== 'active') {
+      inactiveLotCodes[l.code] = true;
+    }
   });
   // Detectar si el toggle de "incluir vendidos" está activado
   var includeSold = false;
@@ -22049,8 +22688,10 @@ function renderAnimalesLote(){
     var curVal=lotSel.value;
     lotSel.innerHTML='<option value="">Todos los lotes</option>';
     (db.lots||[]).forEach(function(l){
-      // Saltar lotes vendidos a menos que el toggle esté activado
+      // Excluir vendidos (a menos que toggle esté activo)
       if (soldLotCodes[l.code] && !includeSold) return;
+      // Excluir SIEMPRE lotes no-activos no-vendidos (cuarentena, marcado, etc.)
+      if (inactiveLotCodes[l.code]) return;
       var o=document.createElement("option");
       o.value=l.code;
       o.textContent=l.code+" - "+(l.paddock||"");
@@ -22078,6 +22719,8 @@ function renderAnimalesLote(){
       if (!existingLotCodes[lc]) return;
       // Excluir lotes vendidos a menos que el toggle esté activado
       if (soldLotCodes[lc] && !includeSold) return;
+      // v1.4.82: excluir SIEMPRE lotes no-activos (cuarentena, marcado, etc.)
+      if (inactiveLotCodes[lc]) return;
       (animalsAll[lc]||[]).forEach(function(a){ animals.push({id:a.id,raza:a.raza,pesajes:a.pesajes||[],_lot:lc}); });
     });
   }
@@ -22141,8 +22784,12 @@ function renderAnimalesLote(){
   }
   if(!filtered.length){el.innerHTML='<div style="text-align:center;padding:32px;color:var(--muted);font-size:12px">'+(search?'Sin resultados para "'+escH(search)+'"':'Sin animales')+'</div>';return;}
   var showLotCol = !lotCode;
-  var colSpan = showLotCol ? 8 : 7;
-  var html='<table class="tbl"><thead><tr>'+(showLotCol?'<th>Lote</th>':'')+'<th>ID</th><th>Raza</th><th>Ultimo peso</th><th>Fecha</th><th>GMD calc.</th><th>Pesajes</th><th></th></tr></thead><tbody>';
+  // v1.4.76: columna checkbox al inicio + integración con _bulkSelected
+  if (typeof window._bulkSelected === 'undefined') window._bulkSelected = {};
+  var colSpan = showLotCol ? 9 : 8;
+  var html='<table class="tbl"><thead><tr>'+
+    '<th style="width:36px;text-align:center"><input type="checkbox" id="bulk-check-all" onchange="bulkToggleAll(this.checked)" style="cursor:pointer;width:14px;height:14px" title="Seleccionar todos los visibles"></th>'+
+    (showLotCol?'<th>Lote</th>':'')+'<th>ID</th><th>Raza</th><th>Ultimo peso</th><th>Fecha</th><th>GMD calc.</th><th>Pesajes</th><th></th></tr></thead><tbody>';
   filtered.forEach(function(a){
     var aLot = a._lot;
     var ps=a.pesajes||[];
@@ -22152,7 +22799,11 @@ function renderAnimalesLote(){
     var isNA = a.id==='N/A';
     var origAnimals = animalsAll[aLot]||[];
     var idxAnimal = origAnimals.findIndex(function(x){return x.id===a.id;});
-    html+='<tr>'+
+    // Key compuesta lote::id para identificar inequívocamente la selección
+    var bulkKey = aLot + '::' + a.id;
+    var isChecked = !!window._bulkSelected[bulkKey];
+    html+='<tr'+(isChecked?' style="background:rgba(212,160,23,.05)"':'')+'>'+
+      '<td style="text-align:center"><input type="checkbox" class="bulk-row-check" data-key="'+escH(bulkKey)+'" data-lot="'+escH(aLot)+'" data-id="'+escH(a.id)+'" data-weight="'+(last?last.peso:0)+'" '+(isChecked?'checked':'')+' onchange="bulkToggleRow(this)" style="cursor:pointer;width:14px;height:14px"></td>'+
       (showLotCol?'<td style="font-size:11px;font-weight:600;color:var(--blue)">'+escH(aLot)+'</td>':'')+
       '<td style="font-family:DM Mono,monospace;font-weight:600;color:'+(isNA?'var(--muted)':'var(--amber2)')+'">'+
         a.id+(isNA?'<span style="font-size:9px;background:rgba(255,165,0,.15);color:var(--amber2);padding:1px 5px;border-radius:3px;margin-left:4px">SIN ID</span>':'')+
@@ -22177,6 +22828,12 @@ function renderAnimalesLote(){
   });
   html+='</tbody></table>';
   el.innerHTML=html;
+  // v1.4.76: refrescar action bar al re-render
+  if (typeof bulkRefreshBar === 'function') bulkRefreshBar();
+  // v1.4.78: renderizar histograma de pesos (solo si lote específico)
+  if (typeof renderAnimalesHistograma === 'function') {
+    try { renderAnimalesHistograma(animals, lotCode); } catch(e) { console.warn('Histograma error:', e); }
+  }
 }
 
 var _moverAnimalId = null;
@@ -22265,6 +22922,751 @@ function confirmarMoverAnimal() {
   closeModal('modal-mover-animal');
   renderAnimalesLote();
   renderLotes();
+}
+
+// ════════════════════════════════════════════════════════════════
+// v1.4.76 — SELECCIÓN MÚLTIPLE + MOVIMIENTO BATCH + HISTORIAL
+// ════════════════════════════════════════════════════════════════
+window._bulkSelected = window._bulkSelected || {};
+
+function bulkToggleRow(checkbox) {
+  var key = checkbox.getAttribute('data-key');
+  if (checkbox.checked) {
+    window._bulkSelected[key] = {
+      lot: checkbox.getAttribute('data-lot'),
+      id: checkbox.getAttribute('data-id'),
+      weight: parseFloat(checkbox.getAttribute('data-weight')) || 0
+    };
+  } else {
+    delete window._bulkSelected[key];
+  }
+  // Highlight row
+  var row = checkbox.closest('tr');
+  if (row) row.style.background = checkbox.checked ? 'rgba(212,160,23,.05)' : '';
+  bulkRefreshBar();
+}
+
+function bulkToggleAll(checked) {
+  document.querySelectorAll('.bulk-row-check').forEach(function(cb) {
+    if (cb.checked !== checked) {
+      cb.checked = checked;
+      bulkToggleRow(cb);
+    }
+  });
+}
+
+function bulkClearSelection() {
+  window._bulkSelected = {};
+  document.querySelectorAll('.bulk-row-check').forEach(function(cb) { cb.checked = false; });
+  var checkAll = document.getElementById('bulk-check-all');
+  if (checkAll) checkAll.checked = false;
+  document.querySelectorAll('#animales-list tr').forEach(function(tr) { tr.style.background = ''; });
+  bulkRefreshBar();
+}
+
+function bulkRefreshBar() {
+  var bar = document.getElementById('animales-bulk-bar');
+  if (!bar) return;
+  var keys = Object.keys(window._bulkSelected);
+  var count = keys.length;
+  if (count === 0) {
+    bar.style.display = 'none';
+    return;
+  }
+  bar.style.display = 'flex';
+  document.getElementById('bulk-count-badge').textContent = count + (count === 1 ? ' animal seleccionado' : ' animales seleccionados');
+  // Stats
+  var weights = keys.map(function(k) { return window._bulkSelected[k].weight || 0; }).filter(function(w){return w>0;});
+  if (weights.length > 0) {
+    var avg = weights.reduce(function(a,b){return a+b;}, 0) / weights.length;
+    var total = weights.reduce(function(a,b){return a+b;}, 0);
+    var lots = {};
+    keys.forEach(function(k){ lots[window._bulkSelected[k].lot] = true; });
+    document.getElementById('bulk-stats').textContent =
+      'Peso prom: ' + avg.toFixed(1) + ' kg · Total: ' + Math.round(total).toLocaleString() + ' kg' +
+      ' · ' + Object.keys(lots).length + ' lote' + (Object.keys(lots).length === 1 ? '' : 's') + ' origen';
+  } else {
+    document.getElementById('bulk-stats').textContent = '';
+  }
+}
+
+// v1.4.78: Histograma de pesos en pestaña Animales
+// Solo aparece cuando hay un lote específico seleccionado.
+// Buckets de 10 kg con colores semáforo según diferencia con el promedio.
+// Click en una barra → selecciona automáticamente todos los animales del bucket.
+window._animalesHistChart = null;
+window._animalesHistBuckets = null;
+function renderAnimalesHistograma(animalsArr, lotCode) {
+  var card = document.getElementById('animales-histograma-card');
+  if (!card) return;
+
+  // Solo mostrar si hay lote específico y datos suficientes
+  if (!lotCode || !animalsArr || animalsArr.length < 3) {
+    card.style.display = 'none';
+    return;
+  }
+
+  // Extraer pesos válidos
+  var weights = animalsArr.map(function(a) {
+    var ps = a.pesajes || [];
+    return ps.length ? ps[ps.length-1].peso : 0;
+  }).filter(function(w){return w > 0;});
+
+  if (weights.length < 3) {
+    card.style.display = 'none';
+    return;
+  }
+
+  // Calcular bucket size dinámico — 10 kg por defecto, ajustar si rango muy grande/chico
+  var mn = Math.min.apply(null, weights);
+  var mx = Math.max.apply(null, weights);
+  var range = mx - mn;
+  var bucketSize = 10;
+  if (range > 200) bucketSize = 20;
+  else if (range > 100) bucketSize = 10;
+  else if (range > 50) bucketSize = 5;
+  else bucketSize = 5;
+
+  var firstBucket = Math.floor(mn / bucketSize) * bucketSize;
+  var lastBucket = Math.ceil(mx / bucketSize) * bucketSize;
+  var nBuckets = (lastBucket - firstBucket) / bucketSize;
+  var buckets = [];
+  for (var i = 0; i < nBuckets; i++) {
+    var min = firstBucket + i * bucketSize;
+    buckets.push({ min: min, max: min + bucketSize, count: 0, animals: [] });
+  }
+
+  // Asignar animales a buckets
+  animalsArr.forEach(function(a) {
+    var ps = a.pesajes || [];
+    var w = ps.length ? ps[ps.length-1].peso : 0;
+    if (!w) return;
+    var idx = Math.min(Math.floor((w - firstBucket) / bucketSize), buckets.length - 1);
+    if (idx >= 0) {
+      buckets[idx].count++;
+      buckets[idx].animals.push({ id: a.id, lot: lotCode, weight: w });
+    }
+  });
+
+  window._animalesHistBuckets = buckets;
+
+  // Stats para evaluar dispersión
+  var avg = weights.reduce(function(a,b){return a+b;},0) / weights.length;
+  var variance = weights.reduce(function(s,w){return s + Math.pow(w - avg, 2);}, 0) / weights.length;
+  var stdev = Math.sqrt(variance);
+  var cv = (stdev / avg) * 100;  // Coeficiente de variación
+
+  // Colores semáforo según distancia al promedio
+  // - verde: bucket cercano al promedio (±0.5σ)
+  // - amarillo: distancia media (±1σ)
+  // - rojo: outliers (>1σ)
+  var labels = buckets.map(function(b){ return b.min + '-' + b.max + ' kg'; });
+  var counts = buckets.map(function(b){ return b.count; });
+  var colors = buckets.map(function(b) {
+    var center = (b.min + b.max) / 2;
+    var dist = Math.abs(center - avg) / stdev;
+    if (dist < 0.5) return 'rgba(57,211,83,0.85)';   // verde - core
+    if (dist < 1.0) return 'rgba(212,160,23,0.85)';  // amber - desviación moderada
+    if (dist < 1.5) return 'rgba(255,140,0,0.85)';   // naranja - alejados
+    return 'rgba(248,81,73,0.85)';                    // rojo - outliers
+  });
+
+  // Insight automático: ¿conviene separar?
+  var insightEl = document.getElementById('animales-hist-insight');
+  if (insightEl) {
+    var insight, color;
+    if (cv < 8) {
+      insight = '✓ Lote uniforme (CV ' + cv.toFixed(1) + '%) — no requiere separación';
+      color = 'var(--green)';
+    } else if (cv < 15) {
+      insight = '⚠ Dispersión moderada (CV ' + cv.toFixed(1) + '%) — considerar 2 grupos';
+      color = 'var(--amber2)';
+    } else {
+      insight = '⚠ Alta dispersión (CV ' + cv.toFixed(1) + '%) — recomendable separar';
+      color = 'var(--red)';
+    }
+    insightEl.textContent = insight;
+    insightEl.style.color = color;
+  }
+
+  // Subtitle
+  var subtEl = document.getElementById('animales-hist-subtitle');
+  if (subtEl) {
+    subtEl.textContent = 'Click una barra para seleccionar el grupo · Prom: ' + avg.toFixed(1) +
+      ' kg · σ: ' + stdev.toFixed(1) + ' kg · Min/Max: ' + mn + '/' + mx + ' kg';
+  }
+
+  card.style.display = 'block';
+
+  // Destroy previous chart
+  if (window._animalesHistChart) {
+    try { window._animalesHistChart.destroy(); } catch(e){}
+    window._animalesHistChart = null;
+  }
+
+  if (typeof Chart === 'undefined') return;
+  var ctx = document.getElementById('animales-hist-chart');
+  if (!ctx) return;
+
+  window._animalesHistChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: counts,
+        backgroundColor: colors,
+        borderRadius: 6,
+        borderSkipped: false
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      onClick: function(evt, elements) {
+        if (elements && elements.length > 0) {
+          var idx = elements[0].index;
+          selectBucketAnimals(idx);
+        }
+      },
+      onHover: function(evt, elements) {
+        evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(13,17,23,0.95)',
+          borderColor: 'var(--bor)',
+          borderWidth: 1,
+          titleFont: { family: 'DM Mono,monospace', size: 11 },
+          bodyFont: { family: 'DM Mono,monospace', size: 11 },
+          callbacks: {
+            label: function(ctx) {
+              var b = buckets[ctx.dataIndex];
+              var pct = ((b.count / weights.length) * 100).toFixed(1);
+              return b.count + ' animales (' + pct + '%) · Click para seleccionar';
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { font: { size: 10, family: 'DM Mono,monospace' }, color: '#888' }
+        },
+        y: {
+          beginAtZero: true,
+          grid: { color: 'rgba(48,54,61,0.3)' },
+          ticks: { stepSize: 1, font: { size: 10, family: 'DM Mono,monospace' }, color: '#888' }
+        }
+      }
+    }
+  });
+}
+
+// Click en barra del histograma → seleccionar todos los animales de ese bucket
+function selectBucketAnimals(bucketIdx) {
+  var buckets = window._animalesHistBuckets;
+  if (!buckets || !buckets[bucketIdx]) return;
+  var bucket = buckets[bucketIdx];
+  if (bucket.count === 0) return;
+
+  // Marcar el rango en los inputs del modal de rango (preview)
+  // y agregar a la selección
+  var added = 0;
+  bucket.animals.forEach(function(a) {
+    var key = a.lot + '::' + a.id;
+    if (!window._bulkSelected[key]) {
+      window._bulkSelected[key] = a;
+      added++;
+    }
+    // Actualizar el checkbox correspondiente si está visible
+    var cb = document.querySelector('.bulk-row-check[data-key="' + key + '"]');
+    if (cb && !cb.checked) {
+      cb.checked = true;
+      var row = cb.closest('tr');
+      if (row) row.style.background = 'rgba(212,160,23,.05)';
+    }
+  });
+  bulkRefreshBar();
+  toast(bucket.count + ' animales seleccionados · rango ' + bucket.min + '–' + bucket.max + ' kg', 'success');
+}
+
+// ── Helper: seleccionar por rango de peso ──
+function bulkSelectByRange() {
+  // Pre-llenar con los inputs del filtro si están
+  var minF = (document.getElementById('animales-peso-min')||{}).value || '';
+  var maxF = (document.getElementById('animales-peso-max')||{}).value || '';
+  document.getElementById('bulk-range-min').value = minF;
+  document.getElementById('bulk-range-max').value = maxF;
+  bulkRangePreview();
+  openModal('modal-bulk-range');
+}
+
+function bulkRangePreview() {
+  var mn = parseFloat(document.getElementById('bulk-range-min').value) || 0;
+  var mx = parseFloat(document.getElementById('bulk-range-max').value) || 999999;
+  if (!mn && !mx) {
+    document.getElementById('bulk-range-preview').textContent = 'Ingresá un rango';
+    return;
+  }
+  var count = 0;
+  document.querySelectorAll('.bulk-row-check').forEach(function(cb) {
+    var w = parseFloat(cb.getAttribute('data-weight')) || 0;
+    if (w >= mn && w <= mx) count++;
+  });
+  document.getElementById('bulk-range-preview').textContent =
+    count + ' animal' + (count === 1 ? '' : 'es') + ' en rango ' + mn + ' – ' + mx + ' kg';
+}
+
+function bulkApplyRange() {
+  var mn = parseFloat(document.getElementById('bulk-range-min').value) || 0;
+  var mx = parseFloat(document.getElementById('bulk-range-max').value) || 999999;
+  var nSelected = 0;
+  document.querySelectorAll('.bulk-row-check').forEach(function(cb) {
+    var w = parseFloat(cb.getAttribute('data-weight')) || 0;
+    if (w >= mn && w <= mx) {
+      if (!cb.checked) {
+        cb.checked = true;
+        bulkToggleRow(cb);
+      }
+      nSelected++;
+    }
+  });
+  closeModal('modal-bulk-range');
+  toast(nSelected + ' animales seleccionados por rango ' + mn + '–' + mx + ' kg', 'success');
+}
+
+// ── Abrir modal Mover Selección ──
+function openBulkMover() {
+  var keys = Object.keys(window._bulkSelected);
+  if (keys.length === 0) { toast('Seleccioná al menos un animal', 'error'); return; }
+
+  // Validar mismo lote origen
+  var lots = {};
+  keys.forEach(function(k){ lots[window._bulkSelected[k].lot] = true; });
+  var uniqLots = Object.keys(lots);
+  if (uniqLots.length > 1) {
+    toast('Los animales seleccionados son de ' + uniqLots.length + ' lotes diferentes. Mové de a un lote por vez.', 'error');
+    return;
+  }
+  var fromLot = uniqLots[0];
+
+  // Stats
+  var weights = keys.map(function(k){ return window._bulkSelected[k].weight || 0; }).filter(function(w){return w>0;});
+  var avg = weights.length ? (weights.reduce(function(a,b){return a+b;},0) / weights.length).toFixed(1) : '-';
+  var total = weights.length ? Math.round(weights.reduce(function(a,b){return a+b;},0)).toLocaleString() : '-';
+
+  document.getElementById('bulk-mover-count').textContent = keys.length + ' animales';
+  document.getElementById('bulk-mover-from').textContent = fromLot;
+  document.getElementById('bulk-mover-avg').textContent = avg + ' kg';
+  document.getElementById('bulk-mover-total').textContent = total + ' kg';
+  document.getElementById('bulk-mover-date').value = localDate();
+  document.getElementById('bulk-mover-motivo').value = '';
+
+  // Populate destination select (solo lotes activos, distintos del origen)
+  // v1.4.77: aplicar mismo criterio "activo" que el resto del sistema
+  // (excluye vendidos, marcados, cuarentena, inactivos)
+  var toLotSel = document.getElementById('bulk-to-lot');
+  toLotSel.innerHTML = '<option value="">Seleccionar lote...</option>';
+  (db.lots||[]).forEach(function(l) {
+    if (l.code === fromLot) return;
+    var isActive = !l.status || l.status === 'activo' || l.status === 'active';
+    if (!isActive) return;
+    var o = document.createElement('option');
+    o.value = l.code;
+    o.textContent = l.code + ' · ' + (l.category||'') + ' · ' + (l.paddock||'sin potrero') + ' · ' + (l.animal_count||0) + ' cab';
+    toLotSel.appendChild(o);
+  });
+
+  // Sugerir código nuevo lote
+  var suggested = fromLot + '-A';
+  var existingCodes = (db.lots||[]).map(function(l){ return l.code; });
+  var letter = 'A';
+  while (existingCodes.indexOf(fromLot + '-' + letter) >= 0) {
+    letter = String.fromCharCode(letter.charCodeAt(0) + 1);
+  }
+  suggested = fromLot + '-' + letter;
+  document.getElementById('bulk-new-code').value = suggested;
+
+  // Heredar categoría/raza del lote origen
+  var fromLotObj = (db.lots||[]).find(function(l){return l.code === fromLot;});
+  if (fromLotObj) {
+    var catEl = document.getElementById('bulk-new-cat');
+    if (fromLotObj.category) {
+      var opt = Array.from(catEl.options).find(function(o){return o.value === fromLotObj.category;});
+      if (opt) catEl.value = fromLotObj.category;
+    }
+    document.getElementById('bulk-new-raza').value = fromLotObj.raza || '';
+  }
+
+  // Populate potrero select — v1.4.78: usar fuente correcta de potreros
+  // Los potreros viven en localStorage.e5m_params (params.potreros[]),
+  // no en db.potreros (campo inexistente). Soportar tanto strings como objetos.
+  var paddockSel = document.getElementById('bulk-new-paddock');
+  paddockSel.innerHTML = '<option value="">Seleccionar potrero...</option>';
+  try {
+    var params = JSON.parse(localStorage.getItem('e5m_params') || '{}');
+    var potreros = params.potreros || [];
+    potreros.forEach(function(p) {
+      var nombre = (typeof p === 'string') ? p : (p.name || p.nombre || '');
+      var ha = (typeof p === 'object' && (p.area_ha || p.ha)) ? (p.area_ha || p.ha) : null;
+      if (!nombre) return;
+      var o = document.createElement('option');
+      o.value = nombre;
+      o.textContent = nombre + (ha ? ' (' + ha + ' ha)' : '');
+      paddockSel.appendChild(o);
+    });
+  } catch(e) {
+    console.warn('No se pudieron cargar potreros:', e);
+  }
+
+  // Reset tabs al estado por defecto (existente)
+  bulkSwitchDest('existing', document.querySelector('.bulk-dest-tab[data-dest="existing"]'));
+
+  openModal('modal-bulk-mover');
+}
+
+function bulkSwitchDest(mode, btn) {
+  document.querySelectorAll('.bulk-dest-tab').forEach(function(b){ b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  document.getElementById('bulk-dest-existing').style.display = mode === 'existing' ? 'block' : 'none';
+  document.getElementById('bulk-dest-new').style.display = mode === 'new' ? 'block' : 'none';
+  document.getElementById('modal-bulk-mover').setAttribute('data-mode', mode);
+}
+
+// ── Confirmar movimiento batch ──
+function confirmarBulkMover() {
+  var mode = document.getElementById('modal-bulk-mover').getAttribute('data-mode') || 'existing';
+  var date = document.getElementById('bulk-mover-date').value || localDate();
+  var motivo = document.getElementById('bulk-mover-motivo').value || '';
+  if (!validateNotFuture(date, 'fecha de movimiento')) return;
+
+  var keys = Object.keys(window._bulkSelected);
+  if (keys.length === 0) { toast('Sin selección', 'error'); return; }
+  var fromLot = window._bulkSelected[keys[0]].lot;
+
+  var toLot;
+  if (mode === 'existing') {
+    toLot = document.getElementById('bulk-to-lot').value;
+    if (!toLot) { toast('Seleccioná lote destino', 'error'); return; }
+  } else {
+    // Crear nuevo lote
+    var newCode = (document.getElementById('bulk-new-code').value || '').trim();
+    var newCat = document.getElementById('bulk-new-cat').value;
+    var newRaza = document.getElementById('bulk-new-raza').value || '';
+    var newPaddock = document.getElementById('bulk-new-paddock').value || '';
+    if (!newCode) { toast('Falta código del nuevo lote', 'error'); return; }
+    if ((db.lots||[]).some(function(l){return l.code === newCode;})) {
+      toast('Ya existe un lote con código "' + newCode + '"', 'error'); return;
+    }
+    if (!newPaddock) { toast('Seleccioná un potrero destino', 'error'); return; }
+
+    var newLot = {
+      code: newCode,
+      category: newCat,
+      raza: newRaza,
+      paddock: newPaddock,
+      animal_count: 0,
+      avg_weight: 0,
+      entry_date: date,
+      status: 'activo',
+      provider: ((db.lots||[]).find(function(l){return l.code === fromLot;})||{}).provider || '',
+      _createdViaBulkMove: true
+    };
+    db.lots.push(newLot);
+    toLot = newCode;
+  }
+
+  // Verificar capacidad
+  var capCheck = (typeof checkPotreroCapacity === 'function') ? checkPotreroCapacity(toLot, keys.length) : {ok:true};
+  if (!capCheck.ok) {
+    if (!confirm(capCheck.msg + '\n\n¿Continuar de todos modos?')) return;
+  }
+
+  // Ejecutar el movimiento animal por animal
+  var adb = getAnimalesDB();
+  var fromAnimals = adb[fromLot] || [];
+  if (!adb[toLot]) adb[toLot] = [];
+
+  var batchId = 'bm-' + Date.now();
+  var movedIds = [];
+  var movedAnimals = [];
+
+  keys.forEach(function(k) {
+    var sel = window._bulkSelected[k];
+    var animalIdx = fromAnimals.findIndex(function(a){ return (a.id||a.animal_id||'').toString() === sel.id.toString(); });
+    if (animalIdx < 0) return;
+    var animal = fromAnimals[animalIdx];
+
+    // Stamp del movimiento granular en el animal
+    if (!animal._movements) animal._movements = [];
+    animal._movements.push({
+      date: date,
+      from_lot: fromLot,
+      to_lot: toLot,
+      weight_at_move: sel.weight || 0,
+      batch_id: batchId,
+      reason: motivo
+    });
+
+    // Sacar del origen, agregar al destino
+    fromAnimals.splice(animalIdx, 1);
+    adb[toLot].push(animal);
+    movedIds.push(sel.id);
+    movedAnimals.push({id: sel.id, weight: sel.weight});
+  });
+
+  adb[fromLot] = fromAnimals;
+  saveAnimalesDB(adb);
+
+  // Actualizar animal_count de los lotes
+  var fromLotObj = db.lots.find(function(l){ return l.code === fromLot; });
+  var toLotObj = db.lots.find(function(l){ return l.code === toLot; });
+  if (fromLotObj) fromLotObj.animal_count = Math.max(0, (fromLotObj.animal_count||0) - movedIds.length);
+  if (toLotObj) toLotObj.animal_count = (toLotObj.animal_count||0) + movedIds.length;
+
+  // Recalcular peso promedio del lote destino
+  if (toLotObj) {
+    var allTo = adb[toLot] || [];
+    var pesos = allTo.map(function(a){
+      var ps = a.pesajes || [];
+      return ps.length ? ps[ps.length-1].peso : 0;
+    }).filter(function(w){return w>0;});
+    if (pesos.length) toLotObj.avg_weight = Math.round(pesos.reduce(function(s,p){return s+p;},0) / pesos.length * 10) / 10;
+  }
+
+  // Guardar movimiento como evento (resumen)
+  if (!db.animal_movements) db.animal_movements = [];
+  var weights = movedAnimals.map(function(m){return m.weight;}).filter(function(w){return w>0;});
+  var avgW = weights.length ? weights.reduce(function(a,b){return a+b;},0) / weights.length : 0;
+  db.animal_movements.push({
+    id: batchId,
+    date: date,
+    from_lot: fromLot,
+    to_lot: toLot,
+    animal_ids: movedIds,
+    count: movedIds.length,
+    avg_weight: Math.round(avgW * 10) / 10,
+    total_kg: Math.round(weights.reduce(function(a,b){return a+b;},0)),
+    reason: motivo,
+    created_new_lot: mode === 'new',
+    by: 'Cesar Moreno',
+    source: 'desktop',
+    created_at: new Date().toISOString()
+  });
+
+  // ════════════════════════════════════════════════════════════════
+  // v1.4.83 — TRANSFERENCIA CONTABLE DUAL EN KARDEX (ponderada por peso)
+  // ════════════════════════════════════════════════════════════════
+  // 1) Calcular el "precio por kg" del lote origen
+  //    precio_kg_origen = (DEBE origen - HABER previo) / total_kg_origen_pre_movimiento
+  //
+  //    Caso A: el lote origen tiene compra registrada → usar su DEBE
+  //    Caso B: el lote origen vino a su vez de una transferencia → tiene su propio cost_origin
+  //            o transferencias previas. En ambos casos, basta con sumar todo el DEBE neto.
+  // 2) Costo a transferir = precio_kg_origen × suma_pesos_animales_movidos
+  // 3) Crear 2 asientos en Kardex con tipo='transferencia_interna':
+  //    - Salida del lote origen (HABER)
+  //    - Entrada al lote destino (DEBE)
+  // 4) Setear cost_origin en el lote destino para mostrar el linaje
+  if (!db.kardex) db.kardex = [];
+
+  // Calcular DEBE neto del lote origen (compras + transferencias entrantes - transferencias salientes ya hechas)
+  var lotMovsOrigen = db.kardex.filter(function(m){return m.lote === fromLot;});
+  var debeOrigen = lotMovsOrigen.filter(function(m){
+    return m.tipo==='compra' || m.tipo==='ajuste' ||
+           (m.tipo==='transferencia_interna' && m._transfer_role==='entrada');
+  }).reduce(function(s,m){return s+(m.total||0);},0);
+  var haberOrigenTransfers = lotMovsOrigen.filter(function(m){
+    return m.tipo==='transferencia_interna' && m._transfer_role==='salida';
+  }).reduce(function(s,m){return s+(m.total||0);},0);
+  var costoNetoOrigen = debeOrigen - haberOrigenTransfers;
+
+  // Total kg del lote origen ANTES del movimiento (incluye los que se van a mover)
+  // adb[fromLot] ya tiene a los animales removidos; tenemos que sumar también los movedAnimals.
+  var pesosRemainingOrigen = (adb[fromLot] || []).map(function(a){
+    var ps = a.pesajes || [];
+    return ps.length ? ps[ps.length-1].peso : 0;
+  }).filter(function(w){return w>0;});
+  var pesosMovidos = movedAnimals.map(function(m){return m.weight;}).filter(function(w){return w>0;});
+  var totalKgOrigenPre = pesosRemainingOrigen.concat(pesosMovidos).reduce(function(s,w){return s+w;},0);
+  var totalKgMovidos = pesosMovidos.reduce(function(s,w){return s+w;},0);
+
+  var precioKgOrigen = 0;
+  var costoTransferir = 0;
+  if (totalKgOrigenPre > 0 && costoNetoOrigen > 0) {
+    precioKgOrigen = costoNetoOrigen / totalKgOrigenPre;
+    costoTransferir = Math.round(precioKgOrigen * totalKgMovidos);
+  }
+
+  // Solo crear asientos si hay costo real que transferir (lote origen sin compra registrada = 0)
+  if (costoTransferir > 0) {
+    var precioPorCabTransfer = movedIds.length > 0 ? Math.round(costoTransferir / movedIds.length) : 0;
+
+    // ASIENTO 1: salida del origen (HABER)
+    db.kardex.push({
+      id: 'kx-bm-out-' + Date.now(),
+      lote: fromLot,
+      tipo: 'transferencia_interna',
+      _transfer_role: 'salida',
+      _batch_id: batchId,
+      fecha: date,
+      cabezas: movedIds.length,
+      precio: precioPorCabTransfer,
+      total: costoTransferir,
+      desc: '↑ Transferencia a ' + toLot + ' — ' + movedIds.length + ' cab · ' +
+            Math.round(totalKgMovidos) + ' kg · ' + precioKgOrigen.toFixed(2) + ' Bs/kg' +
+            (motivo ? ' (' + motivo + ')' : ''),
+      by: 'Desktop',
+      created_at: new Date().toISOString(),
+      auto: true
+    });
+
+    // ASIENTO 2: entrada al destino (DEBE)
+    db.kardex.push({
+      id: 'kx-bm-in-' + (Date.now() + 1),
+      lote: toLot,
+      tipo: 'transferencia_interna',
+      _transfer_role: 'entrada',
+      _batch_id: batchId,
+      fecha: date,
+      cabezas: movedIds.length,
+      precio: precioPorCabTransfer,
+      total: costoTransferir,
+      desc: '↓ Origen contable: ' + fromLot + ' — ' + movedIds.length + ' cab · ' +
+            Math.round(totalKgMovidos) + ' kg · ' + precioKgOrigen.toFixed(2) + ' Bs/kg' +
+            (motivo ? ' (' + motivo + ')' : ''),
+      by: 'Desktop',
+      created_at: new Date().toISOString(),
+      auto: true
+    });
+
+    // Marcar linaje contable en el lote destino
+    if (toLotObj) {
+      toLotObj.cost_origin = {
+        from_lot: fromLot,
+        date: date,
+        cost: costoTransferir,
+        animal_count: movedIds.length,
+        total_kg: Math.round(totalKgMovidos),
+        precio_kg: Math.round(precioKgOrigen * 100) / 100,
+        batch_id: batchId
+      };
+    }
+  } else {
+    // Sin costo origen: solo dejar nota informativa en el destino (no contable)
+    console.log('[bulk-move] Lote origen ' + fromLot + ' sin costo registrado — se omite asiento contable');
+  }
+
+  saveDB();
+
+  // v1.4.81: Sync con server vía /api/animal-movements/bulk (endpoint real).
+  // Validamos respuesta para garantizar consistencia. Si el server detecta error
+  // (ej: animal_ids missing en el server, conflict en lot code), avisamos al usuario.
+  // El estado local YA está aplicado; el server hace su propia validación independiente.
+  // v1.4.84: enviar animals_payload (datos completos de los animales) para tolerar
+  // desincronización: si el server no tiene los animales locales aún (race condition
+  // con bulk-push de animales), los acepta del payload sin fallar.
+  try {
+    var apiUrl = getApiUrl();
+    var token = localStorage.getItem('e5m_api_token') || '';
+    var newLotData = mode === 'new' ? db.lots.find(function(l){return l.code === toLot;}) : null;
+
+    // Armar payload de animales con datos completos para el server (fallback)
+    var adbSnapshot = getAnimalesDB();
+    var allAdbFromOrigin = (adbSnapshot[toLot] || []).filter(function(a) {
+      return movedIds.indexOf(String(a.id || a.animal_id || '')) >= 0;
+    });
+    var animalsPayload = allAdbFromOrigin.map(function(a) {
+      return {
+        animal_id: String(a.id || a.animal_id || ''),
+        breed: a.breed || a.raza || '',
+        pesajes: a.pesajes || [],
+        _movements: a._movements || []
+      };
+    });
+
+    fetch(apiUrl + '/animal-movements/bulk', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + token,
+        'x-app-version': '1.4.84'
+      },
+      body: JSON.stringify({
+        batch_id: batchId,
+        from_lot: fromLot,
+        to_lot: toLot,
+        animal_ids: movedIds,
+        animals_payload: animalsPayload,  // v1.4.84: datos completos para fallback
+        date: date,
+        motivo: motivo,
+        created_new_lot: mode === 'new',
+        new_lot_data: newLotData,
+        by: 'Cesar Moreno',
+        source: 'desktop'
+      })
+    })
+      .then(function(r) {
+        return r.json().then(function(d){ return { ok: r.ok, status: r.status, data: d }; });
+      })
+      .then(function(res) {
+        if (res.ok && res.data && res.data.ok) {
+          // Marcar el batch como sincronizado en local
+          var localBatch = (db.animal_movements || []).find(function(m){return m.id === batchId;});
+          if (localBatch) {
+            localBatch._synced = true;
+            localBatch._synced_at = new Date().toISOString();
+            saveDB();
+          }
+          if (res.data.missing_ids && res.data.missing_ids.length > 0) {
+            console.warn('[bulk-move] Server reportó animales no encontrados:', res.data.missing_ids);
+            toast('⚠ ' + res.data.missing_ids.length + ' animales no se encontraron en el server (sync parcial)', 'error');
+          } else {
+            console.log('[bulk-move] Sync OK con server. Batch ' + batchId + ' confirmado.');
+          }
+        } else {
+          var errMsg = (res.data && res.data.error) || ('HTTP ' + res.status);
+          console.error('[bulk-move] Sync FAILED:', errMsg, res.data);
+          toast('⚠ Movimiento local OK, pero sync al server falló: ' + errMsg + '. Se reintentará.', 'error');
+          // Marcar para reintento
+          var localBatch2 = (db.animal_movements || []).find(function(m){return m.id === batchId;});
+          if (localBatch2) {
+            localBatch2._sync_error = errMsg;
+            localBatch2._sync_retry_pending = true;
+            saveDB();
+          }
+        }
+      })
+      .catch(function(err) {
+        console.error('[bulk-move] Network error:', err);
+        toast('⚠ Movimiento local OK. Sin conexión: se sincronizará automáticamente.', 'success');
+        // Marcar para reintento cuando vuelva la conexión
+        var localBatch3 = (db.animal_movements || []).find(function(m){return m.id === batchId;});
+        if (localBatch3) {
+          localBatch3._sync_retry_pending = true;
+          saveDB();
+        }
+      });
+  } catch(e) {
+    console.error('[bulk-move] Unexpected error in sync block:', e);
+  }
+
+  // Activity log
+  if (typeof addActivity === 'function') {
+    addActivity('Sistema', 'movimiento', toLot,
+      'Movimiento batch: ' + movedIds.length + ' animales de ' + fromLot + ' a ' + toLot +
+      (mode === 'new' ? ' (lote nuevo)' : '') +
+      (motivo ? ' — ' + motivo : ''),
+      date);
+  }
+
+  toast('✓ ' + movedIds.length + ' animales movidos a ' + toLot, 'success');
+  closeModal('modal-bulk-mover');
+  bulkClearSelection();
+  renderAnimalesLote();
+  if (typeof renderLotes === 'function') renderLotes();
+  if (typeof renderHistorialAnimales === 'function') renderHistorialAnimales();
 }
 
 // ═══ BAJAS (MUERTES) ═══
@@ -22776,12 +24178,134 @@ function verHistorialAnimal(animalId,lotCode){
   row.style.display="table-row";
   var animals=getAnimalesDB()[lotCode]||[];
   var a=animals.find(function(x){return x.id===animalId;});
-  if(!a||!a.pesajes||!a.pesajes.length){inner.innerHTML='<div style="color:var(--muted);font-size:12px">Sin pesajes</div>';return;}
-  var rows=a.pesajes.map(function(p,i){
-    var gmd="";
-    if(i>0){var prev=a.pesajes[i-1];var dias=Math.round((new Date(p.fecha)-new Date(prev.fecha))/86400000);if(dias>0){var diff=p.peso-prev.peso;var g=(diff/dias).toFixed(3);gmd='<span style="color:'+(diff>=0?"var(--green)":"var(--red)")+">"+(diff>=0?"+":"")+diff.toFixed(1)+" kg ("+g+' kg/d)</span>';}}return '<div style="display:flex;gap:16px;padding:5px 0;border-bottom:1px solid rgba(48,54,61,.3);font-size:11px;align-items:center"><span style="color:var(--muted);width:90px">'+p.fecha+'</span><span style="font-weight:600;width:70px">'+p.peso+' kg</span><span>'+gmd+'</span></div>';
-  }).join("");
-  inner.innerHTML='<div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:6px">HISTORIAL - '+animalId+'</div>'+rows;
+
+  // v1.4.76: Trazabilidad completa — compra + movimientos + pesajes + venta/baja
+  // Reconstruir una línea de tiempo unificada con todos los eventos del animal.
+  var events = [];
+
+  // 1) Compra: buscar en db.compras_ganado el lote donde nació en el sistema
+  // El lote original es el primero de _movements (si existe) o el actual.
+  var originalLot = (a && a._movements && a._movements.length > 0) ? a._movements[0].from_lot : lotCode;
+  var compra = (db.compras_ganado || []).find(function(c) {
+    return c.lot_code === originalLot ||
+           (Array.isArray(c.lote_destinos) && c.lote_destinos.indexOf(originalLot) >= 0);
+  });
+  if (compra) {
+    var pricePerHead = compra.animal_count > 0 ? Math.round((compra.total||0) / compra.animal_count) : 0;
+    events.push({
+      date: compra.date || compra.fecha || '',
+      icon: '🐂',
+      type: 'COMPRA',
+      color: 'var(--blue)',
+      title: 'Ingreso al sistema → ' + originalLot,
+      sub: 'Proveedor: ' + (compra.provider || '-') +
+           (pricePerHead > 0 ? ' · Bs ' + pricePerHead.toLocaleString() + '/cab' : '') +
+           (compra.weight ? ' · ~' + Math.round(compra.weight) + ' kg' : '')
+    });
+  }
+
+  // 2) Movimientos (granular)
+  if (a && Array.isArray(a._movements)) {
+    a._movements.forEach(function(m) {
+      events.push({
+        date: m.date || '',
+        icon: '📤',
+        type: 'TRASLADO',
+        color: 'var(--amber2)',
+        title: m.from_lot + ' → ' + m.to_lot,
+        sub: (m.weight_at_move ? m.weight_at_move + ' kg al momento' : '') +
+             (m.reason ? ' · ' + m.reason : '')
+      });
+    });
+  }
+
+  // 3) Pesajes
+  if (a && Array.isArray(a.pesajes)) {
+    a.pesajes.forEach(function(p, i) {
+      var gmdNote = '';
+      if (i > 0) {
+        var prev = a.pesajes[i-1];
+        var dias = Math.round((new Date(p.fecha) - new Date(prev.fecha)) / 86400000);
+        if (dias > 0) {
+          var diff = p.peso - prev.peso;
+          var g = (diff / dias).toFixed(3);
+          gmdNote = (diff >= 0 ? '+' : '') + diff.toFixed(1) + ' kg (' + g + ' kg/d)';
+        }
+      }
+      events.push({
+        date: p.fecha || '',
+        icon: '⚖️',
+        type: 'PESAJE',
+        color: 'var(--green)',
+        title: p.peso + ' kg',
+        sub: gmdNote
+      });
+    });
+  }
+
+  // 4) Venta — solo si el lote actual fue vendido
+  var lotObj = (db.lots||[]).find(function(l){return l.code === lotCode;});
+  if (lotObj && (lotObj.status === 'vendido' || lotObj.status === 'sold')) {
+    var venta = (db.sales||[]).find(function(s) {
+      return s.lot_code === lotCode ||
+             (Array.isArray(s.lot_codes) && s.lot_codes.indexOf(lotCode) >= 0);
+    });
+    if (venta) {
+      var precioKg = venta.total_kg ? (venta.total / venta.total_kg).toFixed(2) : '';
+      events.push({
+        date: venta.date || venta.fecha || '',
+        icon: '🤝',
+        type: 'VENTA',
+        color: 'var(--green)',
+        title: 'Comprador: ' + (venta.buyer || '-'),
+        sub: (precioKg ? 'Bs ' + precioKg + '/kg' : '') + (venta.total ? ' · Total venta: Bs ' + Math.round(venta.total).toLocaleString() : '')
+      });
+    }
+  }
+
+  // 5) Bajas (muerte)
+  if (Array.isArray(db.bajas)) {
+    db.bajas.forEach(function(b) {
+      if ((b.animal_id||'').toString() === animalId.toString()) {
+        events.push({
+          date: b.date || b.fecha || '',
+          icon: '🪦',
+          type: 'BAJA',
+          color: 'var(--red)',
+          title: b.causa || 'Muerte',
+          sub: (b.obs || '')
+        });
+      }
+    });
+  }
+
+  // Ordenar cronológicamente
+  events.sort(function(a, b) {
+    return (a.date || '').localeCompare(b.date || '');
+  });
+
+  if (events.length === 0) {
+    inner.innerHTML = '<div style="color:var(--muted);font-size:12px">Sin historial registrado</div>';
+    return;
+  }
+
+  // Render línea de tiempo
+  var html = '<div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:8px;letter-spacing:.08em">📜 TRAZABILIDAD COMPLETA · ' + escH(animalId) + '</div>';
+  html += '<div style="position:relative;padding-left:18px">';
+  events.forEach(function(e, idx) {
+    var isLast = idx === events.length - 1;
+    html += '<div style="position:relative;padding:7px 0' + (isLast ? '' : ';border-bottom:1px dashed rgba(48,54,61,.4)') + '">' +
+      '<span style="position:absolute;left:-18px;top:8px;font-size:13px">' + e.icon + '</span>' +
+      '<div style="display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;font-size:11px">' +
+        '<span style="font-family:DM Mono,monospace;color:var(--muted);min-width:88px">' + (e.date || '-') + '</span>' +
+        '<span style="font-family:DM Mono,monospace;color:' + e.color + ';font-weight:700;min-width:80px">' + e.type + '</span>' +
+        '<span style="font-weight:600">' + escH(e.title) + '</span>' +
+        (e.sub ? '<span style="color:var(--muted)">· ' + escH(e.sub) + '</span>' : '') +
+      '</div>' +
+    '</div>';
+  });
+  html += '</div>';
+  inner.innerHTML = html;
 }
 
 function deleteAnimal(animalId,lotCode){
@@ -24688,7 +26212,7 @@ function renderReportesGerenciales() {
   }).join('');
 
   container.innerHTML =
-    '<div style="font-family:Instrument Sans,sans-serif;color:'+ink+';background:'+paper+'">' +
+    '<div style="font-family:Inter,sans-serif;color:'+ink+';background:'+paper+'">' +
     // PORTADA
     '<div style="background:'+ink+';color:'+paper+';padding:48px 56px 40px">'+
       '<div style="font-family:DM Mono,monospace;font-size:9px;letter-spacing:.2em;color:'+goldL+';text-transform:uppercase;margin-bottom:28px">Sistema de Gestion Ganadera</div>'+
@@ -24796,7 +26320,7 @@ function renderReportesGerenciales() {
     '</div>'; // /outer
 
   setTimeout(function(){
-    Chart.defaults.font.family='Instrument Sans,sans-serif';
+    Chart.defaults.font.family='Inter,sans-serif';
     Chart.defaults.font.size=10;
     Chart.defaults.color='#6b6355';
     var lotColors2=['#d4a017','#4a7c28','#8b3a2a','#5b8dd9','#9b6db5'];
@@ -25705,7 +27229,7 @@ function viewTransactionImage(txId) {
     imgEl.style.cssText = 'max-width:80vw;max-height:70vh;border-radius:8px;border:1px solid var(--bor)';
     var closeBtn = document.createElement('button');
     closeBtn.textContent = 'Cerrar';
-    closeBtn.style.cssText = 'padding:8px 20px;background:var(--sur2);border:1px solid var(--bor);color:var(--text);border-radius:8px;cursor:pointer;font-family:Syne;font-weight:600';
+    closeBtn.style.cssText = 'padding:8px 20px;background:var(--sur2);border:1px solid var(--bor);color:var(--text);border-radius:8px;cursor:pointer;font-family:Inter,sans-serif;font-weight:600';
     closeBtn.onclick = function() { overlay.remove(); };
     container.appendChild(title);
     container.appendChild(imgEl);
@@ -25734,7 +27258,7 @@ function openConteoInventario() {
   overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
 
   var modal = document.createElement('div');
-  modal.style.cssText = 'background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:24px;width:780px;max-height:85vh;overflow-y:auto;color:var(--text);font-family:Syne,sans-serif';
+  modal.style.cssText = 'background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:24px;width:780px;max-height:85vh;overflow-y:auto;color:var(--text);font-family:Inter,sans-serif';
 
   // Header
   modal.innerHTML = '<h2 style="font-size:18px;margin-bottom:4px">📋 Conteo de Inventario Veterinario</h2>' +
@@ -25744,9 +27268,9 @@ function openConteoInventario() {
   var topRow = document.createElement('div');
   topRow.style.cssText = 'display:flex;gap:12px;margin-bottom:14px';
   topRow.innerHTML = '<div style="flex:1"><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">FECHA DEL CONTEO</label>' +
-    '<input type="date" id="ic-date-dyn" value="' + today() + '" style="width:100%;background:var(--sur2);border:1px solid var(--bor);color:var(--text);border-radius:6px;padding:8px;font-family:Syne"></div>' +
+    '<input type="date" id="ic-date-dyn" value="' + today() + '" style="width:100%;background:var(--sur2);border:1px solid var(--bor);color:var(--text);border-radius:6px;padding:8px;font-family:Inter,sans-serif"></div>' +
     '<div style="flex:1"><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">REALIZADO POR</label>' +
-    '<select id="ic-by-dyn" style="width:100%;background:var(--sur2);border:1px solid var(--bor);color:var(--text);border-radius:6px;padding:8px;font-family:Syne"><option value="">Seleccionar...</option>' +
+    '<select id="ic-by-dyn" style="width:100%;background:var(--sur2);border:1px solid var(--bor);color:var(--text);border-radius:6px;padding:8px;font-family:Inter,sans-serif"><option value="">Seleccionar...</option>' +
     (db.employees || []).filter(function(e) { return e.active; }).map(function(e) { return '<option value="' + escH(e.name) + '">' + escH(e.name) + '</option>'; }).join('') +
     '</select></div>';
   modal.appendChild(topRow);
@@ -25822,11 +27346,11 @@ function openConteoInventario() {
   btnRow.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;margin-top:14px';
   var cancelBtn = document.createElement('button');
   cancelBtn.textContent = 'Cancelar';
-  cancelBtn.style.cssText = 'padding:8px 20px;background:var(--sur2);border:1px solid var(--bor);color:var(--text);border-radius:8px;cursor:pointer;font-family:Syne;font-weight:600';
+  cancelBtn.style.cssText = 'padding:8px 20px;background:var(--sur2);border:1px solid var(--bor);color:var(--text);border-radius:8px;cursor:pointer;font-family:Inter,sans-serif;font-weight:600';
   cancelBtn.onclick = function() { overlay.remove(); };
   var saveBtn = document.createElement('button');
   saveBtn.textContent = '💾 Guardar Conteo';
-  saveBtn.style.cssText = 'padding:8px 20px;background:var(--amber2);color:#000;border:none;border-radius:8px;cursor:pointer;font-family:Syne;font-weight:700';
+  saveBtn.style.cssText = 'padding:8px 20px;background:var(--amber2);color:#000;border:none;border-radius:8px;cursor:pointer;font-family:Inter,sans-serif;font-weight:700';
   saveBtn.onclick = function() { saveConteoInventario(overlay); };
   btnRow.appendChild(cancelBtn);
   btnRow.appendChild(saveBtn);
