@@ -5303,6 +5303,14 @@ function pullFromRailwayDesktop(thenPush) {
           // Agregar al local
           db.lots.push(rl);
           _report.added++;
+          // v1.4.106: REVERT v1.4.105. NO llamar _ensureRotationEntry acá.
+          // Razon: db.rotation_history puede no estar actualizado todavía cuando
+          // llegan los lots del server (race entre pull de lots y pull de rotation_history),
+          // entonces el helper veía "no hay entry abierta" y creaba una nueva, generando
+          // duplicados con la entry real que llegaba después en el pull de rotation_history.
+          // El server v4.5.1 ya mantiene rotation_history consistente — el Desktop no debe
+          // intentar "completarlo" por su cuenta en sync. Para datos legacy de server v4.5.0,
+          // usar el endpoint POST /api/admin/backfill-rotation-history.
           console.log('[Sync] Lote nuevo incorporado del server: ' + rl.code + ' (status: ' + (rl.status||'activo') + ')');
         });
 
@@ -13305,15 +13313,22 @@ function downloadOnboardingTemplate() {
     'INSTRUCCIONES': [
       ['🐄 ESTANCIAPRO — Onboarding Inicial'],
       [''],
-      ['1. Lle\u00f1\u00e1 cada hoja con los datos de tu estancia.'],
+      ['1. Llen\u00e1 cada hoja con los datos de tu estancia.'],
       ['2. Las filas con "Ejemplo - borrar" son gu\u00eda. Borralas o dejalas, se ignoran al importar.'],
       ['3. Columnas con * son OBLIGATORIAS (sin esos datos la fila se ignora).'],
       ['4. Pesos en KG. Fechas en formato YYYY-MM-DD.'],
       ['5. C\u00f3digos de lote \u00daNICOS, sin espacios. Ej: SS1, A-01, B02.'],
       ['6. El lote_code en hoja Animales DEBE existir en hoja Lotes.'],
-      ['7. Cuando termines, en EstanciaPro: Configuraci\u00f3n -> Importar archivo completado.'],
+      ['7. Si asign\u00e1s POTRERO en un lote, ese potrero debe estar definido en la hoja Potreros.'],
+      ['8. Al importar, los lotes con potrero quedan registrados autom\u00e1ticamente en Rotaci\u00f3n.'],
+      ['9. Cuando termines, en EstanciaPro: Configuraci\u00f3n -> Importar archivo completado.'],
       [''],
-      ['Modo de importaci\u00f3n: SOLO AGREGA NUEVO. Si un lote/animal/producto/subcuenta ya existe, esa fila se ignora.']
+      ['Modo de importaci\u00f3n: SOLO AGREGA NUEVO. Si un lote/animal/producto/subcuenta ya existe, esa fila se ignora.'],
+      [''],
+      ['Despu\u00e9s del onboarding, pod\u00e9s:'],
+      ['  - Configurar reportes WhatsApp autom\u00e1ticos (matutino, semanal, mensual)'],
+      ['  - Conectar el bot WhatsApp para que los capataces registren actividad por voz'],
+      ['  - Definir cat\u00e1logo de proveedores, productos veterinarios y subcuentas adicionales']
     ],
     'Parametros': [
       ['PARAMETRO*','VALOR*'],
@@ -13714,13 +13729,18 @@ async function confirmOnboardingImport() {
     var nextLotId = (db.next_ids && db.next_ids.lot) || 100;
     p.lotes.forEach(function(l){
       if (existingL[l.code]) return;
-      db.lots.push({
+      var newLot = {
         id: nextLotId++, code: l.code, category: l.category, breed: l.breed || '',
         paddock: l.paddock || '', animal_count: l.animal_count || 0, avg_weight: l.avg_weight || 0,
         supplier: l.supplier || '', status: 'active',
         entry_date: (typeof localDate==='function'?localDate():new Date().toISOString().slice(0,10)),
         notes: l.obs || ''
-      });
+      };
+      db.lots.push(newLot);
+      // v1.4.105: garantizar entry en rotation_history para lotes nuevos con paddock
+      if (typeof _ensureRotationEntry === 'function') {
+        _ensureRotationEntry(newLot, { reason: 'Onboarding inicial' });
+      }
     });
     if (db.next_ids) db.next_ids.lot = nextLotId;
 
@@ -22353,6 +22373,44 @@ function showUpdateNotification(version, downloaded) {
 // Convención: máximo 3-5 bullets cortos. Lo que el usuario debe saber, no detalle técnico.
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.4.106': [
+    'FIX CRITICO: REVERT _ensureRotationEntry de sync incremental (linea 5304).',
+    '  El call que agregue en v1.4.105 creaba duplicados en rotation_history:',
+    '  cuando el server pushea lots al Desktop, db.rotation_history puede no estar',
+    '  todavia actualizado (race entre pull de lots y pull de rotation_history),',
+    '  entonces el helper veia "no hay entry abierta" y creaba una nueva.',
+    '  Despues llegaba el pull de rotation_history del server con la entry vieja,',
+    '  quedando 2 entries abiertas para el mismo lot+potrero.',
+    'Sintoma: en Rotacion, lotes apareciendo duplicados en su potrero (ej. Tropa 1',
+    '  · 314 cab dos veces en PAQUIO 2 con dias distintos: 11 dias y 1 dia).',
+    'Fix de raiz: el server v4.5.1 ya mantiene rotation_history consistente — el',
+    '  Desktop NO debe completarlo en sync. Para datos legacy (server v4.5.0),',
+    '  usar POST /api/admin/backfill-rotation-history.',
+    'Capa defensiva en renderRotacion: dedupe que muestra solo la entry mas vieja',
+    '  por key (lot_code|potrero). Si quedan duplicados en db, se ve uno solo.',
+    'Sweep db.lots.push (sin cambios, ya estaba bien en v1.4.105):',
+    '  1) saveLot, 2) Compra cuarentena, 3) Marcaje, 4) moveLot,',
+    '  5) Onboarding Excel, 6) Bulk-move animales (6 puntos validos)',
+    '  7) Sync incremental ❌ NO debe llamarlo (revertido)',
+  ],
+  '1.4.105': [
+    'Tour guiado IA: agregada entrada para Analisis Historico (faltaba)',
+    'Actualizadas entradas existentes:',
+    '  Dashboard: incluye topbar Resumen propiedad (v1.4.91+)',
+    '  Rotacion: menciona deteccion automatica de sub-lotes huerfanos',
+    '  Analisis Lote: agrega timeline visual con linaje (v1.4.97+)',
+    'Tour ahora cubre 18 pantallas (antes 17), con info actualizada de v1.4.91-1.4.104',
+    'Sweep completo de db.lots.push: 7 puntos detectados, todos pasan por _ensureRotationEntry:',
+    '  1) saveLot (modal Nuevo lote)              ✅ v1.4.104',
+    '  2) Compra con cuarentena                    ✅ v1.4.104',
+    '  3) Marcaje cuarentena (lote destino)        ✅ v1.4.104',
+    '  4) moveLot (cambio de potrero)              ✅ ya manejaba history',
+    '  5) Onboarding inicial (importar Excel)      ✅ v1.4.105 NUEVO',
+    '  6) Sync incremental desde server            ✅ v1.4.105 NUEVO (defensa contra server v4.5.0)',
+    '  7) Bulk-move animales (lote destino nuevo)  ✅ v1.4.105 NUEVO',
+    'Plantilla Excel: instrucciones actualizadas con info de Rotacion automatica',
+    '  + sugerencias post-onboarding (reportes WhatsApp, bot, catalogo proveedores)',
+  ],
   '1.4.104': [
     'FIX C completo: rotation_history sincronizado en TODOS los puntos de creacion de lotes',
     '  Desktop: nuevo helper _ensureRotationEntry() llamado desde saveLot, compra-cuarentena y marcaje',
@@ -24948,6 +25006,10 @@ function confirmarBulkMover() {
     };
     db.lots.push(newLot);
     toLot = newCode;
+    // v1.4.105: garantizar entry en rotation_history para el lote destino creado en bulk-move
+    if (typeof _ensureRotationEntry === 'function') {
+      _ensureRotationEntry(newLot, { reason: 'Lote creado desde Bulk-move de animales', allowEmpty: true });
+    }
   }
 
   // Verificar capacidad
@@ -29818,7 +29880,7 @@ var _tourStep = -1;
 var _TOUR_STEPS = [
   {
     page: 'dashboard', title: '🏆 Dashboard (Reporte CREA)',
-    text: 'Pantalla principal con **Indicadores CREA** (metodología AACREA):\n• **Costo por kg producido** por lote\n• **Desglose de egresos vs ingresos** con % por categoría\n• **Personal** se calcula con pagos reales (historial_sueldos), no estimación de salario × meses\n• **Compras se distribuyen** por categoría según subcuenta (sanidad, combustible, mantenimiento, alimento, etc.) — coincide con Contabilidad\n• Solo recargas de diesel como costo (no despachos)\n• **Merma diesel y stock vet** contabilizadas\n• **Venta de carne de baja** como ingreso separado\n• Filtros de período: año/semestre/trimestre/mes/personalizado\n• Botón **🔄 Actualizar** para re-renderizar tras cambios\n• Exportable a **Excel** y **PDF**',
+    text: 'Pantalla principal con **Indicadores CREA** (metodología AACREA):\n• **Costo por kg producido** por lote\n• **Desglose de egresos vs ingresos** con % por categoría\n• **Personal** se calcula con pagos reales (historial_sueldos), no estimación de salario × meses\n• **Compras se distribuyen** por categoría según subcuenta (sanidad, combustible, mantenimiento, alimento, etc.) — coincide con Contabilidad\n• Solo recargas de diesel como costo (no despachos)\n• **Merma diesel y stock vet** contabilizadas\n• **Venta de carne de baja** como ingreso separado\n• Filtros de período: año/semestre/trimestre/mes/personalizado\n• Botón **🔄 Actualizar** para re-renderizar tras cambios\n• Exportable a **Excel** y **PDF**\n\n**📊 Topbar Resumen propiedad** (NUEVO v1.4.91+): siempre visible arriba a la derecha del logo, muestra **Cabezas** (o conteo de lotes activos si todavía no se contabilizan), **Valor rodeo** (stock kg × precio venta de referencia) y **Costo / kg** operativo (cuando hay datos CREA cacheados). Se actualiza al cambiar de pestaña.',
   },
   {
     page: 'lotes/list', title: '🐄 Lotes',
@@ -29826,7 +29888,7 @@ var _TOUR_STEPS = [
   },
   {
     page: 'lotes/rotacion', title: '🔄 Rotación de Potreros',
-    text: 'Control de rotación estilo JetBov (Brasil):\n• **Tarjetas por potrero**: estado (ocupado/descansando/listo), días, capacidad\n• **Barras visuales**: ocupación y días con semáforo (verde/amarillo/rojo)\n• **Alertas automáticas**: potrero excedido, sobre-ocupación, listo para recibir\n• **Historial completo**: quién estuvo dónde, cuántos días, motivo\n• Al mover un lote se registra automáticamente acá',
+    text: 'Control de rotación estilo JetBov (Brasil):\n• **Tarjetas por potrero**: estado (ocupado/descansando/listo), días, capacidad\n• **Barras visuales**: ocupación y días con semáforo (verde/amarillo/rojo)\n• **Alertas automáticas**: potrero excedido, sobre-ocupación, listo para recibir\n• **Historial completo**: quién estuvo dónde, cuántos días, motivo\n• Al mover un lote se registra automáticamente acá\n\n**🆕 Sub-lotes detectados automáticamente** (v1.4.103+): si separás un lote y los sub-lotes heredan el potrero del padre, la vista de Rotación los muestra como ocupando el potrero aunque no tengan entry de historial. Esto pasa porque la sincronización entre `lot.paddock` y `rotation_history` ahora vive en todo lugar de creación (Desktop y server), y además hay una capa de detección visual para datos legacy.',
   },
   {
     page: 'lotes/animales', title: '🐂 Animales',
@@ -29879,7 +29941,11 @@ var _TOUR_STEPS = [
   // v1.4.57: entrada 'reporte-crea' eliminada — su contenido se fusionó con 'dashboard'
   {
     page: 'analisis-lote', title: '📈 Análisis por Lote',
-    text: 'Dashboard analítico por lote (sidebar **📈 Análisis Lote**):\n\n**📊 KPIs principales**: Cabezas, peso promedio, GMD, kg totales, días en lote\n**📊 Histograma de pesos** con buckets dinámicos y boxplot (mediana, cuartiles, outliers)\n**📈 Curva de crecimiento** del lote en el tiempo\n**⚡ GMD individual** ordenado de mejor a peor (verde/amber/rojo según rendimiento)\n\n**🎯 Proyección a faena** (NUEVO v1.4.23):\n• **Target editable** (peso de venta) y **GMD editable** (kg/día)\n• **Cap automático** si la GMD calculada es absurda (>3 kg/d)\n• **Botón ↺** para volver a GMD real\n• **4 KPIs**: Días a faena · Ya superaron target · No llegan en 6m (rezagados) · Valor estimado\n\n**💡 Insights** con alertas accionables · **📋 Detalle por animal** filtrable (Top performers / Rezagados) · **💉 Sanidad** del lote (curaciones, vacunas) · **📊 Comparativo** con otros lotes',
+    text: 'Dashboard analítico por lote (sidebar **📈 Análisis Lote**):\n\n**📊 KPIs principales**: Cabezas, peso promedio, GMD, kg totales, días en lote\n**📊 Histograma de pesos** con buckets dinámicos y boxplot (mediana, cuartiles, outliers)\n**📈 Curva de crecimiento** del lote en el tiempo\n**⚡ GMD individual** ordenado de mejor a peor (verde/amber/rojo según rendimiento)\n\n**🎯 Proyección a faena** (v1.4.23):\n• **Target editable** (peso de venta) y **GMD editable** (kg/día)\n• **Cap automático** si la GMD calculada es absurda (>3 kg/d)\n• **Botón ↺** para volver a GMD real\n• **4 KPIs**: Días a faena · Ya superaron target · No llegan en 6m (rezagados) · Valor estimado\n\n**💡 Insights** con alertas accionables · **📋 Detalle por animal** filtrable (Top performers / Rezagados) · **💉 Sanidad** del lote (curaciones, vacunas) · **📊 Comparativo** con otros lotes\n\n**🕒 Línea de tiempo del lote** (NUEVO v1.4.97+): al final de la página, timeline vertical con eventos cronológicos: ingreso original, pesajes, sanidad, rotaciones, bajas, partos. Si es un sub-lote (separación por bot WhatsApp o desde Desktop), incluye los eventos heredados del lote padre (puntos huecos grises, opacity reducida) + hito de separación destacado en chip violet con ✂.',
+  },
+  {
+    page: 'analisis-historico', title: '📦 Análisis Histórico',
+    text: 'Reporte zootécnico y económico completo de **lotes vendidos** (sidebar **📦 Análisis Histórico**, v1.4.56+):\n\n• **Selector de lote vendido** en el header (dropdown con fecha de venta)\n• **Header del lote**: código, ingreso, salida, días en lote, animales, kg producidos\n• **Resumen económico**: costo total (compra + insumos + sanidad + mantenimiento), ingresos, margen neto, ROI, costo por kg producido\n• **Performance zootécnico**: GMD promedio, GMD individual, peso ingreso vs salida, días en propiedad\n• **Desglose de costos** por categoría con % sobre total\n• **📈 Chart Evolución de pesos**: línea con compra → pesajes → ventas. Si es sub-lote (separación), incluye **línea gris dashed del padre pre-split** que se conecta con la línea violet propia del sub-lote en la fecha exacta del split.\n• **🕒 Timeline visual de eventos del lote** con linaje: compras, pesajes, sanidad, ventas mixtas, ventas directas, y para sub-lotes: eventos heredados del padre antes del split + hito ✂ violet destacado de la separación\n• **Sanidad histórica** + **Movimientos** (bajas, partos, conteos) + **Ventas** (directas y mixtas con prorrateo)\n• **Observaciones automáticas**: detección de anomalías (GMD baja, pérdida de peso, costos altos)\n• **Botón ⬇ PDF** para exportar el reporte completo\n\n**Heurística por nombre** (v1.4.100+): si el lote es legacy y no tiene `cost_origin.from_lot` poblado, el sistema infiere el padre por patrón de nombre (ej. `TEST 123-A` → busca `TEST 123`).',
   },
   {
     page: 'contabilidad', title: '📒 Contabilidad',
@@ -31178,7 +31244,28 @@ function renderRotacion() {
       _reason: 'auto-detected-from-lot-paddock'
     });
   });
-  history = historyAugmented;
+
+  // v1.4.106: dedupe defensivo. Si por algún motivo (race con sync, backfill cruzado, etc)
+  // entraron entries duplicadas (mismo lot+paddock con exit_date=null), mostramos UNA SOLA:
+  // la más vieja (la real). Las nuevas se ignoran a presentación. Esto evita el conteo
+  // inflado de "11/30 días" + "1/30 días" que se veía cuando hay duplicados.
+  // Estrategia en 2 pasos:
+  //   1) Encontrar la entry abierta más vieja para cada key (lot_code|potrero)
+  //   2) Filtrar history dejando esa más vieja + todas las cerradas
+  var oldestOpenByKey = {};
+  historyAugmented.forEach(function(r) {
+    if (!r || r.exit_date) return;
+    var key = r.lot_code + '|' + r.potrero;
+    var ts = String(r.entry_at || r.entry_date || '');
+    if (!oldestOpenByKey[key]) { oldestOpenByKey[key] = { entry: r, ts: ts }; return; }
+    if (ts && ts < oldestOpenByKey[key].ts) { oldestOpenByKey[key] = { entry: r, ts: ts }; }
+  });
+  history = historyAugmented.filter(function(r) {
+    if (!r) return false;
+    if (r.exit_date) return true;
+    var key = r.lot_code + '|' + r.potrero;
+    return oldestOpenByKey[key] && oldestOpenByKey[key].entry === r;
+  });
 
   // ─── Procesar cada potrero ────────────────────────────────
   // FIX v1.4.50: soportar MÚLTIPLES lotes en el mismo potrero.
