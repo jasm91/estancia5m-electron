@@ -29,6 +29,24 @@ body{background:var(--bg);color:var(--text);font-family:Inter,'Segoe UI Emoji','
 .logo{font-weight:800;font-size:16px;color:var(--amber);letter-spacing:.05em}
 .logo span{color:var(--text);font-weight:400}
 .topbar-right{margin-left:auto;display:flex;align-items:center;gap:16px}
+/* v1.4.91: Resumen propiedad minimalista en topbar */
+.topbar-summary{display:flex;align-items:center;gap:18px;margin-left:24px;padding-left:20px;border-left:1px solid var(--bor);font-family:'DM Mono',monospace}
+.tbs-stat{display:flex;flex-direction:column;gap:1px;min-width:0}
+.tbs-l{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-family:Inter,sans-serif;font-weight:600}
+.tbs-v{font-size:13px;color:var(--text);font-weight:500;line-height:1.2}
+.tbs-v.tbs-amber{color:var(--amber2)}
+.tbs-v.tbs-green{color:var(--green)}
+.tbs-v.tbs-red{color:var(--red)}
+.tbs-state{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:500;font-family:Inter,sans-serif;transition:background .2s, border-color .2s, color .2s}
+.tbs-state.tbs-g{background:rgba(63,185,80,.12);color:var(--green);border:1px solid rgba(63,185,80,.3)}
+.tbs-state.tbs-a{background:rgba(240,192,64,.12);color:var(--amber2);border:1px solid rgba(240,192,64,.3)}
+.tbs-state.tbs-r{background:rgba(248,81,73,.12);color:var(--red);border:1px solid rgba(248,81,73,.3)}
+.tbs-dot{width:6px;height:6px;border-radius:50%}
+.tbs-state.tbs-g .tbs-dot{background:var(--green);box-shadow:0 0 4px var(--green)}
+.tbs-state.tbs-a .tbs-dot{background:var(--amber2)}
+.tbs-state.tbs-r .tbs-dot{background:var(--red)}
+/* Ocultar en sidebar colapsado / viewports muy angostos */
+@media (max-width: 900px){.topbar-summary{display:none !important}}
 .alert-count{background:var(--red);color:#fff;font-family:DM Mono,monospace;font-size:10px;padding:2px 8px;border-radius:20px;cursor:pointer}
 .user-chip{font-family:DM Mono,monospace;font-size:11px;color:var(--muted)}
 .user-chip strong{color:var(--amber2)}
@@ -639,6 +657,21 @@ function publishTasksToPWA() {
 <!-- TOPBAR -->
 <header class="topbar">
   <div class="logo" id="header-logo">🐄 ESTANCIA <span>PRO</span></div>
+  <!-- v1.4.91: Resumen propiedad minimalista (Idea 11 / Tier 1 Potrero) -->
+  <div class="topbar-summary" id="topbar-summary" style="display:none">
+    <div class="tbs-stat">
+      <span class="tbs-l">Cabezas</span>
+      <span class="tbs-v" id="tbs-cab">—</span>
+    </div>
+    <div class="tbs-stat">
+      <span class="tbs-l">Valor rodeo</span>
+      <span class="tbs-v tbs-amber" id="tbs-valor">—</span>
+    </div>
+    <div class="tbs-stat">
+      <span class="tbs-l">Costo / kg</span>
+      <span class="tbs-v" id="tbs-costo">—</span>
+    </div>
+  </div>
   <div class="topbar-right">
     <span class="user-chip" id="header-user">Propietario</span>
     <span class="alert-count" id="alertCountBadge" onclick="showPage('alertas')">0 alertas</span>
@@ -2605,6 +2638,15 @@ function publishTasksToPWA() {
           <tbody id="al-tbody-animales"></tbody>
         </table>
       </div>
+    </div>
+
+    <!-- v1.4.97: Línea de tiempo del lote (con linaje si es sub-lote) — cierre del análisis -->
+    <div class="card" id="al-timeline-card" style="margin-bottom:14px;display:none">
+      <div class="card-hd">
+        <div class="card-title"><span style="color:var(--amber);margin-right:6px">🕒</span>Línea de tiempo del lote</div>
+        <div id="al-timeline-subtitle" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)"></div>
+      </div>
+      <div id="al-timeline-lista" style="display:flex;flex-direction:column;gap:6px;padding-top:8px"></div>
     </div>
 
   </div>
@@ -5945,6 +5987,94 @@ function updateHeaderBranding() {
   }
 }
 
+// v1.4.91: Resumen propiedad minimalista en topbar (Idea 11 / Tier 1 Potrero)
+// Muestra Cabezas + Valor rodeo + Costo/kg + Estado general.
+// Cabezas y Valor rodeo se calculan acá (rápido). Costo/kg viene de window._lastCREAKPIs
+// (poblado por renderReporteCREA). Si CREA todavía no se abrió, muestra "—".
+// v1.4.95: simplificado y sin try/catch silencioso para detectar errores reales.
+// v1.4.100: el topbar se muestra SIEMPRE que haya lotes activos, aunque animal_count=0.
+//   Antes se ocultaba si no había animales contables, pero esto pasaba seguido cuando
+//   los lotes venían del server con animal_count vacío y todavía no se reconstruía.
+function renderTopbarSummary() {
+  var el = document.getElementById('topbar-summary');
+  if (!el) return;
+  // v1.4.101: `db` puede no estar en window (depende del scope donde se declaró).
+  // Antes el guard era `if (!window.db || ...)` y eso disparaba "sin db.lots" aunque db existiera.
+  if (typeof db === 'undefined' || !db || !Array.isArray(db.lots)) { el.style.display = 'none'; return; }
+
+  var rp = (typeof getRp === 'function') ? getRp() : {};
+  var precioRef = parseFloat(rp.precio_venta_ref) || 25;
+  var pesoUA = parseFloat(rp.peso_ua) || 400;
+
+  var activeLots = db.lots.filter(function(l){
+    return l && (!l.status || l.status === 'activo' || l.status === 'active');
+  });
+
+  // Si no hay lotes activos, ocultar
+  if (!activeLots.length) { el.style.display = 'none'; return; }
+
+  // Animales DB para fallback si lot.animal_count está vacío
+  var animDB = (typeof getAnimalesDB === 'function') ? (getAnimalesDB() || {}) : {};
+
+  var cab = 0;
+  var stockKg = 0;
+  var lotesConDatos = 0;
+
+  activeLots.forEach(function(l){
+    if (!l) return;
+    // Cuántos animales: lot.animal_count > 0, sino contar en animDB
+    var ac = parseInt(l.animal_count, 10) || 0;
+    var anims = (l.code && animDB[l.code]) ? animDB[l.code] : null;
+    if (!ac && anims && anims.length) ac = anims.length;
+    if (!ac) return;
+    cab += ac;
+    lotesConDatos++;
+
+    // Peso promedio: lot.avg_weight > 0, sino promediar pesajes en animDB, sino pesoUA
+    var aw = parseFloat(l.avg_weight) || parseFloat(l.peso_actual) || 0;
+    if (!aw && anims && anims.length) {
+      var sumW = 0, nW = 0;
+      for (var i = 0; i < anims.length; i++) {
+        var a = anims[i];
+        if (a && a.pesajes && a.pesajes.length) {
+          var p = a.pesajes[a.pesajes.length - 1];
+          if (p && p.peso > 0) { sumW += p.peso; nW++; }
+        }
+      }
+      if (nW > 0) aw = sumW / nW;
+    }
+    if (!aw) aw = pesoUA;
+    stockKg += aw * ac;
+  });
+
+  var valorRodeo = stockKg * precioRef;
+
+  function fmtMoney(n){
+    if (n >= 1000000) return 'Bs ' + (Math.round(n/100000)/10) + 'M';
+    if (n >= 1000)    return 'Bs ' + (Math.round(n/100)/10) + 'k';
+    return 'Bs ' + Math.round(n).toLocaleString();
+  }
+
+  // Costo / kg operativo desde caché CREA
+  var creaKPIs = window._lastCREAKPIs;
+  var costoTxt = '—';
+  if (creaKPIs && typeof creaKPIs.costoOperativoKg === 'number' && creaKPIs.costoOperativoKg > 0) {
+    costoTxt = 'Bs ' + creaKPIs.costoOperativoKg;
+  }
+
+  // Pintar (con guards en cada query por si el DOM se corrompió)
+  var elCab = document.getElementById('tbs-cab');
+  var elVal = document.getElementById('tbs-valor');
+  var elCos = document.getElementById('tbs-costo');
+
+  // v1.4.100: si no hay cabezas contabilizadas, mostrar conteo de lotes como fallback informativo
+  if (elCab) elCab.textContent = cab > 0 ? cab.toLocaleString() : (activeLots.length + ' lotes');
+  if (elVal) elVal.textContent = valorRodeo > 0 ? fmtMoney(valorRodeo) : '—';
+  if (elCos) elCos.textContent = costoTxt;
+
+  el.style.display = 'flex';
+}
+
 function renderDashboard() {
   // v1.4.57: Dashboard fusionado con Reporte CREA.
   // Esta función ahora cumple 2 roles:
@@ -5996,6 +6126,10 @@ function renderDashboard() {
   try {
     if (typeof renderReporteCREA === 'function') renderReporteCREA();
   } catch(e) { console.warn('renderReporteCREA falló:', e); }
+
+  // v1.4.92: Refrescar topbar AL FINAL (después de recomputar animal_count desde e5m_animals)
+  // Si lo llamamos antes, db.lots todavía tiene animal_count=0 del server y el topbar se oculta.
+  renderTopbarSummary();
 }
 
 // ══════════════════════════════════════════════════
@@ -6211,6 +6345,50 @@ function checkMoveWarningDesktop() {
   warnEl.innerHTML='<div style="padding:6px 10px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.15);border-radius:6px;font-size:11px;color:var(--green)">✅ Potrero listo</div>';
 }
 
+// v1.4.104: helper Desktop para mantener rotation_history al crear/editar lotes.
+// Espejo del syncRotationOnLotChange del server v4.5.1, pero local (no async).
+// Garantiza que cualquier lote con paddock asignado tenga una entry abierta
+// correspondiente en db.rotation_history. Idempotente.
+//
+// Llamado desde:
+//   - saveLot() (modal "+ Nuevo lote")
+//   - Crear lote de cuarentena (compra)
+//   - Crear lote destino desde marcaje de cuarentena
+//
+// moveLot() NO necesita llamarlo porque ya maneja history por su cuenta.
+function _ensureRotationEntry(lot, opts) {
+  if (!lot || !lot.code) return;
+  var status = String(lot.status || '').toLowerCase();
+  if (status === 'vendido' || status === 'sold' || status === 'inactivo' || status === 'inactive') return;
+  if ((lot.animal_count || 0) === 0 && !(opts && opts.allowEmpty)) return;
+  var paddock = String(lot.paddock || '').trim();
+  if (!paddock) return;
+
+  if (!db.rotation_history) db.rotation_history = [];
+  var hasOpen = db.rotation_history.some(function(r) {
+    return r && r.lot_code === lot.code && r.potrero === paddock && !r.exit_date;
+  });
+  if (hasOpen) return;
+
+  var nowIso = new Date().toISOString();
+  var todayStr = (typeof localDate === 'function') ? localDate() : nowIso.slice(0, 10);
+  db.rotation_history.push({
+    id: Date.now() + Math.floor(Math.random() * 1000),
+    lot_code: lot.code,
+    potrero: paddock,
+    from_potrero: '',
+    entry_date: todayStr,
+    entry_at: nowIso,
+    exit_date: null,
+    exit_at: null,
+    days_occupied: 0,
+    cabezas: lot.animal_count || 0,
+    reason: (opts && opts.reason) || 'Creación de lote',
+    by: 'Desktop',
+    source: 'desktop'
+  });
+}
+
 function moveLot() {
   var lot = db.lots.find(function(l){return l.id===movingLotId;});
   var newPaddock = (document.getElementById('move-paddock').value||'').trim();
@@ -6414,6 +6592,8 @@ function saveLot() {
     }
   }
   db.lots.push(newLot);
+  // v1.4.104: garantizar entry en rotation_history si el lote tiene paddock
+  _ensureRotationEntry(newLot, { reason: 'Lote creado desde Desktop' });
 
   // Guardar animales en e5m_animals si se ingresaron
   if(totalAnimals > 0) {
@@ -11109,6 +11289,8 @@ function saveCompraGanado() {
       created_at: new Date().toISOString()
     };
     db.lots.push(nuevoLote);
+    // v1.4.104: garantizar entry en rotation_history para el lote de cuarentena
+    _ensureRotationEntry(nuevoLote, { reason: 'Compra: cuarentena de ' + proveedor });
 
     // Registrar la compra (sin animales individuales)
     if (!db.compras_ganado) db.compras_ganado = [];
@@ -11535,6 +11717,12 @@ function saveMarcaje() {
     return (a.pesajes && a.pesajes.length) ? a.pesajes[a.pesajes.length-1].peso : 0;
   }).filter(function(p) { return p > 0; });
   if (pesos.length) loteDestObj.avg_weight = Math.round(pesos.reduce(function(s,p){return s+p;},0) / pesos.length * 10) / 10;
+
+  // v1.4.104: garantizar entry en rotation_history si es lote nuevo con paddock
+  // (creandoNuevo=true) o si se agregaron animales a un lote que no tenía entry abierta
+  if (loteDestObj.paddock) {
+    _ensureRotationEntry(loteDestObj, { reason: 'Marcaje desde ' + _mcLoteCuarentena.code });
+  }
 
   // Actualizar lote de cuarentena: descontar animales marcados
   _mcLoteCuarentena.animal_count = Math.max(0, totalCuar - n);
@@ -13761,6 +13949,7 @@ function renderAnalisisLote() {
   _alSafeRender('Distribución', function() { _alRenderDistribucion(animales); });
   _alSafeRender('Comparativo',function() { _alRenderComparativo(lot, animales); });
   _alSafeRender('Sanidad',    function() { _alRenderSanidad(lot); });
+  _alSafeRender('Timeline',   function() { _alRenderTimeline(lot); });
   _alSafeRender('Tabla',      function() { _alRenderTabla(animales, 'todos'); });
 }
 
@@ -14567,6 +14756,221 @@ function _alRenderSanidad(lot) {
     '</table>';
 }
 
+// v1.4.97: Línea de tiempo del lote en Análisis Lote (con linaje si es sub-lote)
+// Reusa _ahGetLineage y _ahCollectInheritedEvents que ya existen para Análisis Histórico.
+// Versión compacta: sólo eventos relevantes para un lote activo (sin ventas todavía).
+function _alRenderTimeline(lot) {
+  var card = document.getElementById('al-timeline-card');
+  var lista = document.getElementById('al-timeline-lista');
+  var sub = document.getElementById('al-timeline-subtitle');
+  if (!card || !lista) return;
+
+  var lotCode = lot.code;
+
+  // Linaje recursivo via cost_origin.from_lot
+  var lineage = (typeof _ahGetLineage === 'function') ? _ahGetLineage(lotCode) : [{ code: lotCode, splitDate: null }];
+  var inherited = (typeof _ahCollectInheritedEvents === 'function') ? _ahCollectInheritedEvents(lineage) : { pesajes:[], compras:[], treatments:[], bajas:[], partos:[], conteos:[], mantenimientos:[], splits:[] };
+  var hasLineage = lineage.length > 1;
+
+  var eventos = [];
+
+  // Eventos PROPIOS del lote
+  // 1. Compra principal (más cabezas)
+  var compras = (db.compras_ganado || []).filter(function(c) {
+    if (c.lot_code === lotCode) return true;
+    if (Array.isArray(c.lote_destinos) && c.lote_destinos.indexOf(lotCode) >= 0) return true;
+    return false;
+  });
+  var comprasValidas = compras.filter(function(c) {
+    if (!c.fecha) return false;
+    var cabs = parseInt(c.animal_count || c.cabezas || 0) || 0;
+    var kgTot = parseFloat(c.total_kg || c.kg_total || 0) || 0;
+    return cabs > 0 && kgTot > 0;
+  });
+  var compraPrincipal = comprasValidas.slice().sort(function(a,b) {
+    return (parseInt(b.animal_count || b.cabezas || 0) || 0) - (parseInt(a.animal_count || a.cabezas || 0) || 0);
+  })[0];
+  comprasValidas.forEach(function(c) {
+    var cabs = parseInt(c.animal_count || c.cabezas || 0) || 0;
+    var kgTot = parseFloat(c.total_kg || c.kg_total || 0) || 0;
+    var prom = (kgTot / cabs).toFixed(1);
+    var esPrincipal = (c === compraPrincipal);
+    var desc = (esPrincipal ? 'Ingreso' : 'Compra adicional') + ': ' + cabs + ' cab @ ' + prom + ' kg';
+    if (c._via_traspaso) desc += ' (vía ' + c._origen_lote + ')';
+    if (c.proveedor) desc += ' — ' + c.proveedor;
+    eventos.push({ date: c.fecha.slice(0,10), tipo: esPrincipal ? 'lote' : 'compra_extra', desc: desc });
+  });
+
+  // 2. Pesajes (agrupados por fecha)
+  var pesajesPorFecha = {};
+  (db.pesajes || []).filter(function(p) {
+    return p.lot_code === lotCode && (p.tipo || '').toLowerCase() !== 'venta';
+  }).forEach(function(p) {
+    var d = String(p.date || '').slice(0,10);
+    if (!d) return;
+    if (!pesajesPorFecha[d]) pesajesPorFecha[d] = { suma:0, count:0 };
+    var peso = parseFloat(p.peso_promedio || p.peso_prom || p.peso || 0) || 0;
+    if (peso > 0) { pesajesPorFecha[d].suma += peso; pesajesPorFecha[d].count += 1; }
+  });
+  Object.keys(pesajesPorFecha).forEach(function(d) {
+    var i = pesajesPorFecha[d];
+    if (i.count > 0) {
+      eventos.push({ date: d, tipo: 'lote', desc: 'Pesaje: ' + (i.suma/i.count).toFixed(1) + ' kg prom (' + i.count + ' registros)' });
+    }
+  });
+
+  // 3. Tratamientos sanitarios (resumen por fecha)
+  var treatsPorFecha = {};
+  (db.treatments || []).filter(function(t) { return t.lot_code === lotCode; }).forEach(function(t) {
+    var d = String(t.applied_at || t.date || '').slice(0,10);
+    if (!d) return;
+    if (!treatsPorFecha[d]) treatsPorFecha[d] = { n:0, productos:[] };
+    treatsPorFecha[d].n += 1;
+    if (t.product_name) treatsPorFecha[d].productos.push(t.product_name);
+  });
+  Object.keys(treatsPorFecha).forEach(function(d) {
+    var i = treatsPorFecha[d];
+    var prods = i.productos.length ? ' (' + i.productos.slice(0,3).join(', ') + (i.productos.length>3 ? '…' : '') + ')' : '';
+    eventos.push({ date: d, tipo: 'sanidad', desc: 'Sanidad: ' + i.n + ' aplicación' + (i.n>1?'es':'') + prods });
+  });
+
+  // 4. Movimientos de potrero (rotation_history)
+  var rh = (db.rotation_history || []).filter(function(r) { return r.lot_code === lotCode; });
+  rh.forEach(function(r) {
+    var d = String(r.entry_date || r.entrada || r.date || '').slice(0,10);
+    if (!d) return;
+    var to = r.paddock || r.potrero || '?';
+    eventos.push({ date: d, tipo: 'rotacion', desc: 'Rotación a potrero: ' + to });
+  });
+
+  // 5. Bajas y partos
+  (db.bajas || []).filter(function(b) { return b.lot_code === lotCode; }).forEach(function(b) {
+    var d = String(b.fecha || b.date || '').slice(0,10);
+    if (!d) return;
+    eventos.push({ date: d, tipo: 'baja', desc: 'Baja: ' + (b.motivo || 'sin motivo') + (b.animal_id ? ' (animal ' + b.animal_id + ')' : '') });
+  });
+  (db.partos || []).filter(function(p) { return p.lot_code === lotCode; }).forEach(function(p) {
+    var d = String(p.fecha || p.date || '').slice(0,10);
+    if (!d) return;
+    var cabs = parseInt(p.cabezas || p.count || 1) || 1;
+    eventos.push({ date: d, tipo: 'parto', desc: 'Parto: ' + cabs + ' cab' });
+  });
+
+  // Eventos HEREDADOS si hay linaje
+  if (hasLineage) {
+    var parentBuy = null, parentBuyCabs = 0;
+    (inherited.compras || []).forEach(function(c) {
+      var cabs = parseInt(c.animal_count || c.cabezas || 0) || 0;
+      if (cabs > parentBuyCabs) { parentBuyCabs = cabs; parentBuy = c; }
+    });
+    if (parentBuy) {
+      var pCabs = parseInt(parentBuy.animal_count || parentBuy.cabezas || 0) || 0;
+      var pKg = parseFloat(parentBuy.total_kg || parentBuy.kg_total || 0) || 0;
+      var pProm = pKg > 0 && pCabs > 0 ? (pKg/pCabs).toFixed(1) : '?';
+      var pDesc = 'Ingreso original (' + parentBuy._from_lot + '): ' + pCabs + ' cab @ ' + pProm + ' kg';
+      if (parentBuy.proveedor) pDesc += ' — ' + parentBuy.proveedor;
+      eventos.push({ date: String(parentBuy.fecha).slice(0,10), tipo: 'heredado', desc: pDesc });
+    }
+    // Pesajes heredados agrupados
+    var inhPesajesPorFecha = {};
+    (inherited.pesajes || []).filter(function(p) { return (p.tipo || '').toLowerCase() !== 'venta'; }).forEach(function(p) {
+      var d = String(p.date || '').slice(0,10);
+      if (!d) return;
+      if (!inhPesajesPorFecha[d]) inhPesajesPorFecha[d] = { suma:0, count:0, from:p._from_lot };
+      var peso = parseFloat(p.peso_promedio || p.peso_prom || p.peso || 0) || 0;
+      if (peso > 0) { inhPesajesPorFecha[d].suma += peso; inhPesajesPorFecha[d].count += 1; }
+    });
+    Object.keys(inhPesajesPorFecha).forEach(function(d) {
+      var i = inhPesajesPorFecha[d];
+      if (i.count > 0) {
+        eventos.push({ date: d, tipo: 'heredado', desc: 'Pesaje heredado (' + i.from + '): ' + (i.suma/i.count).toFixed(1) + ' kg prom (' + i.count + ' registros)' });
+      }
+    });
+    // Tratamientos heredados
+    var inhTreatsPorFecha = {};
+    (inherited.treatments || []).forEach(function(t) {
+      var d = String(t.applied_at || t.date || '').slice(0,10);
+      if (!d) return;
+      if (!inhTreatsPorFecha[d]) inhTreatsPorFecha[d] = { n:0, from:t._from_lot };
+      inhTreatsPorFecha[d].n += 1;
+    });
+    Object.keys(inhTreatsPorFecha).forEach(function(d) {
+      var i = inhTreatsPorFecha[d];
+      eventos.push({ date: d, tipo: 'heredado', desc: 'Sanidad heredada (' + i.from + '): ' + i.n + ' aplicación' + (i.n>1?'es':'') });
+    });
+    // Splits — el HITO de la separación
+    (inherited.splits || []).forEach(function(s) {
+      var prom = s.total_kg && s.cabs ? (s.total_kg/s.cabs).toFixed(1) : '?';
+      eventos.push({ date: String(s.date).slice(0,10), tipo: 'split', desc: 'Separado de ' + s.from_lot + ': ' + s.cabs + ' cab @ ' + prom + ' kg → ' + s.to_lot });
+    });
+  }
+
+  // Ordenar cronológicamente
+  eventos.sort(function(a, b) { return a.date.localeCompare(b.date); });
+
+  if (eventos.length === 0) {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = 'block';
+
+  // Subtitle: cuántos eventos + cuántos heredados
+  var nProp = eventos.filter(function(e) { return e.tipo !== 'heredado' && e.tipo !== 'split'; }).length;
+  var nHer = eventos.filter(function(e) { return e.tipo === 'heredado'; }).length;
+  var nSplit = eventos.filter(function(e) { return e.tipo === 'split'; }).length;
+  var subParts = [nProp + ' eventos propios'];
+  if (hasLineage) {
+    subParts.push(nHer + ' heredado' + (nHer!==1?'s':'') + ' (de ' + lineage[0].code + ')');
+    if (nSplit) subParts.push(nSplit + ' separación' + (nSplit>1?'es':''));
+  }
+  if (sub) sub.textContent = subParts.join(' · ');
+
+  // v1.4.100: Render como TIMELINE VERTICAL VISUAL — no lista plana.
+  // Línea continua a la izquierda + punto por evento + chip para split.
+  var lineStyle = 'position:absolute;left:6px;top:6px;bottom:6px;width:2px;background:#3b3b4f;border-radius:1px;';
+  var html = '<div style="position:relative;padding-left:22px">';
+  html += '<div style="' + lineStyle + '"></div>';
+
+  eventos.forEach(function(e, idx) {
+    var isLast = idx === eventos.length - 1;
+    var dotBg, dotBorder = '#0D1117', dotSize = 14, dotShadow = '', extraEvStyle = '', descColor = '#E6EDF3', descWeight = '400', dateColor = '#7D8590', opacity = 1;
+
+    if (e.tipo === 'split') {
+      dotBg = '#a855f7'; dotSize = 16; dotShadow = 'box-shadow:0 0 0 3px rgba(168,85,247,.3);';
+      extraEvStyle = 'background:rgba(168,85,247,.08);border-left:2px solid #a855f7;padding:8px 12px;margin-left:-2px;border-radius:0 6px 6px 0;';
+      descColor = '#c4a4f9'; descWeight = '500'; dateColor = '#a855f7';
+    } else if (e.tipo === 'heredado') {
+      dotBg = '#0D1117'; dotBorder = '#9CA3AF'; descColor = '#9CA3AF'; opacity = 0.8;
+    } else if (e.tipo === 'lote') {
+      dotBg = '#7c3aed'; dotShadow = 'box-shadow:0 0 0 2px rgba(124,58,237,.25);';
+    } else if (e.tipo === 'compra_extra') {
+      dotBg = '#3b82f6';
+    } else if (e.tipo === 'sanidad') {
+      dotBg = '#10b981';
+    } else if (e.tipo === 'rotacion') {
+      dotBg = '#f59e0b';
+    } else if (e.tipo === 'baja') {
+      dotBg = '#ef4444';
+    } else if (e.tipo === 'parto') {
+      dotBg = '#ec4899';
+    } else {
+      dotBg = '#7D8590';
+    }
+
+    var dotLeft = e.tipo === 'split' ? -23 : -22;
+    var dotTop = e.tipo === 'split' ? 3 : 4;
+
+    html += '<div style="position:relative;padding-bottom:' + (isLast ? '0' : '18') + 'px;opacity:' + opacity + ';' + extraEvStyle + '">';
+    html += '<div style="position:absolute;left:' + dotLeft + 'px;top:' + dotTop + 'px;width:' + dotSize + 'px;height:' + dotSize + 'px;border-radius:50%;background:' + dotBg + ';border:2px solid ' + dotBorder + ';box-sizing:border-box;' + dotShadow + '"></div>';
+    html += '<div style="font-family:\'DM Mono\',monospace;font-size:10px;color:' + dateColor + ';text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px">' + _ahFmtFecha(e.date) + (e.tipo === 'split' ? ' · separación' : '') + '</div>';
+    html += '<div style="font-size:13px;line-height:1.4;color:' + descColor + ';font-weight:' + descWeight + '">' + (e.tipo === 'split' ? '✂ ' : '') + e.desc + '</div>';
+    html += '</div>';
+  });
+
+  html += '</div>';
+  lista.innerHTML = html;
+}
+
 function _alRenderTabla(animales, filter) {
   var rows = animales.slice();
   if (filter === 'top') {
@@ -14634,6 +15038,152 @@ function filterAlTable(filter, btn) {
 //   - db.bajas, db.partos, db.conteo (filtrados por lot_code)
 
 var _ahChartPesos = null;
+
+// v1.4.96: Helper para detectar cadena de linaje de un lote.
+// Devuelve array de { code, splitDate } desde el más antiguo al actual.
+// Si un lote tiene cost_origin.from_lot, se considera sub-lote de ese padre.
+// La cadena se construye recursivamente subiendo por cost_origin hasta llegar
+// a un lote sin from_lot o hasta detectar un ciclo.
+// v1.4.99: FIX — el splitDate pertenece AL HIJO (es cuándo se separó del padre),
+// no al padre. Antes lo pegaba al padre y el hijo quedaba con splitDate=null,
+// lo que hacía que _ahCollectInheritedEvents saliera temprano con continue.
+// v1.4.100: heurística por nombre si cost_origin no existe (lotes legacy).
+//   Si el lote se llama "X-A" o "X-B", busca el lote padre "X" en db.lots.
+//   No es perfecto (depende de naming convention) pero rescata los casos legacy
+//   donde el split se hizo antes de que el server poblara cost_origin.
+function _ahGetLineage(lotCode) {
+  var raw = [];
+  var seen = {};
+  var currentCode = lotCode;
+  while (currentCode && !seen[currentCode]) {
+    seen[currentCode] = true;
+    var lot = (db.lots || []).find(function(l) { return l && l.code === currentCode; });
+    var splitDate = (lot && lot.cost_origin && lot.cost_origin.date) ? lot.cost_origin.date : null;
+    raw.unshift({ code: currentCode, splitDate: splitDate });
+
+    // Caso 1: cost_origin.from_lot poblado (camino limpio del bot v5.4.9+)
+    if (lot && lot.cost_origin && lot.cost_origin.from_lot) {
+      currentCode = lot.cost_origin.from_lot;
+      continue;
+    }
+
+    // Caso 2: heurística por nombre. "TEST 123-A" → buscar "TEST 123"
+    // Patrón: nombre termina en " -X", "-X", o " X" donde X es 1-3 caracteres alfanuméricos
+    var nameMatch = String(currentCode).match(/^(.+?)\s*-\s*[A-Z0-9]{1,3}$/i);
+    if (nameMatch && nameMatch[1]) {
+      var candidateParent = nameMatch[1].trim();
+      var parentLot = (db.lots || []).find(function(l) { return l && l.code === candidateParent; });
+      if (parentLot && !seen[candidateParent]) {
+        // Inferir splitDate: usar entry_date del hijo (cuando arrancó como lote propio)
+        if (raw[0].code === currentCode && !raw[0].splitDate && lot && lot.entry_date) {
+          raw[0].splitDate = lot.entry_date;
+          raw[0]._inferredFromName = true;
+        }
+        currentCode = candidateParent;
+        continue;
+      }
+    }
+
+    // No hay más padre identificable
+    break;
+  }
+  return raw;
+}
+
+// v1.4.96: Recolecta eventos heredados de los ancestros del lote.
+// Para cada padre en la cadena, toma sus eventos que ocurrieron ANTES de la fecha
+// del split que generó al sub-lote siguiente. Marca cada evento con _inherited:true
+// y _from_lot:codeDelPadre para que el renderer los distinga visualmente.
+function _ahCollectInheritedEvents(lineage) {
+  // lineage[0] = lote más antiguo, lineage[last] = lote actual
+  // Solo recolectamos si hay al menos 2 elementos (sub-lote real)
+  var inherited = {
+    pesajes: [],
+    compras: [],
+    treatments: [],
+    bajas: [],
+    partos: [],
+    conteos: [],
+    mantenimientos: [],
+    sales: [],
+    splits: []  // los eventos de split mismos, como hitos en la timeline
+  };
+  if (lineage.length < 2) return inherited;
+
+  // Para cada padre (todos menos el último que es el lote actual),
+  // tomamos eventos hasta la fecha del split del HIJO siguiente.
+  for (var i = 0; i < lineage.length - 1; i++) {
+    var parentCode = lineage[i].code;
+    var childEntry = lineage[i + 1]; // el sub-lote que se creó de parentCode
+    var cutoffDate = childEntry.splitDate;
+    if (!cutoffDate) continue;
+
+    function _beforeCut(dateStr) {
+      if (!dateStr) return false;
+      return String(dateStr).slice(0,10) <= cutoffDate.slice(0,10);
+    }
+
+    (db.pesajes || []).forEach(function(p) {
+      if (p.lot_code === parentCode && _beforeCut(p.date)) {
+        inherited.pesajes.push(Object.assign({}, p, { _inherited: true, _from_lot: parentCode }));
+      }
+    });
+    (db.compras_ganado || []).forEach(function(c) {
+      var match = (c.lot_code === parentCode) || (Array.isArray(c.lote_destinos) && c.lote_destinos.indexOf(parentCode) >= 0);
+      if (match && _beforeCut(c.fecha)) {
+        inherited.compras.push(Object.assign({}, c, { _inherited: true, _from_lot: parentCode }));
+      }
+    });
+    (db.treatments || []).forEach(function(t) {
+      if (t.lot_code === parentCode && _beforeCut(t.applied_at || t.date)) {
+        inherited.treatments.push(Object.assign({}, t, { _inherited: true, _from_lot: parentCode }));
+      }
+    });
+    (db.bajas || []).forEach(function(b) {
+      if (b.lot_code === parentCode && _beforeCut(b.fecha || b.date)) {
+        inherited.bajas.push(Object.assign({}, b, { _inherited: true, _from_lot: parentCode }));
+      }
+    });
+    (db.partos || []).forEach(function(p) {
+      if (p.lot_code === parentCode && _beforeCut(p.fecha || p.date)) {
+        inherited.partos.push(Object.assign({}, p, { _inherited: true, _from_lot: parentCode }));
+      }
+    });
+    (db.conteo || []).forEach(function(c) {
+      if (c.lot_code === parentCode && _beforeCut(c.fecha || c.date)) {
+        inherited.conteos.push(Object.assign({}, c, { _inherited: true, _from_lot: parentCode }));
+      }
+    });
+    (db.mantenimientos || []).forEach(function(m) {
+      if (m.lot_code === parentCode && _beforeCut(m.fecha || m.date)) {
+        inherited.mantenimientos.push(Object.assign({}, m, { _inherited: true, _from_lot: parentCode }));
+      }
+    });
+    // Eventos de split mismos: el momento en que parentCode dio origen a child
+    // v1.4.100: aceptar también el caso heurístico (sin cost_origin) usando entry_date
+    var childLot = (db.lots || []).find(function(l) { return l && l.code === childEntry.code; });
+    if (childLot) {
+      var cabs = 0, totalKg = 0;
+      if (childLot.cost_origin) {
+        cabs = childLot.cost_origin.animal_count || childLot.animal_count || 0;
+        totalKg = childLot.cost_origin.total_kg || 0;
+      } else {
+        // Heurística: usar datos actuales del child como aproximación
+        cabs = childLot.animal_count || 0;
+        totalKg = (childLot.avg_weight || 0) * cabs;
+      }
+      inherited.splits.push({
+        date: cutoffDate,
+        from_lot: parentCode,
+        to_lot: childEntry.code,
+        cabs: cabs,
+        total_kg: totalKg,
+        _inferred: !childLot.cost_origin
+      });
+    }
+  }
+  return inherited;
+}
 
 function initAnalisisHistorico() {
   var sel = document.getElementById('ah-lot-select');
@@ -14704,6 +15254,12 @@ function renderAnalisisHistorico() {
   content.style.display = 'block';
   if (pdfBtn) pdfBtn.style.display = 'inline-flex';
 
+  // v1.4.96: Detectar cadena de linaje del lote (sub-lote de split)
+  // Si lot tiene cost_origin.from_lot, recolectamos eventos del padre antes del split
+  var lineage = _ahGetLineage(lotCode);
+  var inherited = _ahCollectInheritedEvents(lineage);
+  var hasLineage = lineage.length > 1;
+
   // Recolectar todos los datos asociados al lote
   var pesajes = (db.pesajes || []).filter(function(p) { return p.lot_code === lotCode; });
   var treatments = (db.treatments || []).filter(function(t) { return t.lot_code === lotCode; });
@@ -14752,8 +15308,9 @@ function renderAnalisisHistorico() {
   _ahRenderResumen(lot, pesajes, ventas, compras);
   _ahRenderPerformance(lot, pesajes, ventas, compras);
   _ahRenderCostos(lot, treatments, mantenimientos, ventas, compras);
-  _ahRenderPesos(lot, pesajes, compras, ventasDirectas, ventasCompartidas);
-  _ahRenderEventos(lot, compras, ventasDirectas, ventasCompartidas, pesajes);
+  // v1.4.96: pasar lineage e inherited a las funciones que muestran historia visual
+  _ahRenderPesos(lot, pesajes, compras, ventasDirectas, ventasCompartidas, lineage, inherited);
+  _ahRenderEventos(lot, compras, ventasDirectas, ventasCompartidas, pesajes, lineage, inherited);
   _ahRenderSanidad(lot, treatments);
   _ahRenderMovimientos(lot, bajas, partos, conteos, compras);
   _ahRenderVentas(ventasDirectas, ventasCompartidas, lotCode);
@@ -15195,12 +15752,17 @@ function _ahRenderPerformance(lot, pesajes, ventas, compras) {
   el.innerHTML = html;
 }
 
-function _ahRenderPesos(lot, pesajes, compras, ventasDirectas, ventasCompartidas) {
+function _ahRenderPesos(lot, pesajes, compras, ventasDirectas, ventasCompartidas, lineage, inherited) {
   var statsEl = document.getElementById('ah-pesos-stats');
   var emptyEl = document.getElementById('ah-pesos-empty');
   var wrapEl = document.getElementById('ah-pesos-chart-wrap');
 
   if (_ahChartPesos) { try { _ahChartPesos.destroy(); } catch(e){} _ahChartPesos = null; }
+
+  // v1.4.96: defaults para que las llamadas viejas no rompan
+  lineage = lineage || [];
+  inherited = inherited || { pesajes: [], compras: [], splits: [] };
+  var hasLineage = lineage.length > 1;
 
   // ──────────────────────────────────────────────────────────────
   // CONSTRUIR PUNTOS DEL TIMELINE
@@ -15350,11 +15912,76 @@ function _ahRenderPesos(lot, pesajes, compras, ventasDirectas, ventasCompartidas
   if (emptyEl) emptyEl.style.display = 'none';
   if (wrapEl) wrapEl.style.display = 'block';
 
+  // v1.4.96: Si hay linaje, construir puntos del padre (línea heredada en chart)
+  // Cada padre aporta su compra principal y pesajes previos al split.
+  var puntosPadre = []; // {date, peso, label, parentCode}
+  var splitMarkers = []; // {date, label} — para marcar visualmente el momento del split
+  if (hasLineage) {
+    // Compra principal del padre (la más grande)
+    var ancestralBuy = null;
+    var ancestralCabs = 0;
+    (inherited.compras || []).forEach(function(c) {
+      var cabs = parseInt(c.animal_count || c.cabezas || 0) || 0;
+      if (cabs > ancestralCabs) { ancestralCabs = cabs; ancestralBuy = c; }
+    });
+    if (ancestralBuy) {
+      var ck = parseFloat(ancestralBuy.total_kg || ancestralBuy.kg_total || 0) || 0;
+      var ccab = parseInt(ancestralBuy.animal_count || ancestralBuy.cabezas || 0) || 0;
+      if (ck > 0 && ccab > 0) {
+        puntosPadre.push({
+          date: String(ancestralBuy.fecha).slice(0,10),
+          peso: ck / ccab,
+          label: 'Ingreso del padre ' + ancestralBuy._from_lot + ': ' + ccab + ' cab @ ' + (ck/ccab).toFixed(1) + ' kg',
+          parentCode: ancestralBuy._from_lot
+        });
+      }
+    }
+    // Pesajes regulares del padre
+    (inherited.pesajes || []).filter(function(p) {
+      return (p.tipo || '').toLowerCase() !== 'venta';
+    }).forEach(function(p) {
+      var peso = parseFloat(p.peso_promedio || p.peso_prom || p.peso || 0) || 0;
+      var d = String(p.date || '').slice(0,10);
+      if (peso > 0 && d) {
+        puntosPadre.push({
+          date: d,
+          peso: peso,
+          label: 'Pesaje del padre ' + p._from_lot + ': ' + peso.toFixed(1) + ' kg',
+          parentCode: p._from_lot
+        });
+      }
+    });
+    // Marcadores de split: una entrada por cada evento de split en la cadena
+    (inherited.splits || []).forEach(function(s) {
+      splitMarkers.push({
+        date: String(s.date).slice(0,10),
+        label: 'Separación: ' + s.cabs + ' cab @ ' + (s.total_kg && s.cabs ? (s.total_kg/s.cabs).toFixed(1) : '?') + ' kg → ' + s.to_lot,
+        from_lot: s.from_lot,
+        to_lot: s.to_lot
+      });
+    });
+    // Agrupar puntosPadre por fecha (un punto por fecha — promedio si hay varios)
+    var byDate = {};
+    puntosPadre.forEach(function(p) {
+      if (!byDate[p.date]) byDate[p.date] = { sum: 0, n: 0, labels: [] };
+      byDate[p.date].sum += p.peso;
+      byDate[p.date].n += 1;
+      byDate[p.date].labels.push(p.label);
+    });
+    puntosPadre = Object.keys(byDate).map(function(d) {
+      var b = byDate[d];
+      return { date: d, peso: b.sum / b.n, label: b.labels.join(' · ') };
+    });
+  }
+
   // Construir set unificado de fechas para labels
   var todasFechas = {};
   puntosLote.forEach(function(p) { todasFechas[p.date] = true; });
   puntosVentaMixta.forEach(function(p) { todasFechas[p.date] = true; });
   puntosCompraExtra.forEach(function(p) { todasFechas[p.date] = true; });
+  // v1.4.96: incluir fechas del padre y de splits si hay linaje
+  puntosPadre.forEach(function(p) { todasFechas[p.date] = true; });
+  splitMarkers.forEach(function(p) { todasFechas[p.date] = true; });
   var fechasOrd = Object.keys(todasFechas).sort();
   var labels = fechasOrd.map(function(d) { return _ahFmtFecha(d); });
 
@@ -15380,10 +16007,18 @@ function _ahRenderPesos(lot, pesajes, compras, ventasDirectas, ventasCompartidas
     return match ? Math.round(match.peso * 10) / 10 : null;
   });
 
+  // v1.4.96: Data del lote padre (línea dashed gris si hay linaje)
+  var dataPadre = fechasOrd.map(function(d) {
+    var match = puntosPadre.find(function(p) { return p.date === d; });
+    return match ? Math.round(match.peso * 10) / 10 : null;
+  });
+
   // Stats
   if (statsEl) {
     var partes = [];
     if (puntosLote.length > 0) partes.push(puntosLote.length + ' puntos del lote');
+    // v1.4.96: incluir puntos del padre en stats
+    if (puntosPadre.length > 0) partes.push(puntosPadre.length + ' puntos del padre (' + lineage[0].code + ')');
     if (puntosCompraExtra.length > 0) partes.push(puntosCompraExtra.length + ' compras adicionales');
     if (puntosVentaMixta.length > 0) partes.push(puntosVentaMixta.length + ' ventas mixtas');
     partes.push(labels[0] + ' → ' + labels[labels.length - 1]);
@@ -15406,12 +16041,32 @@ function _ahRenderPesos(lot, pesajes, compras, ventasDirectas, ventasCompartidas
     var match = puntosCompraExtra.find(function(p) { return p.date === d; });
     return match ? match.label : '';
   });
+  // v1.4.96: tooltip del padre
+  var tooltipInfoPadre = fechasOrd.map(function(d) {
+    var match = puntosPadre.find(function(p) { return p.date === d; });
+    return match ? match.label : '';
+  });
 
   _ahChartPesos = new Chart(ctx, {
     type: 'line',
     data: {
       labels: labels,
       datasets: [
+        // v1.4.96: Dataset del padre — solo si hay linaje. Se dibuja primero (capa inferior)
+        ...(hasLineage && puntosPadre.length > 0 ? [{
+          label: 'Lote padre ' + lineage[0].code + ' (pre-split)',
+          data: dataPadre,
+          borderColor: '#9CA3AF',
+          backgroundColor: 'rgba(156,163,175,0.05)',
+          borderDash: [6, 4],
+          borderWidth: 1.8,
+          tension: 0.2,
+          fill: false,
+          pointBackgroundColor: '#9CA3AF',
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          spanGaps: true
+        }] : []),
         {
           label: 'Peso del lote (kg/cab)',
           data: dataLote,
@@ -15466,6 +16121,9 @@ function _ahRenderPesos(lot, pesajes, compras, ventasDirectas, ventasCompartidas
               if (datasetLabel.indexOf('Compra adicional') >= 0) {
                 return tooltipInfoExtra[idx] || datasetLabel + ': ' + context.parsed.y + ' kg';
               }
+              if (datasetLabel.indexOf('padre') >= 0 || datasetLabel.indexOf('pre-split') >= 0) {
+                return tooltipInfoPadre[idx] || datasetLabel + ': ' + context.parsed.y + ' kg';
+              }
               return tooltipInfoLote[idx] || datasetLabel + ': ' + context.parsed.y + ' kg';
             }
           }
@@ -15478,9 +16136,14 @@ function _ahRenderPesos(lot, pesajes, compras, ventasDirectas, ventasCompartidas
   });
 }
 
-function _ahRenderEventos(lot, compras, ventasDirectas, ventasCompartidas, pesajes) {
+function _ahRenderEventos(lot, compras, ventasDirectas, ventasCompartidas, pesajes, lineage, inherited) {
   var el = document.getElementById('ah-eventos-lista');
   if (!el) return;
+
+  // v1.4.96: defaults para compatibilidad con llamadas viejas
+  lineage = lineage || [];
+  inherited = inherited || { pesajes: [], compras: [], treatments: [], bajas: [], partos: [], conteos: [], mantenimientos: [], splits: [] };
+  var hasLineage = lineage.length > 1;
 
   var eventos = [];
 
@@ -15573,6 +16236,81 @@ function _ahRenderEventos(lot, compras, ventasDirectas, ventasCompartidas, pesaj
     });
   });
 
+  // v1.4.96: Eventos heredados del padre + hitos de split
+  if (hasLineage) {
+    // Compras del padre (sólo la principal, las extras dispersan demasiado el timeline)
+    var parentBuy = null, parentBuyCabs = 0;
+    (inherited.compras || []).forEach(function(c) {
+      var cabs = parseInt(c.animal_count || c.cabezas || 0) || 0;
+      if (cabs > parentBuyCabs) { parentBuyCabs = cabs; parentBuy = c; }
+    });
+    if (parentBuy) {
+      var pCabs = parseInt(parentBuy.animal_count || parentBuy.cabezas || 0) || 0;
+      var pKg = parseFloat(parentBuy.total_kg || parentBuy.kg_total || 0) || 0;
+      var pProm = pKg > 0 && pCabs > 0 ? (pKg/pCabs).toFixed(1) : '?';
+      var pDesc = 'Ingreso original (' + parentBuy._from_lot + '): ' + pCabs + ' cab @ ' + pProm + ' kg';
+      if (parentBuy.proveedor) pDesc += ' — ' + parentBuy.proveedor;
+      eventos.push({
+        date: String(parentBuy.fecha).slice(0,10),
+        tipo: 'heredado',
+        desc: pDesc,
+        _inherited: true,
+        _from_lot: parentBuy._from_lot
+      });
+    }
+    // Pesajes heredados — agruparlos por fecha (igual que los propios)
+    var inhPesajesPorFecha = {};
+    (inherited.pesajes || []).filter(function(p) {
+      return (p.tipo || '').toLowerCase() !== 'venta';
+    }).forEach(function(p) {
+      var d = String(p.date || '').slice(0,10);
+      if (!d) return;
+      if (!inhPesajesPorFecha[d]) inhPesajesPorFecha[d] = { suma:0, count:0, from: p._from_lot };
+      var peso = parseFloat(p.peso_promedio || p.peso_prom || p.peso || 0) || 0;
+      if (peso > 0) { inhPesajesPorFecha[d].suma += peso; inhPesajesPorFecha[d].count += 1; }
+    });
+    Object.keys(inhPesajesPorFecha).forEach(function(d) {
+      var info = inhPesajesPorFecha[d];
+      if (info.count > 0) {
+        eventos.push({
+          date: d,
+          tipo: 'heredado',
+          desc: 'Pesaje heredado (' + info.from + '): ' + (info.suma/info.count).toFixed(1) + ' kg prom (' + info.count + ' registros)',
+          _inherited: true,
+          _from_lot: info.from
+        });
+      }
+    });
+    // Tratamientos heredados (resumen, no uno por uno)
+    var inhTratamientosPorFecha = {};
+    (inherited.treatments || []).forEach(function(t) {
+      var d = String(t.applied_at || t.date || '').slice(0,10);
+      if (!d) return;
+      if (!inhTratamientosPorFecha[d]) inhTratamientosPorFecha[d] = { n:0, from: t._from_lot };
+      inhTratamientosPorFecha[d].n += 1;
+    });
+    Object.keys(inhTratamientosPorFecha).forEach(function(d) {
+      var info = inhTratamientosPorFecha[d];
+      eventos.push({
+        date: d,
+        tipo: 'heredado',
+        desc: 'Tratamiento sanitario heredado (' + info.from + '): ' + info.n + ' aplicación' + (info.n>1?'es':''),
+        _inherited: true,
+        _from_lot: info.from
+      });
+    });
+    // Splits — el HITO de la separación, marcado de manera prominente
+    (inherited.splits || []).forEach(function(s) {
+      var prom = s.total_kg && s.cabs ? (s.total_kg/s.cabs).toFixed(1) : '?';
+      eventos.push({
+        date: String(s.date).slice(0,10),
+        tipo: 'split',
+        desc: 'Separado de ' + s.from_lot + ': ' + s.cabs + ' cab @ ' + prom + ' kg → ' + s.to_lot,
+        _split: true
+      });
+    });
+  }
+
   // Ordenar cronológicamente
   eventos.sort(function(a, b) { return a.date.localeCompare(b.date); });
 
@@ -15581,29 +16319,42 @@ function _ahRenderEventos(lot, compras, ventasDirectas, ventasCompartidas, pesaj
     return;
   }
 
-  // Render con íconos según tipo
-  var html = '';
-  eventos.forEach(function(e) {
-    var icon, color;
-    if (e.tipo === 'lote') {
-      icon = '●';
-      color = '#7c3aed'; // morado
+  // v1.4.100: Render como TIMELINE VERTICAL VISUAL — no lista plana.
+  var lineStyleAH = 'position:absolute;left:6px;top:6px;bottom:6px;width:2px;background:#3b3b4f;border-radius:1px;';
+  var html = '<div style="position:relative;padding-left:22px">';
+  html += '<div style="' + lineStyleAH + '"></div>';
+
+  eventos.forEach(function(e, idx) {
+    var isLast = idx === eventos.length - 1;
+    var dotBg, dotBorder = '#0D1117', dotSize = 14, dotShadow = '', extraEvStyle = '', descColor = '#E6EDF3', descWeight = '400', dateColor = '#7D8590', opacity = 1;
+
+    if (e.tipo === 'split') {
+      dotBg = '#a855f7'; dotSize = 16; dotShadow = 'box-shadow:0 0 0 3px rgba(168,85,247,.3);';
+      extraEvStyle = 'background:rgba(168,85,247,.08);border-left:2px solid #a855f7;padding:8px 12px;margin-left:-2px;border-radius:0 6px 6px 0;';
+      descColor = '#c4a4f9'; descWeight = '500'; dateColor = '#a855f7';
+    } else if (e.tipo === 'heredado') {
+      dotBg = '#0D1117'; dotBorder = '#9CA3AF'; descColor = '#9CA3AF'; opacity = 0.8;
+    } else if (e.tipo === 'lote') {
+      dotBg = '#7c3aed'; dotShadow = 'box-shadow:0 0 0 2px rgba(124,58,237,.25);';
     } else if (e.tipo === 'compra_extra') {
-      icon = '◆';
-      color = '#3b82f6'; // azul
+      dotBg = '#3b82f6';
     } else if (e.tipo === 'venta_mixta') {
-      icon = '▲';
-      color = '#f59e0b'; // amber
+      dotBg = '#f59e0b';
     } else {
-      icon = '•';
-      color = 'var(--muted)';
+      dotBg = '#7D8590';
     }
-    html += '<div style="display:flex;align-items:flex-start;gap:10px;font-size:12px;line-height:1.5">';
-    html += '<span style="color:' + color + ';font-size:14px;flex-shrink:0;min-width:14px;text-align:center">' + icon + '</span>';
-    html += '<span style="color:var(--muted);flex-shrink:0;min-width:90px;font-variant-numeric:tabular-nums">' + _ahFmtFecha(e.date) + '</span>';
-    html += '<span style="flex:1">' + e.desc + '</span>';
+
+    var dotLeft = e.tipo === 'split' ? -23 : -22;
+    var dotTop = e.tipo === 'split' ? 3 : 4;
+
+    html += '<div style="position:relative;padding-bottom:' + (isLast ? '0' : '18') + 'px;opacity:' + opacity + ';' + extraEvStyle + '">';
+    html += '<div style="position:absolute;left:' + dotLeft + 'px;top:' + dotTop + 'px;width:' + dotSize + 'px;height:' + dotSize + 'px;border-radius:50%;background:' + dotBg + ';border:2px solid ' + dotBorder + ';box-sizing:border-box;' + dotShadow + '"></div>';
+    html += '<div style="font-family:\'DM Mono\',monospace;font-size:10px;color:' + dateColor + ';text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px">' + _ahFmtFecha(e.date) + (e.tipo === 'split' ? ' · separación' : '') + '</div>';
+    html += '<div style="font-size:13px;line-height:1.4;color:' + descColor + ';font-weight:' + descWeight + '">' + (e.tipo === 'split' ? '✂ ' : '') + e.desc + '</div>';
     html += '</div>';
   });
+
+  html += '</div>';
   el.innerHTML = html;
 }
 
@@ -21602,6 +22353,146 @@ function showUpdateNotification(version, downloaded) {
 // Convención: máximo 3-5 bullets cortos. Lo que el usuario debe saber, no detalle técnico.
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.4.104': [
+    'FIX C completo: rotation_history sincronizado en TODOS los puntos de creacion de lotes',
+    '  Desktop: nuevo helper _ensureRotationEntry() llamado desde saveLot, compra-cuarentena y marcaje',
+    '  Server v4.5.1: nuevo helper syncRotationOnLotChange() llamado desde sync-push y bulk-push',
+    'Combinado con FIX A de v1.4.103 (entries virtuales en renderRotacion para legacy):',
+    '  - Datos viejos: el FIX A los rescata visualmente',
+    '  - Datos nuevos: el FIX C los genera correctamente desde origen',
+    'Server v4.5.1 expone POST /api/admin/backfill-rotation-history (admin auth, idempotente)',
+    '  para limpiar de raiz tenants con sub-lotes sin entry. dry=1 para simular.',
+  ],
+  '1.4.103': [
+    'FIX Rotacion: detectar lotes activos con paddock pero sin entry abierto en rotation_history',
+    '  Antes: la vista Rotacion solo mostraba potreros con entry en rotation_history',
+    '  Resultado: sub-lotes con paddock asignado pero sin entry no aparecian como ocupando potrero',
+    '  Caso visto en TEST SANTIAGO: SSD3-B en Oeste y TEST 123-C en Este no aparecian ocupados',
+    'Solucion: en renderRotacion, antes de procesar, crear entries virtuales (no persistidos)',
+    '  para todo lote activo (animal_count>0, status != vendido/inactivo) que tenga paddock',
+    '  asignado pero ningun entry abierto en rotation_history apuntando a ese paddock',
+    '  entry_date inferido de cost_origin.date (split) o entry_date del lote',
+    'NOTA: es fix de presentacion solamente. La solucion de raiz (server v4.5.1 + bot)',
+    '  pendiente para proxima sesion',
+  ],
+  '1.4.102': [
+    'Topbar: eliminar badge "Estado" (Saludable/Atencion/Critico) por alarmista',
+    '  El semaforo sobre 4 indicadores CREA caia siempre en "Critico" cuando',
+    '  no se habia abierto Reporte CREA, dando una primera impresion negativa',
+    '  Topbar queda: Cabezas + Valor rodeo + Costo/kg (sin estado general)',
+  ],
+  '1.4.101': [
+    'FIX Topbar: el guard inicial usaba window.db pero `db` no esta colgado de window',
+    '  Diagnostico: la funcion entraba al "!window.db" y retornaba con display:none',
+    '  Tras todos los fixes anteriores el bug seguia porque `db` esta en scope global',
+    '  pero NO en window.db (declarado con var en un closure)',
+    '  Fix: usar `typeof db === undefined` + `db.lots` directo, igual que el resto del codigo',
+    '  Ahora el topbar se pinta cuando hay lotes activos (validado con TEST SANTIAGO: 4 lotes)',
+  ],
+  '1.4.100': [
+    'Timeline visual: linea vertical continua + puntos coloreados por tipo',
+    '  Antes era lista plana (fila por evento con icono y fecha en columnas)',
+    '  Ahora: linea vertical a la izquierda + punto coloreado por categoria + chip violet para split',
+    '  Eventos heredados con punto hueco (anillo gris) + texto opacity 0.8',
+    '  Aplicado en Analisis Lote y Analisis Historico',
+    'FIX Topbar: ahora se muestra SIEMPRE que haya lotes activos',
+    '  Antes se ocultaba si todos los lotes tenian animal_count=0 (caso comun post-sync)',
+    '  Fallback: si cab=0, muestra "N lotes" en vez de ocultar',
+    '  Si valorRodeo=0, muestra "—" en vez del valor',
+    'FIX Linaje: heuristica por nombre para lotes legacy sin cost_origin',
+    '  Si lote "X-A" no tiene cost_origin.from_lot, busca lote "X" por nombre',
+    '  Patron regex: nombre termina en " -[1-3 chars alfanumericos]"',
+    '  splitDate inferido de entry_date del hijo',
+    '  Genera marker de split aunque cost_origin no exista',
+  ],
+  '1.4.99': [
+    'FIX critico: _ahGetLineage asignaba splitDate al PADRE en vez de al HIJO',
+    '  Como resultado, _ahCollectInheritedEvents salia temprano con continue (cutoffDate=null)',
+    '  Sintoma: en sub-lotes no se mostraba historia heredada ni hito de split',
+    '  Afectaba a Analisis Historico (v1.4.96) y Analisis Lote (v1.4.97+)',
+    'Causa: el bucle leia cost_origin.date DESPUES de unshift(), entonces el primer',
+    '  elemento (el lote actual) siempre quedaba con splitDate=null',
+    'Fix: leer cost_origin.date ANTES de unshift, asi cada lote lleva su propio splitDate',
+  ],
+  '1.4.98': [
+    'Analisis Lote: mover card "Linea de tiempo" al final de la pagina',
+    '  Antes estaba entre Sanidad y Tabla Detalle',
+    '  Ahora es el cierre del analisis: ultimo bloque despues de Detalle por animal',
+    'Sin cambios funcionales en la timeline misma (sigue siendo la implementacion de v1.4.97)',
+  ],
+  '1.4.97': [
+    'Analisis Lote: linea de tiempo del lote con linaje completo (sub-lotes muestran historia heredada)',
+    'Nueva card "Linea de tiempo del lote" entre Sanidad y Tabla detalle',
+    'Eventos propios: compra principal, compras adicionales, pesajes, sanidad, rotaciones, bajas, partos',
+    'Si es sub-lote (cost_origin.from_lot): suma eventos heredados del padre antes del split',
+    '  - Ingreso original (gris ○ opacity 0.75): primera compra del padre',
+    '  - Pesajes heredados (gris): agrupados por fecha',
+    '  - Sanidad heredada (gris)',
+    '  - Hito de separacion (violet ✂ destacado con borde lateral)',
+    'Iconos diferenciados por tipo: ● lote, ◆ compra extra, ✚ sanidad, ↻ rotacion, ✕ baja, ★ parto',
+    'Reusa _ahGetLineage y _ahCollectInheritedEvents de v1.4.96 (sin duplicar logica)',
+    'Subtitle resume conteo: "N eventos propios · M heredados (de PARENT_CODE) · S separaciones"',
+  ],
+  '1.4.96': [
+    'Analisis Historico: ahora muestra la historia heredada del lote padre cuando es un sub-lote (split)',
+    '  Detecta linaje recursivamente via cost_origin.from_lot',
+    '  Chart de evolucion: linea dashed gris para el padre (pre-split) + linea violet propia',
+    '  Las dos lineas se tocan en el dia del split, antes solo el padre, despues solo el sub-lote',
+    '  Tooltips diferenciados para cada origen',
+    'Timeline de eventos:',
+    '  Hito ✂ violet destacado en cada split de la cadena ("Separado de X: N cab @ kg")',
+    '  Eventos heredados (○ gris, opacity 0.75) intercalados cronologicamente: ingreso original,',
+    '  pesajes del padre, tratamientos sanitarios. Marcados con "(via PARENT_CODE)"',
+    '  Eventos propios del sub-lote sin cambios (● violet)',
+    'Funciones economicas (Resumen, Performance, Costos, Ventas) NO incluyen historia del padre',
+    '  el costo del sub-lote es lo que se compro al hacer el split, no el costo original del padre',
+    '  (contablemente correcto: cada lote es su propia unidad economica desde su entry_date)',
+  ],
+  '1.4.95': [
+    'Fix definitivo topbar summary no actualizaba valores (Idea 11)',
+    'Root cause #3: try/catch silencioso tragaba excepcion en el calculo de stockKg',
+    '  Cuando algun item de getAnimalesDB() venia null/undefined,',
+    '  el .map(a => a.pesajes && a.pesajes.length ? ...) tiraba TypeError',
+    '  El catch hacia console.warn pero los textContent quedaban en "—"',
+    'Fix: reescribir la funcion sin try/catch, con guards explicitos en cada acceso',
+    '  - parseInt/parseFloat para coercion segura',
+    '  - guard a en activeLots.forEach (skip nulls)',
+    '  - guard a en bucle de pesajes (skip animales sin data)',
+    '  - guards en cada document.getElementById para no romper si falta algun span',
+    'Si algo falla ahora, el error sera visible en consola en lugar de silencioso',
+  ],
+  '1.4.94': [
+    'Fix topbar summary invisible aun con datos OK (Idea 11)',
+    'Root cause #2: @media (max-width:1100px) ocultaba el topbar cuando DevTools',
+    '  estaba abierto y el viewport util quedaba por debajo de ese umbral',
+    'El !important del media query pisaba el display:flex inline del JS',
+    'Fix: bajar el umbral a 900px (cubre DevTools abierto en monitores 13-14")',
+  ],
+  '1.4.93': [
+    'Fix topbar summary no aparecia tras sync (Idea 11)',
+    'Root cause: renderTopbarSummary se llamaba ANTES de recomputar animal_count desde e5m_animals',
+    'Los lotes del server llegan con animal_count=0; el conteo real se reconstruye en renderDashboard',
+    'Fix 1: mover renderTopbarSummary() al final de renderDashboard, despues del recompute',
+    'Fix 2: la funcion ahora hace su propio fallback a getAnimalesDB() si animal_count=0',
+    '  Mismo helper que usa renderLotes/renderDashboard - sin duplicar logica de peso promedio',
+    'Ahora el topbar funciona aunque se llame en cualquier momento',
+  ],
+  '1.4.92': [
+    'Re-empaquetado de v1.4.91 con bump de version para evitar confusion local',
+    'Sin cambios funcionales respecto a v1.4.91',
+  ],
+  '1.4.91': [
+    'Resumen propiedad minimalista en topbar (Idea 11 / Tier 1 Potrero)',
+    '  Visible siempre, no solo en Reporte CREA, al lado del logo',
+    '  4 elementos: Cabezas / Valor rodeo / Costo x kg / Estado general',
+    '  - Cabezas: suma de animales en lotes activos',
+    '  - Valor rodeo: stock kg (avg_weight x cab o peso_ua) x precio_venta_ref',
+    '  - Costo x kg: operativo AACREA, cacheado desde Reporte CREA (muestra "—" hasta primer abrir CREA)',
+    '  - Estado: pill con semaforo (Saludable / Atencion / Critico) sobre 4 indicadores AACREA',
+    'Tooltip en el pill explica los 4 indicadores con sus valores',
+    'Se oculta automaticamente en viewports < 1100px (no rompe layout angosto)',
+    'Refresco automatico tras cada renderDashboard (post-sync, post-venta, post-compra, etc.)',
+  ],
   '1.4.90': [
     'Modal Pegar Animales: stats cards unificadas con modal-import-pesajes',
     '  3 contadores visuales: Validos (verde) / Advertencias (amarillo) / Errores (rojo)',
@@ -26305,6 +27196,18 @@ function renderReporteCREA() {
   var ingresoHa = ha > 0 ? Math.round(ingresoVentas / ha * 100) / 100 : 0;
   var costoSanCab = existMedia > 0 ? Math.round(gastSanidad / existMedia * 100) / 100 : 0;
 
+  // v1.4.91: Cachear KPIs para el resumen del topbar (Idea 11)
+  // El topbar muestra Cabezas + Valor rodeo siempre, y Costo/kg desde acá.
+  window._lastCREAKPIs = {
+    costoOperativoKg: costoOperativoKg,
+    prodCarne: prodCarne,
+    cargaAnimal: cargaAnimal,
+    resultOp: resultOp,
+    roi: roi,
+    computedAt: Date.now()
+  };
+  try { if (typeof renderTopbarSummary === 'function') renderTopbarSummary(); } catch(e) {}
+
   function kpi(label, value, unit, formula, color, trend) {
     return '<div class="card" style="padding:14px 16px;position:relative;border-left:3px solid ' + (color || 'var(--amber)') + '"><div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px">' + label + '</div><div style="font-size:22px;font-weight:800;font-family:DM Mono,monospace">' + value + '</div><div style="font-size:11px;color:var(--muted);margin-top:3px">' + unit + '</div><div style="font-size:9px;color:var(--muted);margin-top:4px;font-family:DM Mono,monospace;opacity:.6">' + formula + '</div>' + (trend ? '<div style="position:absolute;top:14px;right:14px;font-size:11px;font-weight:700;color:' + (trend > 0 ? 'var(--green)' : 'var(--red)') + '">' + (trend > 0 ? '▲' : '▼') + ' ' + Math.abs(trend) + '%</div>' : '') + '</div>';
   }
@@ -30246,6 +31149,36 @@ function renderRotacion() {
   var history = db.rotation_history || [];
   var lots = db.lots || [];
   var today = new Date();
+
+  // v1.4.103 FIX A: detectar lotes activos con paddock asignado pero SIN entry abierto
+  // en rotation_history. Esto pasa cuando:
+  //   - Bot v5.5.1 hace lot_split y crea sub-lote con paddock heredado del padre,
+  //     pero no inserta entry de rotation_history para el sub-lote.
+  //   - Migraciones antiguas o lotes editados manualmente sin pasar por moveLot.
+  // Solución temporal: crear entries "virtuales" en memoria (no se persisten en db.rotation_history).
+  // Solución de raíz: server v4.5.1 + bot que cree el entry en lot_split (FIX C, pendiente).
+  var historyAugmented = history.slice();
+  lots.forEach(function(l) {
+    if (!l || !l.code || !l.paddock) return;
+    var lotStatus = String(l.status || '').toLowerCase();
+    if (lotStatus === 'vendido' || lotStatus === 'sold' || lotStatus === 'inactivo' || lotStatus === 'inactive') return;
+    if ((l.animal_count || 0) === 0) return;
+    var hasOpenEntry = history.some(function(r) {
+      return r && r.lot_code === l.code && r.potrero === l.paddock && !r.exit_date;
+    });
+    if (hasOpenEntry) return;
+    var entryDate = (l.cost_origin && l.cost_origin.date) || l.entry_date || (today.toISOString().slice(0,10));
+    historyAugmented.push({
+      lot_code: l.code,
+      potrero: l.paddock,
+      entry_date: entryDate,
+      exit_date: null,
+      cabezas: l.animal_count || 0,
+      _virtual: true,
+      _reason: 'auto-detected-from-lot-paddock'
+    });
+  });
+  history = historyAugmented;
 
   // ─── Procesar cada potrero ────────────────────────────────
   // FIX v1.4.50: soportar MÚLTIPLES lotes en el mismo potrero.
