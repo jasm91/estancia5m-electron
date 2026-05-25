@@ -1792,7 +1792,7 @@ function publishTasksToPWA() {
     <div class="card">
       <div class="card-body" style="padding:0">
         <table class="tbl">
-          <thead><tr><th>Fecha</th><th>Tipo</th><th>Litros</th><th>Vehiculo/Motivo</th><th>Bs.</th><th>Balance</th><th>Obs.</th><th></th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Tipo</th><th>Litros</th><th>Vehiculo/Motivo</th><th>Bs.</th><th>Balance</th><th>Origen</th><th>Obs.</th><th></th></tr></thead>
           <tbody id="diesel-tbody"></tbody>
         </table>
       </div>
@@ -2406,8 +2406,30 @@ function publishTasksToPWA() {
 
 <!-- ═══ ALERTAS ═══ -->
 <div id="page-alertas" class="page">
-  <div class="ph"><div><div class="pt">🔔 Alertas</div><div class="ps">Todas las alertas activas y resueltas</div></div></div>
-  <div id="all-alerts-list"></div>
+  <div class="ph">
+    <div>
+      <div class="pt">🔔 Centro de Atención Operativa</div>
+      <div class="ps" id="alertas-subtitle">Lo que necesita tu atención hoy</div>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="renderCentroAtencion()" style="font-size:11px">↻ Actualizar</button>
+  </div>
+
+  <!-- Counters -->
+  <div id="alertas-counters" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px"></div>
+
+  <!-- Filtros rápidos -->
+  <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap" id="alertas-filters">
+    <button class="btn btn-ghost btn-sm alertas-filter-btn active" data-sev="all" onclick="filtrarCentroAtencion('all',this)" style="font-size:11px">Todas</button>
+    <button class="btn btn-ghost btn-sm alertas-filter-btn" data-sev="critico" onclick="filtrarCentroAtencion('critico',this)" style="font-size:11px">🔴 Críticas</button>
+    <button class="btn btn-ghost btn-sm alertas-filter-btn" data-sev="atencion" onclick="filtrarCentroAtencion('atencion',this)" style="font-size:11px">🟡 Atención</button>
+    <button class="btn btn-ghost btn-sm alertas-filter-btn" data-sev="sugerencia" onclick="filtrarCentroAtencion('sugerencia',this)" style="font-size:11px">🔵 Sugerencias</button>
+  </div>
+
+  <!-- Lista -->
+  <div id="alertas-secciones"></div>
+
+  <!-- Sección legacy: alertas reactivas (stock, conteo) -->
+  <div id="all-alerts-list" style="margin-top:24px"></div>
 </div>
 
 
@@ -3226,11 +3248,25 @@ function publishTasksToPWA() {
     <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
       Pega o sube CSV con: <strong>ID, Raza, Peso</strong> (una fila por animal). Detecta automáticamente <code>,</code> <code>;</code> <code>tab</code>. Los headers se ignoran.
     </div>
+
+    <!-- v1.4.89: plantilla descargable con N animales pre-numerados -->
+    <div id="bp-template-section" style="margin-bottom:14px;padding:10px 12px;background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.2);border-radius:8px;display:none">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">
+        ¿Necesitás una plantilla en blanco para llenar desde la balanza? <span id="bp-template-n-info" style="color:var(--text)"></span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-ghost btn-sm" onclick="bpDownloadTemplate()" style="font-size:11px;color:var(--blue);border-color:rgba(99,102,241,.3)" title="Descargar CSV con # 1..N pre-llenado">⬇️ Descargar plantilla CSV</button>
+        <button class="btn btn-ghost btn-sm" onclick="bpCopyTemplate()" style="font-size:11px;color:var(--blue);border-color:rgba(99,102,241,.3)" title="Copiar plantilla al portapapeles">📋 Copiar plantilla</button>
+      </div>
+    </div>
+
     <div class="form-group">
       <label class="form-label">Archivo CSV (opcional)</label>
       <input type="file" id="bp-file" accept=".csv,.txt" style="margin-bottom:8px" onchange="bpHandleFile(this)">
       <textarea class="form-textarea" id="bp-text" placeholder="Pegá aquí los datos:&#10;1041, F1, 370&#10;1043, F1, 391&#10;1045, F1, 339" style="min-height:150px;font-family:DM Mono,monospace;font-size:11px" oninput="bpPreview()"></textarea>
     </div>
+    <!-- v1.4.90: stats cards unificadas (Válidos / Advertencias / Errores) -->
+    <div id="bp-stats" style="display:none;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px"></div>
     <div id="bp-preview-info" style="font-size:11px;color:var(--muted);margin-bottom:8px">Pegá datos para previsualizar</div>
     <div id="bp-preview-table" style="max-height:200px;overflow-y:auto;margin-bottom:12px;font-size:11px"></div>
     <div class="form-actions">
@@ -5935,11 +5971,22 @@ function renderDashboard() {
       var activeLots = db.lots.filter(function(l){ return !l.status || l.status === 'activo' || l.status === 'active'; });
       var activeAlerts = (db.alerts || []).filter(function(a){ return !a.resolved; }).length;
 
+      // v1.4.85: incluir alertas críticas detectadas automáticamente por el Centro de Atención
+      var criticasCentro = 0;
+      try {
+        if (typeof _detectarAlertas === 'function') {
+          var detectadas = _detectarAlertas();
+          criticasCentro = detectadas.filter(function(a){return a.severity === 'critico';}).length;
+        }
+      } catch(e) {}
+      // Tomar el mayor para que el badge refleje algo realista (no sumamos por riesgo de doble conteo)
+      var badgeCount = Math.max(activeAlerts, criticasCentro);
+
       // Badges que SÍ siguen existiendo en el header y menú lateral
       var badge = document.getElementById('alertCountBadge');
-      if (badge) badge.textContent = activeAlerts + ' alerta' + (activeAlerts !== 1 ? 's' : '');
+      if (badge) badge.textContent = badgeCount + ' alerta' + (badgeCount !== 1 ? 's' : '');
       var nbAlertas = document.getElementById('nb-alertas');
-      if (nbAlertas) nbAlertas.textContent = activeAlerts;
+      if (nbAlertas) nbAlertas.textContent = badgeCount;
       var nbLotes = document.getElementById('nb-lotes');
       if (nbLotes) nbLotes.textContent = activeLots.length;
     }
@@ -9974,23 +10021,438 @@ function viewTrace(id) {
 }
 
 // ══════════════════════════════════════════════════
-// ALERTAS
+// CENTRO DE ATENCIÓN OPERATIVA (v1.4.85)
+// ══════════════════════════════════════════════════
+// Sistema de detectores automáticos que analizan el estado actual de la app
+// y generan alertas accionables. Cada detector retorna un array de alertas.
+// Severidad: 'critico' (acción hoy) | 'atencion' (esta semana) | 'sugerencia' (cuando puedas)
+// Cada alerta lleva: { id, severity, icon, title, msg, action_label?, action_fn? }
+
+window._centroAtencionState = { current_filter: 'all', alerts_cache: [] };
+
+function _detectarAlertas() {
+  var out = [];
+  var hoy = new Date();
+  var hoyMs = hoy.getTime();
+  var lots = (db.lots || []).filter(function(l) {
+    return !l.status || l.status === 'activo' || l.status === 'active';
+  });
+  var animales = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
+  var params = {};
+  try { params = JSON.parse(localStorage.getItem('e5m_params') || '{}'); } catch(e){}
+
+  // ────────────────────────────────────────────
+  // 🔴 CRÍTICO — acción hoy
+  // ────────────────────────────────────────────
+
+  // 1) Lotes con animales sin pesar hace >60 días
+  lots.forEach(function(lot) {
+    var animArr = animales[lot.code] || [];
+    if (!animArr.length) return;
+    var animalesSinPesar = animArr.filter(function(a) {
+      var ps = a.pesajes || [];
+      if (!ps.length) return true;  // nunca pesados
+      var ultPesaje = ps[ps.length-1].fecha;
+      if (!ultPesaje) return false;
+      var diasDesde = Math.floor((hoyMs - new Date(ultPesaje).getTime()) / 86400000);
+      return diasDesde > 60;
+    });
+    if (animalesSinPesar.length >= 5) {
+      out.push({
+        id: 'sin-pesar-' + lot.code,
+        severity: 'critico',
+        icon: '⚖️',
+        title: animalesSinPesar.length + ' animales en ' + lot.code + ' sin pesar hace >60 días',
+        msg: 'No se puede calcular GMD ni proyectar venta sin pesajes recientes',
+        action_label: 'Pesar lote',
+        action_fn: "showPage('lotes',null);setTimeout(function(){showLotesTab('lotes-tab-pesajes',document.getElementById('lotes-tab-pesajes-btn'));openModalPesaje('" + escH(lot.code).replace(/'/g, "\\'") + "');},150)"
+      });
+    }
+  });
+
+  // 2) Potreros sobrepoblados (basado en capacidad configurada)
+  // capacidad viene de params.potreros[i].capacidad o params.potreros[i].cap_max
+  var potrerosCfg = {};
+  (params.potreros || []).forEach(function(p) {
+    if (typeof p !== 'object') return;
+    var nombre = p.name || p.nombre || '';
+    if (nombre) potrerosCfg[nombre] = p.capacidad || p.cap_max || 0;
+  });
+  var potreroOcupacion = {};
+  lots.forEach(function(lot) {
+    if (!lot.paddock) return;
+    if (!potreroOcupacion[lot.paddock]) potreroOcupacion[lot.paddock] = { count: 0, lotes: [] };
+    potreroOcupacion[lot.paddock].count += (lot.animal_count || 0);
+    potreroOcupacion[lot.paddock].lotes.push(lot.code);
+  });
+  Object.keys(potreroOcupacion).forEach(function(potrero) {
+    var cap = potrerosCfg[potrero];
+    if (!cap || cap <= 0) return;
+    var ocup = potreroOcupacion[potrero].count;
+    var pct = Math.round((ocup / cap) * 100);
+    if (pct > 130) {
+      out.push({
+        id: 'sobrepob-' + potrero,
+        severity: 'critico',
+        icon: '🚜',
+        title: 'Potrero ' + potrero + ' al ' + pct + '% de capacidad (' + ocup + '/' + cap + ' cab)',
+        msg: 'Rotar urgente antes de degradar el pasto. Lotes: ' + potreroOcupacion[potrero].lotes.join(', '),
+        action_label: 'Ver rotación',
+        action_fn: "goToRotacion(null)"
+      });
+    }
+  });
+
+  // 3) Animales en cuarentena hace >30 días
+  var lotesCuarentena = (db.lots || []).filter(function(l) {
+    return l.status === 'cuarentena' || l.status === 'marcado';
+  });
+  lotesCuarentena.forEach(function(lot) {
+    if (!lot.entry_date) return;
+    var dias = Math.floor((hoyMs - new Date(lot.entry_date).getTime()) / 86400000);
+    if (dias > 30) {
+      out.push({
+        id: 'cuar-old-' + lot.code,
+        severity: 'critico',
+        icon: '🚧',
+        title: lot.code + ' en cuarentena hace ' + dias + ' días',
+        msg: (lot.animal_count || 0) + ' animales pendientes de asignación definitiva a lote',
+        action_label: 'Procesar cuarentena',
+        action_fn: "showPage('compra-ganado',null)"
+      });
+    }
+  });
+
+  // 4) Diferencias de conteo no resueltas (alertas reactivas existentes)
+  (db.alerts || []).forEach(function(a) {
+    if (a.resolved) return;
+    if (a.type === 'conteo_diff') {
+      out.push({
+        id: 'conteo-' + a.id,
+        severity: 'critico',
+        icon: '🔢',
+        title: a.title,
+        msg: a.message,
+        action_label: 'Resolver',
+        action_fn: "resolveAlert(" + a.id + ");renderCentroAtencion()"
+      });
+    }
+  });
+
+  // 5) Lotes con CV > 15% (oportunidad de separación)
+  lots.forEach(function(lot) {
+    var animArr = animales[lot.code] || [];
+    if (animArr.length < 10) return;  // muy pocos animales, no aplica
+    var pesos = animArr.map(function(a) {
+      var ps = a.pesajes || [];
+      return ps.length ? ps[ps.length-1].peso : 0;
+    }).filter(function(w){return w>0;});
+    if (pesos.length < 10) return;
+    var avg = pesos.reduce(function(s,w){return s+w;},0) / pesos.length;
+    var variance = pesos.reduce(function(s,w){return s + Math.pow(w-avg, 2);},0) / pesos.length;
+    var stdev = Math.sqrt(variance);
+    var cv = (stdev / avg) * 100;
+    if (cv > 15) {
+      out.push({
+        id: 'cv-alto-' + lot.code,
+        severity: 'critico',
+        icon: '📊',
+        title: lot.code + ' con CV ' + cv.toFixed(1) + '% — alta dispersión',
+        msg: 'Promedio ' + avg.toFixed(0) + ' kg, σ ' + stdev.toFixed(0) + ' kg. Conviene separar por afinidad de peso',
+        action_label: 'Ver histograma',
+        action_fn: "goToAnimales(null);setTimeout(function(){var s=document.getElementById('animales-lot-filter');if(s){s.value='" + escH(lot.code).replace(/'/g, "\\'") + "';renderAnimalesLote();}},200)"
+      });
+    }
+  });
+
+  // ────────────────────────────────────────────
+  // 🟡 ATENCIÓN — esta semana
+  // ────────────────────────────────────────────
+
+  // 6) Tratamientos programados próximos (3-7 días)
+  (db.alerts || []).forEach(function(a) {
+    if (a.resolved) return;
+    if (a.type === 'treatment_due') {
+      out.push({
+        id: 'trat-' + a.id,
+        severity: 'atencion',
+        icon: '💉',
+        title: a.title,
+        msg: a.message,
+        action_label: 'Ver sanidad',
+        action_fn: "showPage('sanidad',null)"
+      });
+    }
+  });
+
+  // 7) Lotes listos para venta (peso promedio > umbral configurable, GMD positivo)
+  var umbralVenta = (params.peso_venta_objetivo || 450);
+  lots.forEach(function(lot) {
+    if (!lot.avg_weight || lot.avg_weight < umbralVenta) return;
+    var animArr = animales[lot.code] || [];
+    if (!animArr.length) return;
+    out.push({
+      id: 'listo-venta-' + lot.code,
+      severity: 'atencion',
+      icon: '💰',
+      title: lot.code + ' listo para evaluar venta',
+      msg: 'Peso prom ' + lot.avg_weight + ' kg (objetivo ' + umbralVenta + ' kg) · ' + (lot.animal_count || 0) + ' cab',
+      action_label: 'Ver lote',
+      action_fn: "showPage('analisis-lote',null);setTimeout(function(){var s=document.getElementById('al-lot-select');if(s){s.value='" + escH(lot.code).replace(/'/g, "\\'") + "';renderAnalisisLote();}},200)"
+    });
+  });
+
+  // 8) Lotes sin pesaje en >30 días (algunos pesados pero no recientes)
+  lots.forEach(function(lot) {
+    var animArr = animales[lot.code] || [];
+    if (!animArr.length) return;
+    // Últimas fechas de pesaje
+    var ultFechas = animArr.map(function(a) {
+      var ps = a.pesajes || [];
+      return ps.length ? ps[ps.length-1].fecha : null;
+    }).filter(Boolean);
+    if (!ultFechas.length) return;
+    ultFechas.sort();
+    var maxFecha = ultFechas[ultFechas.length-1];
+    var dias = Math.floor((hoyMs - new Date(maxFecha).getTime()) / 86400000);
+    // Solo si NO entró en la alerta crítica de >60 días
+    if (dias > 30 && dias <= 60) {
+      // Verificar que no haya entrado en crítica
+      var yaEnCritica = out.some(function(o){ return o.id === 'sin-pesar-' + lot.code; });
+      if (!yaEnCritica) {
+        out.push({
+          id: 'pesaje-30-' + lot.code,
+          severity: 'atencion',
+          icon: '⚖️',
+          title: lot.code + ' sin pesaje hace ' + dias + ' días',
+          msg: (lot.animal_count || 0) + ' animales. Pesar pronto para mantener GMD actualizada',
+          action_label: 'Pesar',
+          action_fn: "showPage('lotes',null);setTimeout(function(){showLotesTab('lotes-tab-pesajes',document.getElementById('lotes-tab-pesajes-btn'));openModalPesaje('" + escH(lot.code).replace(/'/g, "\\'") + "');},150)"
+        });
+      }
+    }
+  });
+
+  // 9) Personal con adelantos no descontados > 7 días
+  // El campo es `status` con valor 'descontado' o 'pendiente', y `employee` (nombre).
+  (db.advances || []).forEach(function(adv) {
+    if (adv.status === 'descontado') return;  // ya descontado, no hay alerta
+    if (!adv.date) return;
+    var dias = Math.floor((hoyMs - new Date(adv.date).getTime()) / 86400000);
+    if (dias > 7) {
+      var nombre = adv.employee || 'empleado #' + (adv.employee_id || '?');
+      out.push({
+        id: 'adv-' + adv.id,
+        severity: 'atencion',
+        icon: '👷',
+        title: 'Adelanto pendiente · ' + nombre,
+        msg: 'Bs. ' + (adv.amount || 0).toLocaleString() + ' del ' + adv.date + ' (' + dias + ' días)' +
+             (adv.reason ? ' · ' + adv.reason : ''),
+        action_label: 'Ver personal',
+        action_fn: "showPage('personal',null)"
+      });
+    }
+  });
+
+  // 10) Stock bajo (alertas reactivas existentes)
+  (db.alerts || []).forEach(function(a) {
+    if (a.resolved) return;
+    if (a.type === 'stock_low') {
+      out.push({
+        id: 'stock-' + a.id,
+        severity: 'atencion',
+        icon: '📦',
+        title: a.title,
+        msg: a.message,
+        action_label: 'Ver stock',
+        action_fn: "showPage('stock',null)"
+      });
+    }
+  });
+
+  // ────────────────────────────────────────────
+  // 🔵 SUGERENCIA — cuando puedas
+  // ────────────────────────────────────────────
+
+  // 11) Lotes similares que podrían fusionarse
+  if (lots.length >= 2) {
+    var lotsConPeso = lots.filter(function(l){ return l.avg_weight > 0 && (l.animal_count||0) > 0; });
+    for (var i = 0; i < lotsConPeso.length; i++) {
+      for (var j = i+1; j < lotsConPeso.length; j++) {
+        var a = lotsConPeso[i], b = lotsConPeso[j];
+        if (a.category !== b.category) continue;  // solo misma categoría
+        var diff = Math.abs(a.avg_weight - b.avg_weight);
+        if (diff <= 10) {
+          out.push({
+            id: 'merge-' + a.code + '-' + b.code,
+            severity: 'sugerencia',
+            icon: '🔗',
+            title: a.code + ' y ' + b.code + ' tienen pesos similares',
+            msg: a.avg_weight + ' vs ' + b.avg_weight + ' kg (Δ ' + diff.toFixed(1) + ' kg). Considerar fusionar para optimizar manejo',
+            action_label: 'Ver lotes',
+            action_fn: "goToLotes(null)"
+          });
+          break;  // solo una sugerencia por lote
+        }
+      }
+    }
+  }
+
+  // 12) Lotes pequeños (< 10 cab) — candidatos a fusionar
+  lots.forEach(function(lot) {
+    if (!lot.animal_count) return;
+    if (lot.animal_count < 10 && lot.animal_count > 0) {
+      out.push({
+        id: 'lot-chico-' + lot.code,
+        severity: 'sugerencia',
+        icon: '📉',
+        title: lot.code + ' tiene solo ' + lot.animal_count + ' cab',
+        msg: 'Lotes pequeños son ineficientes operativamente. Considerar fusión con otro lote similar',
+        action_label: 'Ver lote',
+        action_fn: "goToLotes(null)"
+      });
+    }
+  });
+
+  // 13) Pluviometría: si llovió en la zona y no hay registro reciente (sugerencia ligera)
+  // Lo dejamos para una iteración futura — requiere integración con weather API.
+
+  return out;
+}
+
+function renderCentroAtencion() {
+  var alerts;
+  try {
+    alerts = _detectarAlertas();
+  } catch(e) {
+    console.error('[CentroAtencion] error:', e);
+    alerts = [];
+  }
+  window._centroAtencionState.alerts_cache = alerts;
+
+  var counts = {
+    critico: alerts.filter(function(a){return a.severity === 'critico';}).length,
+    atencion: alerts.filter(function(a){return a.severity === 'atencion';}).length,
+    sugerencia: alerts.filter(function(a){return a.severity === 'sugerencia';}).length
+  };
+
+  // Counters
+  var countersEl = document.getElementById('alertas-counters');
+  if (countersEl) {
+    var totalActivas = counts.critico + counts.atencion + counts.sugerencia;
+    countersEl.innerHTML =
+      _renderCounterCard('🔴', counts.critico, 'Críticas', 'critico', 'var(--red)') +
+      _renderCounterCard('🟡', counts.atencion, 'Atención', 'atencion', 'var(--amber2)') +
+      _renderCounterCard('🔵', counts.sugerencia, 'Sugerencias', 'sugerencia', 'var(--blue)') +
+      _renderCounterCard('✅', '', 'En orden', null, 'var(--green)', totalActivas === 0);
+  }
+
+  // Subtitle dinámico
+  var subEl = document.getElementById('alertas-subtitle');
+  if (subEl) {
+    var lastUpd = new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' });
+    var totalActivas2 = counts.critico + counts.atencion + counts.sugerencia;
+    subEl.textContent = totalActivas2 === 0
+      ? 'Todo en orden · Actualizado ' + lastUpd
+      : totalActivas2 + ' alertas activas · Actualizado ' + lastUpd;
+  }
+
+  // Renderizar secciones según filtro
+  _renderCentroAtencionSecciones();
+}
+
+function _renderCounterCard(icon, count, label, sevKey, color, isHighlight) {
+  var bg = isHighlight ? 'background:rgba(57,211,83,.08);border-color:rgba(57,211,83,.3);' : '';
+  var clickable = sevKey ? 'cursor:pointer;onclick' : '';
+  var onClick = sevKey ? ' onclick="filtrarCentroAtencion(\'' + sevKey + '\', null)"' : '';
+  return '<div style="' + bg + 'background:var(--sur);border:1px solid var(--bor);border-radius:10px;padding:14px 16px;text-align:center;cursor:pointer;transition:background .15s"' + onClick + ' onmouseover="this.style.background=\'var(--sur2)\'" onmouseout="this.style.background=\'var(--sur)\'">' +
+    '<div style="font-size:20px;margin-bottom:4px">' + icon + '</div>' +
+    '<div style="font-family:DM Mono,monospace;font-size:22px;font-weight:700;color:' + color + '">' + (count === '' ? '✓' : count) + '</div>' +
+    '<div style="font-size:10px;color:var(--muted);font-family:DM Mono,monospace;letter-spacing:.08em;text-transform:uppercase;margin-top:2px">' + label + '</div>' +
+  '</div>';
+}
+
+function _renderCentroAtencionSecciones() {
+  var el = document.getElementById('alertas-secciones');
+  if (!el) return;
+  var alerts = window._centroAtencionState.alerts_cache;
+  var filter = window._centroAtencionState.current_filter;
+  var filtered = filter === 'all' ? alerts : alerts.filter(function(a){return a.severity === filter;});
+
+  if (filtered.length === 0) {
+    el.innerHTML = '<div style="background:var(--sur);border:1px solid var(--bor);border-radius:10px;padding:48px 20px;text-align:center">' +
+      '<div style="font-size:48px;margin-bottom:12px">' + (alerts.length === 0 ? '✅' : '🔍') + '</div>' +
+      '<div style="font-size:14px;color:var(--text);margin-bottom:4px">' + (alerts.length === 0 ? '¡Todo en orden!' : 'Sin alertas en esta categoría') + '</div>' +
+      '<div style="font-size:11px;color:var(--muted)">' + (alerts.length === 0 ? 'No hay nada que requiera tu atención ahora mismo' : 'Probá otro filtro') + '</div>' +
+    '</div>';
+    return;
+  }
+
+  // Agrupar por severidad y renderizar
+  var sevLabels = {
+    'critico':    { label: '🔴 CRÍTICO — Acción hoy', color: 'var(--red)' },
+    'atencion':   { label: '🟡 ATENCIÓN — Esta semana', color: 'var(--amber2)' },
+    'sugerencia': { label: '🔵 SUGERENCIA — Cuando puedas', color: 'var(--blue)' }
+  };
+  var html = '';
+  ['critico','atencion','sugerencia'].forEach(function(sev) {
+    var grupo = filtered.filter(function(a){return a.severity === sev;});
+    if (!grupo.length) return;
+    var meta = sevLabels[sev];
+    html += '<div style="margin-bottom:18px">' +
+      '<div style="font-family:DM Mono,monospace;font-size:10px;letter-spacing:.12em;color:' + meta.color + ';margin-bottom:8px;font-weight:700">' + meta.label + '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px">' +
+        grupo.map(function(a){ return _renderAlertCard(a, sev); }).join('') +
+      '</div>' +
+    '</div>';
+  });
+  el.innerHTML = html;
+}
+
+function _renderAlertCard(a, sev) {
+  var borderColor = sev === 'critico' ? 'rgba(248,81,73,.35)' : (sev === 'atencion' ? 'rgba(212,160,23,.3)' : 'rgba(34,211,238,.25)');
+  var bgColor = sev === 'critico' ? 'rgba(248,81,73,.04)' : (sev === 'atencion' ? 'rgba(212,160,23,.03)' : 'rgba(34,211,238,.02)');
+  var actionBtn = '';
+  if (a.action_label && a.action_fn) {
+    actionBtn = '<button class="btn btn-ghost btn-sm" style="font-size:11px;white-space:nowrap" onclick="' + a.action_fn + '">' + escH(a.action_label) + ' →</button>';
+  }
+  return '<div style="background:' + bgColor + ';border:1px solid ' + borderColor + ';border-radius:8px;padding:11px 14px;display:flex;align-items:flex-start;gap:12px">' +
+    '<div style="font-size:17px;line-height:1;padding-top:2px">' + (a.icon || '⚠️') + '</div>' +
+    '<div style="flex:1;min-width:0">' +
+      '<div style="font-size:12.5px;font-weight:600;color:var(--text);margin-bottom:2px">' + escH(a.title) + '</div>' +
+      '<div style="font-size:11px;color:var(--muted);line-height:1.4">' + escH(a.msg) + '</div>' +
+    '</div>' +
+    actionBtn +
+  '</div>';
+}
+
+function filtrarCentroAtencion(sev, btn) {
+  window._centroAtencionState.current_filter = sev;
+  // Actualizar botones
+  document.querySelectorAll('.alertas-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+  var target = btn || document.querySelector('.alertas-filter-btn[data-sev="' + sev + '"]');
+  if (target) target.classList.add('active');
+  _renderCentroAtencionSecciones();
+}
+
+// ══════════════════════════════════════════════════
+// ALERTAS REACTIVAS LEGACY (mantenido por compat)
 // ══════════════════════════════════════════════════
 function renderAllAlerts() {
+  // Trigger del Centro de Atención al entrar a la página
+  if (typeof renderCentroAtencion === 'function') {
+    try { renderCentroAtencion(); } catch(e) { console.warn('Centro de Atención error:', e); }
+  }
+  // Mantener el bloque de alertas reactivas resueltas abajo (historial)
   const el=document.getElementById('all-alerts-list');
-  const active=db.alerts.filter(a=>!a.resolved);
+  if (!el) return;
   const resolved=db.alerts.filter(a=>a.resolved);
-  let html='<div class="card" style="margin-bottom:16px"><div class="card-hd"><div class="card-title">⚠️ Activas ('+active.length+')</div></div><div class="card-body">';
-  if(!active.length) html+='<p style="color:var(--muted);font-size:12px">Sin alertas activas</p>';
-  else html+=active.map(function(a){
-    return '<div class="alert-item ai-'+(a.severity==="critical"?"red":"amber")+'" style="margin-bottom:8px"><div class="ai-icon">'+(a.severity==="critical"?"🚨":"⚠️")+'</div><div style="flex:1"><div class="ai-title">'+escH(a.title)+'</div><div class="ai-body">'+escH(a.message)+'</div></div><button class="btn btn-ghost btn-sm" id="resolve-'+a.id+'">✓ Resolver</button></div>';
-  }).join('');
-  html+='</div></div>';
+  let html='';
   if(resolved.length) {
-    var resolvedRows = resolved.slice(-5).map(function(a){
-      return '<div style="padding:8px 0;border-bottom:1px solid rgba(48,54,61,.3);font-size:13px;color:var(--muted)"><span style="color:var(--green);margin-right:8px">✓</span>'+escH(a.title)+'</div>';
+    var resolvedRows = resolved.slice(-5).reverse().map(function(a){
+      return '<div style="padding:8px 0;border-bottom:1px solid rgba(48,54,61,.3);font-size:12px;color:var(--muted)"><span style="color:var(--green);margin-right:8px">✓</span>'+escH(a.title)+'</div>';
     }).join('');
-    html += '<div class="card"><div class="card-hd"><div class="card-title" style="color:var(--muted)">✓ Resueltas ('+resolved.length+')</div></div><div class="card-body">'+resolvedRows+'</div></div>';
+    html += '<div class="card"><div class="card-hd"><div class="card-title" style="color:var(--muted);font-size:11px">📋 Historial reciente · Resueltas ('+resolved.length+')</div></div><div class="card-body">'+resolvedRows+'</div></div>';
   }
   el.innerHTML=html;
 }
@@ -18647,7 +19109,7 @@ function renderDieselDesktop() {
   var tbody = document.getElementById('diesel-tbody');
   if (tbody) {
     if (!registros.length) {
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--muted)">Sin registros</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">Sin registros</td></tr>';
     } else {
       tbody.innerHTML = '';
       registros.slice().sort(function(a,b){ return (b.created_at||b.fecha||'').localeCompare(a.created_at||a.fecha||''); }).forEach(function(r){
@@ -18661,15 +19123,44 @@ function renderDieselDesktop() {
           litrosSign = r.direction === 'in' ? '+' : '-';
         }
         else { typeLabel = '⛽ Despacho'; typeColor = 'var(--blue)'; litrosSign = '-'; }
+
+        // v1.4.88: badge de origen (Desktop / WhatsApp / PWA / Auto)
+        // Patrón consistente con Sanidad / Kardex
+        var src = r.by || '';
+        // Inferir origen si no viene explícito
+        if (!src && r.source === 'whatsapp') src = 'WhatsApp';
+        if (!src && r.source === 'pwa') src = 'Campo';
+        if (!src) src = 'Desktop';  // default histórico
+        var srcColors = { Desktop:'#6366F1', Campo:'#22C55E', Auto:'#9CA3AF' };
+        var srcColor = srcColors[src] || (src.indexOf('WhatsApp') === 0 ? '#25D366' : '#9CA3AF');
+        // Label corto en el badge (WhatsApp ###### → WhatsApp)
+        var srcShort = src.indexOf('WhatsApp') === 0 ? 'WhatsApp' : src;
+        var srcBadge = '<span style="font-size:9px;padding:2px 7px;border-radius:3px;background:'+srcColor+';color:#fff;font-weight:600;letter-spacing:.04em">'+escH(srcShort)+'</span>';
+
         var tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
+        tr.setAttribute('data-diesel-id', r.id);
         tr.innerHTML = '<td>'+fmtDT(r.created_at||r.fecha)+'</td>'+
           '<td style="font-weight:600;color:'+typeColor+'">'+typeLabel+'</td>'+
           '<td style="font-family:DM Mono,monospace;color:'+typeColor+';font-weight:600">'+litrosSign+((parseFloat(r.litros)||0).toFixed(1))+' L</td>'+
           '<td style="font-size:12px">'+escH(type==='ajuste'?(r.motivo||'-'):(r.vehiculo||'-'))+'</td>'+
           '<td style="font-family:DM Mono,monospace;color:var(--amber2)">'+(r.total?'Bs. '+parseFloat(r.total).toLocaleString():'-')+'</td>'+
           '<td style="font-family:DM Mono,monospace;font-size:11px;color:var(--muted)">'+(typeof r._balance!=='undefined'?r._balance+' L':'-')+(r._tank_name?'<div style="font-size:9px">'+escH(r._tank_name)+'</div>':'')+'</td>'+
+          '<td>'+srcBadge+'</td>'+
           '<td style="font-size:11px;color:var(--muted)">'+escH(r.obs||'-')+'</td>'+
-          '<td><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteDiesel(\'' + r.id + '\')">x</button></td>';
+          '<td><button class="btn btn-ghost btn-sm" style="color:var(--red)" data-action="delete">x</button></td>';
+        // Click en la fila → abrir detalle (excluyendo botón borrar)
+        tr.addEventListener('click', function(ev){
+          var t = ev.target;
+          if (t && (t.tagName === 'BUTTON' || t.getAttribute('data-action') === 'delete')) {
+            if (t.getAttribute('data-action') === 'delete') deleteDiesel(r.id);
+            return;
+          }
+          openDieselDetail(r.id);
+        });
+        // Hover effect
+        tr.addEventListener('mouseenter', function(){ tr.style.background = 'rgba(99,102,241,.04)'; });
+        tr.addEventListener('mouseleave', function(){ tr.style.background = ''; });
         tbody.appendChild(tr);
       });
     }
@@ -18696,6 +19187,108 @@ function renderDieselDesktop() {
       });
     }
   }
+}
+
+// v1.4.88: modal de detalle de movimiento de combustible
+// Click en cualquier fila de la tabla → muestra TODA la info del registro
+function openDieselDetail(id) {
+  var r = (db.diesel || []).find(function(x){ return x.id === id; });
+  if (!r) { toast('Registro no encontrado', 'error'); return; }
+
+  var type = r.type || 'despacho';
+  var typeLabel, typeColor;
+  if (type === 'recarga') { typeLabel = '🔄 Recarga'; typeColor = 'var(--green)'; }
+  else if (type === 'ajuste') { typeLabel = r.ajuste_direccion === 'merma' ? '📉 Merma' : '📈 Sobrante'; typeColor = r.ajuste_direccion === 'merma' ? 'var(--red)' : 'var(--green)'; }
+  else if (type === 'traspaso') { typeLabel = '🔁 Traspaso ' + (r.direction === 'in' ? '(entrada)' : '(salida)'); typeColor = 'var(--blue)'; }
+  else { typeLabel = '⛽ Despacho'; typeColor = 'var(--blue)'; }
+
+  // Origen
+  var src = r.by || '';
+  if (!src && r.source === 'whatsapp') src = 'WhatsApp';
+  if (!src && r.source === 'pwa') src = 'Campo';
+  if (!src) src = 'Desktop';
+  var srcColors = { Desktop:'#6366F1', Campo:'#22C55E', Auto:'#9CA3AF' };
+  var srcColor = srcColors[src] || (src.indexOf('WhatsApp') === 0 ? '#25D366' : '#9CA3AF');
+
+  // Construir secciones de info
+  function row(label, val, opts) {
+    opts = opts || {};
+    if (val === null || val === undefined || val === '') return '';
+    return '<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:8px 0;border-bottom:1px solid rgba(48,54,61,.3)">' +
+      '<div style="color:var(--muted);font-size:11px;font-family:DM Mono,monospace;letter-spacing:.06em;text-transform:uppercase">' + escH(label) + '</div>' +
+      '<div style="font-size:13px;text-align:right;' + (opts.color ? 'color:' + opts.color + ';' : '') + (opts.mono ? 'font-family:DM Mono,monospace;' : '') + (opts.bold ? 'font-weight:600;' : '') + '">' + (opts.html ? val : escH(String(val))) + '</div>' +
+    '</div>';
+  }
+
+  var html = '<div style="max-width:520px">';
+
+  // Header: tipo y litros
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--bor)">' +
+    '<div>' +
+      '<div style="font-size:18px;font-weight:700;color:' + typeColor + '">' + typeLabel + '</div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-top:2px">ID: ' + escH(r.id) + '</div>' +
+    '</div>' +
+    '<div style="text-align:right">' +
+      '<div style="font-family:DM Mono,monospace;font-size:24px;font-weight:700;color:' + typeColor + '">' +
+        (type === 'recarga' || (type === 'traspaso' && r.direction === 'in') || (type === 'ajuste' && r.ajuste_direccion === 'sobrante') ? '+' : '-') +
+        ((parseFloat(r.litros) || 0).toFixed(1)) + ' L</div>' +
+      (r.total ? '<div style="font-family:DM Mono,monospace;font-size:14px;color:var(--amber2);margin-top:2px">Bs. ' + parseFloat(r.total).toLocaleString() + '</div>' : '') +
+    '</div>' +
+  '</div>';
+
+  // Sección: detalles principales
+  html += '<div style="background:var(--sur2);border-radius:8px;padding:0 14px;margin-bottom:14px">';
+  html += row('Fecha', fmtDT(r.created_at || r.fecha), { mono: true });
+  if (r._tank_name) html += row('Tanque', r._tank_name, { bold: true });
+  if (type === 'despacho' || type === 'recarga') {
+    if (r.vehiculo) html += row('Vehículo / Equipo', r.vehiculo, { bold: true });
+    if (r.proveedor) html += row('Proveedor', r.proveedor);
+    if (r.precio) html += row('Precio por L', 'Bs. ' + r.precio, { mono: true });
+  } else if (type === 'ajuste') {
+    html += row('Nivel teórico', r.nivel_teorico + ' L', { mono: true });
+    html += row('Nivel físico', r.nivel_fisico + ' L', { mono: true });
+    if (typeof r.merma_pct !== 'undefined') html += row('Merma %', r.merma_pct + '%', { mono: true, color: r.ajuste_direccion === 'merma' ? 'var(--red)' : 'var(--green)' });
+    if (r.costo_merma) html += row('Costo merma estimado', 'Bs. ' + r.costo_merma, { mono: true, color: 'var(--red)' });
+    if (r.motivo) html += row('Motivo', r.motivo);
+  } else if (type === 'traspaso') {
+    if (r.from_tank_name) html += row('Origen', r.from_tank_name);
+    if (r.to_tank_name) html += row('Destino', r.to_tank_name);
+  }
+  if (typeof r._balance !== 'undefined') html += row('Balance post-mov.', r._balance + ' L', { mono: true });
+  if (r.obs) html += row('Observaciones', r.obs);
+  html += '</div>';
+
+  // Sección: trazabilidad (origen)
+  html += '<div style="background:var(--sur2);border-radius:8px;padding:0 14px;margin-bottom:14px">';
+  var srcBadgeBig = '<span style="font-size:11px;padding:3px 10px;border-radius:4px;background:' + srcColor + ';color:#fff;font-weight:600">' + escH(src) + '</span>';
+  html += row('Origen del registro', srcBadgeBig, { html: true });
+  if (r.created_at) html += row('Timestamp creación', r.created_at, { mono: true });
+  if (r.tank_id) html += row('Tank ID', r.tank_id, { mono: true });
+  html += '</div>';
+
+  // Footer: acciones
+  html += '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">' +
+    '<button class="btn btn-ghost" onclick="closeModal(\'modal-diesel-detail\')">Cerrar</button>' +
+    '<button class="btn btn-ghost" style="color:var(--red)" onclick="if(confirm(\'¿Eliminar este registro?\')){closeModal(\'modal-diesel-detail\');deleteDiesel(\'' + r.id + '\');}">🗑 Eliminar</button>' +
+  '</div>';
+
+  html += '</div>';
+
+  // Crear o reutilizar modal
+  var modal = document.getElementById('modal-diesel-detail');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'modal-diesel-detail';
+    modal.className = 'modal';
+    modal.innerHTML = '<div class="modal-content" style="max-width:600px"><div class="modal-body" id="diesel-detail-body"></div></div>';
+    document.body.appendChild(modal);
+    // Click fuera = cerrar
+    modal.addEventListener('click', function(ev){
+      if (ev.target === modal) closeModal('modal-diesel-detail');
+    });
+  }
+  document.getElementById('diesel-detail-body').innerHTML = html;
+  openModal('modal-diesel-detail');
 }
 
 function configTank() {
@@ -21009,6 +21602,56 @@ function showUpdateNotification(version, downloaded) {
 // Convención: máximo 3-5 bullets cortos. Lo que el usuario debe saber, no detalle técnico.
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.4.90': [
+    'Modal Pegar Animales: stats cards unificadas con modal-import-pesajes',
+    '  3 contadores visuales: Validos (verde) / Advertencias (amarillo) / Errores (rojo)',
+    'Clasificacion automatica por fila:',
+    '  ERROR: ID vacio, ID duplicado, exceso de cupo MC -> NO se guarda',
+    '  ADVERTENCIA: sin peso, peso <50kg o >700kg, sin raza -> SE guarda',
+    '  VALIDO: todo OK',
+    'Tabla preview con colores por estado y notas de cada item',
+    'Boton dinamico: "Agregar N animales" o "Sin animales validos"',
+    'Mantiene comportamiento de carga parcial existente (MC trunca al tope)',
+  ],
+  '1.4.89': [
+    'Modal Pegar Animales: 2 botones nuevos para plantilla',
+    '  ⬇️ Descargar plantilla CSV — archivo con # 1..N pre-llenado',
+    '  📋 Copiar plantilla — formato TSV para pegar directo en Excel/Numbers',
+    'N se calcula dinamico segun el contexto:',
+    '  - Marcar cuarentena: cabezas pendientes del lote CUAR-XXX',
+    '  - Compra Ganado: cantidad esperada del input',
+    '  - Nuevo Lote: 10 filas (default)',
+    'El parser ya soporta columna # y headers (ID/Raza/Peso se ignoran)',
+  ],
+  '1.4.88': [
+    'Combustible: nueva columna Origen con badge (Desktop/WhatsApp/Campo)',
+    'Combustible: fila clickeable abre modal de detalle completo',
+    'Modal muestra info enriquecida: tanque, proveedor, precio, balance, merma, etc.',
+    'Origen visualmente identificable con color (violeta Desktop, verde Campo, verde WA WhatsApp)',
+  ],
+  '1.4.87': [
+    'Pestaña Animales: ahora pide seleccionar un lote antes de cargar (mas rapido)',
+    'Antes cargaba TODOS los animales por defecto (lento con 200+ animales)',
+    'Empty state amigable que indica cuantos lotes activos hay',
+    'Opcion "Ver todos los lotes (lento)" disponible al final del dropdown para quien la necesite',
+  ],
+  '1.4.86': [
+    'Fix Centro de Atencion: detector de adelantos usa el campo correcto (status=descontado)',
+    'Antes mostraba TODOS los adelantos como pendientes (incluso los ya descontados)',
+    'Ahora solo alerta sobre adelantos con status pendiente > 7 dias',
+  ],
+  '1.4.85': [
+    'Pestaña Alertas renovada → Centro de Atención Operativa',
+    '12+ detectores automaticos analizan el estado de la app:',
+    '  CRITICO: animales sin pesar >60d, potreros sobrepoblados, cuarentena >30d,',
+    '          conteos sin resolver, lotes con CV>15% (alta dispersion)',
+    '  ATENCION: tratamientos proximos, lotes listos para venta, pesajes >30d,',
+    '          adelantos sin liquidar, stock bajo',
+    '  SUGERENCIA: lotes similares fusionables, lotes muy pequeños (<10 cab)',
+    'Cada alerta tiene boton de accion inline que lleva directo a resolver',
+    'Filtros rapidos por severidad + contadores visuales arriba',
+    'Badge del sidebar refleja el total real (alertas legacy + criticas automaticas)',
+  ],
   '1.4.84': [
     'Fix bulk move: el desktop ahora envia animals_payload con datos completos al server',
     'Server v4.4.2 tolera desincronizacion: si los animales no estan en server, los acepta del payload',
@@ -22686,7 +23329,9 @@ function renderAnimalesLote(){
   if (inclSoldEl) includeSold = inclSoldEl.checked;
   if(lotSel){
     var curVal=lotSel.value;
-    lotSel.innerHTML='<option value="">Todos los lotes</option>';
+    // v1.4.87: pedir seleccionar lote por defecto (no cargar todos los animales de entrada)
+    // El usuario raramente necesita ver los 200+ animales juntos. Esto acelera el render.
+    lotSel.innerHTML='<option value="">← Seleccionar lote...</option>';
     (db.lots||[]).forEach(function(l){
       // Excluir vendidos (a menos que toggle esté activo)
       if (soldLotCodes[l.code] && !includeSold) return;
@@ -22694,15 +23339,52 @@ function renderAnimalesLote(){
       if (inactiveLotCodes[l.code]) return;
       var o=document.createElement("option");
       o.value=l.code;
-      o.textContent=l.code+" - "+(l.paddock||"");
+      o.textContent=l.code+" - "+(l.paddock||"")+" ("+(l.animal_count||0)+" cab)";
       if(l.code===curVal) o.selected=true;
       lotSel.appendChild(o);
     });
+    // Opción especial al final para los que la quieran
+    var optAll=document.createElement("option");
+    optAll.value="__ALL__";
+    optAll.textContent="── Ver todos los lotes (lento) ──";
+    if(curVal==="__ALL__") optAll.selected=true;
+    lotSel.appendChild(optAll);
   }
   var lotCode=(lotSel||{}).value||"";
+  var showAll=(lotCode==="__ALL__");
+  // El valor "__ALL__" significa "todos", pero lo tratamos como "" para el resto del render
+  if(showAll) lotCode="";
   var search=((document.getElementById("animales-search")||{}).value||"").toLowerCase();
   var animalsAll=getAnimalesDB();
   var animals = [];
+
+  // v1.4.87: si no hay lote seleccionado y no se pidió "ver todos", mostrar empty state.
+  if (!lotCode && !showAll) {
+    var subEmpty=document.getElementById("animales-subtitle");
+    if(subEmpty) subEmpty.textContent="Seleccioná un lote para ver sus animales";
+    var statsElEmpty=document.getElementById("animales-stats");
+    if(statsElEmpty) statsElEmpty.style.display="none";
+    var histoCardEmpty=document.getElementById("animales-histograma-card");
+    if(histoCardEmpty) histoCardEmpty.style.display="none";
+    var elEmpty=document.getElementById("animales-list");
+    if(elEmpty){
+      var totalActivos=(db.lots||[]).filter(function(l){
+        return !l.status || l.status==='activo' || l.status==='active';
+      }).length;
+      elEmpty.innerHTML='<div style="text-align:center;padding:48px 20px;color:var(--muted)">' +
+        '<div style="font-size:42px;margin-bottom:14px">🐄</div>' +
+        '<div style="font-size:14px;color:var(--text);margin-bottom:6px">Seleccioná un lote para empezar</div>' +
+        '<div style="font-size:11px">Hay ' + totalActivos + ' lote' + (totalActivos===1?'':'s') + ' activo' + (totalActivos===1?'':'s') + ' · usá el desplegable de arriba</div>' +
+      '</div>';
+    }
+    // Limpiar selección bulk para que no quede colgada de una sesión previa
+    if (typeof window._bulkSelected !== 'undefined') {
+      window._bulkSelected = {};
+      if (typeof bulkRefreshBar === 'function') bulkRefreshBar();
+    }
+    return;
+  }
+
   if (lotCode) {
     // Si el lote está vendido y el toggle está apagado, no mostrar nada
     if (soldLotCodes[lotCode] && !includeSold) {
@@ -26878,7 +27560,24 @@ function openBulkPaste(ctx) {
   var fi = document.getElementById('bp-file'); if (fi) fi.value = '';
   var info = document.getElementById('bp-preview-info'); if (info) { info.textContent = 'Pegá datos para previsualizar'; info.style.color = 'var(--muted)'; }
   var tbl = document.getElementById('bp-preview-table'); if (tbl) tbl.innerHTML = '';
-  var btn = document.getElementById('bp-confirm-btn'); if (btn) btn.disabled = true;
+  var stats = document.getElementById('bp-stats'); if (stats) { stats.style.display = 'none'; stats.innerHTML = ''; }
+  var btn = document.getElementById('bp-confirm-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Agregar animales'; }
+
+  // v1.4.89: configurar sección de plantilla según el contexto
+  var tplN = _bpGetTemplateN();
+  var tplSection = document.getElementById('bp-template-section');
+  var tplInfo = document.getElementById('bp-template-n-info');
+  if (tplSection && tplInfo) {
+    if (tplN > 0) {
+      tplSection.style.display = 'block';
+      tplInfo.textContent = '(' + tplN + ' animal' + (tplN === 1 ? '' : 'es') + ' pendiente' + (tplN === 1 ? '' : 's') + ')';
+    } else {
+      // No conocemos N: igual mostrar la opción pero sin número
+      tplSection.style.display = 'block';
+      tplInfo.textContent = '(plantilla con 10 filas)';
+    }
+  }
+
   // Mover el modal al final del body para garantizar z-index correcto encima de cualquier modal padre
   var overlay = document.getElementById('modal-bulk-paste');
   if (overlay && overlay.parentNode !== document.body) {
@@ -26887,6 +27586,95 @@ function openBulkPaste(ctx) {
   // Forzar z-index muy alto inline (encima de cualquier otro modal)
   if (overlay) overlay.style.cssText = 'z-index: 99999 !important; display: flex; position: fixed; inset: 0; background: rgba(0,0,0,.7); align-items: center; justify-content: center;';
   if (overlay) overlay.classList.add('open');
+}
+
+// v1.4.89: calcular cuántos animales tendrá la plantilla según el contexto
+function _bpGetTemplateN() {
+  if (_bpContext === 'mc' && typeof _mcLoteCuarentena !== 'undefined' && _mcLoteCuarentena) {
+    var tope = _mcLoteCuarentena.animal_count || 0;
+    var yaMarcados = (typeof _mcAnimals !== 'undefined') ? _mcAnimals.length : 0;
+    return Math.max(0, tope - yaMarcados);
+  }
+  if (_bpContext === 'cg') {
+    var el = document.getElementById('cg-cuarentena-count');
+    return el ? (parseInt(el.value) || 0) : 0;
+  }
+  if (_bpContext === 'newlot') {
+    return 10;  // default para nuevo lote (sin tope conocido)
+  }
+  return 0;
+}
+
+// v1.4.89: genera el string CSV de la plantilla
+function _bpBuildTemplateCSV() {
+  var n = _bpGetTemplateN();
+  if (n <= 0) n = 10;
+  var lines = ['#,ID,Raza,Peso'];
+  for (var i = 1; i <= n; i++) {
+    lines.push(i + ',,,');
+  }
+  return lines.join('\n');
+}
+
+// v1.4.89: descargar plantilla CSV
+function bpDownloadTemplate() {
+  var csv = _bpBuildTemplateCSV();
+  var n = _bpGetTemplateN() || 10;
+  var ctx = _bpContext === 'mc' ? 'marcaje' : _bpContext === 'cg' ? 'compra' : 'lote';
+  var lotName = '';
+  if (_bpContext === 'mc' && typeof _mcLoteCuarentena !== 'undefined' && _mcLoteCuarentena && _mcLoteCuarentena.code) {
+    lotName = '_' + String(_mcLoteCuarentena.code).replace(/[^A-Za-z0-9\-_]/g, '');
+  }
+  var today = localDate ? localDate() : new Date().toISOString().slice(0,10);
+  var filename = 'plantilla_' + ctx + lotName + '_' + n + 'animales_' + today + '.csv';
+  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  toast('Plantilla descargada: ' + filename, 'success');
+}
+
+// v1.4.89: copiar plantilla al portapapeles (versión TSV para pegado directo en Excel/Numbers)
+function bpCopyTemplate() {
+  var n = _bpGetTemplateN();
+  if (n <= 0) n = 10;
+  // TSV (tab-separated) para que se pegue limpio en columnas separadas en Excel/Numbers/Sheets
+  var lines = ['#\tID\tRaza\tPeso'];
+  for (var i = 1; i <= n; i++) {
+    lines.push(i + '\t\t\t');
+  }
+  var tsv = lines.join('\n');
+  // Compat con browsers sin Clipboard API moderna
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(tsv).then(function(){
+      toast('Plantilla copiada (' + n + ' filas) — pegala en Excel o Numbers', 'success');
+    }, function(){
+      _bpFallbackCopy(tsv, n);
+    });
+  } else {
+    _bpFallbackCopy(tsv, n);
+  }
+}
+
+function _bpFallbackCopy(text, n) {
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    toast('Plantilla copiada (' + n + ' filas)', 'success');
+  } catch(e) {
+    toast('No se pudo copiar', 'error');
+  }
+  document.body.removeChild(ta);
 }
 
 function closeBulkPaste() {
@@ -26915,33 +27703,99 @@ function bpPreview() {
   var info = document.getElementById('bp-preview-info');
   var tbl = document.getElementById('bp-preview-table');
   var btn = document.getElementById('bp-confirm-btn');
+  var statsEl = document.getElementById('bp-stats');
   if (!_bpParsed.length) {
-    if (info) { info.textContent = 'No se detectaron animales válidos'; info.style.color = 'var(--red)'; }
+    if (info) { info.textContent = 'Pegá datos para previsualizar'; info.style.color = 'var(--muted)'; }
     if (tbl) tbl.innerHTML = '';
-    if (btn) btn.disabled = true;
+    if (statsEl) statsEl.style.display = 'none';
+    if (btn) { btn.disabled = true; btn.textContent = 'Agregar animales'; }
     return;
   }
-  // Estadísticas
-  var pesoTotal = _bpParsed.reduce(function(s, a){ return s + (a.peso||0); }, 0);
-  var pesoProm = _bpParsed.length ? Math.round(pesoTotal / _bpParsed.length * 10) / 10 : 0;
 
-  // Validación contra tope (si aplica)
+  // v1.4.90: clasificar cada item — valido / advertencia / error
+  // Reglas:
+  //   ERROR     → no se va a guardar (ID duplicado de otro animal ya marcado, exceso de tope en MC)
+  //   ADVERTENCIA → se guarda pero requiere atención (peso fuera de rango, sin peso, etc.)
+  //   VALIDO    → todo OK
+  // El comportamiento de guardado es el que ya estaba: en MC trunca al tope, en CG/newlot agrega todo.
+  var tope = null;
+  var espacioRestante = null;
+  if (_bpContext === 'mc' && typeof _mcLoteCuarentena !== 'undefined' && _mcLoteCuarentena) {
+    tope = _mcLoteCuarentena.animal_count || 0;
+    var yaMarcadosCount = (typeof _mcAnimals !== 'undefined') ? _mcAnimals.length : 0;
+    espacioRestante = Math.max(0, tope - yaMarcadosCount);
+  }
+
+  // IDs ya existentes (según contexto) para detectar duplicados
+  var existingIds = {};
+  if (_bpContext === 'newlot' && typeof _lotNewAnimals !== 'undefined') {
+    _lotNewAnimals.forEach(function(a){ existingIds[String(a.id)] = true; });
+  } else if (_bpContext === 'mc' && typeof _mcAnimals !== 'undefined') {
+    _mcAnimals.forEach(function(a){ existingIds[String(a.id)] = true; });
+  } else if (_bpContext === 'cg' && typeof _cgAnimals !== 'undefined') {
+    _cgAnimals.forEach(function(a){ existingIds[String(a.id)] = true; });
+  }
+
+  // Clasificar cada item
+  _bpParsed.forEach(function(a, idx){
+    a._estado = 'valido';
+    a._notas = [];
+    var id = String(a.id || '').trim();
+    if (!id) {
+      a._estado = 'error';
+      a._notas.push('ID vacío');
+      return;
+    }
+    // Duplicado con existentes
+    if (existingIds[id]) {
+      a._estado = 'error';
+      a._notas.push('ID ya está en la lista');
+      return;
+    }
+    // Exceso de tope (solo MC)
+    if (_bpContext === 'mc' && espacioRestante != null && idx >= espacioRestante) {
+      a._estado = 'error';
+      a._notas.push('Excede cantidad de compra');
+      return;
+    }
+    // Sin peso
+    if (!a.peso || a.peso <= 0) {
+      a._estado = 'advertencia';
+      a._notas.push('Sin peso');
+    } else {
+      // Rangos sospechosos
+      if (a.peso < 50) { a._estado = 'advertencia'; a._notas.push('Peso bajo (<50kg)'); }
+      else if (a.peso > 700) { a._estado = 'advertencia'; a._notas.push('Peso alto (>700kg)'); }
+    }
+    // Sin raza (solo advertencia leve, no bloquea)
+    if (!a.raza) {
+      if (a._estado === 'valido') a._estado = 'advertencia';
+      a._notas.push('Sin raza');
+    }
+  });
+
+  var validos = _bpParsed.filter(function(a){ return a._estado === 'valido'; });
+  var advertencias = _bpParsed.filter(function(a){ return a._estado === 'advertencia'; });
+  var errores = _bpParsed.filter(function(a){ return a._estado === 'error'; });
+  // Items que sí se van a guardar (válidos + advertencias)
+  var guardables = validos.concat(advertencias);
+
+  // Estadísticas para info (solo de los guardables, porque los errores no entran)
+  var pesoTotal = guardables.reduce(function(s, a){ return s + (a.peso||0); }, 0);
+  var conPeso = guardables.filter(function(a){ return a.peso > 0; }).length;
+  var pesoProm = conPeso ? Math.round(pesoTotal / conPeso * 10) / 10 : 0;
+
+  // Validación contra tope (alerta principal, mantenida del original)
   var validacion = '';
-  var hayProblema = false;
-  if (_bpContext === 'mc' && _mcLoteCuarentena) {
-    var tope = _mcLoteCuarentena.animal_count || 0;
-    var yaMarcados = (typeof _mcAnimals !== 'undefined') ? _mcAnimals.length : 0;
-    var espacio = Math.max(0, tope - yaMarcados);
-    if (_bpParsed.length > espacio) {
-      validacion = '<div style="margin-top:6px;padding:8px 10px;background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.3);border-radius:6px;font-size:11px;color:var(--red)">⚠ Estás pegando ' + _bpParsed.length + ' animales pero solo quedan ' + espacio + ' por marcar (lote: ' + tope + ', ya marcados: ' + yaMarcados + '). Se agregarán los primeros ' + espacio + ' y se descartarán ' + (_bpParsed.length - espacio) + '.</div>';
-      hayProblema = true;
-    } else if (_bpParsed.length < espacio) {
-      validacion = '<div style="margin-top:6px;padding:6px 10px;background:rgba(212,160,23,.06);border:1px solid rgba(212,160,23,.2);border-radius:6px;font-size:11px;color:var(--amber2)">ℹ Quedarán ' + (espacio - _bpParsed.length) + ' animales sin marcar (podés guardar parcial).</div>';
+  if (_bpContext === 'mc' && tope != null) {
+    if (_bpParsed.length > espacioRestante) {
+      validacion = '<div style="margin-top:6px;padding:8px 10px;background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.3);border-radius:6px;font-size:11px;color:var(--red)">⚠ Estás pegando ' + _bpParsed.length + ' animales pero solo quedan ' + espacioRestante + ' por marcar. Se guardarán los primeros ' + espacioRestante + ' y se descartarán ' + (_bpParsed.length - espacioRestante) + '.</div>';
+    } else if (_bpParsed.length < espacioRestante) {
+      validacion = '<div style="margin-top:6px;padding:6px 10px;background:rgba(212,160,23,.06);border:1px solid rgba(212,160,23,.2);border-radius:6px;font-size:11px;color:var(--amber2)">ℹ Quedarán ' + (espacioRestante - _bpParsed.length) + ' animales sin marcar (podés guardar parcial).</div>';
     } else {
       validacion = '<div style="margin-top:6px;padding:6px 10px;background:rgba(57,211,83,.06);border:1px solid rgba(57,211,83,.2);border-radius:6px;font-size:11px;color:var(--green)">✓ Cantidad exacta — coincide con lo esperado.</div>';
     }
   } else if (_bpContext === 'cg') {
-    // Modo Compra Ganado individual: comparar contra "Cantidad esperada" si hay campo
     var cantEsperadaEl = document.getElementById('cg-cuarentena-count');
     var cantEsperada = cantEsperadaEl ? parseInt(cantEsperadaEl.value) || 0 : 0;
     if (cantEsperada > 0) {
@@ -26951,50 +27805,88 @@ function bpPreview() {
         validacion = '<div style="margin-top:6px;padding:8px 10px;background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.3);border-radius:6px;font-size:11px;color:var(--red)">⚠ La compra dice ' + cantEsperada + ' animales pero estás pegando ' + _bpParsed.length + '. Revisá si falta algo.</div>';
       }
     }
-  } else if (_bpContext === 'newlot') {
-    // Nuevo Lote: validar duplicados contra _lotNewAnimals existente
-    if (typeof _lotNewAnimals !== 'undefined' && _lotNewAnimals.length > 0) {
-      var existIds = {};
-      _lotNewAnimals.forEach(function(a) { existIds[a.id] = true; });
-      var dupCount = _bpParsed.filter(function(a) { return existIds[a.id]; }).length;
-      if (dupCount > 0) {
-        validacion = '<div style="margin-top:6px;padding:8px 10px;background:rgba(212,160,23,.06);border:1px solid rgba(212,160,23,.2);border-radius:6px;font-size:11px;color:var(--amber2)">⚠ ' + dupCount + ' IDs ya están en la lista — se omitirán al agregar.</div>';
-      } else {
-        validacion = '<div style="margin-top:6px;padding:6px 10px;background:rgba(57,211,83,.06);border:1px solid rgba(57,211,83,.2);border-radius:6px;font-size:11px;color:var(--green)">✓ Sin duplicados con animales ya agregados.</div>';
-      }
-    }
   }
 
-  // IDs duplicados dentro del pegado mismo (parseBulkData ya dedupea pero igual avisamos visual)
-  var idsSet = {};
-  var dups = [];
-  _bpParsed.forEach(function(a){ if (idsSet[a.id]) dups.push(a.id); idsSet[a.id] = true; });
+  // v1.4.90: renderizar 3 stats cards (consistente con modal-import-pesajes)
+  if (statsEl) {
+    statsEl.style.display = 'grid';
+    statsEl.innerHTML =
+      '<div style="background:rgba(57,211,83,.06);border:1px solid rgba(57,211,83,.25);border-radius:6px;padding:10px 12px;text-align:center">' +
+        '<div style="font-size:18px;font-weight:700;color:var(--green);font-family:DM Mono,monospace">' + validos.length + '</div>' +
+        '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">Válidos</div>' +
+      '</div>' +
+      '<div style="background:rgba(255,149,0,.06);border:1px solid rgba(255,149,0,.25);border-radius:6px;padding:10px 12px;text-align:center">' +
+        '<div style="font-size:18px;font-weight:700;color:var(--amber2);font-family:DM Mono,monospace">' + advertencias.length + '</div>' +
+        '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">Advertencias</div>' +
+      '</div>' +
+      '<div style="background:rgba(231,76,60,.06);border:1px solid rgba(231,76,60,.25);border-radius:6px;padding:10px 12px;text-align:center">' +
+        '<div style="font-size:18px;font-weight:700;color:var(--red);font-family:DM Mono,monospace">' + errores.length + '</div>' +
+        '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">Errores</div>' +
+      '</div>';
+  }
 
   if (info) {
-    info.innerHTML = '<strong style="color:var(--green)">' + _bpParsed.length + ' animales</strong> · Peso total: <strong>' + pesoTotal.toLocaleString() + ' kg</strong> · Promedio: <strong>' + pesoProm + ' kg</strong>' + validacion;
+    info.innerHTML = '<strong>' + guardables.length + ' a guardar</strong> · Peso total: <strong>' + pesoTotal.toLocaleString() + ' kg</strong> · Promedio: <strong>' + pesoProm + ' kg</strong>' + validacion;
     info.style.color = 'var(--text)';
   }
-  // Tabla preview
+
+  // Tabla preview con colores por estado (consistente con modal-import-pesajes)
   if (tbl) {
     var rows = _bpParsed.slice(0, 50).map(function(a, i){
-      return '<tr><td style="padding:4px 8px;color:var(--muted)">' + (i+1) + '</td>' +
-             '<td style="padding:4px 8px;font-family:DM Mono,monospace;color:var(--amber2);font-weight:600">' + escH(a.id) + '</td>' +
-             '<td style="padding:4px 8px">' + escH(a.raza||'-') + '</td>' +
-             '<td style="padding:4px 8px;font-family:DM Mono,monospace">' + (a.peso||'—') + ' kg</td></tr>';
+      var bg = '', estadoHtml = '';
+      if (a._estado === 'error') {
+        bg = 'rgba(231,76,60,.05)';
+        estadoHtml = '<span style="color:var(--red);font-size:10px">❌ ' + escH(a._notas.join(', ')) + '</span>';
+      } else if (a._estado === 'advertencia') {
+        bg = 'rgba(255,149,0,.04)';
+        estadoHtml = '<span style="color:var(--amber2);font-size:10px">⚠ ' + escH(a._notas.join(', ')) + '</span>';
+      } else {
+        estadoHtml = '<span style="color:var(--green);font-size:10px">✅ OK</span>';
+      }
+      return '<tr style="background:' + bg + ';border-bottom:1px solid var(--bor)">' +
+        '<td style="padding:5px 8px;color:var(--muted)">' + (i+1) + '</td>' +
+        '<td style="padding:5px 8px;font-family:DM Mono,monospace;color:var(--amber2);font-weight:600">' + escH(a.id || '—') + '</td>' +
+        '<td style="padding:5px 8px">' + escH(a.raza||'—') + '</td>' +
+        '<td style="padding:5px 8px;font-family:DM Mono,monospace;text-align:right">' + (a.peso || '—') + (a.peso ? ' kg' : '') + '</td>' +
+        '<td style="padding:5px 8px">' + estadoHtml + '</td>' +
+      '</tr>';
     }).join('');
     var more = _bpParsed.length > 50 ? '<div style="padding:6px;text-align:center;color:var(--muted);font-size:10px">... y ' + (_bpParsed.length-50) + ' más</div>' : '';
-    tbl.innerHTML = '<table class="tbl" style="font-size:11px;width:100%"><thead><tr><th style="text-align:left">#</th><th style="text-align:left">ID</th><th style="text-align:left">Raza</th><th style="text-align:left">Peso</th></tr></thead><tbody>' + rows + '</tbody></table>' + more;
+    tbl.innerHTML = '<table class="tbl" style="font-size:11px;width:100%"><thead><tr>' +
+      '<th style="text-align:left">#</th>' +
+      '<th style="text-align:left">ID</th>' +
+      '<th style="text-align:left">Raza</th>' +
+      '<th style="text-align:right">Peso</th>' +
+      '<th style="text-align:left">Estado</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table>' + more;
   }
-  if (btn) btn.disabled = false;
+
+  // Botón habilitado solo si hay algo guardable (válido o con advertencia)
+  if (btn) {
+    btn.disabled = guardables.length === 0;
+    if (guardables.length > 0) {
+      btn.textContent = 'Agregar ' + guardables.length + ' animal' + (guardables.length === 1 ? '' : 'es');
+    } else {
+      btn.textContent = 'Sin animales válidos';
+    }
+  }
 }
 
 function bpConfirm() {
   if (!_bpParsed.length) { toast('Nada que agregar', 'error'); return; }
+  // v1.4.90: solo guardar items que pasen la clasificación (valido + advertencia).
+  // Los items con _estado === 'error' se descartan (ID vacío, duplicado, exceso de tope).
+  var guardables = _bpParsed.filter(function(a){
+    return a._estado === 'valido' || a._estado === 'advertencia';
+  });
+  if (!guardables.length) { toast('No hay animales válidos para guardar', 'error'); return; }
+  var descartados = _bpParsed.length - guardables.length;
+
   if (_bpContext === 'cg') {
     // Modo Compra Ganado — agregar a _cgAnimals
     if (typeof _cgAnimals === 'undefined') { toast('Modo no inicializado', 'error'); return; }
     var razaDefault = (document.getElementById('cg-raza') || {}).value || '';
-    _bpParsed.forEach(function(a){
+    guardables.forEach(function(a){
       _cgAnimals.push({
         id: a.id || '',
         peso: a.peso || 0,
@@ -27003,43 +27895,47 @@ function bpConfirm() {
     });
     if (typeof renderCGAnimalsTable === 'function') renderCGAnimalsTable();
     if (typeof calcCGTotal === 'function') calcCGTotal();
-    toast(_bpParsed.length + ' animales agregados a la compra', 'success');
+    var msgCg = guardables.length + ' animales agregados a la compra';
+    if (descartados > 0) msgCg += ' (' + descartados + ' descartados por errores)';
+    toast(msgCg, 'success');
   } else if (_bpContext === 'mc') {
     // Modo Marcar Cuarentena — agregar a _mcAnimals con tope si lo hay
     if (typeof _mcAnimals === 'undefined') { toast('Modo no inicializado', 'error'); return; }
     var tope = _mcLoteCuarentena ? (_mcLoteCuarentena.animal_count || 9999) : 9999;
     var espacio = Math.max(0, tope - _mcAnimals.length);
     if (espacio === 0) { toast('Ya alcanzaste la cantidad de la compra', 'warning'); return; }
-    var aAgregar = _bpParsed.slice(0, espacio);
+    // Los errores ya fueron filtrados arriba, incluyendo los que exceden tope.
+    // Por seguridad, igual aplicamos slice por si llega algún caso edge.
+    var aAgregar = guardables.slice(0, espacio);
     var categoriaDefault = _mcLoteCuarentena ? _mcLoteCuarentena.category : '';
-    var razaDefault = _mcLoteCuarentena ? _mcLoteCuarentena.breed : '';
+    var razaDefaultMc = _mcLoteCuarentena ? _mcLoteCuarentena.breed : '';
     aAgregar.forEach(function(a){
       _mcAnimals.push({
         id: a.id || '',
         peso: a.peso || (_mcLoteCuarentena ? _mcLoteCuarentena.avg_weight || 0 : 0),
         categoria: categoriaDefault,
-        raza: a.raza || razaDefault
+        raza: a.raza || razaDefaultMc
       });
     });
     if (typeof renderMCAnimals === 'function') renderMCAnimals();
     var msg = aAgregar.length + ' animales agregados al marcaje';
-    if (aAgregar.length < _bpParsed.length) {
-      msg += ' (' + (_bpParsed.length - aAgregar.length) + ' descartados por exceder cantidad de compra)';
-    }
+    if (descartados > 0) msg += ' (' + descartados + ' descartados por errores)';
     toast(msg, 'success');
   } else if (_bpContext === 'newlot') {
     // Modo Nuevo Lote — agregar a _lotNewAnimals
+    // Los duplicados ya fueron marcados como error y filtrados arriba, pero hacemos doble check
+    // por compatibilidad con el comportamiento anterior.
     if (typeof _lotNewAnimals === 'undefined') { toast('Modo no inicializado', 'error'); return; }
     var razaDefaultLot = (document.getElementById('lot-new-animal-raza') || {}).value || '';
     var fechaLot = (document.getElementById('lot-entry') || {}).value || localDate();
     var existentes = {};
     _lotNewAnimals.forEach(function(a){ existentes[a.id] = true; });
 
-    var agregados = 0, duplicados = 0;
-    _bpParsed.forEach(function(a){
+    var agregados = 0;
+    guardables.forEach(function(a){
       var idStr = String(a.id || '').trim();
       if (!idStr) return;
-      if (existentes[idStr]) { duplicados++; return; }
+      if (existentes[idStr]) return;  // defensive: ya marcado como error pero por las dudas
       _lotNewAnimals.push({
         id: idStr,
         raza: a.raza || razaDefaultLot,
@@ -27052,7 +27948,7 @@ function bpConfirm() {
 
     if (typeof renderLotAnimalList === 'function') renderLotAnimalList();
     var msg2 = agregados + ' animales agregados al lote nuevo';
-    if (duplicados > 0) msg2 += ' (' + duplicados + ' duplicados omitidos)';
+    if (descartados > 0) msg2 += ' (' + descartados + ' descartados por errores)';
     toast(msg2, 'success');
   } else {
     toast('Contexto desconocido', 'error');
