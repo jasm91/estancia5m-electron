@@ -5249,6 +5249,28 @@ function pullFromRailwayDesktop(thenPush) {
           var serverLot = serverLotByCode[localLot.code];
           if (!serverLot) return;
 
+          // ═══ v1.4.106: SYNC INDEPENDIENTE DE PADDOCK ═══
+          // El paddock debe sincronizarse por timestamp (server vs local), INDEPENDIENTE
+          // de status/count/progreso. Antes el paddock se sincronizaba solo si server "ganaba"
+          // en alguna de esas tres dimensiones — por eso una rotación del bot (que no cambia
+          // status/count/progreso) NO actualizaba lot.paddock localmente, causando que el
+          // Desktop mostrara el lote en el potrero viejo.
+          // Regla: si server tiene last_paddock_change o paddock_updated_at más nuevo que el local,
+          // server-wins en paddock. Si el local no tiene timestamp, asumir que server gana.
+          try {
+            var srvPadTs = serverLot.last_paddock_change || serverLot.paddock_updated_at || '';
+            var lclPadTs = localLot.last_paddock_change || localLot.paddock_updated_at || '';
+            var paddockChanged = serverLot.paddock && serverLot.paddock !== localLot.paddock;
+            if (paddockChanged) {
+              if (!lclPadTs || (srvPadTs && srvPadTs > lclPadTs)) {
+                console.log('[Sync paddock] ' + localLot.code + ': "' + (localLot.paddock||'-') + '" → "' + serverLot.paddock + '" (server ts=' + srvPadTs + ' > local ts=' + lclPadTs + ')');
+                localLot.paddock = serverLot.paddock;
+                if (srvPadTs) localLot.last_paddock_change = srvPadTs;
+                if (serverLot.paddock_updated_at) localLot.paddock_updated_at = serverLot.paddock_updated_at;
+              }
+            }
+          } catch(e) {}
+
           var localPri = _statusPriority(localLot.status);
           var serverPri = _statusPriority(serverLot.status);
           var localCount = parseFloat(localLot.animal_count) || 0;
@@ -22373,6 +22395,22 @@ function showUpdateNotification(version, downloaded) {
 // Convención: máximo 3-5 bullets cortos. Lo que el usuario debe saber, no detalle técnico.
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.4.107': [
+    'FIX CRITICO: lot.paddock no se sincronizaba del server cuando el bot rotaba un lote.',
+    '  El sync de lots usaba server-wins solo por status/count/progreso, NUNCA por paddock.',
+    '  Resultado: bot rotaba TEST 123 a Potrero Oeste, server actualizaba bien,',
+    '  pero el Desktop seguia mostrando lot.paddock=Potrero Sur.',
+    '  Combinado con el FIX A de v1.4.103 (entries virtuales si no hay open en lot.paddock),',
+    '  creaba una entry virtual en Potrero Sur mientras la real estaba en Oeste,',
+    '  haciendo que el lote apareciera en DOS potreros simultaneamente.',
+    'Fix sync: ahora paddock se sincroniza independiente, por timestamp',
+    '  (last_paddock_change o paddock_updated_at). Si server tiene timestamp mas nuevo, gana.',
+    'Fix FIX A: ahora chequea entries abiertas en CUALQUIER potrero, no solo en lot.paddock.',
+    '  Si rotation_history tiene una entry abierta en otro potrero, ya no se crea virtual.',
+    '  rotation_history es la fuente de verdad para vista Rotacion, no lot.paddock.',
+    'Server v4.5.4 (deployado por separado): lot_rotation cierra TODAS las entries abiertas',
+    '  del lote, no solo las que matchean fromPaddock.',
+  ],
   '1.4.106': [
     'FIX CRITICO: REVERT _ensureRotationEntry de sync incremental (linea 5304).',
     '  El call que agregue en v1.4.105 creaba duplicados en rotation_history:',
@@ -31223,16 +31261,25 @@ function renderRotacion() {
   //   - Migraciones antiguas o lotes editados manualmente sin pasar por moveLot.
   // Solución temporal: crear entries "virtuales" en memoria (no se persisten en db.rotation_history).
   // Solución de raíz: server v4.5.1 + bot que cree el entry en lot_split (FIX C, pendiente).
+  //
+  // v1.4.106 FIX: NO crear entry virtual si el lote ya tiene ALGUNA entry abierta en CUALQUIER potrero.
+  // Antes solo chequeaba si tenía entry abierta en lot.paddock, pero si lot.paddock estaba desincronizado
+  // del rotation_history (caso: bot rotó server-side pero Desktop pull no reflejó el nuevo paddock),
+  // se creaba una entry virtual en el potrero viejo, mostrando el lote en 2 lugares.
+  // Lección: rotation_history es la fuente de verdad para vista de Rotación, no lot.paddock.
   var historyAugmented = history.slice();
   lots.forEach(function(l) {
     if (!l || !l.code || !l.paddock) return;
     var lotStatus = String(l.status || '').toLowerCase();
     if (lotStatus === 'vendido' || lotStatus === 'sold' || lotStatus === 'inactivo' || lotStatus === 'inactive') return;
     if ((l.animal_count || 0) === 0) return;
-    var hasOpenEntry = history.some(function(r) {
-      return r && r.lot_code === l.code && r.potrero === l.paddock && !r.exit_date;
+    // v1.4.106 FIX: chequear si hay entry abierta en CUALQUIER potrero, no solo en l.paddock.
+    // Si la hay (aunque sea en otro potrero — caso: lot.paddock desincronizado tras rotación bot),
+    // rotation_history es la verdad y NO creamos entry virtual.
+    var hasOpenEntryAnywhere = history.some(function(r) {
+      return r && r.lot_code === l.code && !r.exit_date;
     });
-    if (hasOpenEntry) return;
+    if (hasOpenEntryAnywhere) return;
     var entryDate = (l.cost_origin && l.cost_origin.date) || l.entry_date || (today.toISOString().slice(0,10));
     historyAugmented.push({
       lot_code: l.code,
