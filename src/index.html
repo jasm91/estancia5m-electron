@@ -6741,9 +6741,16 @@ function renderSanidad() {
     tbody.innerHTML = '';
     db.treatments.slice().reverse().forEach(function(t) {
       var todayV = localDate();
-      var scopeCell = t.scope==='lot'
-        ? '<span style="background:var(--sur2);padding:2px 7px;border-radius:4px;color:var(--amber2)">'+escH(t.lot_code)+'</span>'
-        : '<span style="color:var(--blue)">'+escH(t.animal_id)+'</span>';
+      // v1.4.109 FIX: defensa retroactiva contra registros del bot WhatsApp que vinieron
+      // con scope="lote" (español) en vez de "lot" (inglés), o sin scope pero con lot_code.
+      // El render anterior solo aceptaba "lot" exacto, todo lo demás caía al else mostrando
+      // animal_id (que era undefined). Resultado: columna LOTE/ANIMAL vacía.
+      var scopeLower = String(t.scope || '').toLowerCase();
+      var isLotScope = scopeLower === 'lot' || scopeLower === 'lote' ||
+                       (!scopeLower && t.lot_code && !t.animal_id);
+      var scopeCell = isLotScope
+        ? '<span style="background:var(--sur2);padding:2px 7px;border-radius:4px;color:var(--amber2)">'+escH(t.lot_code || '?')+'</span>'
+        : '<span style="color:var(--blue)">'+escH(t.animal_id || '?')+'</span>';
       // v1.4.61: badge RETROACTIVO para registros cargados sobre lotes vendidos
       var retroBadge = t.retroactive
         ? ' <span style="background:rgba(168,85,247,.15);color:#A855F7;border:1px solid #A855F7;padding:1px 5px;border-radius:3px;font-size:9px">🕐 RETRO</span>'
@@ -10146,7 +10153,7 @@ function viewTrace(id) {
       }
       // Tratamientos del animal
       var tratsAnimal = treats.filter(function(tr){
-        return tr.scope==='lot' || tr.animal_id===aid;
+        return _normalizeTreatmentScope(tr)==='lot' || tr.animal_id===aid;
       }).map(function(tr){return tr.product_name;}).join(', ') || '-';
 
       return '<tr style="background:'+(idx%2===0?'#f9f9f9':'#fff')+'">'+
@@ -10184,7 +10191,7 @@ function viewTrace(id) {
           '<td style="padding:4px 8px;border:1px solid #ddd">'+escH(tr.applied_at||'-')+'</td>'+
           '<td style="padding:4px 8px;border:1px solid #ddd;font-weight:600">'+escH(tr.product_name||'-')+'</td>'+
           '<td style="padding:4px 8px;border:1px solid #ddd">'+escH(tr.diagnosis||'-')+'</td>'+
-          '<td style="padding:4px 8px;border:1px solid #ddd;text-align:center">'+escH((tr.scope==='lot'?'Lote: '+tr.lot_code:'Animal: '+tr.animal_id)||'-')+'</td>'+
+          '<td style="padding:4px 8px;border:1px solid #ddd;text-align:center">'+escH((_normalizeTreatmentScope(tr)==='lot'?'Lote: '+tr.lot_code:'Animal: '+tr.animal_id)||'-')+'</td>'+
           '<td style="padding:4px 8px;border:1px solid #ddd;text-align:center">'+((tr.count||0))+' animales</td>'+
           '<td style="padding:4px 8px;border:1px solid #ddd">'+escH(tr.by||'-')+'</td>'+
         '</tr>';
@@ -11087,6 +11094,19 @@ function switchTab(prefix,btnOrId,targetId) {
 // ══════════════════════════════════════════════════
 function esc(s){return escH(s);}
 function escH(str) { return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// v1.4.109: normalizar valor de scope para tratamientos. Bot WhatsApp inconsistentemente
+// generaba "lote" (español) o "lot" (inglés). Esta función devuelve siempre el valor canónico.
+function _normalizeTreatmentScope(t) {
+  if (!t) return '';
+  var s = String(t.scope || '').toLowerCase();
+  if (s === 'lot' || s === 'lote' || s === 'completo' || s === 'lote completo' || s === 'group' || s === 'grupo') return 'lot';
+  if (s === 'individual' || s === 'animal' || s === 'single') return 'individual';
+  // Inferir si falta scope pero hay pista
+  if (!s && t.lot_code && !t.animal_id) return 'lot';
+  if (!s && t.animal_id && !t.lot_code) return 'individual';
+  return s;
+}
 
 // Helper para matchear lote (acepta multi-lote separado por comas)
 // Si record.lot_code === "C-02,C-04" y filtro === "C-02", devuelve true
@@ -17698,7 +17718,7 @@ function exportLotes() {
 function exportSanidad() {
   exportCSV('curaciones_estancia5m',
     ['Lote/Animal','Producto','Dosis','Cant. Total','Animales','Fecha Aplicacion','Proxima Aplicacion','Por','Costo (Bs.)'],
-    db.treatments.map(function(t){ return [t.scope==='lot'?('Lote '+t.lot_code):('Animal '+t.animal_id), t.product_name, t.dose, t.total, t.count, t.applied_at, t.next_app||'', t.by||'', t.cost||'']; })
+    db.treatments.map(function(t){ return [_normalizeTreatmentScope(t)==='lot'?('Lote '+t.lot_code):('Animal '+t.animal_id), t.product_name, t.dose, t.total, t.count, t.applied_at, t.next_app||'', t.by||'', t.cost||'']; })
   );
 }
 
@@ -22460,6 +22480,17 @@ function showUpdateNotification(version, downloaded) {
 // Convención: máximo 3-5 bullets cortos. Lo que el usuario debe saber, no detalle técnico.
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.4.109': [
+    'FIX columna LOTE/ANIMAL en pestana Sanidad: registros del bot WhatsApp aparecian',
+    '  con la columna vacia aunque tenian lot_code valido.',
+    '  Causa: el bot generaba scope="lote" (espanol), Desktop esperaba scope="lot" (ingles).',
+    '  Render caia al else, buscaba animal_id (undefined), columna en blanco.',
+    'Fix: helper _normalizeTreatmentScope() acepta lot/lote/completo/grupo y mapea a lot.',
+    '  Tambien infiere scope desde presencia de lot_code/animal_id si falta.',
+    '  Aplicado en: renderSanidad, historial de tratamientos, Excel export.',
+    'Server v4.5.10 (deployado por separado): middleware que normaliza scope al guardar',
+    '  + setea fecha si falta. Defensa en ambos lados.',
+  ],
   '1.4.108': [
     'FIX modal Rotacion: 5 bugs corregidos',
     '  1) Boton "Mover" en pestana Lotes aparecia para lotes vendidos/inactivos/0-cab.',
