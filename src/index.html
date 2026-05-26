@@ -780,6 +780,7 @@ function publishTasksToPWA() {
     <button class="nav-lbl-btn" onclick="toggleNavSec('operacion-secundaria')"><span class="nav-lbl">Operación Secundaria</span><span class="nav-lbl-chevron">▾</span></button>
     <div class="nav-sec-body">
     <button class="nav-btn" data-label="Eval. Pasto" onclick="showPage('evalpasto',this)"><span class="nav-icon">🌿</span><span class="nav-text">Eval. Pasto</span><span class="nav-badge nb-amber" id="nb-evalpasto" style="display:none">0</span></button>
+    <button class="nav-btn" data-label="Saladeros" onclick="showPage('saladeros',this)"><span class="nav-icon">🧂</span><span class="nav-text">Saladeros</span></button>
     <button class="nav-btn" data-label="Mantenimiento" onclick="showPage('mantenimiento',this)"><span class="nav-icon">🔧</span><span class="nav-text">Mantenimiento</span></button>
     <button class="nav-btn" data-label="Maquinaria" onclick="showPage('maquinaria',this)"><span class="nav-icon">🚜</span><span class="nav-text">Maquinaria</span></button>
     <button class="nav-btn" data-label="Pluviometría" onclick="showPage('lluvias',this)"><span class="nav-icon">🌧</span><span class="nav-text">Pluviometría</span></button>
@@ -1686,6 +1687,81 @@ function publishTasksToPWA() {
     <button class="btn btn-primary" onclick="guardarKardex()">Registrar</button>
   </div>
 </div></div>
+
+<div id="page-saladeros" class="page">
+  <div class="ph">
+    <div>
+      <div class="pt">🧂 Saladeros y Alimento</div>
+      <div class="ps">Vista informativa · registros vienen de la app del campo o WhatsApp</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <div style="display:flex;gap:3px;background:var(--sur2);border-radius:8px;padding:3px;border:1px solid var(--bor)">
+        <button class="btn-sal-tab" data-saltab="sal" onclick="saladerosSwitchTab('sal')" style="background:var(--amber2);color:#1a1a1a;border:none;border-radius:6px;padding:5px 14px;font-size:12px;font-weight:600;cursor:pointer">Sal</button>
+        <button class="btn-sal-tab" data-saltab="alimento" onclick="saladerosSwitchTab('alimento')" style="background:transparent;color:var(--muted);border:none;border-radius:6px;padding:5px 14px;font-size:12px;font-weight:500;cursor:pointer">Alimento</button>
+      </div>
+      <div style="display:flex;gap:3px;background:var(--sur2);border-radius:8px;padding:3px;border:1px solid var(--bor)">
+        <button class="btn-sal-period" data-period="3" onclick="saladerosSwitchPeriod(3)" style="background:transparent;color:var(--muted);border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:500;cursor:pointer">3M</button>
+        <button class="btn-sal-period" data-period="6" onclick="saladerosSwitchPeriod(6)" style="background:var(--sur);color:var(--text);border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer">6M</button>
+        <button class="btn-sal-period" data-period="12" onclick="saladerosSwitchPeriod(12)" style="background:transparent;color:var(--muted);border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:500;cursor:pointer">12M</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3 stat cards -->
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px">
+    <div class="card" style="padding:14px 18px">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px" id="sal-stat-1-label">Mes actual · Sal</div>
+      <div style="font-size:26px;font-weight:600;color:var(--text)"><span id="sal-stat-1-value">—</span> <span style="font-size:13px;color:var(--muted);font-weight:400">kg</span></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px" id="sal-stat-1-sub">—</div>
+    </div>
+    <div class="card" style="padding:14px 18px">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Acumulado <span id="sal-stat-2-period">6 meses</span></div>
+      <div style="font-size:26px;font-weight:600;color:var(--text)"><span id="sal-stat-2-value">—</span> <span style="font-size:13px;color:var(--muted);font-weight:400">kg</span></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px" id="sal-stat-2-sub">—</div>
+    </div>
+    <div class="card" style="padding:14px 18px">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Stock disponible</div>
+      <div style="font-size:26px;font-weight:600;color:var(--text)"><span id="sal-stat-3-value">—</span> <span style="font-size:13px;color:var(--muted);font-weight:400">kg</span></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px" id="sal-stat-3-sub">—</div>
+    </div>
+  </div>
+
+  <!-- Chart 1: por potrero -->
+  <div class="card" style="padding:16px 20px;margin-bottom:18px">
+    <div style="margin-bottom:10px">
+      <div style="font-size:13px;font-weight:600;color:var(--text)">Consumo mensual por potrero</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">Kilogramos depositados en cada potrero, mes a mes</div>
+    </div>
+    <div style="position:relative;height:240px">
+      <canvas id="sal-chart-potreros"></canvas>
+    </div>
+    <div id="sal-chart-potreros-empty" style="display:none;text-align:center;padding:40px 20px;color:var(--muted);font-size:13px">
+      Sin registros en este período
+    </div>
+  </div>
+
+  <!-- Chart 2: por lote -->
+  <div class="card" style="padding:16px 20px;margin-bottom:18px">
+    <div style="margin-bottom:10px">
+      <div style="font-size:13px;font-weight:600;color:var(--text)">Consumo atribuido por lote</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">Atribución proporcional a las cabezas presentes al momento del depósito</div>
+    </div>
+    <div style="position:relative;height:260px">
+      <canvas id="sal-chart-lotes"></canvas>
+    </div>
+    <div id="sal-chart-lotes-empty" style="display:none;text-align:center;padding:40px 20px;color:var(--muted);font-size:13px">
+      Sin registros en este período
+    </div>
+  </div>
+
+  <!-- Feed últimos depósitos -->
+  <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:8px">Últimos depósitos registrados</div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div id="sal-feed-list">
+      <div style="padding:30px 20px;text-align:center;color:var(--muted);font-size:13px">Cargando…</div>
+    </div>
+  </div>
+</div>
 
 <div id="page-maquinaria" class="page">
   <div class="ph">
@@ -5986,6 +6062,7 @@ function renderPage(name) {
     'compra-ganado': renderComprasGanado,
     actividades: renderActividades,
     evalpasto: renderEvalPasto,
+    saladeros: renderSaladeros,
   };
   if(renders[name]) renders[name]();
 }
@@ -19617,6 +19694,449 @@ function populateTankSelector(selId) {
 // MAQUINARIA Y EQUIPOS
 // ══════════════════════════════════════════════════
 var _maqPhotoBase64 = null;
+// ═══════════════════════════════════════════════════════════
+// SALADEROS Y ALIMENTO — v1.4.110 — Dashboard pasivo informativo
+// Lee de db.sal y db.alimento, no escribe (registros vienen de PWA/WhatsApp).
+// ═══════════════════════════════════════════════════════════
+
+// Estado global de la pestaña
+window._salTab = 'sal'; // 'sal' | 'alimento'
+window._salPeriod = 6; // 3, 6, 12 meses
+window._salCharts = { potreros: null, lotes: null };
+
+// Helper: infiere paddock de un lote en una fecha dada usando rotation_history
+// Devuelve el paddock activo de ese lote en esa fecha (o el actual si no hay history).
+function _salGetPaddockAt(lot_code, dateStr) {
+  if (!lot_code) return null;
+  var target = String(dateStr || '').slice(0, 10);
+  if (!target) {
+    var lot = (db.lots || []).find(function(l){ return l && l.code === lot_code; });
+    return lot ? lot.paddock : null;
+  }
+  // Buscar la entry de rotation_history activa en esa fecha:
+  // entry_date <= target AND (exit_date IS NULL OR exit_date >= target)
+  var entries = (db.rotation_history || []).filter(function(r){
+    return r && r.lot_code === lot_code &&
+      String(r.entry_date || '').slice(0,10) <= target &&
+      (!r.exit_date || String(r.exit_date).slice(0,10) >= target);
+  });
+  if (entries.length > 0) {
+    // Si hay varias (raro), tomar la más reciente entry_date
+    entries.sort(function(a,b){ return String(b.entry_date||'').localeCompare(String(a.entry_date||'')); });
+    return entries[0].potrero || null;
+  }
+  // Fallback: paddock actual del lote
+  var lot2 = (db.lots || []).find(function(l){ return l && l.code === lot_code; });
+  return lot2 ? lot2.paddock : null;
+}
+
+// Helper: filtra productos por categoria (sal o alimento)
+function _salIsProductOfCategory(p, cat) {
+  if (!p) return false;
+  var t = String(p.type || '').toLowerCase();
+  var st = String(p.subtype || p.sub_type || '').toLowerCase();
+  var c = String(p.category || '').toLowerCase();
+  if (cat === 'sal') {
+    return t === 'sal_mineral' || t === 'sal' || st === 'sal_mineral' || st === 'sal' ||
+           c === 'sal_mineral' || c === 'sal' || c === 'sal y suplementos' ||
+           t === 'sal y suplementos';
+  }
+  if (cat === 'alimento') {
+    return t === 'alimento' || t === 'concentrado' || t === 'racion' ||
+           st === 'alimento' || st === 'concentrado' || st === 'racion' ||
+           c === 'alimento' || c === 'concentrados' || c === 'alimento y forraje';
+  }
+  return false;
+}
+
+// Helper: devuelve los registros del tab actual (db.sal o db.alimento) en el período
+function _salGetRecords(tab, periodMonths) {
+  var table = tab === 'sal' ? (db.sal || []) : (db.alimento || []);
+  var cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - periodMonths);
+  var cutoffStr = cutoff.toISOString().slice(0,10);
+  return table.filter(function(r){
+    if (!r) return false;
+    var f = String(r.fecha || r.applied_at || r.date || r.created_at || '').slice(0,10);
+    return f >= cutoffStr;
+  });
+}
+
+// Helper: ¿qué mes (YYYY-MM) corresponde a un registro?
+function _salRecordMonth(r) {
+  var f = String(r.fecha || r.applied_at || r.date || r.created_at || '').slice(0, 7);
+  return f;
+}
+
+// Helper: para un registro, devuelve el paddock asociado.
+// Si el registro tiene paddock guardado, lo usa.
+// Si no, infiere desde lot_code + fecha (rotation_history).
+function _salGetRecordPaddock(r) {
+  if (r.paddock) return r.paddock;
+  if (r.lot_code) return _salGetPaddockAt(r.lot_code, r.fecha || r.applied_at || r.date);
+  return null;
+}
+
+// Agregación por potrero: {YYYY-MM: {potrero: kg}}
+function _salAggregateByPaddock(records) {
+  var result = {};
+  records.forEach(function(r){
+    var month = _salRecordMonth(r);
+    if (!month) return;
+    var paddock = _salGetRecordPaddock(r) || 'Sin asignar';
+    var kg = parseFloat(r.qty || r.total || r.kg || 0);
+    if (!kg) return;
+    if (!result[month]) result[month] = {};
+    if (!result[month][paddock]) result[month][paddock] = 0;
+    result[month][paddock] += kg;
+  });
+  return result;
+}
+
+// Agregación por lote con atribución proporcional.
+// Para registros con scope=lot y lot_code → asigna 100% a ese lote.
+// Para registros sin lot_code pero con paddock → reparte entre los lotes presentes en ese
+// potrero en esa fecha, proporcional a cabezas en ese momento.
+function _salAggregateByLot(records) {
+  var byLot = {};
+  records.forEach(function(r){
+    var kg = parseFloat(r.qty || r.total || r.kg || 0);
+    if (!kg) return;
+    var lotCode = r.lot_code;
+    var fecha = r.fecha || r.applied_at || r.date;
+    if (lotCode) {
+      // Directo: asignación 100%
+      if (!byLot[lotCode]) byLot[lotCode] = 0;
+      byLot[lotCode] += kg;
+    } else {
+      // Sin lot_code: necesitamos paddock + atribución proporcional
+      var paddock = r.paddock || _salGetRecordPaddock(r);
+      if (!paddock) return;
+      // Buscar lotes que estaban en ese paddock en esa fecha
+      var lotesEnPotrero = _salLotsInPaddockAt(paddock, fecha);
+      if (lotesEnPotrero.length === 0) return;
+      var totalCab = lotesEnPotrero.reduce(function(s,l){ return s + (l.cab || 0); }, 0);
+      if (totalCab <= 0) {
+        // Reparto equitativo si no hay datos de cabezas
+        var perLot = kg / lotesEnPotrero.length;
+        lotesEnPotrero.forEach(function(l){
+          if (!byLot[l.code]) byLot[l.code] = 0;
+          byLot[l.code] += perLot;
+        });
+      } else {
+        lotesEnPotrero.forEach(function(l){
+          var share = (l.cab / totalCab) * kg;
+          if (!byLot[l.code]) byLot[l.code] = 0;
+          byLot[l.code] += share;
+        });
+      }
+    }
+  });
+  // Convertir a array ordenado descendente
+  return Object.keys(byLot).map(function(code){
+    return { lot_code: code, kg: byLot[code] };
+  }).sort(function(a,b){ return b.kg - a.kg; });
+}
+
+// Helper: lotes presentes en un paddock en una fecha, con cabezas en ese momento.
+function _salLotsInPaddockAt(paddock, dateStr) {
+  if (!paddock) return [];
+  var target = String(dateStr || '').slice(0, 10);
+  // Buscar rotation_history entries que cubran esa fecha en ese paddock
+  var entries = (db.rotation_history || []).filter(function(r){
+    if (!r || r.potrero !== paddock) return false;
+    var entry = String(r.entry_date || '').slice(0,10);
+    var exit = r.exit_date ? String(r.exit_date).slice(0,10) : '9999-12-31';
+    return entry <= target && exit >= target;
+  });
+  // Map a {code, cab}
+  return entries.map(function(r){
+    return {
+      code: r.lot_code,
+      cab: parseInt(r.animal_count || r.cabezas || 0, 10) || 0
+    };
+  });
+}
+
+// Switch tab Sal/Alimento
+function saladerosSwitchTab(tab) {
+  window._salTab = tab;
+  // Update buttons styling
+  document.querySelectorAll('.btn-sal-tab').forEach(function(btn){
+    var isActive = btn.getAttribute('data-saltab') === tab;
+    btn.style.background = isActive ? 'var(--amber2)' : 'transparent';
+    btn.style.color = isActive ? '#1a1a1a' : 'var(--muted)';
+    btn.style.fontWeight = isActive ? '600' : '500';
+  });
+  renderSaladeros();
+}
+
+// Switch periodo 3/6/12 meses
+function saladerosSwitchPeriod(months) {
+  window._salPeriod = months;
+  document.querySelectorAll('.btn-sal-period').forEach(function(btn){
+    var isActive = parseInt(btn.getAttribute('data-period'), 10) === months;
+    btn.style.background = isActive ? 'var(--sur)' : 'transparent';
+    btn.style.color = isActive ? 'var(--text)' : 'var(--muted)';
+    btn.style.fontWeight = isActive ? '600' : '500';
+  });
+  renderSaladeros();
+}
+
+function renderSaladeros() {
+  var tab = window._salTab || 'sal';
+  var period = window._salPeriod || 6;
+  var unit = 'kg';
+  var tabLabel = tab === 'sal' ? 'Sal' : 'Alimento';
+
+  // Obtener registros del período
+  var records = _salGetRecords(tab, period);
+
+  // Si es sal, filtrar también por categoría del producto (algunos registros viejos
+  // pueden mezclar). Para el tab 'alimento', usar tabla db.alimento que ya es específica.
+  // Por simplicidad, asumimos que db.sal solo tiene sal y db.alimento solo alimento.
+
+  // ── Stat cards ──
+  var hoy = new Date();
+  var mesActualStr = hoy.toISOString().slice(0,7);
+  var mesActualRecs = records.filter(function(r){ return _salRecordMonth(r) === mesActualStr; });
+  var mesActualKg = mesActualRecs.reduce(function(s,r){ return s + (parseFloat(r.qty||r.total||r.kg||0)||0); }, 0);
+  var potrerosMes = {};
+  mesActualRecs.forEach(function(r){
+    var p = _salGetRecordPaddock(r);
+    if (p) potrerosMes[p] = true;
+  });
+
+  document.getElementById('sal-stat-1-label').textContent = 'Mes actual · ' + tabLabel;
+  document.getElementById('sal-stat-1-value').textContent = Math.round(mesActualKg).toLocaleString();
+  document.getElementById('sal-stat-1-sub').textContent = mesActualRecs.length + ' depósitos · ' + Object.keys(potrerosMes).length + ' potreros';
+
+  var totalKg = records.reduce(function(s,r){ return s + (parseFloat(r.qty||r.total||r.kg||0)||0); }, 0);
+  var promMes = period > 0 ? Math.round(totalKg / period) : 0;
+  document.getElementById('sal-stat-2-period').textContent = period + ' meses';
+  document.getElementById('sal-stat-2-value').textContent = Math.round(totalKg).toLocaleString();
+  document.getElementById('sal-stat-2-sub').textContent = 'Promedio: ' + promMes + ' kg/mes';
+
+  // Stock disponible: sumar stock de productos de la categoría
+  var products = db.vet_products || db.products || [];
+  var matching = products.filter(function(p){ return _salIsProductOfCategory(p, tab); });
+  var stockTotal = matching.reduce(function(s,p){ return s + (parseFloat(p.stock_qty)||0); }, 0);
+  document.getElementById('sal-stat-3-value').textContent = Math.round(stockTotal).toLocaleString();
+  var mesesRest = (promMes > 0 && stockTotal > 0) ? Math.round(stockTotal / promMes) : null;
+  document.getElementById('sal-stat-3-sub').textContent = mesesRest
+    ? ('~' + mesesRest + ' meses al ritmo actual')
+    : (matching.length + ' productos en stock');
+
+  // ── Chart 1: barras apiladas por potrero ──
+  var byPaddock = _salAggregateByPaddock(records);
+  _salRenderChartPaddocks(byPaddock, period);
+
+  // ── Chart 2: barras horizontales por lote ──
+  var byLot = _salAggregateByLot(records);
+  _salRenderChartLots(byLot);
+
+  // ── Feed últimos depósitos ──
+  _salRenderFeed(records);
+}
+
+// Chart de potreros (stacked bars por mes)
+function _salRenderChartPaddocks(byPaddock, period) {
+  var canvas = document.getElementById('sal-chart-potreros');
+  var emptyEl = document.getElementById('sal-chart-potreros-empty');
+  if (!canvas) return;
+
+  // Construir array de meses [YYYY-MM] en orden cronológico ascendente
+  var months = [];
+  var d = new Date();
+  d.setDate(1);
+  for (var i = period - 1; i >= 0; i--) {
+    var m = new Date(d.getFullYear(), d.getMonth() - i, 1);
+    months.push(m.toISOString().slice(0,7));
+  }
+  // Labels legibles (Ene, Feb…)
+  var MES_NAMES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  var labels = months.map(function(ym){
+    var parts = ym.split('-');
+    return MES_NAMES[parseInt(parts[1],10) - 1] + ' ' + parts[0].slice(2);
+  });
+
+  // Identificar top potreros por consumo total
+  var potreroTotals = {};
+  Object.keys(byPaddock).forEach(function(m){
+    Object.keys(byPaddock[m]).forEach(function(p){
+      potreroTotals[p] = (potreroTotals[p] || 0) + byPaddock[m][p];
+    });
+  });
+  var sortedPotreros = Object.keys(potreroTotals).sort(function(a,b){ return potreroTotals[b] - potreroTotals[a]; });
+
+  if (sortedPotreros.length === 0) {
+    canvas.style.display = 'none';
+    emptyEl.style.display = 'block';
+    if (window._salCharts.potreros) { window._salCharts.potreros.destroy(); window._salCharts.potreros = null; }
+    return;
+  }
+  canvas.style.display = 'block';
+  emptyEl.style.display = 'none';
+
+  // Top 3 + Otros agregado
+  var topNames = sortedPotreros.slice(0, 3);
+  var hasOtros = sortedPotreros.length > 3;
+  var COLORS = ['#7F77DD', '#1D9E75', '#D85A30', '#BA7517'];
+
+  var datasets = topNames.map(function(name, idx){
+    return {
+      label: name,
+      data: months.map(function(ym){ return Math.round((byPaddock[ym] && byPaddock[ym][name]) || 0); }),
+      backgroundColor: COLORS[idx],
+      borderRadius: 3,
+      stack: 's1'
+    };
+  });
+  if (hasOtros) {
+    datasets.push({
+      label: 'Otros',
+      data: months.map(function(ym){
+        if (!byPaddock[ym]) return 0;
+        var sum = 0;
+        Object.keys(byPaddock[ym]).forEach(function(p){
+          if (topNames.indexOf(p) < 0) sum += byPaddock[ym][p];
+        });
+        return Math.round(sum);
+      }),
+      backgroundColor: COLORS[3],
+      borderRadius: 3,
+      stack: 's1'
+    });
+  }
+
+  // Destroy previous chart
+  if (window._salCharts.potreros) {
+    window._salCharts.potreros.destroy();
+    window._salCharts.potreros = null;
+  }
+  if (typeof Chart === 'undefined') return;
+
+  var isDark = true; // Desktop usa tema oscuro
+  var txtColor = 'rgba(255,255,255,0.65)';
+  var gridColor = 'rgba(255,255,255,0.08)';
+
+  window._salCharts.potreros = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: { labels: labels, datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: txtColor, font: { size: 11 }, boxWidth: 12, padding: 10 } },
+        tooltip: { callbacks: { label: function(c){ return c.dataset.label + ': ' + c.parsed.y + ' kg'; } } }
+      },
+      scales: {
+        x: { stacked: true, grid: { display: false }, ticks: { color: txtColor, font: { size: 11 } } },
+        y: { stacked: true, grid: { color: gridColor, drawBorder: false }, ticks: { color: txtColor, font: { size: 11 }, callback: function(v){ return v + 'kg'; } }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+// Chart de lotes (barras horizontales)
+function _salRenderChartLots(byLot) {
+  var canvas = document.getElementById('sal-chart-lotes');
+  var emptyEl = document.getElementById('sal-chart-lotes-empty');
+  if (!canvas) return;
+
+  // Top 10 lotes
+  var top = byLot.slice(0, 10);
+  if (top.length === 0) {
+    canvas.style.display = 'none';
+    emptyEl.style.display = 'block';
+    if (window._salCharts.lotes) { window._salCharts.lotes.destroy(); window._salCharts.lotes = null; }
+    return;
+  }
+  canvas.style.display = 'block';
+  emptyEl.style.display = 'none';
+
+  var COLORS = ['#7F77DD','#1D9E75','#D85A30','#378ADD','#BA7517','#993556','#5DCAA5','#F0997B','#97C459','#F09595'];
+
+  if (window._salCharts.lotes) {
+    window._salCharts.lotes.destroy();
+    window._salCharts.lotes = null;
+  }
+  if (typeof Chart === 'undefined') return;
+
+  var txtColor = 'rgba(255,255,255,0.65)';
+  var gridColor = 'rgba(255,255,255,0.08)';
+
+  window._salCharts.lotes = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: top.map(function(x){ return x.lot_code; }),
+      datasets: [{
+        data: top.map(function(x){ return Math.round(x.kg); }),
+        backgroundColor: top.map(function(_, i){ return COLORS[i % COLORS.length]; }),
+        borderRadius: 3,
+        barThickness: 22
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: function(c){ return c.parsed.x + ' kg acumulados'; } } }
+      },
+      scales: {
+        x: { grid: { color: gridColor, drawBorder: false }, ticks: { color: txtColor, font: { size: 11 }, callback: function(v){ return v + 'kg'; } }, beginAtZero: true },
+        y: { grid: { display: false }, ticks: { color: txtColor, font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+// Feed de últimos depósitos
+function _salRenderFeed(records) {
+  var container = document.getElementById('sal-feed-list');
+  if (!container) return;
+  // Ordenar por fecha descendente
+  var sorted = records.slice().sort(function(a,b){
+    var fa = String(a.fecha || a.applied_at || a.date || '').slice(0,10);
+    var fb = String(b.fecha || b.applied_at || b.date || '').slice(0,10);
+    return fb.localeCompare(fa);
+  });
+  var top = sorted.slice(0, 10);
+  if (top.length === 0) {
+    container.innerHTML = '<div style="padding:30px 20px;text-align:center;color:var(--muted);font-size:13px">Sin depósitos registrados en este período</div>';
+    return;
+  }
+  var html = top.map(function(r){
+    var fecha = String(r.fecha || r.applied_at || r.date || '').slice(0,10);
+    var kg = parseFloat(r.qty || r.total || r.kg || 0);
+    var product = r.product_name || r.product || '';
+    var paddock = _salGetRecordPaddock(r) || '—';
+    var lot = r.lot_code || '';
+    // Origen badge
+    var origen = String(r.by || r.source || '').toLowerCase();
+    var origBadge = '';
+    if (origen.indexOf('whatsapp') >= 0 || r.source === 'whatsapp') {
+      origBadge = '<span style="background:#EEEDFE;color:#26215C;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:500">WhatsApp</span>';
+    } else if (origen.indexOf('pwa') >= 0) {
+      origBadge = '<span style="background:#E1F5EE;color:#04342C;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:500">PWA</span>';
+    } else {
+      origBadge = '<span style="background:var(--sur2);color:var(--muted);font-size:10px;padding:2px 7px;border-radius:10px;font-weight:500">Desktop</span>';
+    }
+    var sub = fecha + ' · ' + (r.by || 'Sin autor');
+    if (lot) sub += ' · lote ' + lot;
+    return '<div style="padding:12px 18px;border-bottom:1px solid var(--bor);display:flex;justify-content:space-between;align-items:center">' +
+      '<div style="flex:1">' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">' +
+          '<span style="font-size:13px;font-weight:500;color:var(--text)">' + escH(paddock) + ' · ' + Math.round(kg) + ' kg ' + escH(product) + '</span>' +
+          origBadge +
+        '</div>' +
+        '<div style="font-size:11px;color:var(--muted)">' + escH(sub) + '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  container.innerHTML = html;
+}
+
 var TIPO_ICONS = {tractor:'🚜',camioneta:'🛻',camion:'🚚',generador:'⚡',bomba:'💧',moto:'🏍',implemento:'⚙️',otro:'📦'};
 
 function renderMaquinaria() {
@@ -22480,6 +23000,18 @@ function showUpdateNotification(version, downloaded) {
 // Convención: máximo 3-5 bullets cortos. Lo que el usuario debe saber, no detalle técnico.
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.4.110': [
+    'NUEVA pestaña Saladeros y Alimento en Operación Secundaria.',
+    '  Dashboard puramente informativo (los registros vienen de PWA Campo / WhatsApp).',
+    '  - Toggle Sal / Alimento + selector de período (3M / 6M / 12M).',
+    '  - 3 stat cards: mes actual, acumulado del período, stock disponible.',
+    '  - Gráfico barras apiladas: consumo mensual por potrero (top 3 + Otros).',
+    '  - Gráfico barras horizontales: consumo atribuido por lote (top 10).',
+    '  - Feed con los últimos 10 depósitos registrados con badge de origen.',
+    '  Atribución proporcional por cabezas presentes al momento del depósito.',
+    '  Paddock inferido desde rotation_history si el registro no lo trae explícito.',
+    '  La pestaña Sal vieja (dentro de Lotes) queda intacta para compatibilidad.',
+  ],
   '1.4.109': [
     'FIX columna LOTE/ANIMAL en pestana Sanidad: registros del bot WhatsApp aparecian',
     '  con la columna vacia aunque tenian lot_code valido.',
