@@ -6230,9 +6230,18 @@ function renderLotes() {
   tbody.innerHTML = lotsToShow.map(function(lot){
     var isCuarentena = lot.status === 'cuarentena';
     var isMarcado = lot.status === 'marcado_completo';
-    var btnMover = isCuarentena
-      ? '<button class="btn btn-primary btn-sm" onclick="openMarcarCuarentena('+lot.id+')" style="background:#A855F7;border-color:#A855F7" title="Marcar IDs y pesos individuales">📝 Marcar</button>'
-      : (isMarcado ? '' : '<button class="btn btn-ghost btn-sm" onclick="openMoveLot('+lot.id+')">Mover</button>');
+    // v1.4.108: ocultar botón Mover para lotes vendidos, inactivos o sin animales
+    var lotStatusLower = String(lot.status || '').toLowerCase();
+    var isInactive = lotStatusLower === 'vendido' || lotStatusLower === 'sold' || lotStatusLower === 'inactivo' || lotStatusLower === 'inactive';
+    var isEmpty = (lot.animal_count || 0) === 0;
+    var btnMover;
+    if (isCuarentena) {
+      btnMover = '<button class="btn btn-primary btn-sm" onclick="openMarcarCuarentena('+lot.id+')" style="background:#A855F7;border-color:#A855F7" title="Marcar IDs y pesos individuales">📝 Marcar</button>';
+    } else if (isMarcado || isInactive || isEmpty) {
+      btnMover = ''; // sin botón
+    } else {
+      btnMover = '<button class="btn btn-ghost btn-sm" onclick="openMoveLot('+lot.id+')">Mover</button>';
+    }
     // Datos de proveedor / detalles desde la compra asociada (si existe)
     var compra = findCompraForLot(lot.code);
     var proveedorTxt = compra && compra.proveedor ? compra.proveedor : '-';
@@ -6278,6 +6287,41 @@ function renderLotes() {
         if (!detalleTxt || detalleTxt === '-') detalleTxt = partes2.join(' · ');
       }
     }
+    // v1.4.108: si el lote vino de un lot_split (Desktop o bot WhatsApp) y NO tiene
+    // _createdViaBulkMove ni animal_movements, usar cost_origin.from_lot para trazar.
+    // Aplica a: bot split (cost_origin.via='whatsapp'), bot lot_rotation,
+    // y casos legacy donde el origen quedó en cost_origin pero no en movements.
+    if (proveedorTxt === '-' && lot.cost_origin && lot.cost_origin.from_lot) {
+      var chain3 = [];
+      var curLot3 = lot.cost_origin.from_lot;
+      var guard3 = 10;
+      while (curLot3 && guard3-- > 0) {
+        chain3.push(curLot3);
+        var compraPadre3 = findCompraForLot(curLot3);
+        if (compraPadre3 && compraPadre3.proveedor) {
+          proveedorTxt = compraPadre3.proveedor + ' ← ' + chain3.reverse().join(' ← ');
+          break;
+        }
+        // Subir un nivel más: buscar lot del cur y revisar su cost_origin
+        var nextLot = (db.lots || []).find(function(l){ return l && l.code === curLot3; });
+        if (nextLot && nextLot.cost_origin && nextLot.cost_origin.from_lot) {
+          curLot3 = nextLot.cost_origin.from_lot;
+        } else {
+          // No hay más cadena; mostramos lo que tenemos
+          proveedorTxt = '← ' + chain3.reverse().join(' ← ');
+          break;
+        }
+      }
+      // Detalles desde cost_origin
+      if (!detalleTxt || detalleTxt === '-') {
+        var partes3 = [];
+        if (lot.cost_origin.date) partes3.push('🗓 ' + lot.cost_origin.date);
+        partes3.push('📥 ' + (lot.cost_origin.animal_count || lot.animal_count || 0) + ' cab');
+        if (lot.cost_origin.total_kg) partes3.push(Math.round(lot.cost_origin.total_kg) + ' kg');
+        if (lot.cost_origin.via === 'whatsapp') partes3.push('via WhatsApp');
+        detalleTxt = partes3.join(' · ');
+      }
+    }
     if (!detalleTxt) detalleTxt = lot.notes ? escH(lot.notes) : '-';
     // Si es marcado_completo y hay lote destino, mostrarlo en detalles
     if (isMarcado && lot.marcaje_lot_destino) {
@@ -6313,16 +6357,32 @@ function lotStatusBadge(lot) {
 
 function openMoveLot(id) {
   var lot = db.lots.find(function(l){return l.id===id;});
+  if (!lot) { toast('Lote no encontrado', 'error'); return; }
+  // v1.4.108 GUARD: rechazar lotes vendidos, inactivos o sin animales
+  var statusLower = String(lot.status || '').toLowerCase();
+  if (statusLower === 'vendido' || statusLower === 'sold' || statusLower === 'inactivo' || statusLower === 'inactive') {
+    toast('No se puede rotar el lote ' + lot.code + ' (status: ' + lot.status + ')', 'warning');
+    return;
+  }
+  if ((lot.animal_count || 0) === 0) {
+    toast('No se puede rotar el lote ' + lot.code + ' (sin animales)', 'warning');
+    return;
+  }
   movingLotId = id;
   document.getElementById('move-lot-code').value = lot.code+' - '+lot.paddock;
   document.getElementById('move-reason').value = '';
+  var currentPaddock = String(lot.paddock || '').trim();
   var sel = document.getElementById('move-paddock');
   if (sel) {
     var params = typeof getParams==='function' ? getParams() : {potreros:[]};
     sel.innerHTML = '<option value="">Seleccionar potrero...</option>';
     (params.potreros||[]).forEach(function(p){
-      // Count current animals in this potrero across all lots
-      var currentInPotrero = (db.lots||[]).filter(function(l){return (l.paddock||'').toLowerCase()===(p.name||'').toLowerCase();}).reduce(function(s,l){return s+(l.animal_count||0);},0);
+      // v1.4.108 FIX: excluir el potrero actual del lote (no se puede rotar al mismo)
+      if (p.name && currentPaddock && String(p.name).toLowerCase() === currentPaddock.toLowerCase()) return;
+      // v1.4.108 FIX: la ocupación post-rotación NO incluye al lote que se está moviendo
+      var currentInPotrero = (db.lots||[]).filter(function(l){
+        return (l.paddock||'').toLowerCase()===(p.name||'').toLowerCase() && l.id !== id;
+      }).reduce(function(s,l){return s+(l.animal_count||0);},0);
       var o = document.createElement('option');
       o.value = p.name;
       o.textContent = p.name + (p.capacity ? ' (' + currentInPotrero + '/' + p.capacity + ' cab)' : '');
@@ -6340,7 +6400,9 @@ function openMoveLot(id) {
     var today2 = new Date();
     var readyPots = [];
     potreros2.forEach(function(p) {
-      var occ = lots2.filter(function(l){return (l.paddock||'').toLowerCase()===p.name.toLowerCase()&&l.status!=='sold'&&(l.animal_count||0)>0;});
+      // v1.4.108: excluir el potrero actual también de las sugerencias
+      if (p.name && currentPaddock && String(p.name).toLowerCase() === currentPaddock.toLowerCase()) return;
+      var occ = lots2.filter(function(l){return (l.paddock||'').toLowerCase()===p.name.toLowerCase()&&l.status!=='sold'&&(l.animal_count||0)>0 && l.id !== id;});
       if (occ.length > 0) return;
       var exits = history2.filter(function(r){return r.potrero===p.name&&r.exit_date;}).sort(function(a,b){return (b.exit_date||'').localeCompare(a.exit_date||'');});
       var daysRest = exits.length ? Math.round((today2-new Date(exits[0].exit_date))/86400000) : 999;
@@ -6352,7 +6414,7 @@ function openMoveLot(id) {
       sugEl.innerHTML = '<div style="font-size:10px;color:var(--green);margin-bottom:4px">✅ Sugeridos:</div>' +
         readyPots.slice(0,3).map(function(p){return '<button class="btn btn-ghost btn-sm" onclick="document.getElementById(\'move-paddock\').value=\''+p.name+'\';checkMoveWarningDesktop()" style="font-size:10px;border:1px solid rgba(34,197,94,.3);color:var(--green);margin-right:4px">'+p.name+' ('+p.daysRest+'d)</button>';}).join('');
     } else {
-      sugEl.innerHTML = '<div style="font-size:10px;color:var(--amber2)">⚠️ Ningun potrero con descanso suficiente</div>';
+      sugEl.innerHTML = '<div style="font-size:10px;color:var(--amber2)">⚠️ Ningun potrero con descanso suficiente registrado</div>';
     }
   }
   openModal('modal-move');
@@ -20068,12 +20130,15 @@ function openDieselDetail(id) {
   html += '</div>';
 
   // Crear o reutilizar modal
+  // v1.4.109 FIX: usar modal-overlay como wrapper (no .modal), porque .modal solo es la caja
+  // interior sin posicionamiento. Sin overlay, el modal aparecía flotando en el body donde
+  // estuviera scrolleado. .modal-content tampoco existe en el CSS del proyecto.
   var modal = document.getElementById('modal-diesel-detail');
   if (!modal) {
     modal = document.createElement('div');
     modal.id = 'modal-diesel-detail';
-    modal.className = 'modal';
-    modal.innerHTML = '<div class="modal-content" style="max-width:600px"><div class="modal-body" id="diesel-detail-body"></div></div>';
+    modal.className = 'modal-overlay';
+    modal.innerHTML = '<div class="modal" style="max-width:600px"><div id="diesel-detail-body"></div></div>';
     document.body.appendChild(modal);
     // Click fuera = cerrar
     modal.addEventListener('click', function(ev){
@@ -22395,6 +22460,26 @@ function showUpdateNotification(version, downloaded) {
 // Convención: máximo 3-5 bullets cortos. Lo que el usuario debe saber, no detalle técnico.
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.4.108': [
+    'FIX modal Rotacion: 5 bugs corregidos',
+    '  1) Boton "Mover" en pestana Lotes aparecia para lotes vendidos/inactivos/0-cab.',
+    '     Fix: ocultar el boton si el lote esta en status vendido/sold/inactivo/inactive o animal_count=0.',
+    '  2) openMoveLot() abria el modal sin validar status del lote.',
+    '     Fix: guard al inicio que rechaza con toast si el lote no es rotable.',
+    '  3) El dropdown de Potrero destino incluia el potrero ACTUAL del lote como opcion.',
+    '     Fix: excluye explicitamente el potrero actual (case-insensitive).',
+    '  4) Conteo de cabezas post-rotacion incluia al propio lote que se esta moviendo.',
+    '     Fix: filtra l.id !== id en el conteo.',
+    '  5) Sugerencias de potreros con descanso aplican los mismos filtros.',
+    'FIX modal Despacho diesel: modal aparecia flotando en el body en vez de centrado.',
+    '  Causa: openDieselDetail() creaba div con className="modal" en vez de "modal-overlay".',
+    '  Fix: wrapper modal-overlay + caja modal interior, alineado con el resto del proyecto.',
+    'FIX trazabilidad de sub-lotes en tabla Lotes: TEST 123-C, SSD3-B (creados por bot vía',
+    '  lot_split) mostraban proveedor=- y detalles=- aunque tenían cost_origin.from_lot.',
+    '  La logica anterior solo trazaba via _createdViaBulkMove + animal_movements (path Desktop).',
+    '  Fix: tercer camino que usa cost_origin.from_lot recursivamente para encontrar la compra',
+    '  original. Detalles desde cost_origin: fecha + cab + kg + "via WhatsApp" si aplica.',
+  ],
   '1.4.107': [
     'FIX CRITICO: lot.paddock no se sincronizaba del server cuando el bot rotaba un lote.',
     '  El sync de lots usaba server-wins solo por status/count/progreso, NUNCA por paddock.',
