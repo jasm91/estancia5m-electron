@@ -5143,6 +5143,40 @@ function mergeArrays(local, remote, idField, tableName) {
     return merged;
   }
 
+  // v1.4.111-fix: para tablas de actividad por lote (sal/agua/alimento/conteo/partos),
+  // si el local tiene un registro SIN paddock y el remote (server) tiene el MISMO
+  // registro CON paddock, preferir la versión remote (server-wins en este campo).
+  // Esto resuelve el caso donde el server v4.5.15+ infiere paddock automáticamente
+  // pero el Desktop guardó la versión vieja sin paddock antes del fix.
+  var ACTIVITY_TABLES = ['sal','agua','alimento','conteo','partos'];
+  if (ACTIVITY_TABLES.indexOf(tableName) >= 0) {
+    var mergedAct = [];
+    var remoteIdsAct = {};
+    (remote || []).forEach(function(r) {
+      var rid = String(r[idField] || '');
+      remoteIdsAct[rid] = true;
+      if (deleted[rid]) return;
+      var localR = localMap[r[idField]];
+      if (!localR) {
+        // Solo en remote — agregar
+        mergedAct.push(r);
+      } else {
+        // Existe en ambos — si remote tiene paddock y local no, preferir remote
+        if (r.paddock && !localR.paddock) {
+          mergedAct.push(r);
+        } else {
+          mergedAct.push(localR);
+        }
+      }
+    });
+    // Agregar locales que no están en remote (cambios offline recientes)
+    (local || []).forEach(function(r) {
+      var rid = String(r[idField] || '');
+      if (!remoteIdsAct[rid] && !deleted[rid]) mergedAct.push(r);
+    });
+    return mergedAct;
+  }
+
   // Comportamiento original para otras tablas
   var merged = (local || []).slice();
   (remote || []).forEach(function(r) {
@@ -24788,19 +24822,19 @@ function renderSubmodule(type) {
     if (type==='agua') {
       var estadoColors = {lleno:'var(--green)',medio:'var(--amber2)',bajo:'var(--red)',seco:'var(--red)',roto:'var(--muted)'};
       var estadoLabels = {lleno:'✅ Lleno',medio:'⚠️ Medio',bajo:'🔴 Bajo',seco:'❌ Seco',roto:'🔧 Roto'};
-      cells = [r.date, escH(r.lot_code), '<span style="color:'+estadoColors[r.estado]+'">'+estadoLabels[r.estado]+'</span>', escH(r.obs||'-'), escH(r.by||'-')];
+      cells = [(r.date||r.fecha||'-'), escH(r.lot_code), '<span style="color:'+estadoColors[r.estado]+'">'+estadoLabels[r.estado]+'</span>', escH(r.obs||'-'), escH(r.by||'-')];
     } else if (type==='sal') {
-      cells = [r.date, escH(r.lot_code), escH(r.lot_code), (r.qty||0)+' kg', escH(r.obs||'-'), escH(r.by||'-')];
+      cells = [(r.date||r.fecha||'-'), escH(r.lot_code), escH(r.paddock||'-'), (r.qty||0)+' kg', escH(r.obs||'-'), escH(r.by||'-')];
     } else if (type==='conteo') {
       var diff = r.diff||0;
       var diffColor = diff===0?'var(--green)':diff>0?'var(--blue)':'var(--red)';
-      cells = [r.date, escH(r.lot_code), r.counted, r.ref, '<span style="color:'+diffColor+';">'+(diff>0?'+':'')+diff+'</span>', escH(r.obs||'-'), escH(r.by||'-')];
+      cells = [(r.date||r.fecha||'-'), escH(r.lot_code), r.counted, r.ref, '<span style="color:'+diffColor+';">'+(diff>0?'+':'')+diff+'</span>', escH(r.obs||'-'), escH(r.by||'-')];
     } else if (type==='partos') {
       var sexoLabel = r.sexo==='macho'?'🐂 Macho':'🐄 Hembra';
       var estadoParto = {sano:'✅ Sano',debil:'⚠️ Debil',muerto:'❌ Mortinato'}[r.estado]||r.estado;
-      cells = [r.date, escH(r.lot_code), sexoLabel, (r.peso||'-')+' kg', estadoParto, escH(r.obs||'-'), escH(r.by||'-')];
+      cells = [(r.date||r.fecha||'-'), escH(r.lot_code), sexoLabel, (r.peso||'-')+' kg', estadoParto, escH(r.obs||'-'), escH(r.by||'-')];
     } else if (type==='alimento') {
-      cells = [r.date, escH(r.lot_code), capFirst((r.tipo||'').replace(/_/g,' ')), (r.qty||0)+' kg', escH(r.obs||'-'), escH(r.by||'-')];
+      cells = [(r.date||r.fecha||'-'), escH(r.lot_code), capFirst((r.tipo||'').replace(/_/g,' ')), (r.qty||0)+' kg', escH(r.obs||'-'), escH(r.by||'-')];
     }
 
     tr.innerHTML = cells.map(function(c){ return '<td>'+c+'</td>'; }).join('') + '<td></td>';
