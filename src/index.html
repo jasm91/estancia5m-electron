@@ -494,6 +494,10 @@ function showLotesTab(tabId, btn) {
       if(typeof renderSubmodule==='function') renderSubmodule(type);
     }
   }
+  // v1.4.113: tab Sal incluye dashboards (stats, charts, donut por tipo)
+  if (tabId === 'lotes-tab-sal' && typeof renderSalDashboards === 'function') {
+    try { renderSalDashboards(); } catch(e){ console.warn('[showLotesTab] renderSalDashboards err', e); }
+  }
 }
 function today(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function localDate(d){d=d||new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
@@ -580,6 +584,20 @@ function goToAnimales(navBtn) {
     }
     if (typeof renderAnimalesLote === 'function') {
       try { renderAnimalesLote(); } catch(e){}
+    }
+  }, 50);
+}
+
+// v1.4.113: acceso rápido a Consumo de Sal desde el sidebar (atajo a Lotes > Sal)
+// Reemplaza el antiguo showPage('saladeros'). La página dedicada quedó como redirect.
+function goToSal(navBtn) {
+  showPage('lotes', null);
+  document.querySelectorAll('.nav-btn').forEach(function(b){ b.classList.remove('active'); });
+  if (navBtn) navBtn.classList.add('active');
+  setTimeout(function() {
+    var salBtn = document.getElementById('lotes-tab-sal-btn');
+    if (salBtn && typeof showLotesTab === 'function') {
+      showLotesTab('lotes-tab-sal', salBtn);
     }
   }, 50);
 }
@@ -780,7 +798,7 @@ function publishTasksToPWA() {
     <button class="nav-lbl-btn" onclick="toggleNavSec('operacion-secundaria')"><span class="nav-lbl">Operación Secundaria</span><span class="nav-lbl-chevron">▾</span></button>
     <div class="nav-sec-body">
     <button class="nav-btn" data-label="Eval. Pasto" onclick="showPage('evalpasto',this)"><span class="nav-icon">🌿</span><span class="nav-text">Eval. Pasto</span><span class="nav-badge nb-amber" id="nb-evalpasto" style="display:none">0</span></button>
-    <button class="nav-btn" data-label="Saladeros" onclick="showPage('saladeros',this)"><span class="nav-icon">🧂</span><span class="nav-text">Saladeros</span></button>
+    <button class="nav-btn" data-label="Consumo de Sal" onclick="goToSal(this)"><span class="nav-icon">🧂</span><span class="nav-text">Consumo de Sal</span></button>
     <button class="nav-btn" data-label="Mantenimiento" onclick="showPage('mantenimiento',this)"><span class="nav-icon">🔧</span><span class="nav-text">Mantenimiento</span></button>
     <button class="nav-btn" data-label="Maquinaria" onclick="showPage('maquinaria',this)"><span class="nav-icon">🚜</span><span class="nav-text">Maquinaria</span></button>
     <button class="nav-btn" data-label="Pluviometría" onclick="showPage('lluvias',this)"><span class="nav-icon">🌧</span><span class="nav-text">Pluviometría</span></button>
@@ -916,16 +934,91 @@ function publishTasksToPWA() {
 
   <!-- SAL TAB -->
   <div id="lotes-tab-sal" class="tab-pane" style="display:none">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <div><div style="font-family:Inter,sans-serif;font-size:15px;font-weight:700">🧂 Sal Mineral</div>
-      <div style="font-size:11px;color:var(--muted)">Deposito de sal por lote y potrero</div></div>
-      <div style="display:flex;gap:8px">
+    <!-- v1.4.113: Tab Sal ampliado — header con filtros (Tipo / Período) + 4 stat cards
+         (con donut condicional) + 2 charts (potreros / lotes) + tabla con columna Tipo.
+         Reemplaza la vieja página "Saladeros" en Operación Secundaria. -->
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;gap:12px;flex-wrap:wrap">
+      <div style="flex:1;min-width:240px">
+        <div style="font-family:Inter,sans-serif;font-size:15px;font-weight:700">🧂 Sal Mineral</div>
+        <div style="font-size:11px;color:var(--muted)">Depósito de sal por lote y potrero · datos de WhatsApp y App Campo</div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <!-- Filtro Tipo -->
+        <div id="sal-tipo-filter-wrap" style="display:none;align-items:center;gap:5px;background:var(--sur2);border:1px solid var(--bor);border-radius:6px;padding:3px 4px 3px 9px">
+          <span style="font-size:10px;color:var(--muted)">Tipo:</span>
+          <select id="sal-tipo-filter" onchange="salSwitchTipo(this.value)" style="background:transparent;border:none;color:var(--text);font-size:11px;padding:2px 0;outline:none;cursor:pointer">
+            <option value="">Todas</option>
+          </select>
+        </div>
+        <!-- Selector Período -->
+        <div style="display:flex;gap:2px;background:var(--sur2);border:1px solid var(--bor);border-radius:6px;padding:2px">
+          <button class="btn-sal-period" data-period="3" onclick="salSwitchPeriod(3)" style="background:transparent;color:var(--muted);border:none;border-radius:4px;padding:3px 8px;font-size:10px;font-weight:500;cursor:pointer">3M</button>
+          <button class="btn-sal-period" data-period="6" onclick="salSwitchPeriod(6)" style="background:var(--sur);color:var(--text);border:none;border-radius:4px;padding:3px 8px;font-size:10px;font-weight:600;cursor:pointer">6M</button>
+          <button class="btn-sal-period" data-period="12" onclick="salSwitchPeriod(12)" style="background:transparent;color:var(--muted);border:none;border-radius:4px;padding:3px 8px;font-size:10px;font-weight:500;cursor:pointer">12M</button>
+        </div>
         <button class="btn btn-primary btn-sm" onclick="openModal('modal-sal')">+ Registrar</button>
         <button class="btn btn-ghost btn-sm" onclick="exportSubmodule('sal')">⬇ Excel</button>
       </div>
     </div>
+
+    <!-- Stat cards: 3 base + 4ta condicional (donut por tipo) -->
+    <div id="sal-stats-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">
+      <div class="card" style="padding:11px 14px">
+        <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px" id="sal-stat-1-label">Mes actual · Sal</div>
+        <div style="font-size:22px;font-weight:600;color:var(--text)"><span id="sal-stat-1-value">—</span> <span style="font-size:11px;color:var(--muted);font-weight:400">kg</span></div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px" id="sal-stat-1-sub">—</div>
+      </div>
+      <div class="card" style="padding:11px 14px">
+        <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Acumulado <span id="sal-stat-2-period">6 meses</span></div>
+        <div style="font-size:22px;font-weight:600;color:var(--text)"><span id="sal-stat-2-value">—</span> <span style="font-size:11px;color:var(--muted);font-weight:400">kg</span></div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px" id="sal-stat-2-sub">—</div>
+      </div>
+      <div class="card" style="padding:11px 14px">
+        <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Stock disponible</div>
+        <div style="font-size:22px;font-weight:600;color:var(--text)"><span id="sal-stat-3-value">—</span> <span style="font-size:11px;color:var(--muted);font-weight:400">kg</span></div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px" id="sal-stat-3-sub">—</div>
+      </div>
+      <!-- 4ta card: distribución por tipo (sólo si hay ≥2 tipos en la data) -->
+      <div class="card" id="sal-stat-tipo-card" style="padding:11px 14px;display:none">
+        <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Distribución por tipo</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <canvas id="sal-chart-tipo-donut" width="56" height="56" style="flex-shrink:0;width:56px;height:56px"></canvas>
+          <div id="sal-stat-tipo-legend" style="font-size:10px;line-height:1.5;min-width:0;flex:1"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chart 1: Consumo mensual por potrero -->
+    <div class="card" style="padding:12px 14px;margin-bottom:12px">
+      <div style="margin-bottom:8px">
+        <div style="font-size:12px;font-weight:600;color:var(--text)">Consumo mensual por potrero</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px" id="sal-chart-potreros-sub">Kilogramos depositados en cada potrero, mes a mes</div>
+      </div>
+      <div style="position:relative;height:220px">
+        <canvas id="sal-chart-potreros"></canvas>
+      </div>
+      <div id="sal-chart-potreros-empty" style="display:none;text-align:center;padding:40px 20px;color:var(--muted);font-size:13px">
+        Sin registros en este período
+      </div>
+    </div>
+
+    <!-- Chart 2: Consumo atribuido por lote -->
+    <div class="card" style="padding:12px 14px;margin-bottom:14px">
+      <div style="margin-bottom:8px">
+        <div style="font-size:12px;font-weight:600;color:var(--text)">Consumo atribuido por lote</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">Atribución proporcional a las cabezas presentes al momento del depósito</div>
+      </div>
+      <div style="position:relative;height:240px">
+        <canvas id="sal-chart-lotes"></canvas>
+      </div>
+      <div id="sal-chart-lotes-empty" style="display:none;text-align:center;padding:40px 20px;color:var(--muted);font-size:13px">
+        Sin registros en este período
+      </div>
+    </div>
+
+    <!-- Tabla cruda: lo que ya estaba. Ahora con columna Tipo. -->
     <div class="card"><div class="card-body" style="padding:0">
-      <table class="tbl"><thead><tr><th>Fecha</th><th>Lote</th><th>Potrero</th><th>Cantidad (kg)</th><th>Observaciones</th><th>Registrado por</th><th></th></tr></thead>
+      <table class="tbl"><thead><tr><th>Fecha</th><th>Lote</th><th>Potrero</th><th>Cantidad (kg)</th><th>Tipo</th><th>Observaciones</th><th>Registrado por</th><th></th></tr></thead>
       <tbody id="sal-tbody"></tbody></table>
     </div></div>
   </div>
@@ -1688,79 +1781,10 @@ function publishTasksToPWA() {
   </div>
 </div></div>
 
+<!-- v1.4.113: page-saladeros queda como redirect silencioso. La vista vive en Lotes > Sal.
+     Conservado por compatibilidad con deeplinks/llamadas antiguas a showPage('saladeros'). -->
 <div id="page-saladeros" class="page">
-  <div class="ph">
-    <div>
-      <div class="pt">🧂 Saladeros y Alimento</div>
-      <div class="ps">Vista informativa · registros vienen de la app del campo o WhatsApp</div>
-    </div>
-    <div style="display:flex;gap:8px;align-items:center">
-      <div style="display:flex;gap:3px;background:var(--sur2);border-radius:8px;padding:3px;border:1px solid var(--bor)">
-        <button class="btn-sal-tab" data-saltab="sal" onclick="saladerosSwitchTab('sal')" style="background:var(--amber2);color:#1a1a1a;border:none;border-radius:6px;padding:5px 14px;font-size:12px;font-weight:600;cursor:pointer">Sal</button>
-        <button class="btn-sal-tab" data-saltab="alimento" onclick="saladerosSwitchTab('alimento')" style="background:transparent;color:var(--muted);border:none;border-radius:6px;padding:5px 14px;font-size:12px;font-weight:500;cursor:pointer">Alimento</button>
-      </div>
-      <div style="display:flex;gap:3px;background:var(--sur2);border-radius:8px;padding:3px;border:1px solid var(--bor)">
-        <button class="btn-sal-period" data-period="3" onclick="saladerosSwitchPeriod(3)" style="background:transparent;color:var(--muted);border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:500;cursor:pointer">3M</button>
-        <button class="btn-sal-period" data-period="6" onclick="saladerosSwitchPeriod(6)" style="background:var(--sur);color:var(--text);border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer">6M</button>
-        <button class="btn-sal-period" data-period="12" onclick="saladerosSwitchPeriod(12)" style="background:transparent;color:var(--muted);border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:500;cursor:pointer">12M</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 3 stat cards -->
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px">
-    <div class="card" style="padding:14px 18px">
-      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px" id="sal-stat-1-label">Mes actual · Sal</div>
-      <div style="font-size:26px;font-weight:600;color:var(--text)"><span id="sal-stat-1-value">—</span> <span style="font-size:13px;color:var(--muted);font-weight:400">kg</span></div>
-      <div style="font-size:11px;color:var(--muted);margin-top:4px" id="sal-stat-1-sub">—</div>
-    </div>
-    <div class="card" style="padding:14px 18px">
-      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Acumulado <span id="sal-stat-2-period">6 meses</span></div>
-      <div style="font-size:26px;font-weight:600;color:var(--text)"><span id="sal-stat-2-value">—</span> <span style="font-size:13px;color:var(--muted);font-weight:400">kg</span></div>
-      <div style="font-size:11px;color:var(--muted);margin-top:4px" id="sal-stat-2-sub">—</div>
-    </div>
-    <div class="card" style="padding:14px 18px">
-      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Stock disponible</div>
-      <div style="font-size:26px;font-weight:600;color:var(--text)"><span id="sal-stat-3-value">—</span> <span style="font-size:13px;color:var(--muted);font-weight:400">kg</span></div>
-      <div style="font-size:11px;color:var(--muted);margin-top:4px" id="sal-stat-3-sub">—</div>
-    </div>
-  </div>
-
-  <!-- Chart 1: por potrero -->
-  <div class="card" style="padding:16px 20px;margin-bottom:18px">
-    <div style="margin-bottom:10px">
-      <div style="font-size:13px;font-weight:600;color:var(--text)">Consumo mensual por potrero</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:2px">Kilogramos depositados en cada potrero, mes a mes</div>
-    </div>
-    <div style="position:relative;height:240px">
-      <canvas id="sal-chart-potreros"></canvas>
-    </div>
-    <div id="sal-chart-potreros-empty" style="display:none;text-align:center;padding:40px 20px;color:var(--muted);font-size:13px">
-      Sin registros en este período
-    </div>
-  </div>
-
-  <!-- Chart 2: por lote -->
-  <div class="card" style="padding:16px 20px;margin-bottom:18px">
-    <div style="margin-bottom:10px">
-      <div style="font-size:13px;font-weight:600;color:var(--text)">Consumo atribuido por lote</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:2px">Atribución proporcional a las cabezas presentes al momento del depósito</div>
-    </div>
-    <div style="position:relative;height:260px">
-      <canvas id="sal-chart-lotes"></canvas>
-    </div>
-    <div id="sal-chart-lotes-empty" style="display:none;text-align:center;padding:40px 20px;color:var(--muted);font-size:13px">
-      Sin registros en este período
-    </div>
-  </div>
-
-  <!-- Feed últimos depósitos -->
-  <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:8px">Últimos depósitos registrados</div>
-  <div class="card" style="padding:0;overflow:hidden">
-    <div id="sal-feed-list">
-      <div style="padding:30px 20px;text-align:center;color:var(--muted);font-size:13px">Cargando…</div>
-    </div>
-  </div>
+  <div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">Redirigiendo a Lotes › Sal…</div>
 </div>
 
 <div id="page-maquinaria" class="page">
@@ -4500,7 +4524,9 @@ function publishTasksToPWA() {
     <input class="form-input" type="number" id="sal-qty" step="0.5" placeholder="Ej: 25">
   </div>
   <div class="form-group"><label class="form-label">Tipo de sal</label>
-    <input class="form-input" id="sal-tipo" placeholder="Ej: Sal mineral completa, sal blanca...">
+    <input class="form-input" id="sal-tipo" list="sal-tipo-suggestions" placeholder="Ej: Sal mineral completa, sal proteinada, sal blanca...">
+    <datalist id="sal-tipo-suggestions"></datalist>
+    <div style="font-size:10px;color:var(--muted);margin-top:3px">Se sugieren tipos ya registrados. Podés escribir uno nuevo.</div>
   </div>
 </div>
 <div class="form-group"><label class="form-label">Producto de stock a descontar (opcional)</label>
@@ -5148,6 +5174,7 @@ function mergeArrays(local, remote, idField, tableName) {
   // registro CON paddock, preferir la versión remote (server-wins en este campo).
   // Esto resuelve el caso donde el server v4.5.15+ infiere paddock automáticamente
   // pero el Desktop guardó la versión vieja sin paddock antes del fix.
+  // v1.4.113: misma lógica para `tipo` en sal (default 'mineral' aplicado por server v4.5.16+).
   var ACTIVITY_TABLES = ['sal','agua','alimento','conteo','partos'];
   if (ACTIVITY_TABLES.indexOf(tableName) >= 0) {
     var mergedAct = [];
@@ -5161,9 +5188,15 @@ function mergeArrays(local, remote, idField, tableName) {
         // Solo en remote — agregar
         mergedAct.push(r);
       } else {
-        // Existe en ambos — si remote tiene paddock y local no, preferir remote
-        if (r.paddock && !localR.paddock) {
-          mergedAct.push(r);
+        // Existe en ambos — server-wins por campo cuando local viene vacío
+        var remoteWinsPaddock = r.paddock && !localR.paddock;
+        var remoteWinsTipo    = (tableName === 'sal') && r.tipo && (!localR.tipo || !String(localR.tipo).trim());
+        if (remoteWinsPaddock || remoteWinsTipo) {
+          // Construir merged: empezar de local, sobreescribir solo los campos donde server gana
+          var combined = Object.assign({}, localR);
+          if (remoteWinsPaddock) combined.paddock = r.paddock;
+          if (remoteWinsTipo)    combined.tipo    = r.tipo;
+          mergedAct.push(combined);
         } else {
           mergedAct.push(localR);
         }
@@ -6096,7 +6129,10 @@ function renderPage(name) {
     'compra-ganado': renderComprasGanado,
     actividades: renderActividades,
     evalpasto: renderEvalPasto,
-    saladeros: renderSaladeros,
+    saladeros: function() {
+      // v1.4.113: la vista vive en Lotes > Sal. Redirigir silenciosamente.
+      setTimeout(function(){ goToSal(null); }, 0);
+    },
   };
   if(renders[name]) renders[name]();
 }
@@ -19729,14 +19765,21 @@ function populateTankSelector(selId) {
 // ══════════════════════════════════════════════════
 var _maqPhotoBase64 = null;
 // ═══════════════════════════════════════════════════════════
-// SALADEROS Y ALIMENTO — v1.4.110 — Dashboard pasivo informativo
-// Lee de db.sal y db.alimento, no escribe (registros vienen de PWA/WhatsApp).
+// CONSUMO DE SAL — v1.4.113 — Dashboard integrado en Lotes > Sal
+// (antes "Saladeros y Alimento" en Operación Secundaria, v1.4.110)
+// Lee de db.sal, no escribe (registros vienen de PWA/WhatsApp/Desktop).
+// v1.4.113: añade soporte para múltiples tipos de sal (mineral, proteinada, blanca…).
+//   - Filtro Tipo en header (dropdown, default "Todas")
+//   - 4ta stat card con donut de distribución por tipo (solo si hay ≥2 tipos)
+//   - Columna Tipo en tabla con pill coloreado
+//   - El toggle Sal/Alimento se elimina: esta tab es exclusiva de Sal.
 // ═══════════════════════════════════════════════════════════
 
 // Estado global de la pestaña
-window._salTab = 'sal'; // 'sal' | 'alimento'
-window._salPeriod = 6; // 3, 6, 12 meses
-window._salCharts = { potreros: null, lotes: null };
+window._salTab    = 'sal';   // mantenido por compat con código viejo, siempre 'sal' aquí
+window._salPeriod = 6;        // 3, 6, 12 meses
+window._salTipo   = '';       // '' = todas, sino tipo normalizado (ej: 'mineral')
+window._salCharts = { potreros: null, lotes: null, tipo: null };
 
 // Helper: infiere paddock de un lote en una fecha dada usando rotation_history
 // Devuelve el paddock activo de ese lote en esa fecha (o el actual si no hay history).
@@ -19892,21 +19935,67 @@ function _salLotsInPaddockAt(paddock, dateStr) {
   });
 }
 
-// Switch tab Sal/Alimento
-function saladerosSwitchTab(tab) {
-  window._salTab = tab;
-  // Update buttons styling
-  document.querySelectorAll('.btn-sal-tab').forEach(function(btn){
-    var isActive = btn.getAttribute('data-saltab') === tab;
-    btn.style.background = isActive ? 'var(--amber2)' : 'transparent';
-    btn.style.color = isActive ? '#1a1a1a' : 'var(--muted)';
-    btn.style.fontWeight = isActive ? '600' : '500';
-  });
-  renderSaladeros();
+// ─────────────────────────────────────────────────────────────
+// v1.4.113 — Helpers de tipo de sal
+// ─────────────────────────────────────────────────────────────
+
+// Normaliza un string de tipo de sal: lower, trim, sin acentos, sin "sal" inicial.
+// "Sal Mineral" / "sal mineral " / "SAL MINERAL" → "mineral"
+// "Proteinada" / "sal proteinada" → "proteinada"
+// "" / null / "sal" → "sin clasificar"
+function _salNormalizeTipo(raw) {
+  if (raw == null) return 'sin clasificar';
+  var s = String(raw).toLowerCase().trim();
+  if (!s) return 'sin clasificar';
+  // Quitar acentos comunes
+  s = s.replace(/[áàä]/g,'a').replace(/[éèë]/g,'e').replace(/[íìï]/g,'i').replace(/[óòö]/g,'o').replace(/[úùü]/g,'u');
+  // Quitar prefijo "sal " si lo hay
+  s = s.replace(/^sal\s+/, '').trim();
+  if (!s || s === 'sal') return 'sin clasificar';
+  return s;
 }
 
+// Label legible para mostrar (capitalize primera palabra)
+function _salTipoLabel(normalized) {
+  if (!normalized) return 'Sin clasificar';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+// Paleta consistente para tipos. Hash determinista por nombre normalizado.
+var _SAL_TIPO_COLORS = ['#7F77DD','#1D9E75','#D85A30','#378ADD','#BA7517','#993556','#5DCAA5','#F0997B','#97C459','#EF9F27'];
+function _salTipoColor(normalized) {
+  if (!normalized || normalized === 'sin clasificar') return '#888780';
+  var h = 0;
+  for (var i = 0; i < normalized.length; i++) h = (h * 31 + normalized.charCodeAt(i)) >>> 0;
+  return _SAL_TIPO_COLORS[h % _SAL_TIPO_COLORS.length];
+}
+
+// Devuelve [{normalized, label, count, kg}] ordenado por kg desc, contando todos los registros de db.sal.
+function _salGetTipos() {
+  var byTipo = {};
+  (db.sal || []).forEach(function(r){
+    if (!r) return;
+    var n = _salNormalizeTipo(r.tipo);
+    if (!byTipo[n]) byTipo[n] = { normalized: n, label: _salTipoLabel(n), count: 0, kg: 0 };
+    byTipo[n].count++;
+    byTipo[n].kg += parseFloat(r.qty || r.total || r.kg || 0) || 0;
+  });
+  return Object.keys(byTipo).map(function(k){ return byTipo[k]; })
+    .sort(function(a,b){ return b.kg - a.kg; });
+}
+
+// Filtra una lista de registros por tipo normalizado. '' = todas.
+function _salFilterByTipo(records, tipoNorm) {
+  if (!tipoNorm) return records;
+  return records.filter(function(r){ return _salNormalizeTipo(r && r.tipo) === tipoNorm; });
+}
+
+// ─────────────────────────────────────────────────────────────
+// v1.4.113 — Switches (período y tipo)
+// ─────────────────────────────────────────────────────────────
+
 // Switch periodo 3/6/12 meses
-function saladerosSwitchPeriod(months) {
+function salSwitchPeriod(months) {
   window._salPeriod = months;
   document.querySelectorAll('.btn-sal-period').forEach(function(btn){
     var isActive = parseInt(btn.getAttribute('data-period'), 10) === months;
@@ -19914,23 +20003,35 @@ function saladerosSwitchPeriod(months) {
     btn.style.color = isActive ? 'var(--text)' : 'var(--muted)';
     btn.style.fontWeight = isActive ? '600' : '500';
   });
-  renderSaladeros();
+  renderSalDashboards();
 }
 
-function renderSaladeros() {
-  var tab = window._salTab || 'sal';
-  var period = window._salPeriod || 6;
-  var unit = 'kg';
-  var tabLabel = tab === 'sal' ? 'Sal' : 'Alimento';
+// Switch filtro Tipo
+function salSwitchTipo(tipoNorm) {
+  window._salTipo = tipoNorm || '';
+  renderSalDashboards();
+}
 
-  // Obtener registros del período
-  var records = _salGetRecords(tab, period);
+// Compat con onclick antiguo del page-saladeros (queda como redirect, pero defensivo)
+function saladerosSwitchPeriod(months) { salSwitchPeriod(months); }
+function saladerosSwitchTab(tab) { /* no-op: ya no hay toggle Sal/Alimento */ }
 
-  // Si es sal, filtrar también por categoría del producto (algunos registros viejos
-  // pueden mezclar). Para el tab 'alimento', usar tabla db.alimento que ya es específica.
-  // Por simplicidad, asumimos que db.sal solo tiene sal y db.alimento solo alimento.
+// ─────────────────────────────────────────────────────────────
+// v1.4.113 — Render principal del dashboard Sal en Lotes>Sal
+// ─────────────────────────────────────────────────────────────
 
-  // ── Stat cards ──
+function renderSalDashboards() {
+  var period   = window._salPeriod || 6;
+  var tipoNorm = window._salTipo || '';
+
+  // 1. Poblar dropdown de tipos (siempre, por si entró data nueva por sync)
+  _salPopulateTipoFilter();
+
+  // 2. Obtener registros del período y filtrar por tipo
+  var allRecords = _salGetRecords('sal', period);
+  var records    = _salFilterByTipo(allRecords, tipoNorm);
+
+  // 3. Stat cards
   var hoy = new Date();
   var mesActualStr = hoy.toISOString().slice(0,7);
   var mesActualRecs = records.filter(function(r){ return _salRecordMonth(r) === mesActualStr; });
@@ -19940,37 +20041,144 @@ function renderSaladeros() {
     var p = _salGetRecordPaddock(r);
     if (p) potrerosMes[p] = true;
   });
-
-  document.getElementById('sal-stat-1-label').textContent = 'Mes actual · ' + tabLabel;
-  document.getElementById('sal-stat-1-value').textContent = Math.round(mesActualKg).toLocaleString();
-  document.getElementById('sal-stat-1-sub').textContent = mesActualRecs.length + ' depósitos · ' + Object.keys(potrerosMes).length + ' potreros';
+  var tipoLbl = tipoNorm ? _salTipoLabel(tipoNorm) : 'Sal';
+  _setText('sal-stat-1-label', 'Mes actual · ' + tipoLbl);
+  _setText('sal-stat-1-value', Math.round(mesActualKg).toLocaleString());
+  _setText('sal-stat-1-sub',   mesActualRecs.length + ' depósitos · ' + Object.keys(potrerosMes).length + ' potreros');
 
   var totalKg = records.reduce(function(s,r){ return s + (parseFloat(r.qty||r.total||r.kg||0)||0); }, 0);
   var promMes = period > 0 ? Math.round(totalKg / period) : 0;
-  document.getElementById('sal-stat-2-period').textContent = period + ' meses';
-  document.getElementById('sal-stat-2-value').textContent = Math.round(totalKg).toLocaleString();
-  document.getElementById('sal-stat-2-sub').textContent = 'Promedio: ' + promMes + ' kg/mes';
+  _setText('sal-stat-2-period', period + ' meses');
+  _setText('sal-stat-2-value',  Math.round(totalKg).toLocaleString());
+  _setText('sal-stat-2-sub',    'Promedio: ' + promMes + ' kg/mes');
 
-  // Stock disponible: sumar stock de productos de la categoría
   var products = db.vet_products || db.products || [];
-  var matching = products.filter(function(p){ return _salIsProductOfCategory(p, tab); });
+  var matching = products.filter(function(p){ return _salIsProductOfCategory(p, 'sal'); });
   var stockTotal = matching.reduce(function(s,p){ return s + (parseFloat(p.stock_qty)||0); }, 0);
-  document.getElementById('sal-stat-3-value').textContent = Math.round(stockTotal).toLocaleString();
+  _setText('sal-stat-3-value', Math.round(stockTotal).toLocaleString());
   var mesesRest = (promMes > 0 && stockTotal > 0) ? Math.round(stockTotal / promMes) : null;
-  document.getElementById('sal-stat-3-sub').textContent = mesesRest
-    ? ('~' + mesesRest + ' meses al ritmo actual')
-    : (matching.length + ' productos en stock');
+  _setText('sal-stat-3-sub', mesesRest ? ('~' + mesesRest + ' meses al ritmo actual') : (matching.length + ' productos en stock'));
 
-  // ── Chart 1: barras apiladas por potrero ──
-  var byPaddock = _salAggregateByPaddock(records);
-  _salRenderChartPaddocks(byPaddock, period);
+  // 4. Donut por tipo (sólo si hay ≥2 tipos en TODOS los registros, no en el filtro actual)
+  _salRenderTipoCard(allRecords);
 
-  // ── Chart 2: barras horizontales por lote ──
-  var byLot = _salAggregateByLot(records);
-  _salRenderChartLots(byLot);
+  // 5. Charts
+  var subPotreros = tipoNorm
+    ? ('Kilogramos depositados — sólo ' + _salTipoLabel(tipoNorm).toLowerCase())
+    : 'Kilogramos depositados en cada potrero, mes a mes';
+  _setText('sal-chart-potreros-sub', subPotreros);
+  _salRenderChartPaddocks(_salAggregateByPaddock(records), period);
+  _salRenderChartLots(_salAggregateByLot(records));
+}
 
-  // ── Feed últimos depósitos ──
-  _salRenderFeed(records);
+// Backward-compat: viejos onclicks o llamadas externas (changelog modal, etc.)
+function renderSaladeros() { renderSalDashboards(); }
+
+// Helper: set textContent defensivo
+function _setText(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; }
+
+// ─────────────────────────────────────────────────────────────
+// v1.4.113 — Filtro de tipo: poblar dropdown y donut card
+// ─────────────────────────────────────────────────────────────
+
+function _salPopulateTipoFilter() {
+  var wrap = document.getElementById('sal-tipo-filter-wrap');
+  var sel  = document.getElementById('sal-tipo-filter');
+  if (!sel) return;
+
+  var tipos = _salGetTipos(); // ordenados por kg desc
+  // Mostrar el filtro sólo si hay ≥2 tipos distintos en la data
+  if (tipos.length < 2) {
+    if (wrap) wrap.style.display = 'none';
+    // Reset filtro si quedó algo seleccionado de antes
+    if (window._salTipo) window._salTipo = '';
+    return;
+  }
+  if (wrap) wrap.style.display = 'flex';
+
+  var current = window._salTipo || '';
+  var totalRecs = tipos.reduce(function(s,t){ return s + t.count; }, 0);
+  var opts = ['<option value="">Todas (' + tipos.length + ')</option>'];
+  tipos.forEach(function(t){
+    var label = t.label + ' · ' + Math.round(t.kg).toLocaleString() + ' kg';
+    var sel = (t.normalized === current) ? ' selected' : '';
+    opts.push('<option value="' + escH(t.normalized) + '"' + sel + '>' + escH(label) + '</option>');
+  });
+  sel.innerHTML = opts.join('');
+}
+
+function _salRenderTipoCard(allRecords) {
+  var card     = document.getElementById('sal-stat-tipo-card');
+  var grid     = document.getElementById('sal-stats-grid');
+  var canvas   = document.getElementById('sal-chart-tipo-donut');
+  var legendEl = document.getElementById('sal-stat-tipo-legend');
+  if (!card || !grid) return;
+
+  // Agregar por tipo dentro del período actual (no de toda la DB)
+  var byTipo = {};
+  allRecords.forEach(function(r){
+    var n = _salNormalizeTipo(r && r.tipo);
+    var kg = parseFloat(r.qty||r.total||r.kg||0)||0;
+    if (!kg) return;
+    byTipo[n] = (byTipo[n] || 0) + kg;
+  });
+  var entries = Object.keys(byTipo).map(function(k){
+    return { normalized: k, label: _salTipoLabel(k), kg: byTipo[k] };
+  }).sort(function(a,b){ return b.kg - a.kg; });
+
+  // Mostrar sólo si hay ≥2 tipos con kg en el período
+  if (entries.length < 2) {
+    card.style.display = 'none';
+    grid.style.gridTemplateColumns = 'repeat(3,1fr)';
+    if (window._salCharts.tipo) { try { window._salCharts.tipo.destroy(); } catch(e){} window._salCharts.tipo = null; }
+    return;
+  }
+  card.style.display = '';
+  grid.style.gridTemplateColumns = 'repeat(4,1fr)';
+
+  var totalKg = entries.reduce(function(s,e){ return s + e.kg; }, 0);
+  // Top 3 + Otros agregado para no saturar el donut
+  var top = entries.slice(0, 3);
+  var hasOtros = entries.length > 3;
+  if (hasOtros) {
+    var otrosKg = entries.slice(3).reduce(function(s,e){ return s + e.kg; }, 0);
+    top.push({ normalized: '_otros', label: 'Otros', kg: otrosKg });
+  }
+
+  // Leyenda con %
+  legendEl.innerHTML = top.map(function(e){
+    var pct = totalKg > 0 ? Math.round((e.kg / totalKg) * 100) : 0;
+    var color = (e.normalized === '_otros') ? '#888780' : _salTipoColor(e.normalized);
+    return '<div style="display:flex;align-items:center;gap:5px">' +
+      '<span style="width:7px;height:7px;background:' + color + ';border-radius:1px;flex-shrink:0;display:inline-block"></span>' +
+      '<span style="color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escH(e.label) + ' ' + pct + '%</span>' +
+    '</div>';
+  }).join('');
+
+  // Donut con Chart.js
+  if (window._salCharts.tipo) { try { window._salCharts.tipo.destroy(); } catch(e){} window._salCharts.tipo = null; }
+  if (typeof Chart === 'undefined' || !canvas) return;
+  window._salCharts.tipo = new Chart(canvas.getContext('2d'), {
+    type: 'doughnut',
+    data: {
+      labels: top.map(function(e){ return e.label; }),
+      datasets: [{
+        data: top.map(function(e){ return Math.round(e.kg); }),
+        backgroundColor: top.map(function(e){
+          return (e.normalized === '_otros') ? '#888780' : _salTipoColor(e.normalized);
+        }),
+        borderWidth: 0
+      }]
+    },
+    options: {
+      responsive: false, maintainAspectRatio: false,
+      cutout: '62%',
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: function(c){ return c.label + ': ' + c.parsed + ' kg'; } } }
+      }
+    }
+  });
 }
 
 // Chart de potreros (stacked bars por mes)
@@ -20125,7 +20333,8 @@ function _salRenderChartLots(byLot) {
   });
 }
 
-// Feed de últimos depósitos
+// v1.4.113 LEGACY: feed de últimos depósitos. Ya no se usa porque la tabla cumple el rol.
+// Se mantiene la función por si algún snapshot externo del DOM la llama; es no-op sin container.
 function _salRenderFeed(records) {
   var container = document.getElementById('sal-feed-list');
   if (!container) return;
@@ -23034,6 +23243,19 @@ function showUpdateNotification(version, downloaded) {
 // Convención: máximo 3-5 bullets cortos. Lo que el usuario debe saber, no detalle técnico.
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.4.113': [
+    'Rediseño Consumo de Sal: ahora vive dentro de Lotes > pestaña Sal con dashboards integrados.',
+    '  - Saladeros del menú lateral se renombra a "Consumo de Sal" y redirige a Lotes>Sal.',
+    '  - Stat cards: mes actual, acumulado del período, stock disponible, distribución por tipo.',
+    '  - Charts: consumo mensual por potrero (apiladas) + consumo atribuido por lote (top 10).',
+    '  - Filtro por tipo de sal (mineral, proteinada, blanca…) cuando hay ≥2 tipos registrados.',
+    '  - Columna Tipo en la tabla con pill coloreado (color determinista por nombre).',
+    '  - Modal Registrar Sal: campo Tipo ahora autocompleta con tipos ya usados.',
+    'mergeArrays server-wins ahora también aplica para el campo `tipo` en sal cuando local viene vacío.',
+    '  Esto sana automáticamente los registros viejos sin tipo cuando el server (v4.5.16+)',
+    '  los etiqueta como mineral por default.',
+    'FIX export Excel de Sal: la columna Potrero exportaba el lote duplicado, ahora exporta el potrero real.',
+  ],
   '1.4.110': [
     'NUEVA pestaña Saladeros y Alimento en Operación Secundaria.',
     '  Dashboard puramente informativo (los registros vienen de PWA Campo / WhatsApp).',
@@ -24646,6 +24868,17 @@ function populateSubmoduleLots(prefix) {
   if (salStock) salStock.innerHTML = stockOpts;
   var aliStock = document.getElementById('alimento-stock-product');
   if (aliStock) aliStock.innerHTML = stockOpts;
+
+  // v1.4.113: poblar datalist con tipos de sal ya usados (autocomplete sugerencias)
+  if (prefix === 'sal') {
+    var salTipoSuggestions = document.getElementById('sal-tipo-suggestions');
+    if (salTipoSuggestions && typeof _salGetTipos === 'function') {
+      var tipos = _salGetTipos().filter(function(t){ return t.normalized && t.normalized !== 'sin clasificar'; });
+      salTipoSuggestions.innerHTML = tipos.map(function(t){
+        return '<option value="' + escH(t.label) + '">';
+      }).join('');
+    }
+  }
 }
 
 function saveSubmodule(type) {
@@ -24791,6 +25024,10 @@ function saveSubmodule(type) {
   closeModal(cfg.modal);
   renderSubmodule(type);
   if (type==='partos') renderLotes();
+  // v1.4.113: refrescar dashboards de Sal cuando se añade un registro nuevo
+  if (type === 'sal' && typeof renderSalDashboards === 'function') {
+    try { renderSalDashboards(); } catch(e){}
+  }
   toast('Registro guardado', 'success');
   // FIX v1.4.35: audit log para submódulos (agua/sal/conteo/parto/alimento)
   try {
@@ -24810,7 +25047,8 @@ function renderSubmodule(type) {
   if (!tbody) return;
 
   if (!data.length) {
-    var cols = {agua:6,sal:7,conteo:8,partos:8,alimento:7};
+    // v1.4.113: sal ahora tiene 8 columnas (se añadió Tipo)
+    var cols = {agua:6,sal:8,conteo:8,partos:8,alimento:7};
     tbody.innerHTML = '<tr><td colspan="'+cols[type]+'" style="text-align:center;padding:20px;color:var(--muted);font-size:12px">Sin registros aun</td></tr>';
     return;
   }
@@ -24824,7 +25062,12 @@ function renderSubmodule(type) {
       var estadoLabels = {lleno:'✅ Lleno',medio:'⚠️ Medio',bajo:'🔴 Bajo',seco:'❌ Seco',roto:'🔧 Roto'};
       cells = [(r.date||r.fecha||'-'), escH(r.lot_code), '<span style="color:'+estadoColors[r.estado]+'">'+estadoLabels[r.estado]+'</span>', escH(r.obs||'-'), escH(r.by||'-')];
     } else if (type==='sal') {
-      cells = [(r.date||r.fecha||'-'), escH(r.lot_code), escH(r.paddock||'-'), (r.qty||0)+' kg', escH(r.obs||'-'), escH(r.by||'-')];
+      // v1.4.113: añadir pill de Tipo entre Cantidad y Observaciones
+      var tipoNorm = (typeof _salNormalizeTipo === 'function') ? _salNormalizeTipo(r.tipo) : '';
+      var tipoLbl  = (typeof _salTipoLabel === 'function') ? _salTipoLabel(tipoNorm) : (r.tipo || '-');
+      var tipoCol  = (typeof _salTipoColor === 'function') ? _salTipoColor(tipoNorm) : '#888780';
+      var tipoCell = '<span style="background:' + tipoCol + '26;color:' + tipoCol + ';font-size:10px;padding:2px 7px;border-radius:8px;white-space:nowrap">' + escH(tipoLbl) + '</span>';
+      cells = [(r.date||r.fecha||'-'), escH(r.lot_code), escH(r.paddock||'-'), (r.qty||0)+' kg', tipoCell, escH(r.obs||'-'), escH(r.by||'-')];
     } else if (type==='conteo') {
       var diff = r.diff||0;
       var diffColor = diff===0?'var(--green)':diff>0?'var(--blue)':'var(--red)';
@@ -24851,6 +25094,10 @@ function deleteSubmodule(id, type) {
   trackDeletion(id, type);
   db[type] = (db[type]||[]).filter(function(r){return r.id!==id;});
   saveDB(); renderSubmodule(type);
+  // v1.4.113: refrescar dashboards de Sal cuando se elimina un registro
+  if (type === 'sal' && typeof renderSalDashboards === 'function') {
+    try { renderSalDashboards(); } catch(e){}
+  }
   pushTableToRailway(type, db[type]);
   toast('Registro eliminado','success');
 }
@@ -24860,14 +25107,14 @@ function exportSubmodule(type) {
   if (!data.length) { toast('Sin datos para exportar','error'); return; }
   var headers = {
     agua:     ['Fecha','Lote','Estado','Observaciones','Por'],
-    sal:      ['Fecha','Lote','Potrero','Cantidad (kg)','Observaciones','Por'],
+    sal:      ['Fecha','Lote','Potrero','Cantidad (kg)','Tipo','Observaciones','Por'],
     conteo:   ['Fecha','Lote','Contado','Sistema','Diferencia','Observaciones','Por'],
     partos:   ['Fecha','Lote madre','Sexo','Peso (kg)','Estado','Observaciones','Por'],
     alimento: ['Fecha','Lote','Tipo','Cantidad (kg)','Observaciones','Por'],
   };
   var rows = {
     agua:     data.map(function(r){return [r.date,r.lot_code,r.estado,r.obs||'',r.by||''];}),
-    sal:      data.map(function(r){return [r.date,r.lot_code,r.lot_code,r.qty||0,r.obs||'',r.by||''];}),
+    sal:      data.map(function(r){return [r.date,r.lot_code,r.paddock||'',r.qty||0,r.tipo||'',r.obs||'',r.by||''];}),
     conteo:   data.map(function(r){return [r.date,r.lot_code,r.counted,r.ref,r.diff,r.obs||'',r.by||''];}),
     partos:   data.map(function(r){return [r.date,r.lot_code,r.sexo,r.peso||'',r.estado,r.obs||'',r.by||''];}),
     alimento: data.map(function(r){return [r.date,r.lot_code,r.tipo,r.qty||0,r.obs||'',r.by||''];}),
