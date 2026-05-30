@@ -17042,16 +17042,21 @@ function renderAnalisisHistorico() {
   _ahRenderObservaciones(lot, pesajes, treatments, compras, ventasDirectas, ventasCompartidas, bajas, partos, mantenimientos);
 }
 
-// v1.8.50/51: cuántas cabezas pasaron por un lote (para capar ventas imposibles).
-// IMPORTANTE: un lote puede recibir animales por dos vías:
-//   1) Compras (directo o vía cuarentena) — lote_destinos es el destino real
-//   2) Traspasos entre lotes (db.animal_movements: to_lot = este lote)
-// y pierde animales por traspasos de salida (from_lot = este lote).
-// Un lote de "concentración para venta" (ej. juntar T1+T2 en T3 antes de vender) tiene muchos
-// traspasos de entrada; ignorarlos hacía que el cap fuera demasiado bajo. Ahora se cuentan ambos.
-// Devuelve 0 (sin cap) si no hay forma de estimar.
+// v1.8.50/51/52: cuántas cabezas pasaron por un lote (para capar ventas imposibles).
+// Un lote puede recibir animales por compras (directo o vía cuarentena) y también por traspasos
+// desde otros lotes (ej. juntar T1+T2 en T3 para vender). Para estimar el máximo de cabezas que
+// el lote llegó a tener, tomamos el MAYOR de dos señales disponibles en el cliente:
+//   A) Compras atribuidas al lote (lote_destinos / lot_code)
+//   B) Animales únicos cuyo pesaje de venta registra este lot_code (db.pesajes tipo 'venta' con
+//      animal_id) — refleja los animales que físicamente estaban en el lote al venderse, incluidos
+//      los que llegaron por traspaso. Es la señal más fiel para lotes de concentración.
+// Nota: animal_movements NO existe en el localStorage del cliente (solo en backups del server),
+// por eso usamos pesajes, que sí se sincronizan.
+// Devuelve 0 (sin cap) si ninguna señal aplica.
 function _ahCabezasDelLote(lotCode, compras) {
   var lc = String(lotCode).trim();
+
+  // A) Compras atribuidas
   var totalCompras = 0;
   (compras || []).forEach(function(c) {
     var cc = parseInt(c.animal_count || c.cabezas || c.animals || 0) || 0;
@@ -17066,21 +17071,20 @@ function _ahCabezasDelLote(lotCode, compras) {
     if (destinos.indexOf(lc) < 0) return;
     totalCompras += cc / destinos.length;
   });
+  totalCompras = Math.round(totalCompras);
 
-  // Traspasos entre lotes: contar animales únicos que entraron y que salieron de este lote.
-  var movs = db.animal_movements || [];
-  var entraron = {}, salieron = {};
-  movs.forEach(function(m) {
-    var aid = String(m.animal_id || '');
-    if (!aid) return;
-    if (String(m.to_lot || '').trim() === lc) entraron[aid] = true;
-    if (String(m.from_lot || '').trim() === lc) salieron[aid] = true;
+  // B) Animales únicos con pesaje de venta en este lote (incluye los que llegaron por traspaso)
+  var animalesVendidosDelLote = {};
+  (db.pesajes || []).forEach(function(p) {
+    if (p.tipo === 'venta' && String(p.lot_code || '').trim() === lc && p.animal_id) {
+      animalesVendidosDelLote[String(p.animal_id)] = true;
+    }
   });
-  var nEntraron = Object.keys(entraron).length;
-  var nSalieron = Object.keys(salieron).length;
+  var nPorPesaje = Object.keys(animalesVendidosDelLote).length;
 
-  var total = Math.round(totalCompras) + nEntraron - nSalieron;
-  return total > 0 ? total : 0;
+  // El lote tuvo AL MENOS el mayor de las dos señales (un lote de concentración tendrá más
+  // animales vendidos que comprados; un lote normal tendrá ambos parecidos).
+  return Math.max(totalCompras, nPorPesaje);
 }
 
 // v1.4.65: Atribución EXACTA de venta a un lote (sin prorrateo).
@@ -18854,6 +18858,29 @@ function _ahRenderObservaciones(lot, pesajes, treatments, compras, ventasDirecta
       var origenes2 = comprasViaTrasp.map(function(c) { return c._origen_lote; }).filter(function(o, i, arr) { return arr.indexOf(o) === i; });
       obs.push('🏷️ Origen: ' + comprasDirectas.length + ' compra(s) directa(s) + ' + comprasViaTrasp.length + ' vía traspaso desde ' + origenes2.join(', ') + '.');
     }
+  }
+
+  // 2.5 Lote de concentración: vendió más cabezas de las que registran sus compras.
+  // v1.8.53: esto ocurre cuando se juntan animales de otros lotes en este antes de vender
+  // (ej. Tropa 1 + Tropa 2 → Tropa 3). Si los traspasos se hicieron por la vía formal quedan
+  // registrados; si son datos antiguos, puede que no haya detalle del movimiento. Avisamos.
+  var _comprasCabs = (compras || []).reduce(function(s, c) {
+    var cc = parseInt(c.animal_count || c.cabezas || c.animals || 0) || 0;
+    var dests = (Array.isArray(c.lote_destinos) && c.lote_destinos.length) ? c.lote_destinos.length : 1;
+    // solo contar la parte de este lote
+    var apunta = (c.lot_code === lot.code) || (Array.isArray(c.lote_destinos) && c.lote_destinos.indexOf(lot.code) >= 0);
+    return apunta ? s + cc / dests : s;
+  }, 0);
+  var _vendidosPesaje = {};
+  (db.pesajes || []).forEach(function(p) {
+    if (p.tipo === 'venta' && String(p.lot_code || '').trim() === String(lot.code).trim() && p.animal_id) {
+      _vendidosPesaje[String(p.animal_id)] = true;
+    }
+  });
+  var _nVendidos = Object.keys(_vendidosPesaje).length;
+  if (_nVendidos > Math.round(_comprasCabs) + 5) {  // margen de 5 para evitar falsos positivos
+    var _porTraspaso = _nVendidos - Math.round(_comprasCabs);
+    obs.push('🔀 Lote de concentración: se vendieron ' + _nVendidos + ' cabezas pero solo ' + Math.round(_comprasCabs) + ' ingresaron por compra. Las otras ~' + _porTraspaso + ' llegaron por traspaso desde otros lotes (ej. al juntar tropas para la venta). Las cifras económicas de este lote reflejan el total vendido. Para trazabilidad detallada de cada traspaso, usá la función "Mover animales" del módulo Lotes en futuras operaciones.');
   }
 
   // 3. Pesajes
@@ -25969,6 +25996,17 @@ function showUpdateNotification(version, downloaded) {
 // Convención: máximo 3-5 bullets cortos. Lo que el usuario debe saber, no detalle técnico.
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.8.53': [
+    'Análisis Histórico: nueva nota automática para "lotes de concentración".',
+    '  - Cuando un lote vendió más cabezas de las que ingresaron por compra (porque recibió animales de otros lotes antes de vender, como al juntar tropas), ahora aparece una observación que lo explica.',
+    '  - Aclara que las cifras económicas reflejan el total vendido y recomienda usar la función "Mover animales" del módulo Lotes para que los traspasos futuros queden con trazabilidad completa.',
+    '  - Recordatorio: los movimientos de animales hechos con las funciones de Mover/Fusionar lotes ya quedan registrados correctamente; esta nota es para datos antiguos sin ese detalle.',
+  ],
+  '1.8.52': [
+    'Análisis Histórico: corregido de verdad el conteo de cabezas (la corrección anterior usaba datos que no están disponibles en la app).',
+    '  - Ahora se cuentan los animales que efectivamente se vendieron desde el lote (según los pesajes de venta), lo que incluye a los que llegaron por traspaso de otros lotes.',
+    '  - Para Tropa 3 (que recibió animales de Tropa 1 y Tropa 2 antes de venderlos), las ventas ya se muestran completas, sin el recorte que aparecía antes.',
+  ],
   '1.8.51': [
     'Análisis Histórico: corregido el conteo de cabezas de un lote para que incluya los traspasos entre lotes.',
     '  - Cuando se juntan animales de varios lotes en uno solo para venderlos (ej. pasar animales de Tropa 1 y Tropa 2 a Tropa 3), esos traspasos ahora se cuentan.',
