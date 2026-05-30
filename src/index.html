@@ -694,10 +694,6 @@ function publishTasksToPWA() {
       <span class="tbs-v tbs-amber" id="tbs-valor">—</span>
     </div>
     <div class="tbs-stat">
-      <span class="tbs-l">Valor aproximado</span>
-      <span class="tbs-v tbs-green" id="tbs-mercado">—</span>
-    </div>
-    <div class="tbs-stat">
       <span class="tbs-l">Costo / kg</span>
       <span class="tbs-v" id="tbs-costo">—</span>
     </div>
@@ -7094,6 +7090,46 @@ function renderTopbarSummary() {
   var stockKg = 0;
   var lotesConDatos = 0;
 
+  // v1.8.41: peso proyectado a HOY usando GMD. Los pesajes suelen estar desactualizados
+  // (ej. ganado pesado hace meses), así que valuar a peso viejo subestima el rodeo.
+  // Para cada animal: peso_proyectado = último_peso + GMD × días_desde_ese_pesaje (cap 180 días).
+  // GMD híbrido: del propio lote (2+ pesajes) → promedio del rodeo → default del parámetro.
+  var pesoVentaObjetivo = parseFloat(rp.peso_venta_objetivo) || 450;
+  var gmdDefault = parseFloat(rp.gmd_default) || 0.5;
+  var MAX_DIAS_PROY = 180;
+  var hoyMs = Date.now();
+
+  // Helper: GMD real de un lote a partir de sus pesajes (primer vs último pesaje del promedio del lote)
+  function _gmdDeLote(anims){
+    if (!anims || !anims.length) return null;
+    // recolectar (fecha, pesoPromedio) por fecha de pesaje del lote
+    var primero = null, ultimo = null;
+    anims.forEach(function(a){
+      if (!a || !a.pesajes || !a.pesajes.length) return;
+      a.pesajes.forEach(function(p){
+        if (!p || !(p.peso > 0) || !p.fecha) return;
+        var t = new Date(p.fecha).getTime();
+        if (isNaN(t)) return;
+        if (!primero || t < primero.t) primero = { t: t, peso: p.peso };
+        if (!ultimo || t > ultimo.t) ultimo = { t: t, peso: p.peso };
+      });
+    });
+    if (!primero || !ultimo || primero.t === ultimo.t) return null;
+    var dias = (ultimo.t - primero.t) / 86400000;
+    if (dias < 1) return null;
+    var gmd = (ultimo.peso - primero.peso) / dias;
+    return (gmd > 0 && gmd < 3) ? gmd : null; // descartar valores absurdos
+  }
+
+  // Primera pasada: GMD promedio del rodeo (para fallback)
+  var sumGmdRodeo = 0, nGmdRodeo = 0;
+  activeLots.forEach(function(l){
+    if (!l || !l.code) return;
+    var g = _gmdDeLote(animDB[l.code]);
+    if (g != null) { sumGmdRodeo += g; nGmdRodeo++; }
+  });
+  var gmdRodeo = nGmdRodeo > 0 ? sumGmdRodeo / nGmdRodeo : gmdDefault;
+
   activeLots.forEach(function(l){
     if (!l) return;
     // Cuántos animales: lot.animal_count > 0, sino contar en animDB
@@ -7104,20 +7140,41 @@ function renderTopbarSummary() {
     cab += ac;
     lotesConDatos++;
 
-    // Peso promedio: lot.avg_weight > 0, sino promediar pesajes en animDB, sino pesoUA
-    var aw = parseFloat(l.avg_weight) || parseFloat(l.peso_actual) || 0;
-    if (!aw && anims && anims.length) {
+    // GMD del lote (propio si hay datos, sino promedio del rodeo)
+    var gmdLote = _gmdDeLote(anims);
+    if (gmdLote == null) gmdLote = gmdRodeo;
+
+    // Peso promedio proyectado a hoy
+    var aw = 0;
+    if (anims && anims.length) {
       var sumW = 0, nW = 0;
       for (var i = 0; i < anims.length; i++) {
         var a = anims[i];
         if (a && a.pesajes && a.pesajes.length) {
           var p = a.pesajes[a.pesajes.length - 1];
-          if (p && p.peso > 0) { sumW += p.peso; nW++; }
+          if (p && p.peso > 0) {
+            var pesoProy = p.peso;
+            // proyectar desde la fecha del último pesaje hasta hoy (cap 180 días)
+            if (p.fecha) {
+              var tP = new Date(p.fecha).getTime();
+              if (!isNaN(tP)) {
+                var diasTrans = (hoyMs - tP) / 86400000;
+                if (diasTrans > 0) {
+                  diasTrans = Math.min(diasTrans, MAX_DIAS_PROY);
+                  pesoProy = p.peso + gmdLote * diasTrans;
+                  // no proyectar por encima del peso objetivo de venta
+                  if (pesoProy > pesoVentaObjetivo) pesoProy = pesoVentaObjetivo;
+                }
+              }
+            }
+            sumW += pesoProy; nW++;
+          }
         }
       }
       if (nW > 0) aw = sumW / nW;
     }
-    if (!aw) aw = pesoUA;
+    // fallback si el lote no tiene pesajes: avg_weight del lote, sino pesoUA
+    if (!aw) aw = parseFloat(l.avg_weight) || parseFloat(l.peso_actual) || pesoUA;
     stockKg += aw * ac;
   });
 
@@ -16981,8 +17038,49 @@ function renderAnalisisHistorico() {
   _ahRenderEventos(lot, compras, ventasDirectas, ventasCompartidas, pesajes, lineage, inherited);
   _ahRenderSanidad(lot, treatments);
   _ahRenderMovimientos(lot, bajas, partos, conteos, compras);
-  _ahRenderVentas(ventasDirectas, ventasCompartidas, lotCode);
+  _ahRenderVentas(ventasDirectas, ventasCompartidas, lotCode, compras);
   _ahRenderObservaciones(lot, pesajes, treatments, compras, ventasDirectas, ventasCompartidas, bajas, partos, mantenimientos);
+}
+
+// v1.8.50/51: cuántas cabezas pasaron por un lote (para capar ventas imposibles).
+// IMPORTANTE: un lote puede recibir animales por dos vías:
+//   1) Compras (directo o vía cuarentena) — lote_destinos es el destino real
+//   2) Traspasos entre lotes (db.animal_movements: to_lot = este lote)
+// y pierde animales por traspasos de salida (from_lot = este lote).
+// Un lote de "concentración para venta" (ej. juntar T1+T2 en T3 antes de vender) tiene muchos
+// traspasos de entrada; ignorarlos hacía que el cap fuera demasiado bajo. Ahora se cuentan ambos.
+// Devuelve 0 (sin cap) si no hay forma de estimar.
+function _ahCabezasDelLote(lotCode, compras) {
+  var lc = String(lotCode).trim();
+  var totalCompras = 0;
+  (compras || []).forEach(function(c) {
+    var cc = parseInt(c.animal_count || c.cabezas || c.animals || 0) || 0;
+    if (cc <= 0) return;
+    var destinos = [];
+    if (Array.isArray(c.lote_destinos) && c.lote_destinos.length) {
+      c.lote_destinos.forEach(function(d){ var dd=String(d).trim(); if(dd && destinos.indexOf(dd)<0) destinos.push(dd); });
+    } else if (c.lot_code) {
+      destinos.push(String(c.lot_code).trim());
+    }
+    if (!destinos.length) return;
+    if (destinos.indexOf(lc) < 0) return;
+    totalCompras += cc / destinos.length;
+  });
+
+  // Traspasos entre lotes: contar animales únicos que entraron y que salieron de este lote.
+  var movs = db.animal_movements || [];
+  var entraron = {}, salieron = {};
+  movs.forEach(function(m) {
+    var aid = String(m.animal_id || '');
+    if (!aid) return;
+    if (String(m.to_lot || '').trim() === lc) entraron[aid] = true;
+    if (String(m.from_lot || '').trim() === lc) salieron[aid] = true;
+  });
+  var nEntraron = Object.keys(entraron).length;
+  var nSalieron = Object.keys(salieron).length;
+
+  var total = Math.round(totalCompras) + nEntraron - nSalieron;
+  return total > 0 ? total : 0;
 }
 
 // v1.4.65: Atribución EXACTA de venta a un lote (sin prorrateo).
@@ -16997,10 +17095,23 @@ function renderAnalisisHistorico() {
 function _ahAtribuirVentaALote(venta, lotCode) {
   var v = venta;
 
+  // v1.8.47: normalizar lista de lotes de la venta. El multi-lote puede venir como:
+  //   - array v.lot_codes
+  //   - string v.lot_code con comas "TROPA 1,TROPA 2,TROPA 3"
+  //   - string simple v.lot_code "TROPA 3"
+  var lotesVenta = [];
+  if (Array.isArray(v.lot_codes) && v.lot_codes.length) {
+    lotesVenta = v.lot_codes.map(function(x){ return String(x).trim(); });
+  } else if (typeof v.lot_code === 'string' && v.lot_code.indexOf(',') >= 0) {
+    lotesVenta = v.lot_code.split(',').map(function(x){ return String(x).trim(); });
+  } else if (v.lot_code) {
+    lotesVenta = [String(v.lot_code).trim()];
+  }
+  var isMultiLot = lotesVenta.length > 1;
+  var tocaEsteLote = lotesVenta.indexOf(String(lotCode).trim()) >= 0;
+
   // CASO 1: venta single-lote = lote analizado
-  var vLotCode = v.lot_code;
-  var isMultiLot = Array.isArray(v.lot_codes) && v.lot_codes.length > 1;
-  if (!isMultiLot && vLotCode === lotCode) {
+  if (!isMultiLot && tocaEsteLote) {
     var cabs1 = parseInt(v.animals || v.qty || v.cabezas || v.animal_count || 0) || 0;
     var kg1 = parseFloat(v.kg || v.kg_total || v.peso_total || v.total_kg || 0) || 0;
     var kgFact1 = parseFloat(v.kg_facturados || kg1) || 0;
@@ -17071,12 +17182,13 @@ function _ahAtribuirVentaALote(venta, lotCode) {
     };
   }
 
-  // CASO 4: Fallback prorrateo simple por cabezas (último recurso, datos pobres)
-  var totalLotes = Array.isArray(v.lot_codes) ? v.lot_codes.length : 1;
-  if (totalLotes <= 1) return null;
-  var fraccion = 1 / totalLotes;
+  // CASO 4: Fallback prorrateo simple por cabezas (multi-lote sin items ni animal_ids).
+  // v1.8.47: ahora reconoce multi-lote por string con comas. Reparte en partes iguales entre
+  // los lotes nombrados (no hay info de cuántas cabezas de cada uno, así que se asume equitativo).
+  if (!isMultiLot || !tocaEsteLote) return null;
+  var fraccion = 1 / lotesVenta.length;
   return {
-    cabs: Math.round((parseInt(v.animals || v.animal_count || 0) || 0) * fraccion),
+    cabs: (parseInt(v.animals || v.animal_count || 0) || 0) * fraccion,
     kg: (parseFloat(v.kg || v.total_kg || 0) || 0) * fraccion,
     kgFacturados: (parseFloat(v.kg_facturados || v.kg || 0) || 0) * fraccion,
     ingreso: (parseFloat(v.total || 0) || 0) * fraccion
@@ -17231,20 +17343,35 @@ function _ahRenderResumen(lot, pesajes, ventas, compras) {
   var el = document.getElementById('ah-resumen');
   if (!el) return;
 
-  // Calcular cabezas y kg vendidos sumando items de venta
-  // Campos posibles en el modelo de ventas:
-  //   - Venta normal: v.animals (cabezas), v.kg (peso)
-  //   - Venta carne_baja: v.animal_count, v.total_kg
-  //   - Items legacy: i.qty/i.cabezas, i.kg_total/i.peso_total
+  // Calcular cabezas y kg vendidos.
+  // v1.8.48: separar ventas DIRECTAS (100% de este lote) de MIXTAS (compartidas con otros lotes).
+  // Las mixtas NO se suman completas: solo la fracción que corresponde a este lote. Antes el
+  // resumen sumaba la venta entera, dando cabezas imposibles (ej. 273 en un lote de 122).
+  // Esto alinea el Resumen Ejecutivo con la línea de tiempo, que ya las trata como "del conjunto".
   var cabsVendidas = 0;
   var kgVendidos = 0;
-  ventas.forEach(function(v) {
+  var _clasifVtas = _ahClasificarVentas(ventas, lot.code);
+  // Directas: sumar completas
+  _clasifVtas.directas.forEach(function(v) {
     var a = _ahAtribuirVentaALote(v, lot.code);
-    if (a) {
-      cabsVendidas += a.cabs;
-      kgVendidos += a.kg;
-    }
+    if (a) { cabsVendidas += a.cabs; kgVendidos += a.kg; }
   });
+  // Mixtas: sumar solo la fracción atribuible a este lote
+  _clasifVtas.compartidas.forEach(function(v) {
+    var a = _ahAtribuirVentaALote(v, lot.code);
+    if (a) { cabsVendidas += a.cabs; kgVendidos += a.kg; }
+  });
+  cabsVendidas = Math.round(cabsVendidas);
+
+  // v1.8.48/50: SALVAGUARDA — un lote no puede vender más cabezas de las que tuvo.
+  var _cabsLote = _ahCabezasDelLote(lot.code, compras);
+  var _ventasCapadas = false;
+  if (_cabsLote > 0 && cabsVendidas > _cabsLote) {
+    var _factorCap = _cabsLote / cabsVendidas;
+    kgVendidos *= _factorCap;          // escalar kg en la misma proporción
+    cabsVendidas = _cabsLote;
+    _ventasCapadas = true;
+  }
 
   // Detectar período (entrada → venta)
   var fechaEntrada = lot.entry_date || (compras[0] && compras[0].date) || null;
@@ -17287,7 +17414,7 @@ function _ahRenderResumen(lot, pesajes, ventas, compras) {
   });
 
   var html = '';
-  html += _ahKpiCell('🐂 Cabezas vendidas', _ahFmtNum(cabsVendidas));
+  html += _ahKpiCell('🐂 Cabezas vendidas', _ahFmtNum(cabsVendidas), null, _ventasCapadas ? '⚠️ ajustado al máximo del lote' : '');
   html += _ahKpiCell('⚖️ Peso total vendido', _ahFmtNum(kgVendidos) + ' kg');
   if (pesoPromIngreso) {
     var subIngreso = compraIngreso && compraIngreso._via_traspaso ? 'vía ' + compraIngreso._origen_lote : 'al ingreso';
@@ -17306,7 +17433,9 @@ function _ahRenderPerformance(lot, pesajes, ventas, compras) {
   var ingresoTotal = 0;
   var pesoVenta = 0;
   var cabsVenta = 0;
-  ventas.forEach(function(v) {
+  // v1.8.48: directas completas + mixtas solo su fracción (consistente con cabezas/kg)
+  var _clasifIng = _ahClasificarVentas(ventas, lot.code);
+  _clasifIng.directas.concat(_clasifIng.compartidas).forEach(function(v) {
     var a = _ahAtribuirVentaALote(v, lot.code);
     if (a) {
       ingresoTotal += a.ingreso;
@@ -18232,7 +18361,9 @@ function _ahRenderCostos(lot, treatments, mantenimientos, ventas, compras) {
 
   // ─── INGRESOS y COSTO COMPRA ───
   var ingresoTotal = 0;
-  ventas.forEach(function(v) {
+  // v1.8.48: directas completas + mixtas solo su fracción
+  var _clasifIng2 = _ahClasificarVentas(ventas, lot.code);
+  _clasifIng2.directas.concat(_clasifIng2.compartidas).forEach(function(v) {
     var a = _ahAtribuirVentaALote(v, lot.code);
     if (a) ingresoTotal += a.ingreso;
   });
@@ -18250,11 +18381,18 @@ function _ahRenderCostos(lot, treatments, mantenimientos, ventas, compras) {
   }
 
   // ─── CABEZAS VENDIDAS para costo/cab ───
+  // v1.8.48: igual que el resumen, las mixtas cuentan solo su fracción del lote (no completas).
   var cabsVendidas = 0;
-  ventas.forEach(function(v) {
+  var _clasifCab = _ahClasificarVentas(ventas, lot.code);
+  _clasifCab.directas.forEach(function(v) {
     var a = _ahAtribuirVentaALote(v, lot.code);
     if (a) cabsVendidas += a.cabs;
   });
+  _clasifCab.compartidas.forEach(function(v) {
+    var a = _ahAtribuirVentaALote(v, lot.code);
+    if (a) cabsVendidas += a.cabs;
+  });
+  cabsVendidas = Math.round(cabsVendidas);
 
   // ─── EXPLICACIÓN del prorrateo ───
   var elExpl = document.getElementById('ah-costos-explicacion');
@@ -18316,8 +18454,7 @@ function _ahRenderCostos(lot, treatments, mantenimientos, ventas, compras) {
       { label: '⛽ Diesel',          value: indirectos.diesel,    color: '#a3e635' },
       { label: '🍽️ Alimentación',    value: indirectos.alimento,  color: '#fb923c' },
       { label: '🔧 Mant. general',   value: indirectos.mantGeneral, color: '#60a5fa' },
-      { label: '📦 Insumos s/lote',  value: indirectos.compras,   color: '#22d3ee' },
-      { label: '🚜 Maquinaria',      value: indirectos.maquinaria, color: '#a78bfa' }
+      { label: '📦 Insumos s/lote',  value: indirectos.compras,   color: '#22d3ee' }
     ]
   };
 
@@ -18348,7 +18485,6 @@ function _ahRenderCostos(lot, treatments, mantenimientos, ventas, compras) {
   html += _ahIndirCell('🍽️ Alimentación', indirectos.alimento, indirectos.alimento_total);
   html += _ahIndirCell('🔧 Mant. general', indirectos.mantGeneral, indirectos.mantGeneral_total);
   html += _ahIndirCell('📦 Insumos s/lote', indirectos.compras, indirectos.compras_total);
-  html += _ahIndirCell('🚜 Maquinaria', indirectos.maquinaria, indirectos.maquinaria_total);
   html += _ahKpiCell('📊 Subtotal indirecto', moneda + ' ' + _ahFmtNum(indirectos.total, 2), 'var(--amber)',
     cabsVendidas > 0 ? moneda + ' ' + _ahFmtNum(indirectos.total / cabsVendidas, 2) + '/cab' : '');
 
@@ -18508,32 +18644,26 @@ function _ahCalcularIndirectos(lot, ventas, compras) {
   var diasLote = Math.max(1, Math.round((dFin - dInicio) / 86400000));
 
   // ── 2. Cabezas-días del lote ──
-  var cabsCompradas = 0;
-  (compras || []).forEach(function(c) {
-    cabsCompradas += parseInt(c.animal_count || c.cabezas || 0) || 0;
-  });
-  var cabsVendidas = 0;
-  (ventas || []).forEach(function(v) {
-    if (Array.isArray(v.items)) {
-      v.items.forEach(function(i) {
-        if (i.lot_code === lot.code) cabsVendidas += parseInt(i.animals || 0) || 0;
-      });
-    } else {
-      cabsVendidas += parseInt(v.animals || v.animal_count || 0) || 0;
+  // v1.8.42: el numerador (este lote) debe contar las cabezas con el MISMO criterio que el
+  // denominador (cada lote del rebaño), o la fracción puede pasar de 100% (bug del 162%).
+  // Criterio unificado: para un lote vendido, usar las cabezas de su compra de origen (lo que
+  // realmente tuvo durante el ciclo), no animal_count=0. Para uno vivo, su animal_count actual.
+  function _cabsRepresentativas(l, comprasDelLote) {
+    var st = String(l.status || '').toLowerCase();
+    if (st === 'vendido' || st === 'sold') {
+      // cabezas de la compra de origen (lo que pobló el lote durante su ciclo)
+      var cabsComp = 0;
+      (comprasDelLote || []).forEach(function(c){ cabsComp += parseInt(c.animal_count || c.cabezas || 0) || 0; });
+      if (cabsComp > 0) return cabsComp;
+      // fallback: buscar compra por lot_code/lote_destinos
+      var co = (db.compras_ganado || []).find(function(c){ return c.lot_code === l.code || (Array.isArray(c.lote_destinos) && c.lote_destinos.indexOf(l.code) >= 0); });
+      if (co && co.animal_count) return parseInt(co.animal_count) || 50;
+      return 50; // último recurso
     }
-  });
-
-  var cabsFinales = lot.animal_count || 0;
-  var cabsPromedio;
-  if (cabsCompradas > 0) {
-    cabsPromedio = (cabsCompradas + cabsFinales) / 2;
-  } else if (cabsVendidas > 0) {
-    cabsPromedio = cabsVendidas / 2;
-  } else {
-    cabsPromedio = cabsFinales;
+    return parseInt(l.animal_count || 0) || 0;
   }
 
-  result.cabDiasLote = Math.round(cabsPromedio * diasLote);
+  result.cabDiasLote = Math.round(_cabsRepresentativas(lot, compras) * diasLote);
 
   // ── 3. Cabezas-días totales del rebaño en el mismo período ──
   var cabDiasTotal = 0;
@@ -18563,12 +18693,9 @@ function _ahCalcularIndirectos(lot, ventas, compras) {
     // y salía el mismo día daba 0 días y se salteaba, dejando cabDiasTotal=0 y prorrateo en Bs 0.
     var diasSolap = Math.max(1, Math.round((solapFin - solapInicio) / 86400000));
 
-    var lAnim = l.animal_count || 0;
-    if (l.status === 'vendido' || l.status === 'sold') {
-      var compraOrig = (db.compras_ganado || []).find(function(c) { return c.lot_code === l.code || (Array.isArray(c.lote_destinos) && c.lote_destinos.indexOf(l.code) >= 0); });
-      if (compraOrig && compraOrig.animal_count) lAnim = compraOrig.animal_count;
-      else lAnim = 50;
-    }
+    // v1.8.42: mismas cabezas representativas que el numerador (consistencia del prorrateo)
+    var comprasL = (db.compras_ganado || []).filter(function(c){ return c.lot_code === l.code || (Array.isArray(c.lote_destinos) && c.lote_destinos.indexOf(l.code) >= 0); });
+    var lAnim = _cabsRepresentativas(l, comprasL);
 
     cabDiasTotal += lAnim * diasSolap;
   });
@@ -18581,6 +18708,9 @@ function _ahCalcularIndirectos(lot, ventas, compras) {
   }
 
   var fraccion = result.cabDiasLote / cabDiasTotal;
+  // v1.8.42: salvaguarda — la fracción de un lote no puede superar el 100% del rebaño.
+  // (defensa ante cualquier inconsistencia de fechas/cabezas que infle el numerador).
+  if (fraccion > 1) fraccion = 1;
   result.fraccionPct = fraccion * 100;
 
   // ── 4. Sumar costos indirectos del período ──
@@ -18591,25 +18721,38 @@ function _ahCalcularIndirectos(lot, ventas, compras) {
   }
 
   // 4.1 Sueldos: historial_sueldos
+  // v1.8.42: los registros usan los campos `pago_neto`/`salario` (no `monto`/`total`) y
+  // la fecha es `fecha_pago` o el `mes` (YYYY-MM). Antes leía campos inexistentes → daba Bs 0.
   (db.historial_sueldos || []).forEach(function(s) {
-    if (_estaEnPeriodo(s.fecha || s.date)) {
-      result.sueldos_total += parseFloat(s.monto || s.total || 0) || 0;
+    if (s.estado && String(s.estado).toLowerCase() !== 'pagado') return; // solo sueldos pagados
+    var fechaSueldo = s.fecha_pago || s.fecha || s.date || '';
+    // si no hay fecha_pago pero hay mes (YYYY-MM), usar el primer día del mes
+    if (!fechaSueldo && s.mes) fechaSueldo = String(s.mes).slice(0,7) + '-01';
+    if (_estaEnPeriodo(fechaSueldo)) {
+      var montoSueldo = parseFloat(s.pago_neto != null ? s.pago_neto : (s.salario != null ? s.salario : (s.monto || s.total || 0))) || 0;
+      result.sueldos_total += montoSueldo;
     }
   });
 
-  // 4.2 Diesel: despachos del período
+  // 4.2 Diesel: RECARGAS del período (las compras de combustible que tienen costo en Bs).
+  // v1.8.43: antes leía los 'despacho' (consumo, sin costo) → daba Bs 0. El costo real del
+  // combustible son las recargas (type:'recarga', con `total` y `precio`). La fecha puede venir
+  // en `fecha` (Desktop) o `date` (WhatsApp).
   (db.diesel || []).forEach(function(d) {
-    if ((d.type === 'despacho' || d.tipo === 'despacho') && _estaEnPeriodo(d.date || d.fecha)) {
-      var qty = parseFloat(d.qty || d.litros || 0) || 0;
-      var precio = parseFloat(d.precio_unit || d.unit_cost || d.precio || 0) || 0;
-      var valor = parseFloat(d.total || d.costo || (qty * precio)) || 0;
-      result.diesel_total += valor;
-    }
+    var tipo = String(d.type || d.tipo || '').toLowerCase();
+    if (tipo !== 'recarga') return; // solo recargas (compras), no despachos/ajustes/traspasos
+    if (!_estaEnPeriodo(d.date || d.fecha || d.created_at)) return;
+    var litros = parseFloat(d.litros || d.qty || 0) || 0;
+    var precio = parseFloat(d.precio || d.precio_unit || d.unit_cost || 0) || 0;
+    var valor = parseFloat(d.total != null ? d.total : (litros * precio)) || 0;
+    result.diesel_total += valor;
   });
 
   // 4.3 Mantenimiento general (sin lot_code)
+  // v1.8.44: los registros de WhatsApp no traen `date`/`fecha`, solo `created_at`. Antes quedaban
+  // "fuera del período" y su costo se perdía. Ahora se usa created_at como fecha de respaldo.
   (db.maintenance || []).forEach(function(m) {
-    var enPeriodo = _estaEnPeriodo(m.date || m.fecha);
+    var enPeriodo = _estaEnPeriodo(m.date || m.fecha || m.created_at);
     var sinLote = !m.lot_code || m.lot_code === '';
     if (enPeriodo && sinLote) {
       var costoM = 0;
@@ -18640,7 +18783,7 @@ function _ahCalcularIndirectos(lot, ventas, compras) {
     return /\bsal\b|mineral|calcimin|calcio|fosfor|magnesi|suplement|premix|sodio|tabono|alimento|alimentaci|balanceado|concentrado|pellet|ensilaje|ensilado|silaje|heno|forraj|n[úu]cleo|raci[óo]n|melaza|afrechill?o|maiz molido|sorgo|expeller|harina de soja|harina soja/.test(bag);
   }
   (db.purchases || []).forEach(function(p) {
-    var enPeriodo = _estaEnPeriodo(p.date || p.fecha);
+    var enPeriodo = _estaEnPeriodo(p.date || p.fecha || p.created_at);
     var sinLote = !p.lot_code || p.lot_code === '';
     if (enPeriodo && sinLote) {
       var monto = parseFloat(p.total || p.precio_total || p.cost || 0) || 0;
@@ -18667,7 +18810,7 @@ function _ahCalcularIndirectos(lot, ventas, compras) {
   result.mantGeneral = result.mantGeneral_total * fraccion;
   result.compras     = result.compras_total     * fraccion;
   result.maquinaria  = result.maquinaria_total  * fraccion;
-  result.total = result.sueldos + result.diesel + result.alimento + result.mantGeneral + result.compras + result.maquinaria;
+  result.total = result.sueldos + result.diesel + result.alimento + result.mantGeneral + result.compras;
 
   return result;
 }
@@ -18777,7 +18920,7 @@ function _ahRenderObservaciones(lot, pesajes, treatments, compras, ventasDirecta
   el.innerHTML = html;
 }
 
-function _ahRenderVentas(ventasDirectas, ventasCompartidas, lotCode) {
+function _ahRenderVentas(ventasDirectas, ventasCompartidas, lotCode, compras) {
   var el = document.getElementById('ah-ventas-tabla');
   if (!el) return;
 
@@ -18805,7 +18948,18 @@ function _ahRenderVentas(ventasDirectas, ventasCompartidas, lotCode) {
     return String(b.v.date || '').localeCompare(String(a.v.date || ''));
   });
 
-  html += '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Cifras atribuidas a <strong style="color:var(--text)">' + escH(lotCode) + '</strong> (animales y kg específicos de este lote en cada venta)</div>';
+  // v1.8.50: aplicar el MISMO cap que el Resumen Ejecutivo para que ambos coincidan.
+  // Si la suma de cabezas atribuidas supera las que el lote tuvo, escalar cada fila en proporción.
+  var _sumCab = filasVentas.reduce(function(s, r){ return s + r.atr.cabs; }, 0);
+  var _cabsLote = _ahCabezasDelLote(lotCode, compras);
+  var _factorCap = 1;
+  var _capado = false;
+  if (_cabsLote > 0 && _sumCab > _cabsLote) {
+    _factorCap = _cabsLote / _sumCab;
+    _capado = true;
+  }
+
+  html += '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Cifras atribuidas a <strong style="color:var(--text)">' + escH(lotCode) + '</strong> (animales y kg específicos de este lote en cada venta)' + (_capado ? ' · <span style="color:#d4a017">⚠️ ajustadas al máximo del lote</span>' : '') + '</div>';
   html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">';
   html += '<thead><tr style="border-bottom:1px solid var(--bor);color:var(--muted);text-transform:uppercase;font-size:10px;letter-spacing:.05em">';
   html += '<th style="text-align:left;padding:8px">Fecha</th>';
@@ -18820,15 +18974,21 @@ function _ahRenderVentas(ventasDirectas, ventasCompartidas, lotCode) {
   var totCab = 0, totKg = 0, totImp = 0;
   filasVentas.forEach(function(r) {
     var v = r.v;
-    var atr = r.atr;
+    // aplicar el factor de cap a las cifras de la fila
+    var cabsFila = r.atr.cabs * _factorCap;
+    var kgFila = r.atr.kg * _factorCap;
+    var ingFila = r.atr.ingreso * _factorCap;
     var precio = parseFloat(v.price_per_kg || v.precio || 0) || 0;
-    totCab += atr.cabs; totKg += atr.kg; totImp += atr.ingreso;
+    totCab += cabsFila; totKg += kgFila; totImp += ingFila;
 
     // Badge indicando tipo de venta
     var badge = '';
-    var esMulti = Array.isArray(v.lot_codes) && v.lot_codes.length > 1;
+    var esMulti = (Array.isArray(v.lot_codes) && v.lot_codes.length > 1) ||
+                  (typeof v.lot_code === 'string' && v.lot_code.indexOf(',') >= 0);
     if (esMulti) {
-      var otrosLotes = (v.lot_codes || []).filter(function(c) { return c !== lotCode; });
+      var lotesV = Array.isArray(v.lot_codes) ? v.lot_codes :
+                   (typeof v.lot_code === 'string' ? v.lot_code.split(',').map(function(x){return x.trim();}) : []);
+      var otrosLotes = lotesV.filter(function(c) { return c !== lotCode; });
       var tooltipTxt = 'Venta multi-lote · ' + otrosLotes.length + ' otro(s) lote(s): ' + otrosLotes.join(', ');
       badge = ' <span title="' + escH(tooltipTxt) + '" style="font-size:9px;background:rgba(255,180,0,.15);color:var(--amber);padding:1px 6px;border-radius:8px;margin-left:4px;cursor:help">multi-lote</span>';
     }
@@ -18837,10 +18997,10 @@ function _ahRenderVentas(ventasDirectas, ventasCompartidas, lotCode) {
     html += '<td style="padding:8px">' + _ahFmtFecha(v.date) + '</td>';
     html += '<td style="padding:8px">' + (v.comprador || v.buyer || '-') + badge + '</td>';
     html += '<td style="padding:8px">' + (v.tipo || v.type || '-') + '</td>';
-    html += '<td style="padding:8px;text-align:right">' + _ahFmtNum(atr.cabs) + '</td>';
-    html += '<td style="padding:8px;text-align:right">' + _ahFmtNum(atr.kg, 1) + '</td>';
+    html += '<td style="padding:8px;text-align:right">' + _ahFmtNum(cabsFila) + '</td>';
+    html += '<td style="padding:8px;text-align:right">' + _ahFmtNum(kgFila, 1) + '</td>';
     html += '<td style="padding:8px;text-align:right">' + (precio ? moneda + ' ' + _ahFmtNum(precio, 2) : '-') + '</td>';
-    html += '<td style="padding:8px;text-align:right;font-weight:600;color:var(--green)">' + moneda + ' ' + _ahFmtNum(atr.ingreso) + '</td>';
+    html += '<td style="padding:8px;text-align:right;font-weight:600;color:var(--green)">' + moneda + ' ' + _ahFmtNum(ingFila) + '</td>';
     html += '</tr>';
   });
 
@@ -20864,13 +21024,17 @@ function _keBuildMovimientos() {
     });
   });
 
-  // INFORMATIVO — Marcajes (cuarentena → lote final). No mueve el saldo (los animales ya
-  // estaban en la estancia), pero da trazabilidad de cuándo un lote CUAR pasó a su nombre final.
-  // Se reconstruye desde los lotes con status 'marcado_completo' y su marcaje_lot_destino.
+  // INFORMATIVO — Marcajes / traspasos (cuarentena → lote final). No mueven el saldo de la
+  // estancia (los animales ya estaban dentro), pero dan trazabilidad de cuándo un lote CUAR
+  // pasó a su(s) lote(s) destino.
+  // v1.8.49: los datos de César no tienen marcaje_lot_destino/marcaje_completo_at en el lote;
+  // la relación CUAR→destino vive en compras_ganado.lote_destinos. Reconstruimos desde ahí.
+  // Primero intentamos el camino moderno (campos del lote); si no, el de las compras.
+  var _marcajesDesdeCompras = false;
   (db.lots || []).forEach(function(l) {
     var st = String(l.status || '').toLowerCase();
     if (st !== 'marcado_completo' && st !== 'marcado') return;
-    if (!l.marcaje_lot_destino) return;
+    if (!l.marcaje_lot_destino) return; // sin destino moderno → se cubre abajo con las compras
     var fecha = String(l.marcaje_completo_at || l.entry_date || '').slice(0, 10);
     if (!fecha) return;
     var cabs = parseInt(l.animal_count || 0) || 0;
@@ -20883,6 +21047,41 @@ function _keBuildMovimientos() {
       valor: 0,
       valorCab: 0,
       _ts: l.marcaje_completo_at || fecha
+    });
+    _marcajesDesdeCompras = true; // hubo al menos un marcaje moderno para este lote
+  });
+
+  // Camino de respaldo: reconstruir marcajes desde las compras que tienen lote_destinos.
+  // Solo para lotes CUAR cuyo marcaje no se haya registrado por el camino moderno.
+  var _lotesConMarcajeModerno = {};
+  (db.lots || []).forEach(function(l){
+    if (l.marcaje_lot_destino) _lotesConMarcajeModerno[l.code] = true;
+  });
+  (db.compras_ganado || []).forEach(function(c) {
+    var origen = c.lot_code;
+    if (!origen) return;
+    var destinos = Array.isArray(c.lote_destinos) ? c.lote_destinos : [];
+    if (!destinos.length) return;                 // sin destino → no hubo marcaje registrado
+    if (_lotesConMarcajeModerno[origen]) return;  // ya se mostró por el camino moderno
+    var cabs = parseInt(c.animal_count || c.cabezas || 0) || 0;
+    // fecha del marcaje: si el lote destino tiene entry_date úsalo; si no, la fecha de la compra
+    var loteOrigen = (db.lots || []).find(function(l){ return l.code === origen; });
+    var fecha = '';
+    // preferir la entry_date del primer destino (cuando arrancó como lote propio)
+    var primerDest = (db.lots || []).find(function(l){ return l.code === destinos[0]; });
+    if (primerDest && primerDest.entry_date) fecha = String(primerDest.entry_date).slice(0,10);
+    if (!fecha && loteOrigen && loteOrigen.entry_date) fecha = String(loteOrigen.entry_date).slice(0,10);
+    if (!fecha) fecha = String(c.fecha || '').slice(0,10);
+    if (!fecha) return;
+    movs.push({
+      fecha: fecha,
+      tipo: 'marcaje',
+      clase: 'info',
+      detalle: 'Marcaje: ' + origen + ' → ' + destinos.join(' + ') + (cabs ? ' (' + cabs + ' cab)' : ''),
+      cabezas: 0,
+      valor: 0,
+      valorCab: 0,
+      _ts: fecha
     });
   });
 
@@ -21136,70 +21335,152 @@ function _rpBuildData() {
     if (Array.isArray(c.lote_destinos)) c.lote_destinos.forEach(function(ld){ p.lotesDestino[ld] = true; });
   });
 
-  // Para cada proveedor, seguir el linaje de sus lotes de destino y atribuir ventas
+  // v1.8.40: ATRIBUCIÓN PROPORCIONAL. Un mismo lote puede recibir ganado de varios proveedores
+  // (ej. TROPA 3 recibió cabezas de NELORÍ y de EL CARMEN). Antes cada proveedor se llevaba las
+  // ventas COMPLETAS del lote → doble conteo e inversión/ventas infladas. Ahora se reparte cada
+  // lote según la fracción de cabezas que cada compra aportó.
+
+  // Paso 1: mapa lote_destino → [{prov, cabs}] (cuántas cabezas aportó cada proveedor a cada lote)
+  // v1.8.47: normalizar nombres de lote. Las compras a veces apuntan a "TROPA 1" pero el lote
+  // real se llama "Tropa 1" (mayúsculas/espacios distintos). Resolvemos cada código al nombre
+  // real del lote para que los aportes caigan en el lote correcto y no en uno fantasma.
+  var lotesReales = (db.lots || []).map(function(l){ return l.code; });
+  function _normLote(code){
+    if (!code) return code;
+    var c = String(code).trim();
+    // match exacto primero
+    if (lotesReales.indexOf(c) >= 0) return c;
+    // match case-insensitive ignorando espacios extra
+    var cKey = c.toLowerCase().replace(/\s+/g, ' ');
+    var found = lotesReales.find(function(lc){ return String(lc).toLowerCase().replace(/\s+/g, ' ') === cKey; });
+    return found || c;
+  }
+
+  var aportesPorLote = {}; // code -> total cabs aportadas, y por proveedor
+  Object.keys(porProv).forEach(function(prov){
+    porProv[prov].compras.forEach(function(c){
+      var cabs = parseInt(c.animal_count || c.cabezas || 0) || 0;
+      if (cabs <= 0) return;
+      // destinos de esta compra: lot_code y lote_destinos (normalizados al nombre real)
+      var destinos = [];
+      if (c.lot_code) destinos.push(_normLote(c.lot_code));
+      if (Array.isArray(c.lote_destinos)) c.lote_destinos.forEach(function(ld){ var n = _normLote(ld); if (destinos.indexOf(n) < 0) destinos.push(n); });
+      if (!destinos.length) return;
+      // repartir las cabezas de la compra entre sus destinos (si hay varios, en partes iguales)
+      var cabsPorDestino = cabs / destinos.length;
+      destinos.forEach(function(code){
+        if (!aportesPorLote[code]) aportesPorLote[code] = { total: 0, porProv: {} };
+        aportesPorLote[code].total += cabsPorDestino;
+        aportesPorLote[code].porProv[prov] = (aportesPorLote[code].porProv[prov] || 0) + cabsPorDestino;
+      });
+    });
+  });
+
+  // Paso 2: para cada lote final (siguiendo linaje), determinar de qué lotes-destino proviene,
+  // y por ende qué fracción corresponde a cada proveedor.
+  // fraccionLoteProv[code][prov] = fracción (0..1) de ese lote que es de ese proveedor.
+  var fraccionLoteProv = {};
+  (db.lots || []).forEach(function(lot){
+    if (!lot.code) return;
+    var lineage = (typeof _ahGetLineage === 'function') ? _ahGetLineage(lot.code) : [{code:lot.code}];
+    // sumar aportes de todos los lotes-destino que aparecen en el linaje de este lote
+    var acumProv = {}; var acumTotal = 0;
+    lineage.forEach(function(ln){
+      var ap = aportesPorLote[ln.code];
+      if (!ap) return;
+      Object.keys(ap.porProv).forEach(function(prov){
+        acumProv[prov] = (acumProv[prov] || 0) + ap.porProv[prov];
+        acumTotal += ap.porProv[prov];
+      });
+    });
+    if (acumTotal > 0) {
+      fraccionLoteProv[lot.code] = {};
+      Object.keys(acumProv).forEach(function(prov){
+        fraccionLoteProv[lot.code][prov] = acumProv[prov] / acumTotal;
+      });
+    }
+  });
+
+  // Paso 3: recorrer cada lote y repartir sus ventas / engorde proporcionalmente entre proveedores
+  Object.keys(porProv).forEach(function(prov){
+    var p = porProv[prov];
+    p.cabsVendidas = 0; p.kgVendidos = 0; p.ingresoVenta = 0; p.cabsEnEngorde = 0;
+  });
+
+  (db.lots || []).forEach(function(lot){
+    if (!lot.code) return;
+    var fracMap = fraccionLoteProv[lot.code];
+    if (!fracMap) return; // este lote no proviene de ninguna compra rastreable
+    var st = String(lot.status || '').toLowerCase();
+    var esVendido = (st === 'vendido' || st === 'sold');
+    var esVivo = (st !== 'fusionado' && st !== 'merged' && st !== 'marcado' && st !== 'marcado_completo' && st !== 'inactivo' && !esVendido);
+
+    if (esVendido) {
+      // sumar ventas del lote (totales) una sola vez
+      var lotCabs = 0, lotKg = 0, lotIngreso = 0;
+      ventas.forEach(function(v){
+        var a = (typeof _ahAtribuirVentaALote === 'function') ? _ahAtribuirVentaALote(v, lot.code) : null;
+        if (a && a.cabs > 0) { lotCabs += a.cabs; lotKg += a.kg; lotIngreso += a.ingreso; }
+      });
+      // repartir entre proveedores según su fracción
+      Object.keys(fracMap).forEach(function(prov){
+        if (!porProv[prov]) return;
+        var f = fracMap[prov];
+        porProv[prov].cabsVendidas += lotCabs * f;
+        porProv[prov].kgVendidos   += lotKg * f;
+        porProv[prov].ingresoVenta += lotIngreso * f;
+      });
+    } else if (esVivo) {
+      var lotCabsVivas = parseInt(lot.animal_count || 0) || 0;
+      Object.keys(fracMap).forEach(function(prov){
+        if (!porProv[prov]) return;
+        porProv[prov].cabsEnEngorde += lotCabsVivas * fracMap[prov];
+      });
+    }
+  });
+
+  // Paso 4: calcular costos y métricas derivadas por proveedor
   Object.keys(porProv).forEach(function(prov) {
     var p = porProv[prov];
+    // redondear cabezas (las fracciones pueden dar decimales)
+    p.cabsVendidas = Math.round(p.cabsVendidas);
+    p.cabsEnEngorde = Math.round(p.cabsEnEngorde);
 
-    // Expandir lotes de destino siguiendo el linaje (cuarentena → marcaje → lote final)
-    // Un lote destino CUAR-XXX puede haber sido marcado a SS1; SS1 puede haber sido separado, etc.
-    // Buscamos todos los lotes cuyo linaje incluya alguno de los lotes de destino del proveedor.
-    var lotesProveedor = {};
-    Object.keys(p.lotesDestino).forEach(function(code){ lotesProveedor[code] = true; });
-    (db.lots || []).forEach(function(lot) {
-      if (!lot.code) return;
-      var lineage = (typeof _ahGetLineage === 'function') ? _ahGetLineage(lot.code) : [{code:lot.code}];
-      var perteneceAlProv = lineage.some(function(ln){ return p.lotesDestino[ln.code]; });
-      if (perteneceAlProv) lotesProveedor[lot.code] = true;
-    });
-
-    // Recolectar datos de los lotes VENDIDOS del proveedor
-    var cabsVendidas = 0, kgVendidos = 0, ingresoVenta = 0;
-    var cabsEnEngorde = 0;  // vivos, no vendidos
-    var sumGMD = 0, nGMD = 0;
-    var costoVendido = 0;  // costo de compra atribuible a las cabezas vendidas
-
-    Object.keys(lotesProveedor).forEach(function(code) {
-      var lot = (db.lots || []).find(function(l){ return l.code === code; });
-      if (!lot) return;
-      var st = String(lot.status || '').toLowerCase();
-      var esVendido = (st === 'vendido' || st === 'sold');
-
-      if (esVendido) {
-        // Atribuir las ventas de este lote
-        ventas.forEach(function(v) {
-          var a = (typeof _ahAtribuirVentaALote === 'function') ? _ahAtribuirVentaALote(v, code) : null;
-          if (a && a.cabs > 0) {
-            cabsVendidas += a.cabs;
-            kgVendidos += a.kg;
-            ingresoVenta += a.ingreso;
-          }
-        });
-      } else if (st !== 'fusionado' && st !== 'merged' && st !== 'marcado' && st !== 'marcado_completo' && st !== 'inactivo') {
-        // Vivo (activo o cuarentena) = en engorde
-        cabsEnEngorde += parseInt(lot.animal_count || 0) || 0;
+    // v1.8.47: SALVAGUARDA — un proveedor no puede tener más cabezas (vendidas + en engorde)
+    // que las que compró. Los datos de ventas multi-lote a veces mezclan lotes y la atribución
+    // puede sobrepasar lo comprado; capar evita resultados imposibles (ej. 4 compradas → 9 vendidas).
+    if (p.cabsCompradas > 0) {
+      var totalSalidas = p.cabsVendidas + p.cabsEnEngorde;
+      if (totalSalidas > p.cabsCompradas) {
+        // escalar proporcionalmente vendidas y engorde para que sumen como mucho lo comprado
+        var factor = p.cabsCompradas / totalSalidas;
+        var nuevasVendidas = Math.round(p.cabsVendidas * factor);
+        // escalar también kg e ingreso de las ventas en la misma proporción (coherencia)
+        if (p.cabsVendidas > 0) {
+          var ratioVendidas = nuevasVendidas / p.cabsVendidas;
+          p.kgVendidos *= ratioVendidas;
+          p.ingresoVenta *= ratioVendidas;
+        }
+        p.cabsVendidas = nuevasVendidas;
+        p.cabsEnEngorde = p.cabsCompradas - nuevasVendidas;
+        if (p.cabsEnEngorde < 0) p.cabsEnEngorde = 0;
+        p._capado = true; // marca para mostrar aviso en la UI
       }
-    });
+    }
 
-    // Costo de compra atribuible a lo vendido: prorratear inversión por proporción de cabezas vendidas
-    // (de las cabezas compradas, cuántas ya se vendieron)
     var costoPorCabCompra = p.cabsCompradas > 0 ? p.inversionTotal / p.cabsCompradas : 0;
-    costoVendido = costoPorCabCompra * cabsVendidas;
+    var costoVendido = costoPorCabCompra * p.cabsVendidas;
 
-    // GMD: estimar desde peso ingreso vs peso venta del proveedor
     var pesoPromIngreso = p.cabsCompradas > 0 ? p.kgIngreso / p.cabsCompradas : 0;
-    var pesoPromVenta = cabsVendidas > 0 ? kgVendidos / cabsVendidas : 0;
+    var pesoPromVenta = p.cabsVendidas > 0 ? p.kgVendidos / p.cabsVendidas : 0;
 
-    p.cabsVendidas = cabsVendidas;
-    p.kgVendidos = kgVendidos;
-    p.ingresoVenta = ingresoVenta;
-    p.cabsEnEngorde = cabsEnEngorde;
     p.costoVendido = costoVendido;
-    p.resultado = ingresoVenta - costoVendido;
+    p.resultado = p.ingresoVenta - costoVendido;
     p.margen = costoVendido > 0 ? (p.resultado / costoVendido) * 100 : 0;
     p.costoPorCab = costoPorCabCompra;
     p.pesoPromIngreso = pesoPromIngreso;
     p.pesoPromVenta = pesoPromVenta;
-    p.precioPromKgVenta = kgVendidos > 0 ? ingresoVenta / kgVendidos : 0;
+    p.precioPromKgVenta = p.kgVendidos > 0 ? p.ingresoVenta / p.kgVendidos : 0;
   });
 
   // Convertir a array y ordenar por margen (más rentable primero), proveedores con ventas arriba
@@ -21268,6 +21549,9 @@ function renderRentabilidadProveedor() {
     html += '<div>';
     html += '<div style="font-size:17px;font-weight:700;color:var(--text)">' + medalla + escH(p.proveedor) + '</div>';
     html += '<div style="font-size:11px;color:var(--muted);margin-top:3px">' + p.cabsCompradas + ' cab compradas · Bs ' + Math.round(p.costoPorCab).toLocaleString() + '/cab · ' + (p.pesoPromIngreso > 0 ? p.pesoPromIngreso.toFixed(0) + ' kg ingreso prom' : 'sin peso') + '</div>';
+    if (p._capado) {
+      html += '<div style="font-size:10.5px;color:#d4a017;margin-top:4px;display:flex;align-items:center;gap:4px" title="Algunas ventas mezclaban varios lotes en un mismo registro, así que las cabezas atribuidas a este proveedor se ajustaron para no superar las que compró. Para mayor precisión, registrá las ventas por lote individual.">⚠️ Cifras ajustadas: ventas de lotes combinados</div>';
+    }
     html += '</div>';
     if (tieneVentas) {
       html += '<div style="text-align:right">';
@@ -25685,6 +25969,76 @@ function showUpdateNotification(version, downloaded) {
 // Convención: máximo 3-5 bullets cortos. Lo que el usuario debe saber, no detalle técnico.
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.8.51': [
+    'Análisis Histórico: corregido el conteo de cabezas de un lote para que incluya los traspasos entre lotes.',
+    '  - Cuando se juntan animales de varios lotes en uno solo para venderlos (ej. pasar animales de Tropa 1 y Tropa 2 a Tropa 3), esos traspasos ahora se cuentan.',
+    '  - Antes solo se contaban las compras, así que un lote de concentración aparecía con menos cabezas de las reales y sus ventas se recortaban por error.',
+    '  - Resultado: las ventas de lotes que recibieron animales por traspaso se muestran completas, sin ajustes innecesarios.',
+  ],
+  '1.8.50': [
+    'Análisis Histórico: el Resumen Ejecutivo y el Detalle de Venta(s) ahora muestran SIEMPRE el mismo número de cabezas vendidas.',
+    '  - Antes el resumen capaba y el detalle no, así que mostraban cifras distintas (ej. 62 arriba y 273 abajo).',
+    '  - Se corrigió además el conteo de cuántas cabezas tuvo el lote: cuando el ganado pasa por cuarentena (ej. CUAR-006 → Tropa 3), las cabezas ya no se reparten por error entre la cuarentena y el destino.',
+    '  - El detalle de ventas reparte cada fila en la misma proporción del ajuste y avisa con ⚠️ cuando las cifras se ajustaron al máximo del lote.',
+  ],
+  '1.8.49': [
+    'Kardex Estancia: ahora se muestran los pasos de marcaje (cuando un lote de cuarentena pasa a su lote final, ej. CUAR-006 → Tropa 3).',
+    '  - Antes solo aparecían si el lote tenía registrado el destino de forma interna; los lotes más antiguos no lo tenían y el paso no se veía.',
+    '  - Ahora se reconstruye desde los datos de la compra (que sí guardan a qué lote fue cada cuarentena). Estos pasos no cambian el saldo de la estancia, solo dan trazabilidad.',
+  ],
+  '1.8.48': [
+    'Análisis Histórico: el Resumen Ejecutivo ya no suma de más las ventas que combinan varios lotes.',
+    '  - Antes, una venta "mixta" (ej. de Tropa 1 + Tropa 2 + Tropa 3 juntas) se contaba completa en cada lote, mostrando más cabezas vendidas de las que el lote tuvo.',
+    '  - Ahora las ventas directas cuentan completas y las mixtas solo la parte que corresponde al lote, igual que ya hacía la línea de tiempo de abajo.',
+    '  - Además, como salvaguarda, las cabezas vendidas nunca superan las que ingresaron al lote; cuando se aplica ese ajuste, la tarjeta lo avisa con ⚠️.',
+  ],
+  '1.8.47': [
+    'Rentabilidad x Proveedor: corregido un cálculo imposible (un proveedor mostraba más cabezas vendidas y en engorde que las que había comprado).',
+    '  - Causa: las ventas que combinan varios lotes en un mismo registro (ej. "Tropa 1, Tropa 2, Tropa 3") no se repartían bien entre esos lotes.',
+    '  - Ahora esas ventas se reparten correctamente, los nombres de lote con mayúsculas/minúsculas distintas se reconocen como el mismo, y ningún proveedor puede tener más salidas (vendidas + engorde) que las cabezas que compró.',
+    '  - Cuando se aplica este ajuste por ventas de lotes combinados, la tarjeta lo avisa para que sepas que esa cifra tiene un margen de aproximación.',
+  ],
+  '1.8.46': [
+    'Costo/kg del header: ahora cuenta el diesel y mantenimiento registrados por WhatsApp.',
+    '  - El cálculo del costo por kg (que alimenta el header y el reporte CREA) perdía las recargas de diesel y los mantenimientos cargados por WhatsApp, porque usan un campo de fecha distinto.',
+    '  - Corregido: ahora reconoce esas fechas y los incluye, igual que ya quedó en el Análisis Histórico. El Costo/kg refleja mejor los gastos reales.',
+  ],
+  '1.8.45': [
+    'Header: se retiró el indicador "Valor aproximado" por ahora.',
+    '  - Con pocos datos de ventas y pesajes desactualizados, la estimación podía dar una impresión equivocada.',
+    '  - El header queda con: Cabezas, Inversión ganado y Costo/kg. Se puede reactivar más adelante cuando haya más historial.',
+  ],
+  '1.8.44': [
+    'Análisis Histórico: el mantenimiento registrado por WhatsApp ahora cuenta en el prorrateo.',
+    '  - Esos registros no traen fecha propia (solo fecha de creación), así que antes quedaban "fuera del período" y su costo se perdía.',
+    '  - Ahora se usa la fecha de creación como respaldo, recuperando esos mantenimientos (y se aplicó el mismo respaldo a diesel e insumos por consistencia).',
+  ],
+  '1.8.43': [
+    'Análisis Histórico: corregido el prorrateo de DIESEL y limpieza de categorías.',
+    '  - El diesel ahora suma las RECARGAS (compras de combustible con su costo en Bs); antes leía los despachos de consumo y daba siempre Bs 0.',
+    '  - Quitada la tarjeta "Maquinaria" de los costos indirectos: esos registros son el inventario de equipos (su valor), no gastos del período. Los gastos reales de las máquinas ya se cuentan en diesel y mantenimiento.',
+    '  - Verificado que Alimentación (sal y suplementos) e Insumos s/lote toman correctamente las compras del período.',
+  ],
+  '1.8.42': [
+    'Análisis Histórico: corregido el prorrateo de costos indirectos al lote.',
+    '  - Los SUELDOS ahora se prorratean correctamente (antes mostraban Bs 0 porque el cálculo leía un campo equivocado del historial de sueldos).',
+    '  - Solo cuenta sueldos pagados cuya fecha cae dentro del período del lote.',
+    '  - Corregido el porcentaje de prorrateo que podía pasar de 100% (se veía "162%"): ahora el lote se mide con el mismo criterio de cabezas-días que el resto del rebaño, y nunca supera el 100%.',
+    '  - Las demás categorías (diesel, alimentación, mantenimiento, insumos, maquinaria) ya estaban bien atribuidas.',
+  ],
+  '1.8.41': [
+    'Header "Valor aproximado": ahora proyecta el peso del ganado a la fecha de hoy.',
+    '  - Antes valuaba al último peso registrado, que suele estar desactualizado (ganado pesado hace meses), subestimando el rodeo.',
+    '  - Ahora estima el peso de hoy: último peso + ganancia diaria (GMD) × días desde ese pesaje, con un tope de 180 días de proyección y sin pasar del peso objetivo de venta.',
+    '  - La GMD se calcula de los pesajes del propio lote; si el lote no tiene historia suficiente, usa el promedio del rodeo.',
+    '  - Resultado: el valor aproximado refleja mejor lo que vale el ganado en engorde hoy, no a un peso viejo.',
+  ],
+  '1.8.40': [
+    'Rentabilidad x Proveedor: corregido el cálculo cuando un mismo lote recibió ganado de varios proveedores.',
+    '  - Antes, si dos proveedores aportaron animales al mismo lote (ej. NELORÍ y EL CARMEN a TROPA 3), cada uno se llevaba las ventas COMPLETAS del lote, inflando cabezas, inversión y resultado (de ahí los -78% imposibles).',
+    '  - Ahora las ventas, el ingreso y las cabezas en engorde de cada lote se reparten proporcionalmente según cuántas cabezas aportó cada proveedor.',
+    '  - Los márgenes y resultados por proveedor ahora son realistas y no se duplican.',
+  ],
   '1.8.39': [
     'Contabilidad: rediseño estético del Resumen jerárquico (sin cambiar la funcionalidad).',
     '  - Cada tipo (Fijo, Operativo, Variable) ahora es una tarjeta con borde y barra de acento de su color, para distinguirlos de un vistazo.',
@@ -30958,17 +31312,23 @@ function renderReporteCREA() {
   var gastAdelantos = (db.advances || []).filter(function(a) { return (a.date || '') >= desdeStr && (a.date || '') <= hastaStr; }).reduce(function(s, a) { return s + (a.amount || 0); }, 0);
 
   // Diesel = recargas + compras con subcuenta 'Combustible'
-  var gastDiesel = (db.diesel || []).filter(function(d) { return d.type === 'recarga' && (d.fecha || '') >= desdeStr && (d.fecha || '') <= hastaStr; }).reduce(function(s, d) { return s + (d.total || (parseFloat(d.litros)||0) * (parseFloat(d.precio)||0)); }, 0)
+  // v1.8.46: las recargas de WhatsApp usan `date` (no `fecha`); algunas solo `created_at`.
+  // Antes el filtro miraba solo `d.fecha` y perdía esas recargas. Helper unificado:
+  function _dieselFecha(d){ return String(d.date || d.fecha || d.created_at || '').slice(0,10); }
+  function _esRecargaPeriodo(d){ var f=_dieselFecha(d); return d.type === 'recarga' && f >= desdeStr && f <= hastaStr; }
+  function _esDespachoPeriodo(d){ var f=_dieselFecha(d); return d.type === 'despacho' && f >= desdeStr && f <= hastaStr; }
+  var gastDiesel = (db.diesel || []).filter(_esRecargaPeriodo).reduce(function(s, d) { return s + (d.total || (parseFloat(d.litros)||0) * (parseFloat(d.precio)||0)); }, 0)
                 + purchByCat.combustible;
   // Merma diesel como costo adicional
-  var dieselRecargas = (db.diesel || []).filter(function(d) { return d.type === 'recarga' && (d.fecha || '') >= desdeStr && (d.fecha || '') <= hastaStr; }).reduce(function(s,d){ return s + (parseFloat(d.litros)||0); }, 0);
-  var dieselDespachos = (db.diesel || []).filter(function(d) { return d.type === 'despacho' && (d.fecha || '') >= desdeStr && (d.fecha || '') <= hastaStr; }).reduce(function(s,d){ return s + (parseFloat(d.litros)||0); }, 0);
+  var dieselRecargas = (db.diesel || []).filter(_esRecargaPeriodo).reduce(function(s,d){ return s + (parseFloat(d.litros)||0); }, 0);
+  var dieselDespachos = (db.diesel || []).filter(_esDespachoPeriodo).reduce(function(s,d){ return s + (parseFloat(d.litros)||0); }, 0);
   var mermaDiesel = Math.max(0, dieselRecargas - dieselDespachos);
-  var precioPromDiesel = dieselRecargas > 0 ? ((db.diesel || []).filter(function(d) { return d.type === 'recarga' && (d.fecha || '') >= desdeStr && (d.fecha || '') <= hastaStr; }).reduce(function(s, d) { return s + (d.total || (parseFloat(d.litros)||0) * (parseFloat(d.precio)||0)); }, 0)) / dieselRecargas : 0;
+  var precioPromDiesel = dieselRecargas > 0 ? ((db.diesel || []).filter(_esRecargaPeriodo).reduce(function(s, d) { return s + (d.total || (parseFloat(d.litros)||0) * (parseFloat(d.precio)||0)); }, 0)) / dieselRecargas : 0;
   var costoMermaDiesel = Math.round(mermaDiesel * precioPromDiesel * 100) / 100;
 
   // Mantenimiento = registros de maintenance + compras con subcuenta 'Mantenimiento*'
-  var gastMaint = (db.maintenance || []).filter(function(m) { return (m.date || '') >= desdeStr && (m.date || '') <= hastaStr; }).reduce(function(s, m) { return s + (m.cost || 0); }, 0)
+  // v1.8.46: incluir mantenimientos de WhatsApp (sin date propio, solo created_at).
+  var gastMaint = (db.maintenance || []).filter(function(m) { var f = String(m.date || m.fecha || m.created_at || '').slice(0,10); return f >= desdeStr && f <= hastaStr; }).reduce(function(s, m) { return s + (m.cost || 0); }, 0)
                 + purchByCat.mantenimiento;
 
   // Compras insumos = SOLO las purchases que no caen en ninguna categoría productiva
