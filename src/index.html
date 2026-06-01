@@ -3189,7 +3189,7 @@ function publishTasksToPWA() {
 <div id="page-personal" class="page">
   <div class="ph">
     <div><div class="pt">👷 Personal</div><div class="ps">Empleados y actividades de campo</div></div>
-    <button class="btn btn-primary" onclick="openModal('modal-employee')">+ Nuevo empleado</button>
+    <button class="btn btn-primary" onclick="nuevoEmpleado()">+ Nuevo empleado</button>
     <button class="btn btn-ghost" onclick="exportPersonal()" title="Exportar personal">⬇ Personal</button>
     <button class="btn btn-ghost" onclick="exportAdelantos()" title="Exportar adelantos">⬇ Adelantos</button>
   </div>
@@ -3299,6 +3299,7 @@ function publishTasksToPWA() {
             <input type="checkbox" id="ps-check-all" onchange="toggleAllPsEmpleados(this.checked)" checked>
           </th>
           <th style="padding:8px;text-align:left;border-bottom:1px solid var(--bor)">Empleado</th>
+          <th style="padding:8px;text-align:center;border-bottom:1px solid var(--bor);width:70px">Días</th>
           <th style="padding:8px;text-align:right;border-bottom:1px solid var(--bor)">Salario</th>
           <th style="padding:8px;text-align:right;border-bottom:1px solid var(--bor)">Adelantos</th>
           <th style="padding:8px;text-align:right;border-bottom:1px solid var(--bor);color:var(--green)">Neto</th>
@@ -4876,6 +4877,10 @@ function publishTasksToPWA() {
 <div class="form-row">
   <div class="form-group"><label class="form-label">Fecha de ingreso</label><input class="form-input" type="date" id="emp-hire"></div>
   <div class="form-group"><label class="form-label">PIN acceso PWA (4 digitos)</label><input class="form-input" type="password" id="emp-pin" maxlength="4" placeholder="Ej: 1234" inputmode="numeric" pattern="[0-9]{4}"></div>
+</div>
+<div class="form-row">
+  <div class="form-group"><label class="form-label">Fecha de baja <span style="color:var(--muted);font-weight:400">(opcional · al renunciar/retirarse)</span></label><input class="form-input" type="date" id="emp-term"></div>
+  <div class="form-group"></div>
 </div>
 <div class="form-actions">
   <button class="btn btn-ghost" onclick="_editingEmployeeId=null;document.querySelector('#modal-employee h2').textContent='Nuevo Empleado';closeModal('modal-employee')">Cancelar</button>
@@ -10710,7 +10715,7 @@ function renderPersonal() {
       var roleBdg = e.role==='capataz'?'bdg-amber':'bdg-blue';
       var statusBdg = e.active?'bdg-green':'bdg-red';
       var tr = document.createElement('tr');
-      tr.innerHTML = '<td style="font-weight:500">'+escH(e.name)+'</td><td><span class="bdg '+roleBdg+'">'+capFirst(e.role)+'</span></td><td style="font-size:12px">'+escH(e.phone||'-')+'</td><td style="color:var(--amber2)">Bs. '+((e.salary||0).toLocaleString())+'/mes</td><td style="font-size:12px">'+e.hire_date+'</td><td style="font-size:11px;color:var(--muted);font-family:DM Mono,monospace">'+(e.pin?'PIN: ****':'Sin PIN')+'</td><td><span class="bdg '+statusBdg+'">'+(e.active?'Activo':'Inactivo')+'</span></td><td style="display:flex;gap:4px"></td>';
+      tr.innerHTML = '<td style="font-weight:500">'+escH(e.name)+'</td><td><span class="bdg '+roleBdg+'">'+capFirst(e.role)+'</span></td><td style="font-size:12px">'+escH(e.phone||'-')+'</td><td style="color:var(--amber2)">Bs. '+((e.salary||0).toLocaleString())+'/mes</td><td style="font-size:12px">'+(e.hire_date||'-')+(e.term_date?'<div style="font-size:10px;color:var(--red)">Baja: '+e.term_date+'</div>':'')+'</td><td style="font-size:11px;color:var(--muted);font-family:DM Mono,monospace">'+(e.pin?'PIN: ****':'Sin PIN')+'</td><td><span class="bdg '+statusBdg+'">'+(e.active?'Activo':'Inactivo')+'</span></td><td style="display:flex;gap:4px"></td>';
       var editBtn = document.createElement('button');
       editBtn.className = 'btn btn-ghost btn-sm';
       editBtn.textContent = 'Editar';
@@ -11319,6 +11324,17 @@ function deleteActivity(id) {
 
 var _editingEmployeeId = null;
 
+function nuevoEmpleado() {
+  // v1.8.55: abrir modal limpio para alta (evita arrastrar valores de una edición previa)
+  _editingEmployeeId = null;
+  ['emp-name','emp-phone','emp-salary','emp-hire','emp-term','emp-pin'].forEach(function(id){
+    var el=document.getElementById(id); if(el) el.value='';
+  });
+  var roleEl=document.getElementById('emp-role'); if(roleEl) roleEl.value='peon';
+  var h2=document.querySelector('#modal-employee h2'); if(h2) h2.textContent='Nuevo Empleado';
+  openModal('modal-employee');
+}
+
 function editEmployee(emp) {
   _editingEmployeeId = emp.id;
   // Pre-llenar el modal con datos del empleado
@@ -11332,6 +11348,8 @@ function editEmployee(emp) {
   if(phoneEl) phoneEl.value = emp.phone || '';
   if(salaryEl) salaryEl.value = emp.salary || '';
   if(hireEl) hireEl.value = emp.hire_date || '';
+  var termEl = document.getElementById('emp-term');
+  if(termEl) termEl.value = emp.term_date || '';
   var pinEl = document.getElementById('emp-pin');
   if(pinEl) pinEl.value = emp.pin || '';
   // Cambiar titulo del modal
@@ -11356,6 +11374,9 @@ function saveEmployee() {
       emp.phone = document.getElementById('emp-phone').value;
       emp.salary = parseFloat(document.getElementById('emp-salary').value)||0;
       emp.hire_date = document.getElementById('emp-hire').value;
+      emp.term_date = (document.getElementById('emp-term').value||'') || null;
+      // Si tiene fecha de baja, queda inactivo; si se la quitan, vuelve activo
+      emp.active = emp.term_date ? false : true;
       var pinVal = (document.getElementById('emp-pin').value||'').trim();
       if(pinVal) emp.pin = pinVal;
       savedEmpId = emp.id;
@@ -11366,7 +11387,7 @@ function saveEmployee() {
   } else {
     // Modo nuevo
     var newPin = (document.getElementById('emp-pin').value||'').trim();
-    var newEmp = {id:db.next_ids.employee++,name,role:document.getElementById('emp-role').value,phone:document.getElementById('emp-phone').value,salary:parseFloat(document.getElementById('emp-salary').value)||0,hire_date:document.getElementById('emp-hire').value,active:true,pin:newPin||''};
+    var newEmp = {id:db.next_ids.employee++,name,role:document.getElementById('emp-role').value,phone:document.getElementById('emp-phone').value,salary:parseFloat(document.getElementById('emp-salary').value)||0,hire_date:document.getElementById('emp-hire').value,term_date:((document.getElementById('emp-term').value||'')||null),active:!(document.getElementById('emp-term').value||''),pin:newPin||''};
     db.employees.push(newEmp);
     savedEmpId = newEmp.id;
     toast('Empleado agregado','success');
@@ -21916,13 +21937,47 @@ function registrarPagoSueldo() {
   openModal('modal-pago-sueldo');
 }
 
+// v1.8.55: cálculo de días trabajados en un mes para prorrateo de sueldo.
+// mes = 'YYYY-MM'. Considera ingreso y baja del empleado contra los días reales del mes.
+function diasTrabajadosEnMes(emp, mes){
+  if(!mes || !/^\d{4}-\d{2}$/.test(mes)) return null;
+  var y = parseInt(mes.slice(0,4),10), m = parseInt(mes.slice(5,7),10);
+  var inicioMes = new Date(y, m-1, 1);
+  var finMes = new Date(y, m, 0);                 // último día del mes (28/29/30/31)
+  var diasMes = finMes.getDate();
+  // Parsear fechas del empleado (YYYY-MM-DD) como fecha local
+  function pd(s){ if(!s) return null; var p=String(s).slice(0,10).split('-'); if(p.length<3) return null; return new Date(+p[0],+p[1]-1,+p[2]); }
+  var ingreso = pd(emp.hire_date);
+  var baja = pd(emp.term_date);
+  // Rango efectivo trabajado dentro del mes
+  var desde = inicioMes, hasta = finMes;
+  if(ingreso && ingreso > desde) desde = ingreso;
+  if(baja && baja < hasta) hasta = baja;
+  // Si el empleado no estuvo activo ningún día de este mes
+  if((ingreso && ingreso > finMes) || (baja && baja < inicioMes) || desde > hasta){
+    return { dias:0, diasMes:diasMes, completo:false, parcial:true };
+  }
+  var dias = Math.round((hasta - desde)/86400000) + 1; // inclusivo ambos extremos
+  if(dias < 0) dias = 0;
+  if(dias > diasMes) dias = diasMes;
+  var completo = (dias === diasMes);
+  return { dias:dias, diasMes:diasMes, completo:completo, parcial:!completo };
+}
+
 function renderPsEmpleados() {
   var tbody=document.getElementById('ps-empleados-tbody');
   if(!tbody)return;
   var mes=(document.getElementById('ps-mes')||{}).value||'';
-  var emps=(db.employees||[]).filter(function(e){return e.active!==false;});
+  // v1.8.55: incluir activos + empleados dados de baja DENTRO del mes que se paga
+  // (para poder pagarles el último mes prorrateado)
+  var emps=(db.employees||[]).filter(function(e){
+    if(e.active!==false) return true;
+    // inactivo: incluir solo si su baja cae en este mes (tiene días que pagar)
+    if(e.term_date && mes && String(e.term_date).slice(0,7)===mes) return true;
+    return false;
+  });
   if(!emps.length){
-    tbody.innerHTML='<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--muted)">No hay empleados activos</td></tr>';
+    tbody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--muted)">No hay empleados activos</td></tr>';
     return;
   }
   tbody.innerHTML='';
@@ -21933,13 +21988,23 @@ function renderPsEmpleados() {
     // Calcular adelantos del mes
     var totalAdv=(db.advances||[]).filter(function(a){return a.employee===emp.name&&(a.date||'').startsWith(mes)&&a.status==='descontado';}).reduce(function(s,a){return s+(a.amount||0);},0);
     var salario=emp.salary||0;
-    var neto=Math.max(0,salario-totalAdv);
+    // v1.8.55: prorrateo por días reales del mes (ingreso / baja a mitad de mes)
+    var prr=diasTrabajadosEnMes(emp, mes);
+    var dias = prr ? prr.dias : 30;
+    var diasMes = prr ? prr.diasMes : 30;
+    var parcial = prr ? prr.parcial : false;
+    var salarioBase = salario; // salario mensual completo (referencia)
+    var salarioProrr = diasMes>0 ? Math.round((salario/diasMes)*dias) : salario;
+    var neto=Math.max(0,salarioProrr-totalAdv);
     var rowId='ps-row-'+emp.name.replace(/[^a-zA-Z0-9]/g,'_');
     var tr=document.createElement('tr');
     tr.id=rowId;
     tr.style.cssText='border-bottom:1px solid rgba(48,54,61,.3)' + (yaPagado?';opacity:.55':'');
     tr.dataset.empName=emp.name;
-    tr.dataset.salario=salario;
+    tr.dataset.salarioBase=salarioBase;
+    tr.dataset.diasMes=diasMes;
+    tr.dataset.dias=dias;
+    tr.dataset.salario=salarioProrr;
     tr.dataset.adelantos=totalAdv;
     tr.dataset.neto=neto;
     tr.dataset.yaPagado=yaPagado?'1':'0';
@@ -21949,11 +22014,19 @@ function renderPsEmpleados() {
     var estadoBadge=yaPagado
       ? '<span style="background:rgba(57,211,83,.12);color:var(--green);padding:3px 8px;border-radius:6px;font-size:10px;font-weight:600">Pagado</span>'
       : '<span style="background:rgba(212,160,23,.12);color:var(--amber2);padding:3px 8px;border-radius:6px;font-size:10px;font-weight:600">Pendiente</span>';
+    // Campo días editable + badge "parcial" cuando no es mes completo
+    var diasInput = yaPagado
+      ? ('<span style="font-family:DM Mono,monospace">'+dias+'</span>')
+      : ('<input type="number" min="0" max="'+diasMes+'" value="'+dias+'" class="ps-dias-input" oninput="recalcPsRow(this)" style="width:48px;padding:4px 6px;text-align:center;background:var(--sur2);border:1px solid var(--bor);border-radius:6px;color:var(--text);font-family:DM Mono,monospace">');
+    var parcialBadge = parcial
+      ? '<span title="Pago prorrateado (ingreso o baja a mitad de mes)" style="margin-left:6px;background:rgba(99,102,241,.15);color:#a5b4fc;padding:2px 6px;border-radius:5px;font-size:9px;font-weight:700">PRORRATEO</span>'
+      : '';
     tr.innerHTML='<td style="padding:8px;text-align:center">'+checkHtml+'</td>'+
-      '<td style="padding:8px"><div style="font-weight:600">'+escH(emp.name)+'</div><div style="font-size:10px;color:var(--muted)">'+escH(roleLabel(emp.role||''))+'</div></td>'+
-      '<td style="padding:8px;text-align:right;font-family:DM Mono,monospace">Bs. '+salario.toLocaleString()+'</td>'+
+      '<td style="padding:8px"><div style="font-weight:600">'+escH(emp.name)+parcialBadge+'</div><div style="font-size:10px;color:var(--muted)">'+escH(roleLabel(emp.role||''))+'</div></td>'+
+      '<td style="padding:8px;text-align:center">'+diasInput+'<div style="font-size:9px;color:var(--muted);margin-top:2px">de '+diasMes+'</div></td>'+
+      '<td style="padding:8px;text-align:right;font-family:DM Mono,monospace" class="ps-salario-cell">Bs. '+salarioProrr.toLocaleString()+'<div style="font-size:9px;color:var(--muted)">base '+salarioBase.toLocaleString()+'</div></td>'+
       '<td style="padding:8px;text-align:right;font-family:DM Mono,monospace;color:'+(totalAdv>0?'var(--amber2)':'var(--muted)')+'">Bs. '+totalAdv.toLocaleString()+'</td>'+
-      '<td style="padding:8px;text-align:right;font-family:DM Mono,monospace;color:var(--green);font-weight:700">Bs. '+neto.toLocaleString()+'</td>'+
+      '<td style="padding:8px;text-align:right;font-family:DM Mono,monospace;color:var(--green);font-weight:700" class="ps-neto-cell">Bs. '+neto.toLocaleString()+'</td>'+
       '<td style="padding:8px;text-align:center">'+estadoBadge+'</td>';
     tbody.appendChild(tr);
   });
@@ -21962,6 +22035,27 @@ function renderPsEmpleados() {
 
 function toggleAllPsEmpleados(checked){
   document.querySelectorAll('.ps-emp-check').forEach(function(cb){cb.checked=checked;});
+  updatePsTotal();
+}
+
+// v1.8.55: recalcula una fila cuando se editan los días trabajados
+function recalcPsRow(input){
+  var tr = input.closest('tr'); if(!tr) return;
+  var diasMes = parseInt(tr.dataset.diasMes,10)||30;
+  var salarioBase = parseFloat(tr.dataset.salarioBase)||0;
+  var adelantos = parseFloat(tr.dataset.adelantos)||0;
+  var dias = parseInt(input.value,10);
+  if(isNaN(dias)||dias<0) dias=0;
+  if(dias>diasMes){ dias=diasMes; input.value=diasMes; }
+  var salarioProrr = diasMes>0 ? Math.round((salarioBase/diasMes)*dias) : salarioBase;
+  var neto = Math.max(0, salarioProrr - adelantos);
+  tr.dataset.dias = dias;
+  tr.dataset.salario = salarioProrr;
+  tr.dataset.neto = neto;
+  var salCell = tr.querySelector('.ps-salario-cell');
+  if(salCell) salCell.innerHTML = 'Bs. '+salarioProrr.toLocaleString()+'<div style="font-size:9px;color:var(--muted)">base '+salarioBase.toLocaleString()+'</div>';
+  var netoCell = tr.querySelector('.ps-neto-cell');
+  if(netoCell) netoCell.textContent = 'Bs. '+neto.toLocaleString();
   updatePsTotal();
 }
 
@@ -21998,7 +22092,10 @@ function guardarPagoSueldo(){
         emp:tr.dataset.empName,
         salario:parseFloat(tr.dataset.salario)||0,
         adelantos:parseFloat(tr.dataset.adelantos)||0,
-        neto:parseFloat(tr.dataset.neto)||0
+        neto:parseFloat(tr.dataset.neto)||0,
+        dias:parseInt(tr.dataset.dias,10)||0,
+        dias_mes:parseInt(tr.dataset.diasMes,10)||0,
+        salario_base:parseFloat(tr.dataset.salarioBase)||0
       });
     }
   });
@@ -22009,6 +22106,7 @@ function guardarPagoSueldo(){
     var existing=db.historial_sueldos.find(function(r){return r.empleado===s.emp&&r.mes===mes;});
     if(existing){
       existing.salario=s.salario;existing.adelantos=s.adelantos;existing.pago_neto=s.neto;
+      existing.dias=s.dias;existing.dias_mes=s.dias_mes;existing.salario_base=s.salario_base;
       existing.fecha_pago=fecha;existing.notas=notas;existing.estado='pagado';
       existing.updated_at=new Date().toISOString();
     }else{
@@ -22016,6 +22114,7 @@ function guardarPagoSueldo(){
         id:Date.now()+Math.floor(Math.random()*1000),
         empleado:s.emp,mes:mes,salario:s.salario,
         adelantos:s.adelantos,pago_neto:s.neto,
+        dias:s.dias,dias_mes:s.dias_mes,salario_base:s.salario_base,
         fecha_pago:fecha,notas:notas,estado:'pagado',
         created_at:new Date().toISOString()
       });
@@ -25996,6 +26095,13 @@ function showUpdateNotification(version, downloaded) {
 // Convención: máximo 3-5 bullets cortos. Lo que el usuario debe saber, no detalle técnico.
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.8.55': [
+    'Pago de sueldos prorrateado por días trabajados.',
+    '  - Al pagar el mes, el sistema calcula automáticamente los días trabajados según la fecha de ingreso y de baja del empleado, usando los días reales del mes (28/29/30/31).',
+    '  - Quien ingresa o se retira a mitad de mes recibe la parte proporcional del salario (Salario ÷ días del mes × días trabajados).',
+    '  - La cantidad de días es editable en el modal de pago por si hay un acuerdo especial; el neto se recalcula al instante.',
+    '  - Nuevo campo "Fecha de baja" en el empleado: al cargarla, el empleado pasa a Inactivo pero aún puede pagarse su último mes proporcional.',
+  ],
   '1.8.54': [
     'Corrección importante: los animales individuales de los lotes vuelven a mostrarse correctamente.',
     '  - Se eliminó una carga de datos de demostración antigua que ocupaba el listado de Animales con lotes inexistentes (A-01, B-02, B-03) y dejaba los lotes reales sin animales.',
