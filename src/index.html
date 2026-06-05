@@ -3296,7 +3296,7 @@ function publishTasksToPWA() {
       <thead style="position:sticky;top:0;background:var(--sur);z-index:1">
         <tr>
           <th style="padding:8px;text-align:center;border-bottom:1px solid var(--bor);width:40px">
-            <input type="checkbox" id="ps-check-all" onchange="toggleAllPsEmpleados(this.checked)" checked>
+            <input type="checkbox" id="ps-check-all" onchange="toggleAllPsEmpleados(this.checked)">
           </th>
           <th style="padding:8px;text-align:left;border-bottom:1px solid var(--bor)">Empleado</th>
           <th style="padding:8px;text-align:center;border-bottom:1px solid var(--bor);width:70px">Días</th>
@@ -11044,14 +11044,45 @@ function renderAdvances() {
       roleEl.textContent = roleLabel(emp.role);
 
       var descontado = empAdvances.filter(function(a){ return a.status==='descontado'; }).reduce(function(s,a){ return s+(a.amount||0); },0);
-      var balancePagar = salary - totalAdv; // Neto a pagar: salario menos todos los adelantos dados
+      // v1.8.58: la deuda solo aplica al período correcto, no a todos los meses.
+      // - Mes actual en curso → cálculo en vivo con emp.deuda_arrastrada.
+      // - Mes cerrado con el feature (tiene deuda_previa/resultante en historial) → esos valores.
+      // - Mes histórico sin datos / Semana / Todo / Rango → sin deuda (neto = salario − adelantos).
+      var _now = new Date();
+      var mesActualYM = _now.getFullYear()+'-'+String(_now.getMonth()+1).padStart(2,'0');
+      var mesEnFocoYM = ((_advPeriod==='mes'||_advPeriod==='month-pick') && _advFrom) ? String(_advFrom).slice(0,7) : null;
+      var deudaPrevia = null;   // null → se muestra "-"
+      var balancePagar;
+      var deudaAcum = null;     // null → se muestra "-"
+      if (mesEnFocoYM) {
+        var regHist = (db.historial_sueldos||[]).find(function(r){ return r.empleado===emp.name && r.mes===mesEnFocoYM && r.estado==='pagado'; });
+        if (regHist && (regHist.deuda_previa != null || regHist.deuda_resultante != null)) {
+          // mes ya cerrado CON datos de deuda (feature activo)
+          deudaPrevia  = parseFloat(regHist.deuda_previa) || 0;
+          balancePagar = parseFloat(regHist.pago_neto) || 0;
+          deudaAcum    = parseFloat(regHist.deuda_resultante) || 0;
+        } else if (mesEnFocoYM === mesActualYM) {
+          // mes actual en curso (no cerrado): cálculo en vivo
+          deudaPrevia = parseFloat(emp.deuda_arrastrada) || 0;
+          var balanceReal = salary - deudaPrevia - totalAdv;
+          balancePagar = Math.max(0, balanceReal);
+          deudaAcum = balanceReal < 0 ? Math.abs(balanceReal) : 0;
+        } else {
+          // mes histórico sin datos de deuda (pagos previos al feature): sin deuda
+          balancePagar = Math.max(0, salary - totalAdv);
+        }
+      } else {
+        // Semana / Todo / Rango: no aplica lógica de deuda
+        balancePagar = Math.max(0, salary - totalAdv);
+      }
       var rows = [
         {label:'Salario base', val:'Bs. '+salary.toLocaleString(), color:'var(--text)'},
-        {label:'Adelantos entregados', val:'Bs. '+totalAdv.toLocaleString(), color: totalAdv>0?'var(--amber2)':'var(--muted)'},
+        {label:'Deuda mes anterior', val: (deudaPrevia!=null && deudaPrevia>0)?'Bs. '+deudaPrevia.toLocaleString():'-', color: (deudaPrevia!=null && deudaPrevia>0)?'var(--red)':'var(--muted)'},
+        {label:'Adelantos del mes', val:'Bs. '+totalAdv.toLocaleString(), color: totalAdv>0?'var(--amber2)':'var(--muted)'},
         {label:'Ya descontados', val:'Bs. '+descontado.toLocaleString(), color: descontado>0?'var(--green)':'var(--muted)'},
         {label:'Pendiente descontar', val:'Bs. '+pendiente.toLocaleString(), color: pendiente>0?'var(--red)':'var(--green)'},
-        {label:'Pago neto fin de mes', val:(balancePagar<0?'-':'')+'Bs. '+Math.abs(balancePagar).toLocaleString(), color: balancePagar>0?'var(--green)':balancePagar===0?'var(--muted)':'var(--red)'},
-        {label:'Deuda acumulada', val: totalAdv>salary?'Bs. '+(totalAdv-salary).toLocaleString()+' DEBE':'-', color:'var(--red)'},
+        {label:'Pago neto fin de mes', val:'Bs. '+balancePagar.toLocaleString(), color: balancePagar>0?'var(--green)':'var(--muted)'},
+        {label:'Deuda acumulada', val: (deudaAcum!=null && deudaAcum>0)?'Bs. '+deudaAcum.toLocaleString()+' DEBE':'-', color: (deudaAcum!=null && deudaAcum>0)?'var(--red)':'var(--muted)'},
       ];
 
       card.appendChild(nameEl);
@@ -11216,17 +11247,29 @@ function saveAdvance() {
     if (!emp || !amount || !date) { toast('Completa empleado, monto y fecha', 'error'); _release(); return; }
     // FIX v1.4.34: no permitir fechas futuras
     if (!validateNotFuture(date, 'fecha del adelanto')) { _release(); return; }
+    // v1.8.59: bloquear adelantos solo si a ESTE empleado ya se le pagó el sueldo de ese mes
+    var mesAdv = (date||'').slice(0,7);
+    if (_empMesPagado(emp, mesAdv)) {
+      toast('A '+emp.split(' ')[0]+' ya se le pagó el sueldo de '+mesAdv+'. No se pueden registrar adelantos de ese mes para este empleado.', 'error');
+      _release(); return;
+    }
     if (!db.advances) db.advances = [];
     if (!db.lluvias) db.lluvias = [];
-    // Warn if total advances exceed salary - but ALLOW (by design)
+    // v1.8.57: alerta (no bloqueo) si el adelanto deja al trabajador en saldo negativo,
+    // considerando la deuda arrastrada de meses anteriores.
     var employee = db.employees.find(function(e){return e.name===emp;});
     if (employee) {
-      var currentPending = db.advances.filter(function(a){
-        return a.employee===emp && a.status==='pendiente';
+      var deudaPrevia = parseFloat(employee.deuda_arrastrada) || 0;
+      var advMesActual = db.advances.filter(function(a){
+        return a.employee===emp && (a.date||'').slice(0,7)===mesAdv;
       }).reduce(function(s,a){return s+(a.amount||0);},0);
-      if ((currentPending + amount) > employee.salary) {
-        var excess = (currentPending + amount) - employee.salary;
-        if (!confirm('⚠ Este adelanto supera el salario de '+emp.split(' ')[0]+' en Bs. '+excess.toLocaleString()+'.\nEl exceso quedara registrado como deuda del empleado.\n\n¿Confirmas el adelanto?')) { _release(); return; }
+      var balanceTrasAdv = (employee.salary||0) - deudaPrevia - advMesActual - amount;
+      if (balanceTrasAdv < 0) {
+        var faltante = Math.abs(balanceTrasAdv);
+        var msg = '⚠ Este adelanto deja a '+emp.split(' ')[0]+' con saldo negativo de Bs. '+faltante.toLocaleString()+'.';
+        if (deudaPrevia>0) msg += '\n(Incluye Bs. '+deudaPrevia.toLocaleString()+' de deuda de meses anteriores.)';
+        msg += '\nEse saldo se arrastrará como deuda al mes siguiente.\n\n¿Confirmás el adelanto?';
+        if (!confirm(msg)) { _release(); return; }
       }
     }
     // Detectar duplicados recientes (mismo emp+monto+fecha en los últimos 60s)
@@ -12316,8 +12359,12 @@ function openModal(id) {
     for (var i=0; i<FILTER_ID_PATTERNS.length; i++){ if (FILTER_ID_PATTERNS[i].test(inputId)) return true; }
     return false;
   }
+  // v1.8.61: campos de fecha OPCIONALES que NO deben auto-rellenarse con hoy.
+  // emp-term (fecha de baja): si se rellenara con hoy, daría de baja al empleado
+  // al crearlo o al editarlo. Debe quedar vacío salvo baja real.
+  var NO_AUTOFILL_DATE_IDS = ['emp-term'];
   el.querySelectorAll('input[type="date"]').forEach(function(d){
-    if(!d.value) d.value=todayVal;
+    if(!d.value && NO_AUTOFILL_DATE_IDS.indexOf(d.id) < 0) d.value=todayVal;
     if(!_isFilterOrFutureOk(d.id)) d.max = todayVal;
   });
   el.querySelectorAll('input[type="datetime-local"]').forEach(function(d){
@@ -14768,28 +14815,49 @@ function saveServerConfig_real() {
   var oldToken = localStorage.getItem('e5m_api_token') || '';
   if (url) { localStorage.setItem('apiUrl', url); localStorage.setItem('e5m_api_url', url); }
   if (newToken) {
-    // Si cambió el token → limpiar datos del tenant anterior
+    // v1.8.56 FIX contaminación cruzada entre tenants:
+    // Si cambió el token, NO basta con reiniciar db en memoria — el estado viejo
+    // (intervalos de auto-sync, flush pendientes, caches en RAM) sigue vivo y podía
+    // pushear los datos del tenant anterior al nuevo. La única forma segura es limpiar
+    // TODO el cache local y recargar la app para arrancar de cero, igual que hace la
+    // ruta con modal de confirmación. Tras el reload, el primer paso es un pull limpio.
     if (newToken !== oldToken) {
-      console.log('[Config] Token changed, clearing tenant data...');
-      localStorage.removeItem('estancia5m_v1');
-      localStorage.removeItem('e5m_animals');
-      localStorage.removeItem('e5m_tasks');
-      localStorage.removeItem('e5m_deleted_ids');
-      localStorage.removeItem('e5m_branding');
-      localStorage.removeItem('e5m_diesel_tank');
-      localStorage.removeItem('e5m_report_params');
-      localStorage.removeItem('e5m_inventory_counts');
-      localStorage.removeItem('e5m_pluvios');
-  localStorage.removeItem('e5m_maquinaria');
-      // Reinicializar DB vacía
-      db = { lots:[], products:[], treatments:[], alerts:[], sales:[], purchases:[], employees:[], activities:[], pesajes:[], advances:[], maintenance:[], agua:[], sal:[], conteo:[], partos:[], alimento:[], lluvias:[], diesel:[], aceite:[], cuentas:[], kardex:[], historial_sueldos:[], compras_ganado:[], bajas:[], next_ids:{} };
-      localStorage.setItem('estancia5m_v1', JSON.stringify(db));
+      console.log('[Config] Token changed → limpieza total + reload (anti-contaminación)');
+      localStorage.setItem('apiToken', newToken);
+      localStorage.setItem('e5m_api_token', newToken);
+      _clearTenantCacheAndReload();
+      return;
     }
     localStorage.setItem('apiToken', newToken);
     localStorage.setItem('e5m_api_token', newToken);
   }
-  toast(newToken !== oldToken ? 'Token cambiado — hacé click en ⬇️ Forzar carga para traer los datos del nuevo tenant' : 'Configuracion guardada', 'success');
+  toast('Configuracion guardada', 'success');
   testConnectionSilent();
+}
+
+// v1.8.56: helper único de limpieza de cache al cambiar de tenant.
+// Borra TODAS las tablas locales del tenant anterior y recarga la app.
+// Centralizar acá evita que cada ruta de cambio de token olvide alguna key
+// (como pasó en saveServerConfig_real, que dejaba estado vivo y contaminaba).
+function _clearTenantCacheAndReload() {
+  try {
+    var keysToClear = [
+      'estancia5m_v1','e5m_animals','e5m_tasks','e5m_pluvios','e5m_maquinaria',
+      'e5m_deleted_ids','e5m_report_params','e5m_params','e5m_branding',
+      'e5m_gemini_key','e5m_diesel_tank','e5m_pasture_evals','e5m_local_photos',
+      'e5m_inventory_counts'
+    ];
+    keysToClear.forEach(function(k){ try { localStorage.removeItem(k); } catch(e){} });
+    // Barrido defensivo: cualquier otra key e5m_* de datos (no de config/sesión)
+    var preserve = { 'e5m_api_token':1, 'e5m_api_url':1, 'e5m_dark_mode':1, 'e5m_active_tenant':1, 'e5m_settings':1, 'e5m_personal_tab':1 };
+    try {
+      Object.keys(localStorage).forEach(function(k){
+        if (k.indexOf('e5m_') === 0 && !preserve[k]) localStorage.removeItem(k);
+      });
+    } catch(e){}
+  } catch(e) { console.error('[clearTenantCache]', e); }
+  toast('Cambiando de tenant… recargando', 'success');
+  setTimeout(function(){ location.reload(); }, 800);
 }
 
 function forcePullFromToken() {
@@ -21932,7 +22000,7 @@ function registrarPagoSueldo() {
   }
   var fechaEl=document.getElementById('ps-fecha');if(fechaEl)fechaEl.value=localDate();
   var notasEl=document.getElementById('ps-notas');if(notasEl)notasEl.value='';
-  var checkAllEl=document.getElementById('ps-check-all');if(checkAllEl)checkAllEl.checked=true;
+  var checkAllEl=document.getElementById('ps-check-all');if(checkAllEl)checkAllEl.checked=false;
   renderPsEmpleados();
   openModal('modal-pago-sueldo');
 }
@@ -21995,7 +22063,12 @@ function renderPsEmpleados() {
     var parcial = prr ? prr.parcial : false;
     var salarioBase = salario; // salario mensual completo (referencia)
     var salarioProrr = diasMes>0 ? Math.round((salario/diasMes)*dias) : salario;
-    var neto=Math.max(0,salarioProrr-totalAdv);
+    // v1.8.57: deuda arrastrada de meses anteriores (saldo en contra del trabajador)
+    var deudaPrevia = parseFloat(emp.deuda_arrastrada) || 0;
+    // balance = salario prorrateado − deuda previa − adelantos del mes
+    var balance = salarioProrr - deudaPrevia - totalAdv;
+    var neto = Math.max(0, balance);
+    var deudaResultante = balance < 0 ? Math.abs(balance) : 0;  // lo que sigue debiendo → se arrastra
     var rowId='ps-row-'+emp.name.replace(/[^a-zA-Z0-9]/g,'_');
     var tr=document.createElement('tr');
     tr.id=rowId;
@@ -22007,10 +22080,12 @@ function renderPsEmpleados() {
     tr.dataset.salario=salarioProrr;
     tr.dataset.adelantos=totalAdv;
     tr.dataset.neto=neto;
+    tr.dataset.deudaPrevia=deudaPrevia;
+    tr.dataset.deudaResultante=deudaResultante;
     tr.dataset.yaPagado=yaPagado?'1':'0';
     var checkHtml=yaPagado
       ? '<input type="checkbox" disabled title="Ya pagado">'
-      : '<input type="checkbox" class="ps-emp-check" checked onchange="updatePsTotal()">';
+      : '<input type="checkbox" class="ps-emp-check" onchange="updatePsTotal()">';
     var estadoBadge=yaPagado
       ? '<span style="background:rgba(57,211,83,.12);color:var(--green);padding:3px 8px;border-radius:6px;font-size:10px;font-weight:600">Pagado</span>'
       : '<span style="background:rgba(212,160,23,.12);color:var(--amber2);padding:3px 8px;border-radius:6px;font-size:10px;font-weight:600">Pendiente</span>';
@@ -22021,8 +22096,12 @@ function renderPsEmpleados() {
     var parcialBadge = parcial
       ? '<span title="Pago prorrateado (ingreso o baja a mitad de mes)" style="margin-left:6px;background:rgba(99,102,241,.15);color:#a5b4fc;padding:2px 6px;border-radius:5px;font-size:9px;font-weight:700">PRORRATEO</span>'
       : '';
+    // v1.8.57: badge de deuda arrastrada de meses anteriores
+    var deudaBadge = deudaPrevia>0
+      ? '<span title="Deuda arrastrada de meses anteriores, se descuenta de este pago" style="margin-left:6px;background:rgba(248,81,73,.15);color:var(--red);padding:2px 6px;border-radius:5px;font-size:9px;font-weight:700">DEUDA Bs. '+deudaPrevia.toLocaleString()+'</span>'
+      : '';
     tr.innerHTML='<td style="padding:8px;text-align:center">'+checkHtml+'</td>'+
-      '<td style="padding:8px"><div style="font-weight:600">'+escH(emp.name)+parcialBadge+'</div><div style="font-size:10px;color:var(--muted)">'+escH(roleLabel(emp.role||''))+'</div></td>'+
+      '<td style="padding:8px"><div style="font-weight:600">'+escH(emp.name)+parcialBadge+deudaBadge+'</div><div style="font-size:10px;color:var(--muted)">'+escH(roleLabel(emp.role||''))+'</div></td>'+
       '<td style="padding:8px;text-align:center">'+diasInput+'<div style="font-size:9px;color:var(--muted);margin-top:2px">de '+diasMes+'</div></td>'+
       '<td style="padding:8px;text-align:right;font-family:DM Mono,monospace" class="ps-salario-cell">Bs. '+salarioProrr.toLocaleString()+'<div style="font-size:9px;color:var(--muted)">base '+salarioBase.toLocaleString()+'</div></td>'+
       '<td style="padding:8px;text-align:right;font-family:DM Mono,monospace;color:'+(totalAdv>0?'var(--amber2)':'var(--muted)')+'">Bs. '+totalAdv.toLocaleString()+'</td>'+
@@ -22044,14 +22123,18 @@ function recalcPsRow(input){
   var diasMes = parseInt(tr.dataset.diasMes,10)||30;
   var salarioBase = parseFloat(tr.dataset.salarioBase)||0;
   var adelantos = parseFloat(tr.dataset.adelantos)||0;
+  var deudaPrevia = parseFloat(tr.dataset.deudaPrevia)||0;  // v1.8.57
   var dias = parseInt(input.value,10);
   if(isNaN(dias)||dias<0) dias=0;
   if(dias>diasMes){ dias=diasMes; input.value=diasMes; }
   var salarioProrr = diasMes>0 ? Math.round((salarioBase/diasMes)*dias) : salarioBase;
-  var neto = Math.max(0, salarioProrr - adelantos);
+  // v1.8.57: balance = salario prorrateado − deuda previa − adelantos
+  var balance = salarioProrr - deudaPrevia - adelantos;
+  var neto = Math.max(0, balance);
   tr.dataset.dias = dias;
   tr.dataset.salario = salarioProrr;
   tr.dataset.neto = neto;
+  tr.dataset.deudaResultante = balance < 0 ? Math.abs(balance) : 0;
   var salCell = tr.querySelector('.ps-salario-cell');
   if(salCell) salCell.innerHTML = 'Bs. '+salarioProrr.toLocaleString()+'<div style="font-size:9px;color:var(--muted)">base '+salarioBase.toLocaleString()+'</div>';
   var netoCell = tr.querySelector('.ps-neto-cell');
@@ -22074,6 +22157,17 @@ function updatePsTotal(){
   if(btn)btn.textContent=count>0?('Registrar '+count+' pago'+(count===1?'':'s')):'Registrar pagos';
 }
 
+// v1.8.57: un período (YYYY-MM) está cerrado si hay al menos un pago en historial_sueldos
+// para ese mes con estado 'pagado'. Se deriva del historial (sincroniza solo, sin array aparte).
+// v1.8.59: el "cierre" es POR EMPLEADO, no global. Un empleado tiene su mes cerrado
+// cuando se le pagó su sueldo de ese mes (existe historial_sueldos pagado para él+mes).
+// Pagarle el sueldo a uno NO bloquea adelantos para los demás.
+function _empMesPagado(empName, mes){
+  if(!empName || !mes) return false;
+  return (db.historial_sueldos||[]).some(function(r){
+    return r.empleado===empName && r.mes===mes && r.estado==='pagado';
+  });
+}
 function guardarPagoSueldo(){
   var mes=(document.getElementById('ps-mes')||{}).value||'';
   var fecha=(document.getElementById('ps-fecha')||{}).value||'';
@@ -22095,7 +22189,9 @@ function guardarPagoSueldo(){
         neto:parseFloat(tr.dataset.neto)||0,
         dias:parseInt(tr.dataset.dias,10)||0,
         dias_mes:parseInt(tr.dataset.diasMes,10)||0,
-        salario_base:parseFloat(tr.dataset.salarioBase)||0
+        salario_base:parseFloat(tr.dataset.salarioBase)||0,
+        deuda_previa:parseFloat(tr.dataset.deudaPrevia)||0,
+        deuda_resultante:parseFloat(tr.dataset.deudaResultante)||0
       });
     }
   });
@@ -22107,6 +22203,7 @@ function guardarPagoSueldo(){
     if(existing){
       existing.salario=s.salario;existing.adelantos=s.adelantos;existing.pago_neto=s.neto;
       existing.dias=s.dias;existing.dias_mes=s.dias_mes;existing.salario_base=s.salario_base;
+      existing.deuda_previa=s.deuda_previa;existing.deuda_resultante=s.deuda_resultante;
       existing.fecha_pago=fecha;existing.notas=notas;existing.estado='pagado';
       existing.updated_at=new Date().toISOString();
     }else{
@@ -22115,22 +22212,31 @@ function guardarPagoSueldo(){
         empleado:s.emp,mes:mes,salario:s.salario,
         adelantos:s.adelantos,pago_neto:s.neto,
         dias:s.dias,dias_mes:s.dias_mes,salario_base:s.salario_base,
+        deuda_previa:s.deuda_previa,deuda_resultante:s.deuda_resultante,
         fecha_pago:fecha,notas:notas,estado:'pagado',
         created_at:new Date().toISOString()
       });
     }
+    // v1.8.57: persistir la deuda resultante en el empleado (se arrastra al mes siguiente)
+    var empObj=db.employees.find(function(e){return e.name===s.emp;});
+    if(empObj){ empObj.deuda_arrastrada = s.deuda_resultante; }
     registrados++;
   });
+
+  // v1.8.57: el período queda "cerrado" por la existencia de pagos en historial_sueldos
+  // para ese mes (estado 'pagado'). No se usa un array aparte → sincroniza solo vía historial.
 
   saveDB();
   closeModal('modal-pago-sueldo');
   if(typeof renderHistorialSueldos==='function')renderHistorialSueldos();
   if(typeof renderPersonal==='function')renderPersonal();
-  toast(registrados+' pago'+(registrados===1?'':'s')+' registrado'+(registrados===1?'':'s'),'success');
+  if(typeof renderAdvances==='function')renderAdvances();
+  toast(registrados+' pago'+(registrados===1?'':'s')+' registrado'+(registrados===1?'':'s')+' · sueldos de '+mes+' liquidados','success');
   // Push al server
   try{replaceTableInRailway('historial_sueldos',db.historial_sueldos);}catch(e){}
+  try{replaceTableInRailway('employees',db.employees);}catch(e){}
   // FIX v1.4.35: audit log para pago de sueldos (batch — un log con resumen)
-  try { auditLog('create', 'historial_sueldos', 'batch_' + Date.now(), 'Pago de sueldos: ' + registrados + ' empleado' + (registrados===1?'':'s') + ' · ' + mes + ' · fecha ' + fecha); } catch(e){}
+  try { auditLog('create', 'historial_sueldos', 'batch_' + Date.now(), 'Pago de sueldos: ' + registrados + ' empleado' + (registrados===1?'':'s') + ' · ' + mes + ' · fecha ' + fecha + ' · sueldos liquidados'); } catch(e){}
 }
 function deletePagoSueldo(id) {
   if(!confirm('Eliminar?')) return;
@@ -26095,6 +26201,36 @@ function showUpdateNotification(version, downloaded) {
 // Convención: máximo 3-5 bullets cortos. Lo que el usuario debe saber, no detalle técnico.
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.8.61': [
+    'Corregido: crear o editar un empleado ya no lo daba de baja automáticamente.',
+    '  - El campo "Fecha de baja" se rellenaba solo con la fecha de hoy al abrir el modal, lo que marcaba al empleado como inactivo al guardar. Ahora queda vacío salvo que cargues una baja real.',
+    '  - La fecha de ingreso sigue sugiriendo la fecha de hoy al crear un empleado nuevo.',
+  ],
+  '1.8.60': [
+    'En "Pagar sueldos", ya no vienen todos los empleados marcados por defecto.',
+    '  - Ahora elegís manualmente a quién pagar en cada tanda, para evitar pagar un sueldo sin querer. El total arranca en Bs. 0 hasta que selecciones empleados.',
+  ],
+  '1.8.59': [
+    'El cierre de adelantos ahora es por trabajador, no por mes completo.',
+    '  - Antes, al pagarle el sueldo de un mes a un empleado, el sistema bloqueaba registrar adelantos de ese mes para TODOS los empleados. Ahora solo se bloquea para el empleado al que ya se le pagó.',
+    '  - Pagarle el sueldo a Juan ya no impide registrarle un adelanto a Miguel.',
+  ],
+  '1.8.58': [
+    'Corrección en la tarjeta de empleados: la deuda ahora se muestra solo en el período que corresponde.',
+    '  - Antes, la "Deuda mes anterior" aparecía en todos los meses del filtro. Ahora solo se ve en el mes en curso o en meses ya cerrados con deuda registrada; en meses históricos sin datos aparece "-".',
+    '  - El "Pago neto fin de mes" de meses históricos vuelve a calcularse sin deuda, como corresponde.',
+  ],
+  '1.8.57': [
+    'Gestión de saldo negativo de trabajadores (deuda que se arrastra al mes siguiente).',
+    '  - Si un trabajador pidió más adelantos que su salario, el faltante ya no se pierde: queda como "Deuda acumulada" y se descuenta automáticamente del sueldo del mes siguiente.',
+    '  - La tarjeta de cada empleado ahora muestra "Deuda mes anterior" y "Deuda acumulada" reales.',
+    '  - Al registrar un adelanto que deja en negativo, aparece un aviso (no bloquea): se puede continuar y el saldo se arrastra.',
+    '  - Al pagar los sueldos de un mes, ese período queda cerrado: ya no se pueden registrar adelantos con fecha de ese mes.',
+  ],
+  '1.8.56': [
+    'Corrección de seguridad: al cambiar de tenant desde Configuración, ahora la app limpia completamente los datos locales del tenant anterior y se reinicia antes de cargar el nuevo.',
+    '  - Antes, "Guardar configuración" con un token nuevo dejaba datos en memoria que podían mezclarse con el nuevo tenant. Esto queda eliminado.',
+  ],
   '1.8.55': [
     'Pago de sueldos prorrateado por días trabajados.',
     '  - Al pagar el mes, el sistema calcula automáticamente los días trabajados según la fecha de ingreso y de baja del empleado, usando los días reales del mes (28/29/30/31).',
