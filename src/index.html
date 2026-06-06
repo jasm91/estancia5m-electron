@@ -8985,7 +8985,7 @@ function _stockToggleActivity(prodId) {
       if (!matchById && !matchByName) return;
       var diff = parseFloat(item.diferencia) || 0;
       if (diff === 0) return;
-      entries.push({ date: c.date || c.created_at || '', type: 'Conteo', sign: diff > 0 ? '+' : '-', qty: Math.abs(diff), desc: 'Ajuste por conteo físico (sistema: ' + (item.stock_teorico||item.stock_sistema||0) + ', físico: ' + (item.stock_fisico||0) + ')' + (item.motivo?' · '+item.motivo:''), by: c.by || '' });
+      entries.push({ date: c.date || c.created_at || '', type: (c.tipo==='ingreso'?'Ingreso':'Conteo'), sign: diff > 0 ? '+' : '-', qty: Math.abs(diff), desc: (c.tipo==='ingreso' ? '📥 Ingreso de stock' + (item.motivo?' · '+item.motivo:'') : 'Ajuste por conteo físico (sistema: ' + (item.stock_teorico||item.stock_sistema||0) + ', físico: ' + (item.stock_fisico||0) + ')' + (item.motivo?' · '+item.motivo:'')), by: c.by || '' });
     });
   });
   // Mantenimiento
@@ -9193,14 +9193,28 @@ function addStock() {
   const qty = parseFloat(document.getElementById('stock-qty').value);
   if(!product_id||!qty||qty<=0){toast('Selecciona producto e ingresa cantidad','error');return;}
   const prod = db.products.find(p=>p.id===product_id);
+  var prevStock = prod.stock_qty;
+  var reason = (document.getElementById('stock-reason')||{}).value || 'ingreso';
   prod.stock_qty = Math.round((prod.stock_qty+qty)*100)/100;
+  prod.stock_updated_at = new Date().toISOString();
   var expiryEl = document.getElementById('sa-expiry');
   var newExpiry = expiryEl ? expiryEl.value : '';
   if(newExpiry) prod.expiry_date = newExpiry;
   // Resolve stock alert
   db.alerts.forEach(a=>{if(!a.resolved&&a.type==='stock_low'&&a.title.includes(prod.name)&&prod.stock_qty>prod.stock_min) a.resolved=true;});
-  addActivity('Cesar Moreno','alimentacion','','Ingreso de stock: '+qty+' '+prod.unit+' de '+prod.name);
+  // FIX: dejar registro del ingreso manual en el historial de stock (Movimientos),
+  // visible en Desktop y PWA. Se guarda como inventory_counts tipo 'ingreso' (no es merma).
+  if(!db.inventory_counts) db.inventory_counts = [];
+  db.inventory_counts.push({
+    id: 'ic_' + Date.now(), date: today(), by: 'Desktop', tipo: 'ingreso', ajustado: true,
+    items: [{ product_id: prod.id, product_name: prod.name, unit: prod.unit || '',
+      stock_teorico: prevStock, stock_fisico: prod.stock_qty,
+      diferencia: qty, costo_merma: 0, motivo: reason }],
+    total_merma_bs: 0, total_items: 1, items_con_diferencia: 1, created_at: new Date().toISOString()
+  });
+  addActivity('Cesar Moreno','alimentacion','','Ingreso de stock: '+qty+' '+prod.unit+' de '+prod.name+' ('+reason+')');
   saveDB(); closeModal('modal-stock-add'); renderStock(); renderDashboard();
+  pushTableToRailway('inventory_counts', db.inventory_counts);
   toast(qty+' '+prod.unit+' de '+prod.name+' ingresados','success');
 }
 
@@ -26201,6 +26215,10 @@ function showUpdateNotification(version, downloaded) {
 // Convención: máximo 3-5 bullets cortos. Lo que el usuario debe saber, no detalle técnico.
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.8.62': [
+    'Ingreso de stock manual (+ Stock) ahora queda registrado en el historial de movimientos del producto.',
+    '  - Antes solo subía la cantidad; ahora se ve el ingreso en "Movimientos" tanto en Desktop como en la PWA.',
+  ],
   '1.8.61': [
     'Corregido: crear o editar un empleado ya no lo daba de baja automáticamente.',
     '  - El campo "Fecha de baja" se rellenaba solo con la fecha de hoy al abrir el modal, lo que marcaba al empleado como inactivo al guardar. Ahora queda vacío salvo que cargues una baja real.',
