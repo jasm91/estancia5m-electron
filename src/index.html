@@ -6648,6 +6648,10 @@ function pullFromRailwayDesktop(thenPush) {
         localStorage.setItem('e5m_inventory_counts', JSON.stringify(remote.inventory_counts));
       }
 
+      // FIX Blindaje IDs: tras aplicar los datos del server, subir los contadores locales
+      // por encima del máximo id presente para que ningún "next_ids.X++" reemita un id ya usado.
+      if (typeof reconcileNextIds === 'function') reconcileNextIds();
+
       // Re-render todo
       if (typeof renderLotes === 'function') renderLotes();
       if (typeof renderRotacion === 'function') renderRotacion(); // FIX v1.4.30: el tab Rotación no se re-renderizaba tras pull
@@ -24841,6 +24845,101 @@ function _mostrarSesionesActivas() {
 })();
 
 
+// ════════════════════════════════════════════════════════════════
+// BLINDAJE DE IDs — prevención de colisiones de id por contador local
+// ════════════════════════════════════════════════════════════════
+// Raíz del bug reportado: muchos registros se crean con "id: db.next_ids.X++", un contador
+// LOCAL que se reinicia a 1 al reinstalar la app o usarla en otro equipo. Como las tablas se
+// sincronizan desde el server (con ids ya altos), el contador reseteado vuelve a emitir ids
+// YA usados → colisión. Eso dejó 3 bajas con id=1 y hacía que "Vender carne" abriera el animal
+// equivocado (.find() por id agarra el primero).
+//
+// reconcileNextIds(): sube cada contador al máximo id presente en su tabla + 1. Solo SUBE,
+// nunca baja. Idempotente: seguro de correr al arrancar y después de cada sync.
+var _NEXTID_MAP = {
+  sale:'sales', product:'products', alert:'alerts', treatment:'treatments',
+  lot:'lots', partos:'partos', pesaje:'pesajes', maint:'maintenance',
+  diesel:'diesel', trace:'trace_records', activity:'activities',
+  employee:'employees', advance:'advances', purchase:'purchases'
+};
+function reconcileNextIds() {
+  try {
+    if (!db.next_ids) db.next_ids = {};
+    var bumped = [];
+    Object.keys(_NEXTID_MAP).forEach(function(key){
+      var arr = db[_NEXTID_MAP[key]];
+      if (!Array.isArray(arr) || !arr.length) return;
+      var maxId = arr.reduce(function(m, r){
+        var n = parseInt(r && r.id, 10);
+        return (!isNaN(n) && n > m) ? n : m;
+      }, 0);
+      var need = maxId + 1;
+      var cur = parseInt(db.next_ids[key], 10);
+      if (isNaN(cur) || cur < need) { db.next_ids[key] = need; bumped.push(key + '→' + need); }
+    });
+    if (bumped.length) console.log('[Blindaje IDs] contadores reconciliados:', bumped.join(', '));
+  } catch(e){ console.warn('[Blindaje IDs] error', e); }
+}
+
+// Red de seguridad: reparar IDs de baja duplicados o faltantes (por si llegan por sync).
+// La primera ocurrencia conserva su id; las siguientes (o las sin id) reciben uno nuevo,
+// único, basado en timestamp. Sin flag "done" para que también repare duplicados futuros.
+(function repararIdsBajas() {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', repararIdsBajas);
+    return;
+  }
+  setTimeout(function() {
+    try {
+      if (!Array.isArray(db.bajas) || !db.bajas.length) return;
+      var vistos = {};
+      var necesita = false;
+      db.bajas.forEach(function(b) {
+        var id = b.id;
+        if (id === undefined || id === null || id === '' || vistos[String(id)]) necesita = true;
+        if (id !== undefined && id !== null && id !== '') vistos[String(id)] = true;
+      });
+      if (!necesita) return;
+
+      var usados = {};
+      var reparados = [];
+      var seed = Date.now();
+      db.bajas.forEach(function(b) {
+        var id = b.id;
+        var idStr = String(id);
+        var invalido = (id === undefined || id === null || id === '');
+        if (invalido || usados[idStr]) {
+          var nuevoId = seed++;
+          while (usados[String(nuevoId)] || vistos[String(nuevoId)]) nuevoId++;
+          reparados.push('Animal #' + (b.animal_id || '?') + ': ' + (invalido ? 'sin id' : 'id ' + idStr) + ' → ' + nuevoId);
+          b.id = nuevoId;
+          usados[String(nuevoId)] = true;
+        } else {
+          usados[idStr] = true;
+        }
+      });
+
+      if (reparados.length) {
+        if (typeof saveDB === 'function') saveDB();
+        if (typeof replaceTableInRailway === 'function') try { replaceTableInRailway('bajas', db.bajas || []); } catch(e){}
+        console.log('[Migración BAJA-ID] IDs de baja reparados:', reparados);
+        if (typeof renderBajasDesktop === 'function') try { renderBajasDesktop(); } catch(e){}
+        if (typeof toast === 'function') toast('Se repararon ' + reparados.length + ' IDs de baja duplicados', 'success');
+      }
+    } catch(e) { console.warn('[Migración BAJA-ID] error', e); }
+  }, 3800);
+})();
+
+// Reconciliar contadores al arrancar (tras el pull inicial que carga los datos del server).
+(function reconcileNextIdsStartup() {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', reconcileNextIdsStartup);
+    return;
+  }
+  setTimeout(function(){ try { reconcileNextIds(); if (typeof saveDB === 'function') saveDB(); } catch(e){} }, 4000);
+})();
+
+
 
 
 
@@ -26215,6 +26314,12 @@ function showUpdateNotification(version, downloaded) {
 // Convención: máximo 3-5 bullets cortos. Lo que el usuario debe saber, no detalle técnico.
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.8.63': [
+    'Corregido un bug por el que al vender la carne de una baja se abría/afectaba el animal equivocado.',
+    '  - Causa: las bajas se creaban con un ID que se reiniciaba a 1 al reinstalar o usar otro equipo, y chocaba con bajas ya existentes (varias quedaban con el mismo ID).',
+    '  - Ahora cada baja recibe un ID único garantizado, y una reparación automática corrige los IDs duplicados que ya estaban guardados.',
+    '  - Blindaje general: al sincronizar, todos los contadores de ID se ajustan por encima de los datos existentes para que ningún registro (ventas, pesajes, sanidad, etc.) vuelva a repetir un ID.',
+  ],
   '1.8.62': [
     'Ingreso de stock manual (+ Stock) ahora queda registrado en el historial de movimientos del producto.',
     '  - Antes solo subía la cantidad; ahora se ve el ingreso en "Movimientos" tanto en Desktop como en la PWA.',
@@ -30155,6 +30260,19 @@ function openBajaAnimal(animalId, fromLot) {
   setupBajaPhotoHandler();
 }
 
+// FIX BUG-BAJA-ID: el contador local db.next_ids.bajas se reiniciaba a 1 en cada
+// reinstalación/dispositivo y generaba bajas con id DUPLICADO (3 bajas distintas habían
+// quedado con id=1). Con ids repetidos, "Vender carne"/eliminar/ver foto buscaban por id
+// con .find()/filter() y agarraban la baja equivocada. Generamos un id único basado en
+// timestamp (como la PWA), garantizando que no choque con ninguna baja existente.
+function genBajaId() {
+  var taken = {};
+  (db.bajas || []).forEach(function(b){ if (b && b.id != null) taken[String(b.id)] = true; });
+  var id = Date.now();
+  while (taken[String(id)]) id++;
+  return id;
+}
+
 function confirmarBajaAnimal() {
   var fecha = (document.getElementById('baja-fecha') || {}).value || '';
   var causa = (document.getElementById('baja-causa') || {}).value || 'desconocida';
@@ -30185,9 +30303,8 @@ function confirmarBajaAnimal() {
   // 2. Register in bajas table
   if (!db.bajas) db.bajas = [];
   if (!db.next_ids) db.next_ids = {};
-  if (!db.next_ids.bajas) db.next_ids.bajas = 1;
   var bajaRecord = {
-    id: db.next_ids.bajas++,
+    id: genBajaId(),
     animal_id: _bajaAnimalId,
     lot_code: _bajaFromLot,
     raza: raza,
