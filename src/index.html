@@ -7277,7 +7277,13 @@ function renderDashboard() {
       db.lots.forEach(function(lt) {
         var anims = _dashAnimDB[lt.code];
         if (anims && anims.length > 0) {
-          lt.animal_count = Math.max(lt.animal_count || 0, anims.length);
+          // FIX header pegado: e5m_animals es la fuente de verdad de animales presentes.
+          // Math.max solo SUBÍA el conteo y nunca lo bajaba, así que tras una baja/venta el
+          // header quedaba clavado (ej. 590 en vez de 589). Ahora seguimos el conteo real cuando
+          // creció, o cuando bajó poco (lote individualizado: baja/venta de pocas cabezas). Si la
+          // diferencia es grande, conservamos el valor (lote sin todos los animales cargados uno a uno).
+          var _cur = lt.animal_count || 0;
+          if (anims.length >= _cur || (_cur - anims.length) <= Math.max(3, _cur * 0.05)) lt.animal_count = anims.length;
           var ws = anims.map(function(a){ return a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length-1].peso : 0; }).filter(function(w){ return w > 0; });
           if (ws.length) lt.avg_weight = Math.round(ws.reduce(function(s,w){return s+w;},0)/ws.length*10)/10;
         }
@@ -7344,7 +7350,10 @@ function renderLotes() {
   db.lots.forEach(function(lt) {
     var anims = _animDB[lt.code];
     if (anims && anims.length > 0) {
-      lt.animal_count = Math.max(lt.animal_count || 0, anims.length);
+      // FIX conteo: seguir e5m_animals (verdad de animales presentes) también hacia abajo tras
+      // una baja/venta. Si la diferencia es grande, conservar (lote no individualizado por completo).
+      var _cur = lt.animal_count || 0;
+      if (anims.length >= _cur || (_cur - anims.length) <= Math.max(3, _cur * 0.05)) lt.animal_count = anims.length; else lt.animal_count = Math.max(_cur, anims.length);
       var ws = anims.map(function(a){ return a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length-1].peso : 0; }).filter(function(w){ return w > 0; });
       if (ws.length) lt.avg_weight = Math.round(ws.reduce(function(s,w){return s+w;},0)/ws.length*10)/10;
     }
@@ -26314,6 +26323,11 @@ function showUpdateNotification(version, downloaded) {
 // Convención: máximo 3-5 bullets cortos. Lo que el usuario debe saber, no detalle técnico.
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.8.64': [
+    'Corregido: el contador de cabezas del encabezado no bajaba tras una baja o venta (quedaba "pegado").',
+    '  - Mostraba 590 cuando ya eran 589. El conteo se quedaba en el valor más alto y no reflejaba la salida del animal.',
+    '  - Ahora el encabezado sigue el conteo real de animales (sube y baja), corrigiéndose solo al abrir la app o al sincronizar.',
+  ],
   '1.8.63': [
     'Corregido un bug por el que al vender la carne de una baja se abría/afectaba el animal equivocado.',
     '  - Causa: las bajas se creaban con un ID que se reiniciaba a 1 al reinstalar o usar otro equipo, y chocaba con bajas ya existentes (varias quedaban con el mismo ID).',
