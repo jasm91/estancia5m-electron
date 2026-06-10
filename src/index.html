@@ -3919,6 +3919,38 @@ function publishTasksToPWA() {
     </div>
   </div>
 
+  <!-- Dispositivos (Device Pairing v1.8.65) -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-hd"><div class="card-title">📱 Dispositivos</div></div>
+    <div class="card-body">
+      <div style="color:var(--muted);font-size:12.5px;margin-bottom:14px">Vinculá celulares de capataces con un código de un solo uso. Cada uno tiene su propio acceso; revocar uno no afecta a los demás ni a este equipo.</div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">
+        <div class="form-group" style="flex:1;min-width:220px;margin:0">
+          <label class="form-label">Nombre del dispositivo nuevo</label>
+          <input class="form-input" id="dev-name" placeholder="Ej: Celular de Juan" maxlength="60" onkeydown="if(event.key==='Enter')generarCodigoDispositivo()">
+        </div>
+        <button class="btn btn-primary" onclick="generarCodigoDispositivo()" style="min-width:190px">➕ Vincular dispositivo</button>
+      </div>
+
+      <div id="dev-code-panel" style="display:none;background:var(--sur2);border:1px solid var(--bor);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+        <div style="font-size:10.5px;font-weight:700;letter-spacing:1.2px;color:var(--amber);margin-bottom:6px" id="dev-code-label">CÓDIGO</div>
+        <div style="font-family:'DM Mono',monospace;font-size:32px;font-weight:600;letter-spacing:4px" id="dev-code-num">— — —</div>
+        <div style="color:var(--muted);font-size:11.5px;margin-top:6px" id="dev-code-exp"></div>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn btn-ghost" style="font-size:12.5px" onclick="copiarLinkWhatsapp()">🔗 Copiar link de WhatsApp</button>
+          <button class="btn btn-ghost" style="font-size:12.5px" onclick="copiarCodigoDispositivo()">📋 Copiar código</button>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <div class="form-label" style="margin:0">Dispositivos vinculados</div>
+        <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="renderDispositivos()">↻ Actualizar</button>
+      </div>
+      <div id="dev-list"><div style="color:var(--muted);font-size:12px;padding:8px 0">Abrí esta pantalla con internet para ver los dispositivos.</div></div>
+    </div>
+  </div>
+
   <!-- Onboarding inicial -->
   <div class="card" style="margin-bottom:20px">
     <div class="card-hd">
@@ -19574,6 +19606,7 @@ function renderConfig() {
   if(autoLbl) autoLbl.textContent = autoEnabled ? 'Activado' : 'Desactivado';
   if(autoFreq) autoFreq.value = localStorage.getItem('e5m_auto_backup_freq') || '7';
   updateAutoBackupNextLabel();
+  try { renderDispositivos(); } catch(e) {}
 }
 
 // Auto ping on startup
@@ -26322,7 +26355,146 @@ function showUpdateNotification(version, downloaded) {
 // Mostrado en Configuración » Actualizaciones cuando hay nueva versión.
 // Convención: máximo 3-5 bullets cortos. Lo que el usuario debe saber, no detalle técnico.
 // ══════════════════════════════════════════════════
+// ══════════════════════════════════════════════════
+// v1.8.65 — Device Pairing (sección "Dispositivos" en Configuración)
+// ══════════════════════════════════════════════════
+var _devLastCode = null, _devCodeTimer = null;
+
+function _devApi(path, opts) {
+  var url = getApiUrl() + path;
+  var token = getApiToken();
+  opts = opts || {};
+  opts.headers = Object.assign({ 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token, 'X-App-Type': 'desktop' }, opts.headers || {});
+  return fetch(url, opts).then(function(r) {
+    return r.json().then(function(j) { return { status: r.status, j: j }; }).catch(function() { return { status: r.status, j: {} }; });
+  });
+}
+
+function generarCodigoDispositivo() {
+  var nameEl = document.getElementById('dev-name');
+  var name = (nameEl && nameEl.value || '').trim();
+  if (!name) { toast('Poné un nombre para el dispositivo', 'error'); return; }
+  if (!navigator.onLine) { toast('Necesitás internet para generar el código', 'error'); return; }
+  _devApi('/devices/pair-code', { method: 'POST', body: JSON.stringify({ device_name: name, app_type: 'pwa' }) })
+    .then(function(res) {
+      if (res.status === 200 && res.j && res.j.code) {
+        _devLastCode = res.j.code;
+        var panel = document.getElementById('dev-code-panel'); if (panel) panel.style.display = '';
+        var lbl = document.getElementById('dev-code-label'); if (lbl) lbl.textContent = 'CÓDIGO PARA “' + name + '”';
+        var num = document.getElementById('dev-code-num'); if (num) { num.style.opacity = 1; num.textContent = res.j.code.slice(0, 3) + ' ' + res.j.code.slice(3); }
+        _devStartCountdown(res.j.expires_in || 600);
+      } else if (res.status === 404) {
+        toast('El servidor todavía no tiene Device Pairing (actualizá a v4.12.0)', 'error');
+      } else {
+        toast((res.j && res.j.error) || 'No se pudo generar el código', 'error');
+      }
+    })
+    .catch(function() { toast('Error de conexión', 'error'); });
+}
+
+function _devStartCountdown(secs) {
+  if (_devCodeTimer) clearInterval(_devCodeTimer);
+  var left = secs;
+  var expEl = document.getElementById('dev-code-exp');
+  function tick() {
+    if (left <= 0) {
+      if (_devCodeTimer) clearInterval(_devCodeTimer);
+      if (expEl) expEl.textContent = 'Código vencido — generá uno nuevo';
+      var n = document.getElementById('dev-code-num'); if (n) n.style.opacity = 0.4;
+      return;
+    }
+    var m = Math.floor(left / 60), s = left % 60;
+    if (expEl) expEl.textContent = 'Expira en ' + m + ':' + (s < 10 ? '0' : '') + s + ' · un solo uso';
+    left--;
+  }
+  tick(); _devCodeTimer = setInterval(tick, 1000);
+}
+
+function _devPwaUrl() {
+  return (localStorage.getItem('e5m_pwa_url') || 'https://estancia5movil.netlify.app').replace(/\/+$/, '');
+}
+function copiarLinkWhatsapp() {
+  if (!_devLastCode) return;
+  _devCopy(_devPwaUrl() + '/?pair=' + _devLastCode, 'Link copiado — pegalo en WhatsApp');
+}
+function copiarCodigoDispositivo() {
+  if (!_devLastCode) return;
+  _devCopy(_devLastCode, 'Código copiado');
+}
+function _devCopy(txt, okMsg) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(function() { toast(okMsg, 'success'); }, function() { _devFallbackCopy(txt, okMsg); });
+    } else { _devFallbackCopy(txt, okMsg); }
+  } catch (e) { _devFallbackCopy(txt, okMsg); }
+}
+function _devFallbackCopy(txt, okMsg) {
+  try {
+    var ta = document.createElement('textarea'); ta.value = txt;
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+    toast(okMsg, 'success');
+  } catch (e) { toast('Copiá manualmente: ' + txt, 'info'); }
+}
+
+function _devTimeAgo(iso) {
+  try {
+    var t = new Date(iso).getTime(); if (isNaN(t)) return '—';
+    var s = Math.floor((Date.now() - t) / 1000);
+    if (s < 60) return 'recién';
+    if (s < 3600) return Math.floor(s / 60) + ' min';
+    if (s < 86400) return Math.floor(s / 3600) + ' h';
+    return Math.floor(s / 86400) + ' días';
+  } catch (e) { return '—'; }
+}
+
+function renderDispositivos() {
+  var list = document.getElementById('dev-list');
+  if (!list) return;
+  if (!navigator.onLine) { list.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px 0">Sin conexión — conectate para ver los dispositivos.</div>'; return; }
+  list.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px 0">Cargando…</div>';
+  _devApi('/devices', { method: 'GET' })
+    .then(function(res) {
+      if (res.status === 404) { list.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px 0">El servidor todavía no tiene Device Pairing (actualizá a v4.12.0).</div>'; return; }
+      if (res.status !== 200 || !res.j || !res.j.devices) { list.innerHTML = '<div style="color:var(--red);font-size:12px;padding:8px 0">No se pudo cargar la lista.</div>'; return; }
+      var devs = res.j.devices;
+      if (!devs.length) { list.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px 0">Ningún celular vinculado todavía. Generá un código arriba.</div>'; return; }
+      var html = '';
+      devs.forEach(function(d) {
+        var revoked = !!d.revoked_at;
+        var last = d.last_seen ? _devTimeAgo(d.last_seen) : '—';
+        html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--bor)' + (revoked ? ';opacity:.5' : '') + '">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-weight:600;font-size:13px">📱 ' + escH(d.device_name || 'Dispositivo') + '</div>' +
+            '<div style="color:var(--muted);font-size:11px">' + escH(d.token_hint || '') + ' · ' + escH(d.app_type || 'pwa') + ' · últ. vez ' + escH(last) + '</div>' +
+          '</div>' +
+          (revoked
+            ? '<span style="font-size:11px;color:var(--red);font-weight:600">revocado</span>'
+            : '<button class="btn btn-ghost" style="padding:6px 12px;font-size:12px;color:var(--red);border-color:rgba(248,81,73,.4)" onclick="revocarDispositivo(' + d.id + ', this)">Revocar</button>') +
+          '</div>';
+      });
+      list.innerHTML = html;
+    })
+    .catch(function() { list.innerHTML = '<div style="color:var(--red);font-size:12px;padding:8px 0">Error de conexión.</div>'; });
+}
+
+function revocarDispositivo(id, btn) {
+  if (!confirm('¿Revocar este dispositivo? Dejará de sincronizar. Podés volver a vincularlo con un código nuevo.')) return;
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  _devApi('/devices/' + id + '/revoke', { method: 'POST' })
+    .then(function(res) {
+      if (res.status === 200) { toast('Dispositivo revocado', 'success'); renderDispositivos(); }
+      else { toast((res.j && res.j.error) || 'No se pudo revocar', 'error'); if (btn) { btn.disabled = false; btn.textContent = 'Revocar'; } }
+    })
+    .catch(function() { toast('Error de conexión', 'error'); if (btn) { btn.disabled = false; btn.textContent = 'Revocar'; } });
+}
+
+// ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.8.65': [
+    'Nuevo: sección “Dispositivos” en Configuración para vincular celulares de capataces.',
+    '  - Generás un código de 6 dígitos (dura 10 min, un solo uso) y se lo pasás al capataz; su celular queda con su propio acceso.',
+    '  - Podés ver los celulares vinculados y revocar uno (ej. perdido) sin afectar a los demás ni a este equipo.',
+  ],
   '1.8.64': [
     'Corregido: el contador de cabezas del encabezado no bajaba tras una baja o venta (quedaba "pegado").',
     '  - Mostraba 590 cuando ya eran 589. El conteo se quedaba en el valor más alto y no reflejaba la salida del animal.',
