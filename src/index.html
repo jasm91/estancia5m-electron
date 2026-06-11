@@ -6475,6 +6475,10 @@ function pullFromRailwayDesktop(thenPush) {
         { local: 'historial_sueldos', remote: remote.historial_sueldos },
         { local: 'health_alerts',  remote: remote.health_alerts },
         { local: 'employees',      remote: remote.employees },
+        // v1.8.66: traer también los movimientos de animales del server (log append-only).
+        // Sin esto, los traslados hechos en otro equipo / PWA / botón individual viejo
+        // no existían localmente y la Trazabilidad completa no podía mostrarlos.
+        { local: 'animal_movements', remote: remote.animal_movements },
       ];
       fieldTables.forEach(function(t) {
         if (t.remote && t.remote.length) {
@@ -22336,13 +22340,40 @@ function getTankById(tanks, id) {
   return tanks.find(function(t){ return t.id === id; }) || tanks[0];
 }
 
+// v1.8.66: fecha EFECTIVA de un movimiento de diésel = la que el usuario ELIGIÓ en el modal
+// (`fecha`; los de WhatsApp viejos usan `date`). Fallback: día LOCAL del created_at.
+// `created_at` queda solo como timestamp de registro (trazabilidad) y desempate.
+function dieselFechaEfectiva(r) {
+  var f = r.fecha || r.date || '';
+  if (f) return f.toString().slice(0, 10);
+  if (r.created_at) { var s = fmtDT(r.created_at); if (s) return s.slice(0, 10); }
+  return '';
+}
+// Comparador ascendente: fecha efectiva primero, created_at como desempate (mismo día).
+function dieselCmpAsc(a, b) {
+  var fa = dieselFechaEfectiva(a), fb = dieselFechaEfectiva(b);
+  if (fa !== fb) return fa.localeCompare(fb);
+  return (a.created_at || '').toString().localeCompare((b.created_at || '').toString());
+}
+// Para la columna FECHA: si el registro se cargó el mismo día (no retro-fechado), mostrar
+// fecha + hora como siempre; si fue retro-fechado, mostrar SOLO la fecha elegida.
+function dieselFechaDisplay(r) {
+  var fEf = dieselFechaEfectiva(r);
+  if (r.created_at && fmtDT(r.created_at).slice(0, 10) === fEf) return fmtDT(r.created_at);
+  return fEf || fmtDT(r.created_at || '');
+}
+
 function recalcTankLevel() {
   var tanks = getDieselTanks();
   if (!db.diesel) db.diesel = [];
   // Reset all levels
   tanks.forEach(function(t){ t.current_level = 0; });
   // Replay transactions chronologically
-  var sorted = db.diesel.slice().sort(function(a,b){ return (a.created_at||a.fecha||'').localeCompare(b.created_at||b.fecha||''); });
+  // v1.8.66: replay por fecha EFECTIVA (la elegida en el modal), desempate created_at.
+  // Antes ordenaba por created_at → un despacho retro-fechado se aplicaba al final y el
+  // balance por fila no correspondía a la cronología real (y un ajuste posterior por fecha
+  // pero anterior por registro lo pisaba mal).
+  var sorted = db.diesel.slice().sort(dieselCmpAsc);
   sorted.forEach(function(r) {
     var type = r.type || (r.proveedor ? 'recarga' : 'despacho');
     var litros = parseFloat(r.litros) || 0;
@@ -23311,7 +23342,7 @@ function renderDieselDesktop() {
   var totalRecarga = monthRecargas.reduce(function(s,r){ return s+(parseFloat(r.litros)||0); },0);
   var totalDespacho = monthDespachos.reduce(function(s,r){ return s+(parseFloat(r.litros)||0); },0);
   var totalMermaL = monthAjustes.filter(function(a){return a.ajuste_direccion==='merma';}).reduce(function(s,r){ return s+(parseFloat(r.litros)||0); },0);
-  var lastAjuste = monthAjustes.length ? monthAjustes.sort(function(a,b){return (b.created_at||'').localeCompare(a.created_at||'');})[0] : null;
+  var lastAjuste = monthAjustes.length ? monthAjustes.slice().sort(function(a,b){return dieselCmpAsc(b,a);})[0] : null; // v1.8.66: por fecha efectiva
   var mermaPctKPI = lastAjuste && lastAjuste.ajuste_direccion==='merma' ? (lastAjuste.merma_pct||0) : 0;
   var totalGasto = monthRecargas.reduce(function(s,r){ return s+(parseFloat(r.total)||0); },0);
   var diasMes = monthDespachos.length ? (function(){ var fechas={}; monthDespachos.forEach(function(r){fechas[r.fecha]=1;}); return Object.keys(fechas).length; })() : 1;
@@ -23367,7 +23398,7 @@ function renderDieselDesktop() {
       tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">Sin registros</td></tr>';
     } else {
       tbody.innerHTML = '';
-      registros.slice().sort(function(a,b){ return (b.created_at||b.fecha||'').localeCompare(a.created_at||a.fecha||''); }).forEach(function(r){
+      registros.slice().sort(function(a,b){ return dieselCmpAsc(b,a); }).forEach(function(r){ // v1.8.66: orden por fecha efectiva
         var type = r.type || 'despacho';
         var typeLabel, typeColor, litrosSign;
         if (type === 'recarga') { typeLabel = '🔄 Recarga'; typeColor = 'var(--green)'; litrosSign = '+'; }
@@ -23395,7 +23426,7 @@ function renderDieselDesktop() {
         var tr = document.createElement('tr');
         tr.style.cursor = 'pointer';
         tr.setAttribute('data-diesel-id', r.id);
-        tr.innerHTML = '<td>'+fmtDT(r.created_at||r.fecha)+'</td>'+
+        tr.innerHTML = '<td>'+dieselFechaDisplay(r)+'</td>'+ // v1.8.66: fecha ELEGIDA (hora solo si no es retro-fechado)
           '<td style="font-weight:600;color:'+typeColor+'">'+typeLabel+'</td>'+
           '<td style="font-family:DM Mono,monospace;color:'+typeColor+';font-weight:600">'+litrosSign+((parseFloat(r.litros)||0).toFixed(1))+' L</td>'+
           '<td style="font-size:12px">'+escH(type==='ajuste'?(r.motivo||'-'):(r.vehiculo||'-'))+'</td>'+
@@ -23493,7 +23524,7 @@ function openDieselDetail(id) {
 
   // Sección: detalles principales
   html += '<div style="background:var(--sur2);border-radius:8px;padding:0 14px;margin-bottom:14px">';
-  html += row('Fecha', fmtDT(r.created_at || r.fecha), { mono: true });
+  html += row('Fecha', dieselFechaDisplay(r), { mono: true }); // v1.8.66: fecha elegida ("Timestamp creación" abajo muestra el registro)
   if (r._tank_name) html += row('Tanque', r._tank_name, { bold: true });
   if (type === 'despacho' || type === 'recarga') {
     if (r.vehiculo) html += row('Vehículo / Equipo', r.vehiculo, { bold: true });
@@ -24531,11 +24562,17 @@ function _e5mPingSesion() {
   .catch(function(e) { /* silencioso, reintenta en 60s */ });
 }
 
+// v1.8.66: chip "Otra sesión activa" DESACTIVADO por ahora (daba avisos confusos).
+// El ping de presencia sigue corriendo (el server conserva el dato); para reactivar
+// el chip, poner esta bandera en true.
+var E5M_SESSION_CHIP_ENABLED = false;
+
 // Muestra u oculta el chip de alerta según haya otras sesiones
 function _e5mRenderSesionChip() {
   var chip = document.getElementById('multi-session-chip');
   var lbl = document.getElementById('multi-session-label');
   if (!chip) return;
+  if (!E5M_SESSION_CHIP_ENABLED) { chip.style.display = 'none'; return; }
   var n = _e5mSesionesData.length;
   if (n > 0) {
     chip.style.display = 'inline-flex';
@@ -26490,6 +26527,14 @@ function revocarDispositivo(id, btn) {
 
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.8.66': [
+    'Corregido: Combustible ahora muestra y ordena por la FECHA que elegiste en el modal, no por el día en que se cargó el registro.',
+    '  - Antes, si registrabas hoy un despacho de hace días, salía con la fecha/hora de hoy. Ahora sale con la fecha elegida (la hora se muestra solo cuando el registro es del mismo día).',
+    '  - El balance del tanque por fila y el indicador de última merma también siguen la cronología real (fecha elegida).',
+    'Corregido: la "Trazabilidad completa" del animal ahora muestra los traslados de lote hechos de a uno (botón Mover).',
+    '  - Antes solo aparecían los traslados hechos en grupo. Ahora también se muestran los traslados sincronizados desde otros equipos o la PWA (incluye los históricos ya registrados en el server).',
+    'Quitado (por ahora): el aviso "Otra sesión activa" de la barra superior — daba avisos confusos.',
+  ],
   '1.8.65': [
     'Nuevo: sección “Dispositivos” en Configuración para vincular celulares de capataces.',
     '  - Generás un código de 6 dígitos (dura 10 min, un solo uso) y se lo pasás al capataz; su celular queda con su propio acceso.',
@@ -29243,6 +29288,18 @@ function confirmarMoverAnimal() {
   var animal = fromAnimals.find(function(a){ return (a.id||a.animal_id||'').toString() === _moverAnimalId.toString(); });
   if(!animal) { toast('Animal no encontrado','error'); return; }
 
+  // v1.8.66: estampar el movimiento granular en el animal (igual que el bulk-mover).
+  // Sin esto, la "Trazabilidad completa" no mostraba los traslados hechos de a uno.
+  if (!animal._movements) animal._movements = [];
+  var _lastPesoMov = (animal.pesajes && animal.pesajes.length) ? (parseFloat(animal.pesajes[animal.pesajes.length-1].peso) || 0) : 0;
+  animal._movements.push({
+    date: date,
+    from_lot: _moverFromLot,
+    to_lot: toLot,
+    weight_at_move: _lastPesoMov,
+    reason: motivo
+  });
+
   // Quitar del lote origen
   adb[_moverFromLot] = fromAnimals.filter(function(a){ return (a.id||a.animal_id||'').toString() !== _moverAnimalId.toString(); });
   // Agregar al lote destino
@@ -30598,19 +30655,41 @@ function verHistorialAnimal(animalId,lotCode){
   }
 
   // 2) Movimientos (granular)
-  if (a && Array.isArray(a._movements)) {
-    a._movements.forEach(function(m) {
-      events.push({
-        date: m.date || '',
-        icon: '📤',
-        type: 'TRASLADO',
-        color: 'var(--amber2)',
-        title: m.from_lot + ' → ' + m.to_lot,
-        sub: (m.weight_at_move ? m.weight_at_move + ' kg al momento' : '') +
-             (m.reason ? ' · ' + m.reason : '')
-      });
+  // v1.8.66: dedupe por fecha+origen+destino (el server puede tener el mismo traslado
+  // repetido, ej. doble click) y además de a._movements se leen los movimientos
+  // sincronizados del server (db.animal_movements) → cubre traslados hechos en otro
+  // equipo / PWA / con el botón individual de versiones anteriores a este fix.
+  var _seenMov = {};
+  function _pushMov(mdate, mfrom, mto, msub) {
+    if (!mfrom && !mto) return;
+    var k = (mdate || '') + '|' + (mfrom || '') + '|' + (mto || '');
+    if (_seenMov[k]) return;
+    _seenMov[k] = 1;
+    events.push({
+      date: mdate || '',
+      icon: '📤',
+      type: 'TRASLADO',
+      color: 'var(--amber2)',
+      title: (mfrom || '?') + ' → ' + (mto || '?'),
+      sub: msub || ''
     });
   }
+  if (a && Array.isArray(a._movements)) {
+    a._movements.forEach(function(m) {
+      _pushMov(m.date, m.from_lot, m.to_lot,
+        (m.weight_at_move ? m.weight_at_move + ' kg al momento' : '') +
+        (m.reason ? ' · ' + m.reason : ''));
+    });
+  }
+  (db.animal_movements || []).forEach(function(m) {
+    var match = (m.animal_id !== undefined && m.animal_id !== null && m.animal_id.toString() === animalId.toString()) ||
+                (Array.isArray(m.animal_ids) && m.animal_ids.some(function(x){ return (x === undefined || x === null ? '' : x).toString() === animalId.toString(); }));
+    if (!match) return;
+    var sub = (m.by ? 'por ' + m.by : '');
+    var reason = m.reason || m.motivo || '';
+    if (reason) sub += (sub ? ' · ' : '') + reason;
+    _pushMov(m.date, m.from_lot, m.to_lot, sub);
+  });
 
   // 3) Pesajes
   if (a && Array.isArray(a.pesajes)) {
