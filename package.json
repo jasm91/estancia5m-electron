@@ -1,6 +1,6 @@
 {
   "name": "estancia5m",
-  "version": "1.8.66",
+  "version": "1.8.69",
   "description": "Sistema de Gestión Ganadera — Estancia 5M",
   "main": "main.js",
   "scripts": {
@@ -80,7 +80,7 @@
       "buildResources": "assets",
       "output": "dist"
     },
-    "extraFiles": [
+    "extraResources": [
       {
         "from": "node_modules/sql.js/dist/sql-wasm.wasm",
         "to": "sql-wasm.wasm"

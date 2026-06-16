@@ -1111,8 +1111,8 @@ function publishTasksToPWA() {
           <input type="checkbox" id="animales-show-sold" onchange="renderAnimalesLote()" style="cursor:pointer">
           Vendidos
         </label>
-        <button class="btn btn-primary btn-sm" onclick="openModalAnimal()">+ Animal</button>
-        <button class="btn btn-ghost btn-sm" onclick="openModalPesajeAnimal()">+ Pesaje</button>
+        <button class="btn btn-primary btn-sm" onclick="openModalAnimal()">⚖ Pesaje rápido</button>
+        <button class="btn btn-ghost btn-sm" onclick="openModalPesajeAnimal()">+ Pesaje (individual o masivo)</button>
       </div>
     </div>
     <!-- v1.4.76: Sticky action bar para selección múltiple -->
@@ -7560,6 +7560,14 @@ function lotStatusBadge(lot) {
   return'<span class="bdg bdg-green">✓ Activo</span>';
 }
 
+// v1.8.69: autor de un registro hecho desde el Escritorio. Antes se hardcodeaba "Cesar Moreno"
+// (tenant de César) → en otros tenants la trazabilidad mostraba "por Cesar Moreno". Usa el
+// propietario configurado; si no hay, "Escritorio".
+window._desktopAuthor = function(){
+  try { var rp = (typeof getRp === 'function') ? getRp() : {}; var p = String(rp.propietario||'').trim(); return p || 'Escritorio'; }
+  catch(e){ return 'Escritorio'; }
+};
+
 function openMoveLot(idOrCode) {
   // v1.8.24: buscar por code primero (único), id como fallback
   var lot = db.lots.find(function(l){return l.code===idOrCode;});
@@ -7575,7 +7583,7 @@ function openMoveLot(idOrCode) {
     toast('No se puede rotar el lote ' + lot.code + ' (sin animales)', 'warning');
     return;
   }
-  movingLotId = id;
+  movingLotId = lot.id;   // v1.8.69 FIX: usaba `id` (indefinido) → el botón Rotar tiraba ReferenceError
   document.getElementById('move-lot-code').value = lot.code+' - '+lot.paddock;
   document.getElementById('move-reason').value = '';
   var currentPaddock = String(lot.paddock || '').trim();
@@ -7588,7 +7596,7 @@ function openMoveLot(idOrCode) {
       if (p.name && currentPaddock && String(p.name).toLowerCase() === currentPaddock.toLowerCase()) return;
       // v1.4.108 FIX: la ocupación post-rotación NO incluye al lote que se está moviendo
       var currentInPotrero = (db.lots||[]).filter(function(l){
-        return (l.paddock||'').toLowerCase()===(p.name||'').toLowerCase() && l.id !== id;
+        return (l.paddock||'').toLowerCase()===(p.name||'').toLowerCase() && l.id !== lot.id;
       }).reduce(function(s,l){return s+(l.animal_count||0);},0);
       var o = document.createElement('option');
       o.value = p.name;
@@ -8542,7 +8550,7 @@ function saveTreatment() {
     db.alerts.push({id:db.next_ids.alert++,type:'treatment_due',severity:'warning',title:'Tratamiento pendiente: '+(prod.name)+'',message:'Aplicacion programada para '+(next)+'. '+(scope==='lot'?'Lote '+lot_code:'Animal '+animal_id)+'.',resolved:false,created_at:date});
   }
 
-  addActivity('Cesar Moreno','curacion',lot_code||animal_id,'Curacion: '+(prod.name)+' × '+(count)+' animales'+(diag?' - '+diag:'')+'');
+  addActivity(_desktopAuthor(),'curacion',lot_code||animal_id,'Curacion: '+(prod.name)+' × '+(count)+' animales'+(diag?' - '+diag:'')+'');
   saveDB();
   closeModal('modal-treatment');
   renderDashboard();
@@ -9261,7 +9269,7 @@ function addStock() {
       diferencia: qty, costo_merma: 0, motivo: reason }],
     total_merma_bs: 0, total_items: 1, items_con_diferencia: 1, created_at: new Date().toISOString()
   });
-  addActivity('Cesar Moreno','alimentacion','','Ingreso de stock: '+qty+' '+prod.unit+' de '+prod.name+' ('+reason+')');
+  addActivity(_desktopAuthor(),'alimentacion','','Ingreso de stock: '+qty+' '+prod.unit+' de '+prod.name+' ('+reason+')');
   saveDB(); closeModal('modal-stock-add'); renderStock(); renderDashboard();
   pushTableToRailway('inventory_counts', db.inventory_counts);
   toast(qty+' '+prod.unit+' de '+prod.name+' ingresados','success');
@@ -9343,9 +9351,18 @@ function saveProduct() {
   if (editingProductId !== null) {
     var idx = db.products.findIndex(function(p){ return p.id == editingProductId; });
     if (idx === -1) { toast('Producto no encontrado','error'); return; }
+    var _oldProdName = String(db.products[idx].name||'');   // v1.8.68: nombre previo
     db.products[idx] = Object.assign({}, db.products[idx], productData);
+    // v1.8.68: los movimientos de Sal y Alimento guardan el producto SOLO por nombre
+    // (stock_product, sin product_id) → al renombrar el producto se huerfanaban en el kardex.
+    var _prodMig = 0;
+    if (_oldProdName && _oldProdName !== name) {
+      (db.sal||[]).forEach(function(r){ if((r.stock_product||'')===_oldProdName){ r.stock_product=name; _prodMig++; } });
+      (db.alimento||[]).forEach(function(r){ if((r.stock_product||'')===_oldProdName){ r.stock_product=name; _prodMig++; } });
+    }
     saveDB(); closeModal('modal-product'); renderStock();
-    toast('Producto actualizado','success');
+    if (_prodMig) { try { replaceTableInRailway('sal', db.sal||[]); } catch(e){} try { replaceTableInRailway('alimento', db.alimento||[]); } catch(e){} }
+    toast(_prodMig ? ('Producto actualizado · '+_prodMig+' registro(s) de sal/alimento migrados') : 'Producto actualizado','success');
   } else {
     db.products.push(Object.assign({ id: db.next_ids.product++ }, productData));
     saveDB(); closeModal('modal-product'); renderStock();
@@ -11476,6 +11493,29 @@ function saveEmployee() {
     if(emp) {
       oldSnap = JSON.parse(JSON.stringify(emp));   // FIX v1.4.35: snapshot pre-edit
       emp.name = name;
+      // v1.8.67: al RENOMBRAR un empleado, migrar todos sus registros vinculados por nombre
+      // (adelantos, sueldos, actividades, tareas) para que NO se pierdan. Antes estos
+      // registros guardaban el nombre como texto y quedaban huérfanos al cambiar el nombre
+      // (ej. "Juan" → "Juan Pérez" hacía desaparecer todos los adelantos de Juan).
+      window._empRenameInfo = null;
+      var _oldNm = (oldSnap && oldSnap.name) ? oldSnap.name : null;
+      if (_oldNm && _oldNm !== name) {
+        var _nMig = 0;
+        (db.advances||[]).forEach(function(a){ if(a.employee===_oldNm){ a.employee=name; _nMig++; } });
+        (db.historial_sueldos||[]).forEach(function(s){ if(s.empleado===_oldNm){ s.empleado=name; _nMig++; } });
+        (db.activities||[]).forEach(function(a){ if(a.employee===_oldNm){ a.employee=name; _nMig++; } });
+        var _tkChanged = false;
+        try {
+          var _tk = JSON.parse(localStorage.getItem('e5m_tasks')||'[]');
+          _tk.forEach(function(t){
+            if(t.assignee===_oldNm){ t.assignee=name; _nMig++; _tkChanged=true; }
+            if(t.completed_by===_oldNm){ t.completed_by=name; _nMig++; _tkChanged=true; }
+          });
+          if(_tkChanged) localStorage.setItem('e5m_tasks', JSON.stringify(_tk));
+        } catch(e){}
+        window._empRenameInfo = { from:_oldNm, to:name, count:_nMig, tasksChanged:_tkChanged };
+        if(_nMig) console.log('[Empleado] Renombrado "'+_oldNm+'" → "'+name+'": '+_nMig+' registros migrados');
+      }
       emp.role = document.getElementById('emp-role').value;
       emp.phone = document.getElementById('emp-phone').value;
       emp.salary = parseFloat(document.getElementById('emp-salary').value)||0;
@@ -11489,7 +11529,7 @@ function saveEmployee() {
       auditAction = 'update';
     }
     _editingEmployeeId = null;
-    toast('Empleado actualizado','success');
+    toast(window._empRenameInfo && window._empRenameInfo.count ? ('Empleado actualizado · '+window._empRenameInfo.count+' registro(s) migrados al nuevo nombre') : 'Empleado actualizado','success');
   } else {
     // Modo nuevo
     var newPin = (document.getElementById('emp-pin').value||'').trim();
@@ -11504,6 +11544,17 @@ function saveEmployee() {
   saveDB(); closeModal('modal-employee'); renderPersonal();
   // Push al server (faltaba — la PWA con cache vieja podía pisar la lista del server)
   replaceTableInRailway('employees', db.employees || []);
+  // v1.8.67: si hubo rename, sincronizar también las tablas migradas para que el server
+  // refleje el nuevo nombre (si no, el próximo pull podría traer registros con el nombre viejo).
+  if (window._empRenameInfo && window._empRenameInfo.count) {
+    try { replaceTableInRailway('advances', db.advances || []); } catch(e){}
+    try { replaceTableInRailway('historial_sueldos', db.historial_sueldos || []); } catch(e){}
+    try { replaceTableInRailway('field_activities', db.activities || []); } catch(e){}
+    if (window._empRenameInfo.tasksChanged) {
+      try { replaceTableInRailway('tasks', JSON.parse(localStorage.getItem('e5m_tasks')||'[]')); } catch(e){}
+    }
+    window._empRenameInfo = null;
+  }
   // FIX v1.4.35: audit log para empleado
   if (savedEmpId != null) {
     try {
@@ -14483,6 +14534,14 @@ function fmtDT(str) {
   }
   if (s.length >= 16 && s[10] === ' ') return s.slice(0,16);
   return s.slice(0,10);
+}
+// v1.8.69: mostrar la FECHA ELEGIDA por el usuario (no el día de registro). Muestra hora solo si
+// el registro se cargó el mismo día (no retro-fechado). Usado en Pluviometría y Aceite (igual que
+// el combustible). Antes mostraban created_at → una lectura con fecha pasada salía con la fecha de hoy.
+function _fechaRegDisplay(r){
+  var f = String((r && r.fecha) || '');
+  if (f && r && r.created_at && fmtDT(r.created_at).slice(0,10) === f) return fmtDT(r.created_at);
+  return f || fmtDT((r && r.created_at) || '');
 }
 var _API_TOKEN = '';
 var _PING_URL  = _API_URL.replace('/api', '/ping');
@@ -23227,13 +23286,22 @@ function saveMaq() {
     notas: ((document.getElementById('maq-notas')||{}).value||'').trim(),
   };
 
+  window._maqRenameMig = 0;
   if (editId) {
     var existing = db.maquinaria.find(function(m){return m.id===editId;});
     if (existing) {
+      var _oldMaqName = String(existing.nombre||'').trim();   // v1.8.68: nombre previo
       Object.keys(rec).forEach(function(k){ existing[k] = rec[k]; });
       existing.updated_at = new Date().toISOString();
       if (_maqPhotoBase64) existing.photo_url = _maqPhotoBase64;
-      toast('Equipo actualizado: '+nombre,'success');
+      // v1.8.68: el historial (diésel/aceite/mantenimiento) se vincula por NOMBRE del equipo,
+      // no por id → al renombrar hay que reescribirlo o se huerfana todo el historial.
+      if (_oldMaqName && _oldMaqName !== nombre) {
+        (db.diesel||[]).forEach(function(r){ if(String(r.vehiculo||'').trim()===_oldMaqName){ r.vehiculo=nombre; window._maqRenameMig++; } });
+        (db.aceite||[]).forEach(function(r){ if(String(r.vehiculo||'').trim()===_oldMaqName){ r.vehiculo=nombre; window._maqRenameMig++; } if(String(r.equipo||'').trim()===_oldMaqName){ r.equipo=nombre; window._maqRenameMig++; } });
+        (db.maintenance||[]).forEach(function(r){ if(String(r.equipo||'').trim()===_oldMaqName){ r.equipo=nombre; window._maqRenameMig++; } if(String(r.vehiculo||'').trim()===_oldMaqName){ r.vehiculo=nombre; window._maqRenameMig++; } });
+      }
+      toast(window._maqRenameMig ? ('Equipo actualizado: '+nombre+' · '+window._maqRenameMig+' registro(s) de historial migrados') : ('Equipo actualizado: '+nombre),'success');
     }
   } else {
     rec.id = 'maq_' + Date.now();
@@ -23245,6 +23313,13 @@ function saveMaq() {
 
   saveDB();
   replaceTableInRailway('maquinaria', db.maquinaria || []);
+  // v1.8.68: si hubo rename, sincronizar también el historial migrado
+  if (window._maqRenameMig) {
+    try { replaceTableInRailway('diesel', db.diesel || []); } catch(e){}
+    try { replaceTableInRailway('aceite', db.aceite || []); } catch(e){}
+    try { replaceTableInRailway('maintenance', db.maintenance || []); } catch(e){}
+    window._maqRenameMig = 0;
+  }
   closeModal('modal-maquinaria');
   renderMaquinaria();
 }
@@ -23455,14 +23530,14 @@ function renderDieselDesktop() {
   // Aceite
   var aceite_tbody = document.getElementById('aceite-tbody');
   if (aceite_tbody) {
-    var aceiteReg = db.aceite.slice().sort(function(a,b){ return (b.created_at||b.fecha||'').localeCompare(a.created_at||a.fecha||''); });
+    var aceiteReg = db.aceite.slice().sort(function(a,b){ return (b.fecha||b.created_at||'').localeCompare(a.fecha||a.created_at||''); });  // v1.8.69: ordenar por fecha elegida
     if (!aceiteReg.length) {
       aceite_tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">Sin cambios de aceite</td></tr>';
     } else {
       aceite_tbody.innerHTML = '';
       aceiteReg.forEach(function(r){
         var tr = document.createElement('tr');
-        tr.innerHTML = '<td>'+fmtDT(r.created_at||r.fecha)+'</td>'+
+        tr.innerHTML = '<td>'+_fechaRegDisplay(r)+'</td>'+
           '<td style="font-weight:500">'+escH(r.vehiculo||'-')+'</td>'+
           '<td style="font-family:DM Mono,monospace">'+escH((r.kmhr||'-').toString())+'</td>'+
           '<td>'+escH(r.tipo||'-')+'</td>'+
@@ -25176,7 +25251,7 @@ function configPluvios() {
   var listEl = document.getElementById('pluvio-config-list');
   if (!listEl) return;
   listEl.innerHTML = pluvios.map(function(p, i) {
-    return '<div style="display:grid;grid-template-columns:1fr 30px;gap:6px;align-items:end;margin-bottom:8px" id="pluvio-row-' + i + '">' +
+    return '<div style="display:grid;grid-template-columns:1fr 30px;gap:6px;align-items:end;margin-bottom:8px" id="pluvio-row-' + i + '" data-oldkey="' + escAttr(p.key||'') + '">' +
       '<div class="form-group" style="margin:0"><label class="form-label" style="font-size:10px">Nombre pluviómetro</label><input class="form-input" id="pc-name-' + i + '" value="' + escH(p.label) + '" placeholder="Ej: Lote 15"></div>' +
       (pluvios.length > 1 ? '<button class="btn btn-ghost btn-sm" style="color:var(--red);padding:6px" onclick="this.closest(\'[id^=pluvio-row]\').remove()">✕</button>' : '<div></div>') +
     '</div>';
@@ -25201,12 +25276,15 @@ function savePluvioConfig() {
   var listEl = document.getElementById('pluvio-config-list');
   if (!listEl) return;
   var newPluvios = [];
+  var _pluvRenameMap = [];   // v1.8.68: {oldKey,newKey} para migrar el histórico de lluvias
   var rows = listEl.querySelectorAll('[id^="pluvio-row-"]');
   rows.forEach(function(row, i) {
     var nameEl = row.querySelector('[id^="pc-name-"]');
     var name = (nameEl ? nameEl.value : '').trim();
     if (!name) return;
     var key = name.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_mm';
+    var oldKey = row.getAttribute('data-oldkey') || '';
+    if (oldKey && oldKey !== key) _pluvRenameMap.push({ oldKey: oldKey, newKey: key });
     newPluvios.push({
       key: key,
       label: name,
@@ -25214,11 +25292,27 @@ function savePluvioConfig() {
     });
   });
   if (!newPluvios.length) { toast('Agrega al menos un pluviómetro', 'error'); return; }
+  // v1.8.68: la lluvia histórica se guarda en una columna cuya clave deriva del nombre
+  // (ej. "Lote 15" → lote_15_mm). Al renombrar, la clave cambia y el histórico quedaba
+  // INVISIBLE (getLluviaMm leía la clave nueva, vacía). Acá migramos el valor a la clave nueva.
+  var _migL = 0;
+  if (_pluvRenameMap.length && Array.isArray(db.lluvias)) {
+    db.lluvias.forEach(function(r){
+      _pluvRenameMap.forEach(function(m){
+        if (r[m.oldKey] !== undefined) {
+          if (r[m.newKey] === undefined || r[m.newKey] === null || r[m.newKey] === '') r[m.newKey] = r[m.oldKey];
+          delete r[m.oldKey];
+          _migL++;
+        }
+      });
+    });
+    if (_migL) { saveDB(); try { replaceTableInRailway('lluvias', db.lluvias || []); } catch(e){} }
+  }
   savePluvios(newPluvios);
   PLUVIOS = newPluvios;
   closeModal('modal-pluvio-config');
   renderLluviasDesktop();
-  toast('Pluviómetros: ' + newPluvios.map(function(p){ return p.label; }).join(', '), 'success');
+  toast(_migL ? ('Pluviómetros actualizados · ' + _migL + ' registro(s) de lluvia migrados') : ('Pluviómetros: ' + newPluvios.map(function(p){ return p.label; }).join(', ')), 'success');
 }
 
 function renderLluviasDesktop() {
@@ -25345,7 +25439,7 @@ function renderLluviasDesktop() {
         function mmCell(v,col){ var color = v===0?'var(--muted)':col||'var(--blue)'; return '<td style="font-family:DM Mono,monospace;font-weight:600;color:'+color+';text-align:center">'+(v>0?v.toFixed(1):'-')+'</td>'; }
         var tr = document.createElement('tr');
         var pluvioCells = PLUVIOS.map(function(p){ return mmCell(getLluviaMm(r,p.key),p.color); }).join('');
-        tr.innerHTML = '<td>'+fmtDT(r.created_at||r.fecha)+'</td>'+pluvioCells+
+        tr.innerHTML = '<td>'+_fechaRegDisplay(r)+'</td>'+pluvioCells+
           '<td style="font-family:DM Mono,monospace;font-weight:700;color:var(--amber2);text-align:center">'+avg.toFixed(1)+'</td>'+
           '<td style="color:var(--muted);font-size:11px">'+escH(r.obs||'-')+'</td>'+
           '<td><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteLluvia(\'' + r.id + '\')">x</button></td>';
@@ -26527,6 +26621,24 @@ function revocarDispositivo(id, btn) {
 
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.8.69': [
+    'Corregido: los botones "Rotar" (Rotación) y "Mover" (Lotes) tiraban error y no abrían el modal. Ya funcionan.',
+    'Corregido: Pluviometría y Aceite ahora muestran y ordenan por la FECHA que elegiste, no por el día en que cargaste el registro (igual que Combustible).',
+    'Corregido: los movimientos de animales ya no se atribuyen siempre a "Cesar Moreno"; usan el propietario configurado (o "Escritorio").',
+    'Mejorado: el botón "+ Animal" (que en realidad registraba un pesaje, no creaba animales) ahora se llama "⚖ Pesaje rápido" y el modal lo aclara. El otro botón quedó como "+ Pesaje (individual o masivo)".',
+  ],
+  '1.8.68': [
+    'Corregido: renombrar otras cosas tampoco pierde sus registros (mismo arreglo que en empleados).',
+    '  - Maquinaria: al renombrar un equipo, su historial de diésel, aceite y mantenimiento se mantiene.',
+    '  - Pluviómetros: al renombrar, la lluvia histórica ya no desaparece (se migra a la nueva columna).',
+    '  - Potreros: al renombrar, se actualiza también el historial de rotación y las evaluaciones de pasto.',
+    '  - Subcuentas y Cuentas: al renombrar, los registros (compras) viejos siguen agrupados correctamente.',
+    '  - Stock (Sal/Alimento): al renombrar un producto, sus movimientos siguen apareciendo en el kardex.',
+  ],
+  '1.8.67': [
+    'Corregido: al cambiar el nombre de un empleado, sus registros ya NO se pierden.',
+    '  - Antes, renombrar "Juan" a "Juan Pérez" hacía desaparecer todos sus adelantos, sueldos y actividades. Ahora se migran automáticamente al nuevo nombre (y se avisa cuántos).',
+  ],
   '1.8.66': [
     'Corregido: Combustible ahora muestra y ordena por la FECHA que elegiste en el modal, no por el día en que se cargó el registro.',
     '  - Antes, si registrabas hoy un despacho de hace días, salía con la fecha/hora de hoy. Ahora sale con la fecha elegida (la hora se muestra solo cuando el registro es del mismo día).',
@@ -27873,10 +27985,18 @@ function editCuenta(idx) {
 
     params.cuentas[idx] = { name: newName, tipo_gasto: newTipo };
     saveParams(params);
+    // v1.8.68: reescribir registros (compras/kardex) que referencian la cuenta por NOMBRE
+    var _cuMig = 0;
+    if (newName !== oldName) {
+      (db.purchases||[]).forEach(function(p){ if((p.cuenta||'')===oldName){ p.cuenta=newName; _cuMig++; } });
+      (db.kardex||[]).forEach(function(k){ if((k.cuenta||'')===oldName){ k.cuenta=newName; _cuMig++; } });
+      if (_cuMig) { saveDB(); try { replaceTableInRailway('purchases', db.purchases||[]); } catch(e){} try { replaceTableInRailway('kardex', db.kardex||[]); } catch(e){} }
+    }
     o.remove();
     renderParams();
     var msg = 'Cuenta actualizada';
     if (changedSubs) msg += ' (' + changedSubs + ' subcuenta(s) sincronizadas)';
+    if (_cuMig) msg += ' · ' + _cuMig + ' registro(s) migrados';
     toast(msg, 'success');
   };
 
@@ -28053,11 +28173,20 @@ function editSubcuenta(idx) {
 
     var updated = { name: newName, cuenta: newCuenta };
     if (newTipo) updated.cuenta_tipo = newTipo;
+    var _oldSubName = sub.name || '';
     params.subcuentas[idx] = updated;
     saveParams(params);
+    // v1.8.68: las compras (y kardex) guardan la subcuenta como TEXTO → al renombrar hay que
+    // reescribirlas o los registros viejos dejan de agruparse/resolver su cuenta en el reporte.
+    var _subMig = 0;
+    if (_oldSubName) {
+      (db.purchases||[]).forEach(function(p){ if((p.subcuenta||'')===_oldSubName){ if(newName!==_oldSubName) p.subcuenta=newName; if(newCuenta) p.cuenta=newCuenta; _subMig++; } });
+      (db.kardex||[]).forEach(function(k){ if((k.subcuenta||'')===_oldSubName){ if(newName!==_oldSubName) k.subcuenta=newName; if(newCuenta) k.cuenta=newCuenta; _subMig++; } });
+      if (_subMig) { saveDB(); try { replaceTableInRailway('purchases', db.purchases||[]); } catch(e){} try { replaceTableInRailway('kardex', db.kardex||[]); } catch(e){} }
+    }
     o.remove();
     renderParams();
-    toast('Subcuenta actualizada', 'success');
+    toast(_subMig ? ('Subcuenta actualizada · '+_subMig+' registro(s) migrados') : 'Subcuenta actualizada', 'success');
   };
 
   // Enter en el nombre = guardar
@@ -28171,7 +28300,17 @@ function editParam(key, idx) {
         (db.lots||[]).forEach(function(l){
           if ((l.paddock||'').toLowerCase() === oldName.toLowerCase()) l.paddock = newName;
         });
+        // v1.8.68: rotation_history y evaluaciones de pasto también se vinculan por NOMBRE
+        // de potrero → sin esto, renombrar rompía los cálculos de descanso/ocupación e historial.
+        var _potMig = 0;
+        (db.rotation_history||[]).forEach(function(r){ if((r.potrero||'').toLowerCase()===oldName.toLowerCase()){ r.potrero=newName; _potMig++; } });
+        (db.pasture_evals||[]).forEach(function(e){ if((e.potrero||'').toLowerCase()===oldName.toLowerCase()){ e.potrero=newName; _potMig++; } });
         saveDB();
+        try { replaceTableInRailway('lots', db.lots||[]); } catch(e){}
+        if (_potMig) {
+          try { replaceTableInRailway('rotation_history', db.rotation_history||[]); } catch(e){}
+          try { replaceTableInRailway('pasture_evals', db.pasture_evals||[]); } catch(e){}
+        }
       }
     }
     if (key === 'categorias' && oldName !== newName) {
@@ -29325,7 +29464,7 @@ function confirmarMoverAnimal() {
       from_lot: _moverFromLot,
       to_lot: toLot,
       date: date,
-      by: 'Cesar Moreno',
+      by: _desktopAuthor(),
       source: 'desktop',
       motivo: motivo
     })
@@ -29879,7 +30018,7 @@ function confirmarBulkMover() {
     total_kg: Math.round(weights.reduce(function(a,b){return a+b;},0)),
     reason: motivo,
     created_new_lot: mode === 'new',
-    by: 'Cesar Moreno',
+    by: _desktopAuthor(),
     source: 'desktop',
     created_at: new Date().toISOString()
   });
@@ -30032,7 +30171,7 @@ function confirmarBulkMover() {
         motivo: motivo,
         created_new_lot: mode === 'new',
         new_lot_data: newLotData,
-        by: 'Cesar Moreno',
+        by: _desktopAuthor(),
         source: 'desktop'
       })
     })
@@ -31428,9 +31567,10 @@ function renderPesajesFromAnimales(){
 
 <!-- MODAL NUEVO ANIMAL -->
 <div class="modal-overlay" id="modal-animal">
-<div class="modal"><h2>Nuevo Animal</h2>
-<div id="modal-animal-lot" style="font-size:12px;color:var(--muted);margin-bottom:12px"></div>
-<div class="form-group"><label class="form-label">Buscar por ID de arete</label>
+<div class="modal"><h2>⚖ Pesaje rápido</h2>
+<div id="modal-animal-lot" style="font-size:12px;color:var(--muted);margin-bottom:4px"></div>
+<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Registrá el peso de un animal del lote. (No crea animales nuevos; para pesar varios a la vez usá «+ Pesaje».)</div>
+<div class="form-group"><label class="form-label">Buscar animal por ID</label>
   <input class="form-input" id="animal-id-search" placeholder="Escribi el ID para filtrar..." oninput="filterAnimalSelect(this.value)">
 </div>
 <div class="form-group"><label class="form-label">Seleccionar animal</label>
@@ -31455,7 +31595,7 @@ function renderPesajesFromAnimales(){
 </div>
 <div class="form-actions">
   <button class="btn btn-ghost" onclick="closeModal('modal-animal')">Cancelar</button>
-  <button class="btn btn-primary" onclick="saveAnimal()">Agregar animal</button>
+  <button class="btn btn-primary" onclick="saveAnimal()">Guardar pesaje</button>
 </div></div></div>
 
 <!-- MODAL PESAJE INDIVIDUAL -->
