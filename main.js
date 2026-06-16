@@ -224,7 +224,14 @@ function checkForUpdates() {
     return;
   }
 
-  autoUpdater.requestHeaders = { 'Authorization': 'token 5vPUnndEawQejHCgIFq7lBe6YLjnMM2PzSBt' };
+  // v1.8.70: el repo de releases es PÚBLICO → NO mandar token. El token hardcodeado/vencido
+  // hacía que GitHub respondiera 401 y el auto-update fallara (la app cerraba sin actualizar y no
+  // se reabría). Además era un riesgo de seguridad (P-04). Si algún día el repo pasa a privado,
+  // se carga un token desde Configuración → Actualizaciones (se guarda en 'gh_token').
+  try {
+    var _ghTok = store.get('gh_token', '');
+    autoUpdater.requestHeaders = _ghTok ? { 'Authorization': 'token ' + _ghTok } : null;
+  } catch (e) { autoUpdater.requestHeaders = null; }
   autoUpdater.autoDownload = true;
   autoUpdater.logger = require('electron-log');
   autoUpdater.logger.transports.file.level = 'info';
@@ -350,8 +357,12 @@ ipcMain.handle('app:restart', () => {
 
 ipcMain.handle('app:set-gh-token', (_, token) => {
   if (token) {
+    try { store.set('gh_token', token); } catch(e) {}   // v1.8.70: persistir para checkForUpdates (repo privado)
     autoUpdater.requestHeaders = { 'Authorization': 'token ' + token };
     autoUpdater.checkForUpdatesAndNotify();
+  } else {
+    try { store.set('gh_token', ''); } catch(e) {}
+    autoUpdater.requestHeaders = null;
   }
   return true;
 });

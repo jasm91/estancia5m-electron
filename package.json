@@ -1,6 +1,6 @@
 {
   "name": "estancia5m",
-  "version": "1.8.69",
+  "version": "1.8.70",
   "description": "Sistema de Gestión Ganadera — Estancia 5M",
   "main": "main.js",
   "scripts": {
@@ -91,7 +91,7 @@
       "owner": "jasm91",
       "repo": "estancia5m-electron",
       "releaseType": "release",
-      "private": true
+      "private": false
     },
     "nsis": {
       "oneClick": false,

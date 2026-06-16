@@ -7617,7 +7617,7 @@ function openMoveLot(idOrCode) {
     potreros2.forEach(function(p) {
       // v1.4.108: excluir el potrero actual también de las sugerencias
       if (p.name && currentPaddock && String(p.name).toLowerCase() === currentPaddock.toLowerCase()) return;
-      var occ = lots2.filter(function(l){return (l.paddock||'').toLowerCase()===p.name.toLowerCase()&&l.status!=='sold'&&(l.animal_count||0)>0 && l.id !== id;});
+      var occ = lots2.filter(function(l){return (l.paddock||'').toLowerCase()===p.name.toLowerCase()&&l.status!=='sold'&&(l.animal_count||0)>0 && l.id !== lot.id;});  // v1.8.69 FIX: era `id` (indefinido)
       if (occ.length > 0) return;
       var exits = history2.filter(function(r){return r.potrero===p.name&&r.exit_date;}).sort(function(a,b){return (b.exit_date||'').localeCompare(a.exit_date||'');});
       var daysRest = exits.length ? Math.round((today2-new Date(exits[0].exit_date))/86400000) : 999;
@@ -15199,7 +15199,12 @@ function downloadOnboardingTemplate() {
       ['Propietario','Juan P\u00e9rez'],
       ['Ubicaci\u00f3n','Beni, Bolivia'],
       ['Hect\u00e1reas totales',1500],
-      ['Moneda','Bs']
+      ['Moneda','Bs'],
+      ['Precio kg carne (Bs)',6.5],
+      ['Precio objetivo (Bs/kg)',6.5],
+      ['Precio feria (Bs/kg)',6.2],
+      ['Precio frigor\u00edfico (Bs/kg)',6.5],
+      ['GMD objetivo (kg/d\u00eda)',0.7]
     ],
     'Potreros': [
       ['NOMBRE*','HECTAREAS*','CAPACIDAD (cab)','PLUVIOMETRO ASIGNADO','OBSERVACIONES'],
@@ -15220,10 +15225,10 @@ function downloadOnboardingTemplate() {
       ['B-02','Ternero','Brahman','Potrero Este',120,220,'Mercado Santa Cruz','Ejemplo - borrar']
     ],
     'Animales': [
-      ['LOTE_CODE*','ANIMAL_ID*','RAZA','PESO (kg)','FECHA_PESAJE','OBSERVACIONES'],
-      ['SS1','1001','Nelore',385,'2026-05-01','Ejemplo - borrar'],
-      ['SS1','1002','Nelore',378,'2026-05-01','Ejemplo - borrar'],
-      ['A-01','2050','Nelore x F1',425,'2026-05-01','Ejemplo - borrar']
+      ['LOTE_CODE*','ANIMAL_ID*','RAZA','SEXO (macho/hembra)','PESO (kg)','FECHA_PESAJE','OBSERVACIONES'],
+      ['SS1','1001','Nelore','macho',385,'2026-05-01','Ejemplo - borrar'],
+      ['SS1','1002','Nelore','macho',378,'2026-05-01','Ejemplo - borrar'],
+      ['A-01','2050','Nelore x F1','hembra',425,'2026-05-01','Ejemplo - borrar']
     ],
     'Stock_Vet': [
       ['NOMBRE PRODUCTO*','TIPO','STOCK ACTUAL*','UNIDAD*','DOSIS POR 50KG','COSTO POR UNIDAD (Bs)','OBSERVACIONES'],
@@ -15242,9 +15247,9 @@ function downloadOnboardingTemplate() {
       ['Tambor Lote 4','Diesel',200,150,'Cerca lote 4','Ejemplo - borrar']
     ],
     'Personal': [
-      ['NOMBRE COMPLETO*','ROL*','SUELDO MENSUAL (Bs)','FECHA INGRESO','TELEFONO','OBSERVACIONES'],
-      ['Carlos Arteaga','Capataz',3500,'2024-01-15','70000000','Ejemplo - borrar'],
-      ['Doris Su\u00e1rez','Cocinera',2200,'2024-03-01','70000001','Ejemplo - borrar']
+      ['NOMBRE COMPLETO*','ROL*','SUELDO MENSUAL (Bs)','FECHA INGRESO','TELEFONO','PIN (para la PWA)','OBSERVACIONES'],
+      ['Carlos Arteaga','Capataz',3500,'2024-01-15','70000000','1234','Ejemplo - borrar'],
+      ['Doris Su\u00e1rez','Cocinera',2200,'2024-03-01','70000001','5678','Ejemplo - borrar']
     ]
   };
 
@@ -15372,7 +15377,7 @@ function parseOnboardingWorkbook(raw) {
     var lc = _getColStr(r, ['LOTECODE','LOTE']);
     var aid = _getColStr(r, ['ANIMALID','ID']);
     if (!lc || !aid) return;
-    result.animales.push({ lot_code: lc, animal_id: aid, breed: _getColStr(r, ['RAZA']), peso: _getColNum(r, ['PESO']), fecha: _getColStr(r, ['FECHAPESAJE','FECHA']), obs: _getColStr(r, ['OBSERVACIONES']) });
+    result.animales.push({ lot_code: lc, animal_id: aid, breed: _getColStr(r, ['RAZA']), peso: _getColNum(r, ['PESO']), fecha: _getColStr(r, ['FECHAPESAJE','FECHA']), sexo: _getColStr(r, ['SEXO']), obs: _getColStr(r, ['OBSERVACIONES']) });   // v1.8.70: +sexo
   });
 
   findSheet('Stock').forEach(function(r){
@@ -15406,7 +15411,7 @@ function parseOnboardingWorkbook(raw) {
     var name = _getColStr(r, ['NOMBRECOMPLETO','NOMBRE']);
     var role = _getColStr(r, ['ROL']);
     if (!name || !role) return;
-    result.personal.push({ name: name, role: role, salary: _getColNum(r, ['SUELDO']), hire_date: _getColStr(r, ['FECHAINGRESO','FECHA']), phone: _getColStr(r, ['TELEFONO']), obs: _getColStr(r, ['OBSERVACIONES']) });
+    result.personal.push({ name: name, role: role, salary: _getColNum(r, ['SUELDO']), hire_date: _getColStr(r, ['FECHAINGRESO','FECHA']), phone: _getColStr(r, ['TELEFONO']), pin: _getColStr(r, ['PIN']), obs: _getColStr(r, ['OBSERVACIONES']) });   // v1.8.70: +pin
   });
 
   return result;
@@ -15539,6 +15544,32 @@ function closeOnboardingPreview() {
   var resultEl = document.getElementById('onboarding-result'); if (resultEl) resultEl.style.display = 'none';
 }
 
+// v1.8.70: normaliza el TIPO de producto del Excel a la clave canónica que usa Curación.
+function _normOnbProdType(t){
+  var s = String(t||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim();
+  var map = {
+    'antiparasitario':'antiparasitario','antiparasitarios':'antiparasitario',
+    'vacuna':'vacuna','vacunas':'vacuna',
+    'antibiotico':'antibiotico','antibioticos':'antibiotico',
+    'antiinflamatorio':'antiinflamatorio','antinflamatorio':'antiinflamatorio',
+    'vitamina':'vitamina_mineral','vitaminas':'vitamina_mineral','mineral':'vitamina_mineral','vitamina mineral':'vitamina_mineral','vitamina/mineral':'vitamina_mineral',
+    'hormona':'hormona','hormona reproductiva':'hormona','hormonal':'hormona',
+    'sal mineral':'sal_mineral','sal':'sal_mineral',
+    'alimento':'alimento_balanceado','alimento balanceado':'alimento_balanceado','balanceado':'alimento_balanceado','concentrado':'alimento_balanceado',
+    'combustible':'combustible','diesel':'combustible','gasolina':'combustible',
+    'lubricante':'lubricante','aceite':'lubricante','grasa':'lubricante'
+  };
+  if (map[s]) return map[s];
+  return s ? s.replace(/[^a-z0-9]+/g,'_') : '';
+}
+// v1.8.70: normaliza sexo a 'macho'/'hembra' (acepta m/h/f y variantes).
+function _normOnbSexo(s){
+  var v = String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+  if (v === 'm' || v.indexOf('macho')>=0 || v.indexOf('torillo')>=0 || v.indexOf('toro')>=0) return 'macho';
+  if (v === 'h' || v === 'f' || v.indexOf('hembra')>=0 || v.indexOf('vaca')>=0 || v.indexOf('vaquill')>=0 || v.indexOf('ternera')>=0) return 'hembra';
+  return '';
+}
+
 async function confirmOnboardingImport() {
   if (!_onboardingParsed) return;
   if (!confirm('¿Importar los registros nuevos al sistema? Los existentes no se modifican.')) return;
@@ -15557,14 +15588,24 @@ async function confirmOnboardingImport() {
   if (!db.lots) db.lots = [];
 
   try {
+    // v1.8.70: los parámetros PRODUCTIVOS (precios, GMD) viven en report_params, no en estancia_params.
+    var reportParams = {}; try { reportParams = JSON.parse(localStorage.getItem('e5m_report_params')||'{}'); } catch(e){}
+    var _rpTouched = false;
     p.parametros.forEach(function(par){
-      var k = String(par.key||'').toLowerCase();
+      var k = String(par.key||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+      var numv = parseFloat(String(par.value==null?'':par.value).replace(',','.'))||0;
       if (k.indexOf('nombre') >= 0 && k.indexOf('estancia') >= 0) rp.nombre_estancia = String(par.value||'');
       else if (k.indexOf('propietario') >= 0) rp.propietario = String(par.value||'');
       else if (k.indexOf('ubicaci') >= 0) rp.ubicacion = String(par.value||'');
       else if (k.indexOf('hect') >= 0) rp.superficie_total = parseFloat(par.value)||0;
       else if (k.indexOf('moneda') >= 0) rp.moneda = String(par.value||'Bs');
+      else if (k.indexOf('precio')>=0 && k.indexOf('carne')>=0) { reportParams.precio_kg_carne = numv; _rpTouched=true; }
+      else if (k.indexOf('precio')>=0 && k.indexOf('objetivo')>=0) { reportParams.precio_objetivo = numv; _rpTouched=true; }
+      else if (k.indexOf('precio')>=0 && k.indexOf('feria')>=0) { reportParams.precio_feria = numv; _rpTouched=true; }
+      else if (k.indexOf('precio')>=0 && k.indexOf('frigorif')>=0) { reportParams.precio_frigorifico = numv; _rpTouched=true; }
+      else if (k.indexOf('gmd')>=0) { reportParams.gmd_default = numv; _rpTouched=true; }
     });
+    if (_rpTouched) { try { reportParams.updated_at = new Date().toISOString(); localStorage.setItem('e5m_report_params', JSON.stringify(reportParams)); } catch(e){} }
 
     var existingPot = {};
     (rp.potreros||[]).forEach(function(po){ existingPot[String(po.name||po).toLowerCase()] = true; });
@@ -15615,7 +15656,7 @@ async function confirmOnboardingImport() {
       if (existsId) return;
       var pesajes = [];
       if (a.peso) pesajes.push({ fecha: a.fecha || (typeof localDate==='function'?localDate():new Date().toISOString().slice(0,10)), peso: a.peso });
-      animDB[a.lot_code].push({ animal_id: String(a.animal_id), id: String(a.animal_id), breed: a.breed || '', raza: a.breed || '', pesajes: pesajes });
+      animDB[a.lot_code].push({ animal_id: String(a.animal_id), id: String(a.animal_id), breed: a.breed || '', raza: a.breed || '', sexo: _normOnbSexo(a.sexo), pesajes: pesajes });   // v1.8.70: +sexo
     });
     localStorage.setItem('e5m_animals', JSON.stringify(animDB));
 
@@ -15624,7 +15665,8 @@ async function confirmOnboardingImport() {
     var nextProdId = (db.next_ids && db.next_ids.product) || 100;
     p.stockVet.forEach(function(prd){
       if (existingP[String(prd.name).toLowerCase()]) return;
-      db.products.push({ id: nextProdId++, name: prd.name, type: prd.type || '', stock: prd.stock || 0, unit: prd.unit || 'unidad', dose_per_50kg: prd.dose || '', cost: prd.cost || 0, notes: prd.obs || '' });
+      // v1.8.70: la app lee stock_qty y unit_cost (no stock/cost) → escribir ambos; y normalizar el tipo a la clave canónica (si no, no aparece en Curación).
+      db.products.push({ id: nextProdId++, name: prd.name, type: _normOnbProdType(prd.type), stock: prd.stock || 0, stock_qty: prd.stock || 0, unit: prd.unit || 'unidad', dose_per_50kg: prd.dose || '', cost: prd.cost || 0, unit_cost: prd.cost || 0, notes: prd.obs || '' });
     });
     if (db.next_ids) db.next_ids.product = nextProdId;
 
@@ -15651,7 +15693,7 @@ async function confirmOnboardingImport() {
     var nextEmpId = (db.next_ids && db.next_ids.employee) || 100;
     p.personal.forEach(function(e){
       if (existingE[String(e.name).toLowerCase()]) return;
-      db.employees.push({ id: nextEmpId++, name: e.name, role: e.role, salary: e.salary || 0, hire_date: e.hire_date || '', phone: e.phone || '', notes: e.obs || '' });
+      db.employees.push({ id: nextEmpId++, name: e.name, role: e.role, salary: e.salary || 0, hire_date: e.hire_date || '', phone: e.phone || '', pin: e.pin || '', notes: e.obs || '' });   // v1.8.70: +pin (login PWA)
     });
     if (db.next_ids) db.next_ids.employee = nextEmpId;
 
@@ -15666,8 +15708,12 @@ async function confirmOnboardingImport() {
       { name: 'employees', data: db.employees },
       { name: 'maquinaria', data: db.maquinaria },
       { name: 'animals', data: animDB },
-      { name: 'estancia_params', data: rp }
+      { name: 'estancia_params', data: rp },
+      // v1.8.70: faltaban → pluviómetros y tanques quedaban solo en el equipo que importó.
+      { name: 'pluvios_config', data: pluvios },
+      { name: 'diesel_tank', data: tanks }
     ];
+    if (_rpTouched) pushTables.push({ name: 'report_params', data: reportParams });
     var ok = 0, fail = 0;
     for (var i = 0; i < pushTables.length; i++) {
       var t = pushTables[i];
@@ -26621,6 +26667,15 @@ function revocarDispositivo(id, btn) {
 
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.8.70': [
+    'Mejorado: la carga inicial por Excel (onboarding) ahora importa todo correctamente.',
+    '  - El stock y el costo de los productos ya no quedan en 0 (antes se guardaban en un campo que la app no leía).',
+    '  - Los productos veterinarios importados ahora SÍ aparecen en Curación (se normaliza el tipo).',
+    '  - La plantilla suma columnas: SEXO en Animales y PIN en Personal (para que el capataz entre a la PWA).',
+    '  - Nuevos parámetros: precios (carne / objetivo / feria / frigorífico) y GMD objetivo.',
+    '  - Pluviómetros y Tanques ahora también se sincronizan al server al importar (antes quedaban solo en este equipo).',
+    'Corregido: la actualización automática (botón "Actualizar ahora / reiniciar") fallaba — la app cerraba y no se actualizaba ni reabría. Era un token de GitHub viejo que bloqueaba la descarga; se quitó (el repo de releases es público y no lo necesita).',
+  ],
   '1.8.69': [
     'Corregido: los botones "Rotar" (Rotación) y "Mover" (Lotes) tiraban error y no abrían el modal. Ya funcionan.',
     'Corregido: Pluviometría y Aceite ahora muestran y ordenan por la FECHA que elegiste, no por el día en que cargaste el registro (igual que Combustible).',
