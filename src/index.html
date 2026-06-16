@@ -16,6 +16,21 @@
   --blue:#58A6FF;--blue2:#1A3A5C;
   --purple:#BC8CFF;
   --text:#E6EDF3;--muted:#7D8590;--muted2:#484F58;
+  /* v1.8.70: alias para variables usadas en varios modales (reproducción, etc.) que no estaban
+     definidas → los campos quedaban sin fondo ni borde. Apuntan a las superficies/borde estándar. */
+  --bg2:#1C2333;--border:#30363D;
+}
+/* v1.8.72: MODO CLARO (toggle en Configuración). Como toda la app usa estas variables, alcanza
+   con redefinirlas. Acentos un poco más oscuros para que contrasten sobre blanco. */
+html[data-theme="light"]{
+  --bg:#F4F6F9;--sur:#FFFFFF;--sur2:#EDF1F6;--bor:#D8DEE6;
+  --amber:#B7791F;--amber2:#9A6700;
+  --green:#2F9E44;--green2:#E6F4EA;
+  --red:#D63B3B;--red2:#FBE9E9;
+  --blue:#1971C2;--blue2:#E3F0FB;
+  --purple:#7048E8;
+  --text:#1F2733;--muted:#5B6573;--muted2:#AEB4BC;
+  --bg2:#EDF1F6;--border:#D8DEE6;
 }
 html{scroll-behavior:smooth}
 body{background:var(--bg);color:var(--text);font-family:Inter,'Segoe UI Emoji','Apple Color Emoji','Noto Color Emoji','Segoe UI Symbol',-apple-system,BlinkMacSystemFont,sans-serif;font-size:14px;line-height:1.55;min-height:100vh;overflow-x:hidden;font-feature-settings:'cv02','cv03','cv04','cv11','tnum';-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
@@ -208,6 +223,12 @@ body{background:var(--bg);color:var(--text);font-family:Inter,'Segoe UI Emoji','
 .modal-overlay.open{display:flex}
 .modal{background:var(--sur);border:1px solid var(--bor);border-radius:16px;padding:28px;width:520px;max-width:90vw;max-height:85vh;overflow-y:auto}
 .modal h2{font-size:18px;font-weight:700;margin-bottom:20px;color:var(--text)}
+/* v1.8.70: header de modal con título + botón cerrar (faltaba el CSS → el ✕ quedaba como caja suelta) */
+.modal-hd{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px}
+.modal-title{font-size:18px;font-weight:700;color:var(--text);line-height:1.3}
+.modal-close{flex-shrink:0;background:transparent;border:none;color:var(--muted);font-size:18px;line-height:1;cursor:pointer;width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s;padding:0}
+.modal-close:hover{background:var(--sur2);color:var(--text)}
+.modal-body{display:block}
 
 /* FORM */
 .form-group{margin-bottom:16px}
@@ -321,6 +342,19 @@ body{background:var(--bg);color:var(--text);font-family:Inter,'Segoe UI Emoji','
 
 <body>
 <script>
+// v1.8.72: aplicar el tema guardado lo antes posible (evita parpadeo oscuro→claro al abrir).
+try { if (localStorage.getItem('e5m_theme') === 'light') document.documentElement.setAttribute('data-theme','light'); } catch(e){}
+// Toggle de tema (Configuración → Apariencia). Default: oscuro.
+function setTheme(t){
+  t = (t === 'light') ? 'light' : 'dark';
+  if (t === 'light') document.documentElement.setAttribute('data-theme','light');
+  else document.documentElement.removeAttribute('data-theme');
+  try { localStorage.setItem('e5m_theme', t); } catch(e){}
+  var bd = document.getElementById('theme-btn-dark'), bl = document.getElementById('theme-btn-light');
+  if (bd) { bd.style.background = (t==='dark') ? 'var(--sur2)' : 'transparent'; bd.style.color = (t==='dark') ? 'var(--text)' : 'var(--muted)'; }
+  if (bl) { bl.style.background = (t==='light') ? 'var(--sur2)' : 'transparent'; bl.style.color = (t==='light') ? 'var(--text)' : 'var(--muted)'; }
+}
+document.addEventListener('DOMContentLoaded', function(){ try { setTheme(localStorage.getItem('e5m_theme')==='light' ? 'light':'dark'); } catch(e){} });
 function showPage(name,btn){
   document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');});
   document.querySelectorAll('.nav-btn').forEach(function(b){b.classList.remove('active');});
@@ -3827,6 +3861,21 @@ function publishTasksToPWA() {
 
 <div id="page-config" class="page">
   <div class="ph"><div><div class="pt">⚙️ Configuracion</div><div class="ps">Identidad · Sincronizacion · API · Estado</div></div></div>
+
+  <!-- Apariencia / Tema (v1.8.72) -->
+  <div class="card" style="margin-bottom:20px;border-left:3px solid var(--amber2)">
+    <div class="card-hd"><div class="card-title">🎨 Apariencia</div></div>
+    <div class="card-body">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <span style="font-size:13px;color:var(--muted)">Tema de la aplicación</span>
+        <div style="display:inline-flex;border:1px solid var(--bor);border-radius:9px;overflow:hidden">
+          <button id="theme-btn-dark" onclick="setTheme('dark')" style="border:none;background:transparent;color:var(--muted);padding:8px 16px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px">🌙 Oscuro</button>
+          <button id="theme-btn-light" onclick="setTheme('light')" style="border:none;background:transparent;color:var(--muted);padding:8px 16px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px">☀️ Claro</button>
+        </div>
+        <span style="font-size:11px;color:var(--muted)">Se recuerda en este equipo</span>
+      </div>
+    </div>
+  </div>
 
   <!-- Identidad de la estancia -->
   <div class="card" style="margin-bottom:20px;border-left:3px solid var(--amber2)">
@@ -9277,7 +9326,8 @@ function addStock() {
 
 
 function deleteProduct(id) {
-  if(!confirm('Eliminar este producto del stock veterinario?')) return;
+  var _depT = (db.treatments||[]).filter(function(t){ return String(t.product_id||'')===String(id); }).length;   // v1.8.75: avisar dependientes
+  if(!confirm('¿Eliminar este producto del stock veterinario?' + (_depT ? '\n\nOjo: ' + _depT + ' curación(es) usan este producto y quedarán sin referencia (no se borran).' : ''))) return;
   
   // FIX v1.4.35: audit log para deleteProduct
   var _delRec_deleteProduct = (db.products || []).find(function(r){ return String(r.id) === String(id); });
@@ -11417,7 +11467,10 @@ function deleteAdvance(id) {
 function deleteEmployee(id) {
   var emp = db.employees.find(function(e){ return e.id===id; });
   if (!emp) return;
-  if (!confirm('00bfEliminar a ' + emp.name + '? Se perderan sus registros de actividad.')) return;
+  var _depE = (db.advances||[]).filter(function(a){return a.employee===emp.name;}).length
+            + (db.historial_sueldos||[]).filter(function(s){return s.empleado===emp.name;}).length
+            + (db.activities||[]).filter(function(a){return a.employee===emp.name;}).length;   // v1.8.75
+  if (!confirm('¿Eliminar a ' + emp.name + '?' + (_depE ? '\n\nTiene ' + _depE + ' registro(s) vinculados (adelantos/sueldos/actividades) que quedarán a su nombre pero sin empleado en la lista.' : ' Se perderán sus registros de actividad.'))) return;
   
   // FIX v1.4.35: audit log para deleteEmployee
   var _delRec_deleteEmployee = (db.employees || []).find(function(r){ return String(r.id) === String(id); });
@@ -15219,7 +15272,7 @@ function downloadOnboardingTemplate() {
     ],
     'Subcuentas': [['CUENTA*','SUBCUENTA*','DESCRIPCION']].concat(ONBOARDING_SUBCUENTAS_BASE),
     'Lotes': [
-      ['CODIGO*','CATEGORIA*','RAZA','POTRERO','CABEZAS*','PESO PROM (kg)','PROVEEDOR ORIGEN','OBSERVACIONES'],
+      ['CODIGO*','CATEGORIA*','RAZA','POTRERO','CABEZAS (referencial — el conteo sale de Animales)','PESO PROM (kg)','PROVEEDOR ORIGEN','OBSERVACIONES'],
       ['SS1','Novillo','Nelore','Potrero Norte',50,380,'Estancia La Pampa','Ejemplo - borrar'],
       ['A-01','Vaca','Nelore x F1','Potrero Sur',80,420,'Cr\u00eda propia','Ejemplo - borrar'],
       ['B-02','Ternero','Brahman','Potrero Este',120,220,'Mercado Santa Cruz','Ejemplo - borrar']
@@ -15368,7 +15421,7 @@ function parseOnboardingWorkbook(raw) {
     var code = _getColStr(r, ['CODIGO']);
     var category = _getColStr(r, ['CATEGORIA']);
     var cab = _getColNum(r, ['CABEZAS']);
-    if (!code || !category || cab == null) return;
+    if (!code || !category) return;   // v1.8.73: CABEZAS ya no es obligatoria (el conteo sale de la hoja Animales)
     result.lotes.push({ code: code, category: category, breed: _getColStr(r, ['RAZA']), paddock: _getColStr(r, ['POTRERO']), animal_count: cab, avg_weight: _getColNum(r, ['PESOPROM']), supplier: _getColStr(r, ['PROVEEDOR']), obs: _getColStr(r, ['OBSERVACIONES']) });
   });
 
@@ -15440,6 +15493,21 @@ function validateOnboardingImport(parsed) {
   parsed.pluviometros.forEach(function(p){ pluvNames[p.name] = true; });
   parsed.potreros.forEach(function(p){
     if (p.pluviometro && !pluvNames[p.pluviometro]) warnings.push('Potrero "' + p.name + '": pluviómetro "' + p.pluviometro + '" no está en hoja Pluviometros');
+  });
+  // v1.8.73: ESTRICTO — cada lote NUEVO debe individualizarse (tener sus animales con ID en la hoja
+  // Animales). El conteo de cabezas sale SIEMPRE de Animales; la columna CABEZAS de Lotes es referencial.
+  var _animCountByLot = {};
+  parsed.animales.forEach(function(a){ _animCountByLot[a.lot_code] = (_animCountByLot[a.lot_code]||0) + 1; });
+  var _existingLotCodes = {};
+  (db.lots || []).forEach(function(l){ _existingLotCodes[l.code] = true; });
+  parsed.lotes.forEach(function(l){
+    if (_existingLotCodes[l.code]) return; // ya existe en el sistema → no se re-importa
+    var n = _animCountByLot[l.code] || 0;
+    if (n === 0) {
+      errors.push('Lote "' + l.code + '" no tiene animales con ID en la hoja Animales. Cada lote debe individualizarse (una fila por animal en la hoja Animales).');
+    } else if (l.animal_count != null && Number(l.animal_count) !== n) {
+      warnings.push('Lote "' + l.code + '": en Lotes pusiste ' + l.animal_count + ' cabezas, pero hay ' + n + ' animales con ID → se usará ' + n + ' (manda la hoja Animales).');
+    }
   });
   return { errors: errors, warnings: warnings, ok: errors.length === 0 };
 }
@@ -15630,9 +15698,11 @@ async function confirmOnboardingImport() {
 
     var existingL = {};
     db.lots.forEach(function(l){ existingL[l.code] = true; });
+    var _newLotCodes = {};   // v1.8.73: lotes creados en este import (para reconciliar conteo desde Animales)
     var nextLotId = (db.next_ids && db.next_ids.lot) || 100;
     p.lotes.forEach(function(l){
       if (existingL[l.code]) return;
+      _newLotCodes[l.code] = true;
       var newLot = {
         id: nextLotId++, code: l.code, category: l.category, breed: l.breed || '',
         paddock: l.paddock || '', animal_count: l.animal_count || 0, avg_weight: l.avg_weight || 0,
@@ -15659,6 +15729,16 @@ async function confirmOnboardingImport() {
       animDB[a.lot_code].push({ animal_id: String(a.animal_id), id: String(a.animal_id), breed: a.breed || '', raza: a.breed || '', sexo: _normOnbSexo(a.sexo), pesajes: pesajes });   // v1.8.70: +sexo
     });
     localStorage.setItem('e5m_animals', JSON.stringify(animDB));
+
+    // v1.8.73: el conteo del lote SIEMPRE sale de los animales individuales (la hoja Animales manda).
+    // Solo para los lotes creados en este import, para no tocar lotes existentes parcialmente trackeados.
+    db.lots.forEach(function(lot){
+      if (!_newLotCodes[lot.code]) return;
+      var anims = animDB[lot.code] || [];
+      lot.animal_count = anims.length;
+      var ws = anims.map(function(a){ return (a.pesajes && a.pesajes.length) ? a.pesajes[a.pesajes.length-1].peso : 0; }).filter(function(w){ return w > 0; });
+      if (ws.length) lot.avg_weight = Math.round(ws.reduce(function(s,w){return s+w;},0)/ws.length*10)/10;
+    });
 
     var existingP = {};
     (db.products||[]).forEach(function(prd){ existingP[String(prd.name||'').toLowerCase()] = true; });
@@ -22076,11 +22156,27 @@ function saveEditAnimalId() {
   var animalesDB=getAnimalesDB();
   var lista=animalesDB[lotCode]||[];
   if(!lista[idx])return;
-  var idAnterior = lista[idx].id;
+  var idAnterior = String(lista[idx].animal_id || lista[idx].id || '');   // v1.8.75: robusto (crías de parto no tienen .id)
   lista[idx].id=nuevoId;
   lista[idx].animal_id=nuevoId; // FIX v1.4.29: persistir en ambos campos para que sync sea consistente
   lista[idx].id_updated_at = new Date().toISOString(); // FIX v1.4.29: marca temporal para merge correcto en sync-pull
   localStorage.setItem('e5m_animals',JSON.stringify(animalesDB));
+
+  // v1.8.75: PROPAGAR el cambio de ID a TODO lo que referencia este animal por su id (string).
+  // Sin esto se rompía la trazabilidad individual: pesajes, curaciones, movimientos, bajas, partos
+  // (cría/madre/padre), servicios reproductivos y ventas quedaban con el ID viejo.
+  var _propCount = 0;
+  if (idAnterior && idAnterior !== nuevoId) {
+    function _mapIds(arr){ return arr.map(function(x){ if(String(x)===idAnterior){ _propCount++; return nuevoId; } return x; }); }
+    (db.pesajes||[]).forEach(function(r){ if(String(r.animal_id||'')===idAnterior){ r.animal_id=nuevoId; _propCount++; } });
+    (db.treatments||[]).forEach(function(r){ if(String(r.animal_id||'')===idAnterior){ r.animal_id=nuevoId; _propCount++; } if(Array.isArray(r.animal_ids)) r.animal_ids=_mapIds(r.animal_ids); });
+    (db.animal_movements||[]).forEach(function(r){ if(String(r.animal_id||'')===idAnterior){ r.animal_id=nuevoId; _propCount++; } if(Array.isArray(r.animal_ids)) r.animal_ids=_mapIds(r.animal_ids); });
+    (db.bajas||[]).forEach(function(r){ if(String(r.animal_id||'')===idAnterior){ r.animal_id=nuevoId; _propCount++; } if(r.animal_snapshot){ if(String(r.animal_snapshot.id||'')===idAnterior) r.animal_snapshot.id=nuevoId; if(String(r.animal_snapshot.animal_id||'')===idAnterior) r.animal_snapshot.animal_id=nuevoId; } });
+    (db.partos||[]).forEach(function(r){ if(String(r.cria_id||'')===idAnterior){ r.cria_id=nuevoId; _propCount++; } if(String(r.madre_id||'')===idAnterior){ r.madre_id=nuevoId; _propCount++; } if(String(r.padre_id||'')===idAnterior){ r.padre_id=nuevoId; _propCount++; } });
+    (db.reproductive_services||[]).forEach(function(r){ if(String(r.animal_id||'')===idAnterior){ r.animal_id=nuevoId; _propCount++; } });
+    (db.sales||[]).forEach(function(r){ if(Array.isArray(r.animal_ids)) r.animal_ids=_mapIds(r.animal_ids); });
+    if (typeof saveDB === 'function') saveDB();
+  }
 
   // FIX v1.4.29: Disparar push inmediato al server para evitar que un sync-pull sobreescriba el cambio.
   // Sin esto, si entra un pull antes del próximo push automático, el server (que aún tiene el ID viejo)
@@ -22091,7 +22187,7 @@ function saveEditAnimalId() {
 
   closeModal('modal-edit-animal-id');
   renderAnimalesLote();
-  toast('ID actualizado: '+idAnterior+' → '+nuevoId,'success');
+  toast(_propCount ? ('ID actualizado: '+idAnterior+' → '+nuevoId+' · '+_propCount+' registro(s) vinculados migrados') : ('ID actualizado: '+idAnterior+' → '+nuevoId),'success');
 }
 
 // HISTORIAL SUELDOS
@@ -23371,7 +23467,11 @@ function saveMaq() {
 }
 
 function deleteMaq(id) {
-  if (!confirm('¿Eliminar este equipo?')) return;
+  var _mq = (db.maquinaria||[]).find(function(m){return m.id===id;}); var _mn = _mq ? String(_mq.nombre||'').trim() : '';   // v1.8.75
+  var _depM = _mn ? ((db.diesel||[]).filter(function(r){return String(r.vehiculo||'').trim()===_mn;}).length
+                   + (db.aceite||[]).filter(function(r){return String(r.vehiculo||'').trim()===_mn||String(r.equipo||'').trim()===_mn;}).length
+                   + (db.maintenance||[]).filter(function(r){return String(r.equipo||'').trim()===_mn||String(r.vehiculo||'').trim()===_mn;}).length) : 0;
+  if (!confirm('¿Eliminar este equipo?' + (_depM ? '\n\nTiene ' + _depM + ' registro(s) de historial (diésel/aceite/mantenimiento) que quedarán sin equipo.' : ''))) return;
   
   // FIX v1.4.35: audit log para deleteMaq
   var _delRec_deleteMaq = (db.maquinaria || []).find(function(r){ return String(r.id) === String(id); });
@@ -24825,7 +24925,7 @@ function _mostrarSesionesActivas() {
                              : (sexoParto === 'hembra' || sexoParto === 'h') ? 'ternera' : '';
             a = arr.find(function(x){
               if (x._reconciliado) return false; // ya emparejada con otro parto
-              if (!String(x.animal_id||'').match(/^CRIA-\d{6}-\d+$/)) return false; // solo placeholders
+              if (!String(x.animal_id||'').match(/^CRIA-\d{6}(-\d+)?$/)) return false; // v1.8.74: placeholder con o SIN sufijo (saveReproParto genera CRIA-###### sin sufijo)
               var br = String(x.breed||x.raza||'').toLowerCase();
               // matchear por sexo↔raza si hay; si no hay raza, aceptar cualquier placeholder del lote
               return razaEsperada ? (br === razaEsperada) : true;
@@ -26667,6 +26767,28 @@ function revocarDispositivo(id, btn) {
 
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.8.75': [
+    'Corregido: cambiar el ID/arete de un animal ahora actualiza TODOS sus registros (pesajes, curaciones, movimientos, bajas, partos, servicios reproductivos, ventas). Antes quedaban con el ID viejo y se perdía la trazabilidad.',
+    'Corregido: renombrar una RAZA ahora también actualiza los animales (no solo los lotes). Renombrar un TIPO DE GASTO actualiza cuentas, subcuentas y registros.',
+    'Corregido: al editar la vaca de un servicio reproductivo, los partos de ese servicio siguen apuntando a la madre correcta.',
+    'Mejorado: borrar un producto / empleado / equipo / servicio reproductivo ahora avisa cuántos registros vinculados quedarán afectados.',
+  ],
+  '1.8.74': [
+    'Corregido: el ID/arete de la cría cargado en un parto ahora SÍ queda en el animal del lote.',
+    '  - Antes, si registrabas el parto sin arete y se lo ponías después (ej. 1234), el animal seguía con un código temporal (CRIA-######) y no coincidía con el parto.',
+    '  - Ahora al editar el parto se actualiza el animal al instante, y las crías existentes con código temporal se corrigen solas al abrir la app.',
+  ],
+  '1.8.73': [
+    'Mejorado (carga inicial Excel): el conteo de cada lote ahora sale SIEMPRE de la hoja Animales (un animal por fila con su ID). La columna CABEZAS de la hoja Lotes pasó a ser referencial.',
+    '  - Si un lote no tiene sus animales con ID en la hoja Animales, la importación lo marca como error y no deja continuar (evita lotes "fantasma" sin individualizar).',
+    '  - Si el número de CABEZAS no coincide con la cantidad de animales con ID, avisa y usa la cantidad real de animales.',
+  ],
+  '1.8.72': [
+    'Nuevo: modo claro / oscuro. En Configuración → Apariencia elegís el tema y se recuerda en este equipo.',
+  ],
+  '1.8.71': [
+    'Mejorado: los modales de Reproducción (servicio, parto, diagnóstico, etc.) se veían mal — el botón de cerrar quedaba como una cajita suelta y los campos sin fondo ni borde. Corregido el estilo del encabezado y de los campos (faltaban definiciones de CSS). Mejora también otras pantallas que usaban esos estilos.',
+  ],
   '1.8.70': [
     'Mejorado: la carga inicial por Excel (onboarding) ahora importa todo correctamente.',
     '  - El stock y el costo de los productos ya no quedan en 0 (antes se guardaban en un campo que la app no leía).',
@@ -28378,7 +28500,29 @@ function editParam(key, idx) {
       (db.lots||[]).forEach(function(l){
         if ((l.breed||'').toLowerCase() === oldName.toLowerCase()) l.breed = newName;
       });
+      // v1.8.75: cada animal guarda su propia raza/breed (y bajas también) → propagar ahí.
+      var _animR = (typeof getAnimalesDB==='function') ? getAnimalesDB() : {};
+      var _rMig = 0;
+      Object.keys(_animR).forEach(function(lc){
+        (_animR[lc]||[]).forEach(function(a){
+          if ((a.raza||'').toLowerCase()===oldName.toLowerCase()){ a.raza=newName; _rMig++; }
+          if ((a.breed||'').toLowerCase()===oldName.toLowerCase()){ a.breed=newName; }
+        });
+      });
+      if (_rMig && typeof saveAnimalesDB==='function') saveAnimalesDB(_animR);
+      (db.bajas||[]).forEach(function(b){ if ((b.raza||'').toLowerCase()===oldName.toLowerCase()) b.raza=newName; });
       saveDB();
+    }
+    // v1.8.75: renombrar un TIPO DE GASTO → cuentas/subcuentas/compras/kardex lo referencian por
+    // nombre. Igual criterio que editCuenta (que sí cascada). Sin esto el catálogo quedaba inconsistente.
+    if (key === 'tipos_gasto' && oldName !== newName) {
+      (params.cuentas||[]).forEach(function(c){ if ((c.tipo_gasto||'')===oldName) c.tipo_gasto=newName; });
+      (params.subcuentas||[]).forEach(function(s){ if ((s.cuenta_tipo||'')===oldName) s.cuenta_tipo=newName; });
+      var _tgMig = 0;
+      (db.purchases||[]).forEach(function(p){ if ((p.tipo_gasto||'')===oldName){ p.tipo_gasto=newName; _tgMig++; } });
+      (db.kardex||[]).forEach(function(k){ if ((k.tipo_gasto||'')===oldName){ k.tipo_gasto=newName; _tgMig++; } });
+      saveDB();
+      if (_tgMig) { try { replaceTableInRailway('purchases', db.purchases||[]); } catch(e){} try { replaceTableInRailway('kardex', db.kardex||[]); } catch(e){} }
     }
     saveParams(params);
     renderParams();
@@ -30977,7 +31121,7 @@ function verHistorialAnimal(animalId,lotCode){
 function deleteAnimal(animalId,lotCode){
   if(!confirm("Eliminar animal "+animalId+"?")) return;
   var all=getAnimalesDB();
-  if(all[lotCode]){all[lotCode]=all[lotCode].filter(function(a){return a.id!==animalId;});saveAnimalesDB(all);var lot=(db.lots||[]).find(function(l){return l.code===lotCode;});if(lot)lot.animal_count=all[lotCode].length;saveDB();renderAnimalesLote();toast("Animal "+animalId+" eliminado","success");}
+  if(all[lotCode]){all[lotCode]=all[lotCode].filter(function(a){return String(a.animal_id||a.id||'')!==String(animalId);});saveAnimalesDB(all);var lot=(db.lots||[]).find(function(l){return l.code===lotCode;});if(lot)lot.animal_count=all[lotCode].length;saveDB();renderAnimalesLote();toast("Animal "+animalId+" eliminado","success");}  /* v1.8.75: matchear por animal_id||id (las crías de parto no tienen .id) */
 }
 
 function filterAnimalSelect(text) {
@@ -37236,6 +37380,14 @@ function saveReproServicio() {
   if (idx >= 0) db.reproductive_services[idx] = record;
   else db.reproductive_services.push(record);
 
+  // v1.8.75: si al editar el servicio cambió la vaca (animal_id), re-sincronizar la madre de los
+  // partos ya vinculados a este servicio. Sin esto, el IEP y la genealogía por madre descuadraban.
+  if (existing && existing.animal_id && existing.animal_id !== animalId && Array.isArray(db.partos)) {
+    db.partos.forEach(function(p){
+      if (String(p.servicio_id||'') === String(record.id) && String(p.madre_id||'') === String(existing.animal_id)) p.madre_id = animalId;
+    });
+  }
+
   try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch(e) { console.error('[Repro] save localStorage', e); }
 
   // Push al server
@@ -37248,7 +37400,8 @@ function saveReproServicio() {
 function deleteReproServicio() {
   var id = document.getElementById('repro-srv-id').value;
   if (!id) return;
-  if (!confirm('¿Eliminar este servicio reproductivo? Esta acción no se puede deshacer.')) return;
+  var _depP = (db.partos||[]).filter(function(p){return String(p.servicio_id||'')===String(id);}).length;   // v1.8.75
+  if (!confirm('¿Eliminar este servicio reproductivo?' + (_depP ? '\n\nHay ' + _depP + ' parto(s) vinculados a este servicio que quedarán huérfanos.' : '') + '\nEsta acción no se puede deshacer.')) return;
   if (!Array.isArray(db.reproductive_services)) return;
   var rec = db.reproductive_services.find(function(r) { return r.id === id; });
   db.reproductive_services = db.reproductive_services.filter(function(r) { return r.id !== id; });
@@ -38119,6 +38272,25 @@ function saveReproParto() {
       obs: notes,
       updated_at: nowIso
     });
+    // v1.8.74: propagar el cría_id (y peso) editados al ANIMAL ya creado por este parto.
+    // Antes, editar el parto no tocaba el animal → quedaba con el ID placeholder (CRIA-######)
+    // y no coincidía con el cría_id mostrado en Partos.
+    try {
+      var _newCria = String(criaId || db.partos[idx].cria_id || '').trim();
+      var _lotKey = db.partos[idx].lot_code;
+      var animDBe = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : null;
+      if (animDBe && _lotKey && Array.isArray(animDBe[_lotKey])) {
+        var _an = animDBe[_lotKey].find(function(x){ return x.parto_id && String(x.parto_id) === String(partoId); });
+        if (_an) {
+          if (_newCria && _newCria !== 'N/A' && _an.animal_id !== _newCria) { _an.animal_id = _newCria; delete _an._needs_id; }
+          if (peso !== null && peso !== undefined && peso > 0) {
+            if (!Array.isArray(_an.pesajes)) _an.pesajes = [];
+            if (!_an.pesajes.some(function(pj){ return pj.fecha === date; })) _an.pesajes.push({ fecha: date, peso: peso });
+          }
+          if (typeof saveAnimalesDB === 'function') saveAnimalesDB(animDBe);
+        }
+      }
+    } catch(e){ console.warn('[Repro] propagar cria_id editado al animal', e); }
     try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch(e) {}
     if (typeof saveDB === 'function') saveDB(true);
     closeModal('modal-repro-parto');
