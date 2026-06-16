@@ -45,9 +45,18 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build Mac
+      - name: Build Mac (firmado + notarizado)
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          # ── Camino B: firma Developer ID + notarización en CI ──
+          # electron-builder usa CSC_LINK/CSC_KEY_PASSWORD para firmar y,
+          # como package.json tiene mac.notarize.teamId, usa notarytool con
+          # APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID para notarizar.
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npm run publish:mac
 
   build-windows:
