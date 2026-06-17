@@ -115,7 +115,7 @@
     "pg": "^8.11.3",
     "cors": "^2.8.5",
     "xlsx": "^0.18.5",
-    "xlsx-js-style": "^1.4.3"
+    "xlsx-js-style": "^1.2.0"
   },
   "devDependencies": {
     "electron": "22.3.27",
