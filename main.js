@@ -392,11 +392,53 @@ ipcMain.handle('xlsx:save-as', async (_, { sheetsData, filename }) => {
   });
   if (!filePath) return { success: false };
   try {
-    const XLSX = require('xlsx');
+    // v1.8.76: xlsx-js-style (drop-in de SheetJS que SÍ escribe estilos) para una plantilla profesional.
+    const XLSX = require('xlsx-js-style');
     const wb = XLSX.utils.book_new();
-    // sheetsData es un objeto: { 'NombreHoja': [['celda1','celda2'], ['celda1','celda2']] }
+    const HEADER_FILL='1B5E20', HEADER_TXT='FFFFFF', BAND='F1F8F4', BORDER='D9D9D9';
+    const thin = { style:'thin', color:{ rgb:BORDER } };
+    const allBorder = { top:thin, bottom:thin, left:thin, right:thin };
+    // sheetsData es un objeto: { 'NombreHoja': [['celda1','celda2'], ...] }
     Object.keys(sheetsData).forEach(name => {
-      const ws = XLSX.utils.aoa_to_sheet(sheetsData[name]);
+      const aoa = sheetsData[name] || [];
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      const isCover = /INSTRUC|PORTADA/i.test(name);
+      const nRows = aoa.length;
+      const nCols = aoa.reduce((m,r)=>Math.max(m,(r||[]).length),0) || 1;
+
+      if (isCover) {
+        ws['!cols'] = [{ wch: 100 }];
+        for (let r=0; r<nRows; r++) {
+          const ref = XLSX.utils.encode_cell({ r, c:0 });
+          if (!ws[ref]) continue;
+          const txt = (aoa[r] && aoa[r][0] != null) ? String(aoa[r][0]) : '';
+          if (r === 0) ws[ref].s = { font:{ bold:true, sz:16, color:{ rgb:HEADER_FILL } } };
+          else if (/^Modo de importaci|OBLIGATOR/i.test(txt)) ws[ref].s = { font:{ bold:true, sz:11, color:{ rgb:HEADER_FILL } } };
+          else ws[ref].s = { font:{ sz:11, color:{ rgb:'333333' } }, alignment:{ wrapText:true, vertical:'center' } };
+        }
+        ws['!rows'] = [{ hpt: 28 }];
+      } else {
+        // anchos por contenido
+        const cols = [];
+        for (let c=0; c<nCols; c++) {
+          let w = 10;
+          for (let r=0; r<nRows; r++) { const v=(aoa[r]&&aoa[r][c]!=null)?String(aoa[r][c]):''; if (v.length+2>w) w=v.length+2; }
+          cols.push({ wch: Math.min(Math.max(w,10), 42) });
+        }
+        ws['!cols'] = cols;
+        for (let r=0; r<nRows; r++) {
+          for (let c=0; c<nCols; c++) {
+            const ref = XLSX.utils.encode_cell({ r, c });
+            if (!ws[ref]) ws[ref] = { t:'s', v:'' };
+            if (r === 0) ws[ref].s = { font:{ bold:true, sz:11, color:{ rgb:HEADER_TXT } }, fill:{ fgColor:{ rgb:HEADER_FILL } }, alignment:{ horizontal:'center', vertical:'center', wrapText:true }, border:allBorder };
+            else ws[ref].s = { font:{ sz:10, color:{ rgb:'222222' } }, alignment:{ vertical:'center', wrapText:true }, border:allBorder, fill:{ fgColor:{ rgb:(r%2===0?BAND:'FFFFFF') } } };
+          }
+        }
+        // asegurar que el rango cubra toda la grilla (celdas vacías estilizadas incluidas)
+        ws['!ref'] = XLSX.utils.encode_range({ s:{ r:0, c:0 }, e:{ r:Math.max(0,nRows-1), c:Math.max(0,nCols-1) } });
+        ws['!rows'] = [{ hpt: 22 }];
+        if (nRows > 0) ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s:{ r:0, c:0 }, e:{ r:Math.max(0,nRows-1), c:Math.max(0,nCols-1) } }) };
+      }
       XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31)); // Excel limita 31 chars
     });
     XLSX.writeFile(wb, filePath);

@@ -6615,37 +6615,56 @@ function pullFromRailwayDesktop(thenPush) {
           });
         } catch(e) {}
 
-        // FIX v1.4.29: Detectar lotes con ediciones recientes de ID (id_updated_at < 60 seg)
-        // para protegerlos del overwrite del server. Sin esto, si el sync-pull entra
-        // antes de que el sync-push haga llegar el cambio, el ID viejo regresa.
-        var recentlyEditedLots = {};
-        var nowMs = Date.now();
+        // v1.8.76 (Opción acotada): renames de ID pendientes de confirmar push — lista {lot, oldId, newId}.
+        // En vez de preservar el LOTE entero (que ignoraría cambios del server en OTROS animales del lote),
+        // protegemos SOLO el animal renombrado hasta que el push confirme (ahí se limpia e5m_pending_renames).
+        var renamesByLot = {};
         try {
-          Object.keys(localAnimals).forEach(function(lc) {
-            (localAnimals[lc]||[]).forEach(function(a) {
-              if (a.id_updated_at) {
-                var diff = nowMs - new Date(a.id_updated_at).getTime();
-                if (diff >= 0 && diff < 60000) { // dentro de los últimos 60 segundos
-                  recentlyEditedLots[lc] = true;
-                }
-              }
-            });
-          });
+          var _pr = JSON.parse(localStorage.getItem('e5m_pending_renames')||'[]');
+          if (Array.isArray(_pr)) _pr.forEach(function(r){ if (r && r.lot) { (renamesByLot[r.lot] = renamesByLot[r.lot] || []).push(r); } });
         } catch(e) {}
 
         var merged = {};
-        // Server gana por default
+        // Server gana por default.
+        // v1.8.76 (FIX raíz): arrastrar del animal LOCAL (match por animal_id) los campos que el server NO
+        // almacena/devuelve: parto_id, sexo, id_updated_at, _needs_id. Sin esto el merge los borraba en CADA
+        // sync → se rompía la trazabilidad cría↔parto (saveReproParto no encontraba el animal por parto_id)
+        // y se perdía el sexo. Si el server SÍ los devuelve (round-trip), se respeta el valor del server.
         Object.keys(remoteAnimals).forEach(function(lc) {
+          var localById = {};
+          (localAnimals[lc]||[]).forEach(function(la){ var k = String(la.animal_id || la.id || ''); if (k) localById[k] = la; });
           merged[lc] = (remoteAnimals[lc]||[]).map(function(a) {
-            return { id: a.animal_id || a.id || '', animal_id: a.animal_id || a.id || '', raza: a.breed || a.raza || '', breed: a.breed || a.raza || '', pesajes: a.pesajes || [] };
+            var aid = a.animal_id || a.id || '';
+            var la = localById[String(aid)] || {};
+            var obj = { id: aid, animal_id: aid, raza: a.breed || a.raza || la.raza || '', breed: a.breed || a.raza || la.breed || '', pesajes: a.pesajes || [] };
+            var partoId = (a.parto_id != null && a.parto_id !== '') ? a.parto_id : la.parto_id;
+            if (partoId != null && partoId !== '') obj.parto_id = partoId;
+            var sexo = a.sexo || la.sexo;
+            if (sexo) obj.sexo = sexo;
+            if (la.id_updated_at) obj.id_updated_at = la.id_updated_at;
+            if (la._needs_id) obj._needs_id = la._needs_id;
+            return obj;
           });
         });
-        // Preservar lotes locales si tienen cambios pendientes O ediciones recientes de ID
+        // v1.8.76 (Opción acotada): aplicar los renames pendientes SOLO al animal afectado, sin tocar el resto del lote.
+        // Por cada {oldId→newId}: quitar el id viejo (que el server aún no actualizó) e inyectar el nuevo desde el
+        // cache si el server todavía no lo trae. El resto del lote queda con lo que mandó el server (server-wins).
+        Object.keys(renamesByLot).forEach(function(lc) {
+          if (!Array.isArray(merged[lc])) merged[lc] = [];
+          var localByIdLc = {};
+          (localAnimals[lc]||[]).forEach(function(la){ var k = String(la.animal_id || la.id || ''); if (k) localByIdLc[k] = la; });
+          renamesByLot[lc].forEach(function(r){
+            var oldId = String(r.oldId||''), newId = String(r.newId||'');
+            if (!newId) return;
+            if (oldId && oldId !== newId) merged[lc] = merged[lc].filter(function(x){ return String(x.animal_id||x.id||'') !== oldId; });
+            var yaEsta = merged[lc].some(function(x){ return String(x.animal_id||x.id||'') === newId; });
+            if (!yaEsta && localByIdLc[newId]) { merged[lc].push(localByIdLc[newId]); console.log('[Sync] Rename protegido (acotado): ' + lc + ' ' + oldId + '→' + newId); }
+          });
+        });
+        // Preservar el LOTE completo solo por cambios pendientes pre-existentes (compras/ventas sin sincronizar).
         Object.keys(localAnimals).forEach(function(lc) {
-          var shouldPreserve = (pendingLots[lc] || recentlyEditedLots[lc]) && localAnimals[lc] && localAnimals[lc].length;
-          if (shouldPreserve) {
-            var reason = pendingLots[lc] ? 'pending' : 'recent-id-edit';
-            console.log('[Sync] Preservando animales del lote', lc, 'por', reason);
+          if (pendingLots[lc] && localAnimals[lc] && localAnimals[lc].length) {
+            console.log('[Sync] Preservando lote completo', lc, 'por pending (compras/ventas)');
             merged[lc] = localAnimals[lc];
           }
         });
@@ -6965,11 +6984,15 @@ function _doPushToRailway() {
           var normalized = {};
           Object.keys(raw).forEach(function(lotCode) {
             normalized[lotCode] = (raw[lotCode]||[]).map(function(a) {
-              return {
+              var o = {
                 animal_id: a.animal_id || a.id || '',
                 breed: a.breed || a.raza || '',
                 pesajes: a.pesajes || []
               };
+              // v1.8.76: conservar el vínculo cría↔parto y el sexo en el server (si hace round-trip de campos extra)
+              if (a.parto_id != null && a.parto_id !== '') o.parto_id = a.parto_id;
+              if (a.sexo) o.sexo = a.sexo;
+              return o;
             });
           });
           return normalized;
@@ -6997,6 +7020,8 @@ function _doPushToRailway() {
       console.log('Push OK:', d.pushed);
       // Actualizar last_sync_at: después de push exitoso, mi estado local está alineado con el server
       try { localStorage.setItem('e5m_last_sync_at', new Date().toISOString()); } catch(e){}
+      // v1.8.76: el push exitoso ya subió los renames de ID → liberar la protección de los animales renombrados.
+      try { localStorage.removeItem('e5m_pending_renames'); } catch(e){}
     }
     else { console.error('Push failed:', d); }
   })
@@ -15234,7 +15259,7 @@ function downloadOnboardingTemplate() {
       ['3. Columnas con * son OBLIGATORIAS (sin esos datos la fila se ignora).'],
       ['4. Pesos en KG. Fechas en formato YYYY-MM-DD.'],
       ['5. C\u00f3digos de lote \u00daNICOS, sin espacios. Ej: SS1, A-01, B02.'],
-      ['6. El lote_code en hoja Animales DEBE existir en hoja Lotes.'],
+      ['6. Una sola hoja Animales: una fila por cada animal con su ID. Los datos del lote (categoria, raza, potrero, proveedor) se repiten en cada fila; el sistema crea el lote y cuenta las cabezas solo.'],
       ['7. Si asign\u00e1s POTRERO en un lote, ese potrero debe estar definido en la hoja Potreros.'],
       ['8. Al importar, los lotes con potrero quedan registrados autom\u00e1ticamente en Rotaci\u00f3n.'],
       ['9. Cuando termines, en EstanciaPro: Configuraci\u00f3n -> Importar archivo completado.'],
@@ -15271,17 +15296,12 @@ function downloadOnboardingTemplate() {
       ['Pluvi\u00f3metro Lote 4','Cerca del lote 4','Ejemplo - borrar']
     ],
     'Subcuentas': [['CUENTA*','SUBCUENTA*','DESCRIPCION']].concat(ONBOARDING_SUBCUENTAS_BASE),
-    'Lotes': [
-      ['CODIGO*','CATEGORIA*','RAZA','POTRERO','CABEZAS (referencial — el conteo sale de Animales)','PESO PROM (kg)','PROVEEDOR ORIGEN','OBSERVACIONES'],
-      ['SS1','Novillo','Nelore','Potrero Norte',50,380,'Estancia La Pampa','Ejemplo - borrar'],
-      ['A-01','Vaca','Nelore x F1','Potrero Sur',80,420,'Cr\u00eda propia','Ejemplo - borrar'],
-      ['B-02','Ternero','Brahman','Potrero Este',120,220,'Mercado Santa Cruz','Ejemplo - borrar']
-    ],
     'Animales': [
-      ['LOTE_CODE*','ANIMAL_ID*','RAZA','SEXO (macho/hembra)','PESO (kg)','FECHA_PESAJE','OBSERVACIONES'],
-      ['SS1','1001','Nelore','macho',385,'2026-05-01','Ejemplo - borrar'],
-      ['SS1','1002','Nelore','macho',378,'2026-05-01','Ejemplo - borrar'],
-      ['A-01','2050','Nelore x F1','hembra',425,'2026-05-01','Ejemplo - borrar']
+      ['LOTE_CODE*','CATEGORIA*','RAZA','POTRERO','PROVEEDOR ORIGEN','ANIMAL_ID*','SEXO (macho/hembra)','PESO (kg)','FECHA_PESAJE','OBSERVACIONES'],
+      ['SS1','Novillo','Nelore','Potrero Norte','Estancia La Pampa','1001','macho',385,'2026-05-01','Ejemplo - borrar'],
+      ['SS1','Novillo','Nelore','Potrero Norte','Estancia La Pampa','1002','macho',378,'2026-05-01','Ejemplo - borrar'],
+      ['A-01','Vaca','Nelore x F1','Potrero Sur','Cr\u00eda propia','2050','hembra',425,'2026-05-01','Ejemplo - borrar'],
+      ['B-02','Ternero','Brahman','Potrero Este','Mercado Santa Cruz','3010','macho',220,'2026-05-01','Ejemplo - borrar']
     ],
     'Stock_Vet': [
       ['NOMBRE PRODUCTO*','TIPO','STOCK ACTUAL*','UNIDAD*','DOSIS POR 50KG','COSTO POR UNIDAD (Bs)','OBSERVACIONES'],
@@ -15416,21 +15436,44 @@ function parseOnboardingWorkbook(raw) {
     result.subcuentas.push({ cuenta: cuenta, name: name, desc: _getColStr(r, ['DESCRIPCION']) });
   });
 
-  findSheet('Lotes').forEach(function(r){
-    if (_isExampleOrEmptyRow(r)) return;
-    var code = _getColStr(r, ['CODIGO']);
-    var category = _getColStr(r, ['CATEGORIA']);
-    var cab = _getColNum(r, ['CABEZAS']);
-    if (!code || !category) return;   // v1.8.73: CABEZAS ya no es obligatoria (el conteo sale de la hoja Animales)
-    result.lotes.push({ code: code, category: category, breed: _getColStr(r, ['RAZA']), paddock: _getColStr(r, ['POTRERO']), animal_count: cab, avg_weight: _getColNum(r, ['PESOPROM']), supplier: _getColStr(r, ['PROVEEDOR']), obs: _getColStr(r, ['OBSERVACIONES']) });
-  });
+  // v1.8.76: hoja unica "Animales" - cada fila = un animal con los datos de su lote.
+  // Los lotes se DERIVAN agrupando por lot_code (metadata de la 1a fila no vacia). Elimina el mismatch
+  // CABEZAS-vs-IDs que generaba lotes fantasma. Compatibilidad: si existe hoja "Lotes" (plantilla vieja), su metadata pisa.
+  var _lotMeta = {};
+  function _ensureLotMeta(code){ if(!_lotMeta[code]) _lotMeta[code] = { code: code, category:'', breed:'', paddock:'', supplier:'', animal_count:null, avg_weight:null }; return _lotMeta[code]; }
 
   findSheet('Animales').forEach(function(r){
     if (_isExampleOrEmptyRow(r)) return;
     var lc = _getColStr(r, ['LOTECODE','LOTE']);
     var aid = _getColStr(r, ['ANIMALID','ID']);
     if (!lc || !aid) return;
-    result.animales.push({ lot_code: lc, animal_id: aid, breed: _getColStr(r, ['RAZA']), peso: _getColNum(r, ['PESO']), fecha: _getColStr(r, ['FECHAPESAJE','FECHA']), sexo: _getColStr(r, ['SEXO']), obs: _getColStr(r, ['OBSERVACIONES']) });   // v1.8.70: +sexo
+    var animBreed = _getColStr(r, ['RAZA']);
+    result.animales.push({ lot_code: lc, animal_id: aid, breed: animBreed, peso: _getColNum(r, ['PESO']), fecha: _getColStr(r, ['FECHAPESAJE','FECHA']), sexo: _getColStr(r, ['SEXO']), obs: _getColStr(r, ['OBSERVACIONES']) });
+    var meta = _ensureLotMeta(lc);
+    if (!meta.category) meta.category = _getColStr(r, ['CATEGORIA']);
+    if (!meta.breed) meta.breed = animBreed;
+    if (!meta.paddock) meta.paddock = _getColStr(r, ['POTRERO']);
+    if (!meta.supplier) meta.supplier = _getColStr(r, ['PROVEEDOR']);
+  });
+
+  // Legacy/opcional: hoja "Lotes" separada (plantillas viejas). Su metadata pisa la derivada.
+  findSheet('Lotes').forEach(function(r){
+    if (_isExampleOrEmptyRow(r)) return;
+    var code = _getColStr(r, ['CODIGO']);
+    var category = _getColStr(r, ['CATEGORIA']);
+    if (!code || !category) return;
+    var meta = _ensureLotMeta(code);
+    meta.category = category;
+    meta.breed = _getColStr(r, ['RAZA']) || meta.breed;
+    meta.paddock = _getColStr(r, ['POTRERO']) || meta.paddock;
+    meta.supplier = _getColStr(r, ['PROVEEDOR']) || meta.supplier;
+    var cab = _getColNum(r, ['CABEZAS']); if (cab != null) meta.animal_count = cab;
+    var pp = _getColNum(r, ['PESOPROM']); if (pp != null) meta.avg_weight = pp;
+  });
+
+  Object.keys(_lotMeta).forEach(function(code){
+    var m = _lotMeta[code];
+    result.lotes.push({ code: m.code, category: m.category || '', breed: m.breed || '', paddock: m.paddock || '', animal_count: m.animal_count, avg_weight: m.avg_weight, supplier: m.supplier || '', obs: '' });
   });
 
   findSheet('Stock').forEach(function(r){
@@ -22161,6 +22204,16 @@ function saveEditAnimalId() {
   lista[idx].animal_id=nuevoId; // FIX v1.4.29: persistir en ambos campos para que sync sea consistente
   lista[idx].id_updated_at = new Date().toISOString(); // FIX v1.4.29: marca temporal para merge correcto en sync-pull
   localStorage.setItem('e5m_animals',JSON.stringify(animalesDB));
+  // v1.8.76 (Opción acotada): registrar el rename {lote, idViejo, idNuevo} para proteger SOLO este animal del
+  // server-wins hasta que el push confirme (se limpia e5m_pending_renames en push OK). Reemplaza la ventana de 60s.
+  if (idAnterior && idAnterior !== nuevoId) {
+    try {
+      var _pr = JSON.parse(localStorage.getItem('e5m_pending_renames')||'[]'); if (!Array.isArray(_pr)) _pr = [];
+      _pr = _pr.filter(function(r){ return !(r && r.lot===lotCode && String(r.oldId)===String(idAnterior) && String(r.newId)===String(nuevoId)); });
+      _pr.push({ lot: lotCode, oldId: idAnterior, newId: nuevoId });
+      localStorage.setItem('e5m_pending_renames', JSON.stringify(_pr));
+    } catch(e) {}
+  }
 
   // v1.8.75: PROPAGAR el cambio de ID a TODO lo que referencia este animal por su id (string).
   // Sin esto se rompía la trazabilidad individual: pesajes, curaciones, movimientos, bajas, partos
@@ -26767,6 +26820,12 @@ function revocarDispositivo(id, btn) {
 
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.8.76': [
+    'Corregido (de raíz): los cambios de ID/arete ahora SÍ persisten después de sincronizar. Antes el sync con el server podía revertir el ID al valor anterior pasados unos segundos.',
+    'Corregido: editar la cría en un parto vuelve a actualizar el animal del lote de forma permanente — la sincronización ya no rompe el vínculo cría↔parto.',
+    'Técnico: el merge de sincronización dejó de borrar el vínculo al parto (parto_id), el sexo y la marca de edición del animal; un animal recién renombrado queda protegido del "server-wins" hasta confirmar la subida.',
+    'Mejorado (carga inicial Excel): plantilla con look profesional (encabezados con color, bordes, columnas dimensionadas) y UNA SOLA HOJA de Animales — los datos del lote se repiten por fila y el conteo de cabezas se calcula solo (se quitó la hoja Lotes separada que causaba descuadres).',
+  ],
   '1.8.75': [
     'Corregido: cambiar el ID/arete de un animal ahora actualiza TODOS sus registros (pesajes, curaciones, movimientos, bajas, partos, servicios reproductivos, ventas). Antes quedaban con el ID viejo y se perdía la trazabilidad.',
     'Corregido: renombrar una RAZA ahora también actualiza los animales (no solo los lotes). Renombrar un TIPO DE GASTO actualiza cuentas, subcuentas y registros.',
@@ -38259,6 +38318,7 @@ function saveReproParto() {
     if (!Array.isArray(db.partos)) db.partos = [];
     var idx = db.partos.findIndex(function(p){ return String(p.id) === String(partoId); });
     if (idx === -1) { alert('Parto no encontrado'); return; }
+    var _oldCriaId = String((db.partos[idx]||{}).cria_id||'').trim(); // v1.8.76: para re-encontrar el animal si perdió parto_id
     var nowIso = new Date().toISOString();
     db.partos[idx] = Object.assign({}, db.partos[idx], {
       date: date,
@@ -38280,14 +38340,35 @@ function saveReproParto() {
       var _lotKey = db.partos[idx].lot_code;
       var animDBe = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : null;
       if (animDBe && _lotKey && Array.isArray(animDBe[_lotKey])) {
+        // v1.8.76: buscar por parto_id; si el animal ya perdió parto_id (datos viejos), caer a match por el cría_id anterior.
         var _an = animDBe[_lotKey].find(function(x){ return x.parto_id && String(x.parto_id) === String(partoId); });
+        if (!_an && _oldCriaId && _oldCriaId !== 'N/A') {
+          _an = animDBe[_lotKey].find(function(x){ return String(x.animal_id||x.id||'') === _oldCriaId; });
+          if (_an && !_an.parto_id) _an.parto_id = partoId; // re-vincular hacia el futuro
+        }
         if (_an) {
-          if (_newCria && _newCria !== 'N/A' && _an.animal_id !== _newCria) { _an.animal_id = _newCria; delete _an._needs_id; }
+          var _renamed = false, _oldAnimId = String(_an.animal_id || _an.id || '');
+          if (_newCria && _newCria !== 'N/A' && _an.animal_id !== _newCria) {
+            _an.animal_id = _newCria; _an.id = _newCria; delete _an._needs_id;
+            _an.id_updated_at = new Date().toISOString(); // v1.8.76: durabilidad ante server-wins
+            _renamed = true;
+          }
           if (peso !== null && peso !== undefined && peso > 0) {
             if (!Array.isArray(_an.pesajes)) _an.pesajes = [];
             if (!_an.pesajes.some(function(pj){ return pj.fecha === date; })) _an.pesajes.push({ fecha: date, peso: peso });
           }
           if (typeof saveAnimalesDB === 'function') saveAnimalesDB(animDBe);
+          // v1.8.76 (Opción acotada): si renombramos el animal, registrar el rename {lote, idViejo, idNuevo} para
+          // proteger SOLO este animal del server-wins hasta confirmar push, y disparar el push (igual que saveEditAnimalId).
+          if (_renamed) {
+            try {
+              var _pr = JSON.parse(localStorage.getItem('e5m_pending_renames')||'[]'); if (!Array.isArray(_pr)) _pr = [];
+              _pr = _pr.filter(function(r){ return !(r && r.lot===_lotKey && String(r.oldId)===_oldAnimId && String(r.newId)===String(_newCria)); });
+              _pr.push({ lot: _lotKey, oldId: _oldAnimId, newId: _newCria });
+              localStorage.setItem('e5m_pending_renames', JSON.stringify(_pr));
+            } catch(e){}
+            if (typeof pushToRailway === 'function') { try { pushToRailway(); } catch(e){} }
+          }
         }
       }
     } catch(e){ console.warn('[Repro] propagar cria_id editado al animal', e); }
