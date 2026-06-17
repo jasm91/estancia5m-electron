@@ -256,6 +256,14 @@ body{background:var(--bg);color:var(--text);font-family:Inter,'Segoe UI Emoji','
 .tab-btn{padding:9px 14px;font-family:DM Mono,monospace;font-size:11px;cursor:pointer;color:var(--muted);border:none;background:none;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s}
 .tab-btn:hover{color:var(--text)}
 .tab-btn.active{color:var(--amber2);border-bottom-color:var(--amber)}
+.adv-period-btn{background:transparent;border:none;color:var(--muted);font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.03em;padding:5px 12px;border-radius:6px;cursor:pointer;white-space:nowrap;transition:all .15s;line-height:1.5}
+.adv-period-btn:hover{color:var(--text);background:rgba(127,133,144,.12)}
+.adv-period-btn.active{background:var(--amber);color:#0D1117;font-weight:600}
+.adv-period-btn.active:hover{background:var(--amber2);color:#0D1117}
+/* el <select> de mes dentro del control no debe verse como input suelto */
+.adv-period-group{display:flex;gap:4px;align-items:center;background:var(--sur2);border:1px solid var(--bor);border-radius:8px;padding:3px}
+.adv-period-group .form-select{border:none;background-color:transparent;font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.03em;color:var(--text);padding:5px 26px 5px 10px;min-width:150px;border-radius:6px;cursor:pointer}
+.adv-period-group .form-select:hover{background-color:rgba(127,133,144,.12)}
 .tab-pane{display:none}.tab-pane.active{display:block}
 
 /* MINI CHART */
@@ -564,7 +572,7 @@ function validateNotFuture(dateStr, fieldLabel){
 
 // v1.4.73: tabs en página Personal (Adelantos / Historial de Sueldos)
 function showPersonalTab(tabName, btn) {
-  var tabs = ['adelantos', 'sueldos'];
+  var tabs = ['adelantos', 'sueldos', 'bonos', 'bajas', 'contrataciones'];
   tabs.forEach(function(t) {
     var el = document.getElementById('pers-tab-' + t);
     if (el) el.style.display = t === tabName ? 'block' : 'none';
@@ -578,6 +586,9 @@ function showPersonalTab(tabName, btn) {
   if (tabName === 'adelantos' && typeof renderAdvances === 'function') {
     try { renderAdvances(); } catch(e){}
   }
+  if (tabName === 'bonos' && typeof renderBonos === 'function') { try { renderBonos(); } catch(e){} }
+  if (tabName === 'bajas' && typeof renderBajasPersonal === 'function') { try { renderBajasPersonal(); } catch(e){} }
+  if (tabName === 'contrataciones' && typeof renderContrataciones === 'function') { try { renderContrataciones(); } catch(e){} }
   // Persistir última tab usada
   try { localStorage.setItem('e5m_personal_tab', tabName); } catch(e){}
 }
@@ -822,6 +833,7 @@ function publishTasksToPWA() {
     <button class="nav-btn active" data-label="Dashboard" onclick="showPage('dashboard',this)"><span class="nav-icon">📊</span><span class="nav-text">Dashboard</span></button>
     <button class="nav-btn" data-label="Stock" onclick="showPage('stock',this)"><span class="nav-icon">📦</span><span class="nav-text">Stock</span></button>
     <button class="nav-btn" data-label="Alertas" onclick="showPage('alertas',this)"><span class="nav-icon">🔔</span><span class="nav-text">Alertas</span><span class="nav-badge nb-red" id="nb-alertas">0</span></button>
+    <button class="nav-btn" data-label="Opciones Rápidas" onclick="showPage('opciones-rapidas',this)"><span class="nav-icon">⚡</span><span class="nav-text">Opciones Rápidas</span></button>
     </div>
   </div>
 
@@ -914,6 +926,20 @@ function publishTasksToPWA() {
 </div>
 
 <!-- ═══ LOTES ═══ -->
+<div id="page-opciones-rapidas" class="page">
+  <div style="margin-bottom:18px"><h1 style="margin:0 0 4px">⚡ Opciones Rápidas</h1><div style="font-size:13px;color:var(--muted)">Flujos guiados para las tareas más comunes — paso a paso, sin perderte.</div></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px">
+    <div onclick="wvOpen()" style="cursor:pointer;background:var(--sur2);border:1px solid var(--bor);border-radius:12px;padding:20px;transition:transform .15s,border-color .15s" onmouseover="this.style.borderColor='var(--green)';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--bor)';this.style.transform='none'">
+      <div style="font-size:32px;margin-bottom:8px">🤝</div><div style="font-weight:700;font-size:15px;margin-bottom:4px">Vender ganado</div><div style="font-size:12px;color:var(--muted)">Lote → peso → comprador → precio → confirmar.</div>
+    </div>
+    <div style="opacity:.5;background:var(--sur2);border:1px dashed var(--bor);border-radius:12px;padding:20px">
+      <div style="font-size:32px;margin-bottom:8px">💸</div><div style="font-weight:700;font-size:15px;margin-bottom:4px">Pagar / liquidar personal</div><div style="font-size:12px;color:var(--muted)">Próximamente</div>
+    </div>
+    <div style="opacity:.5;background:var(--sur2);border:1px dashed var(--bor);border-radius:12px;padding:20px">
+      <div style="font-size:32px;margin-bottom:8px">📋</div><div style="font-weight:700;font-size:15px;margin-bottom:4px">Dar de baja un animal</div><div style="font-size:12px;color:var(--muted)">Próximamente</div>
+    </div>
+  </div>
+</div>
 <div id="page-lotes" class="page">
   <div class="ph">
     <div><div class="pt">🐄 Lotes</div><div class="ps" id="lotes-sub">Inventario por lote</div></div>
@@ -3055,10 +3081,10 @@ function publishTasksToPWA() {
     <select class="form-select" id="mnt-filter-who" style="width:160px;padding:6px 10px;font-size:12px" onchange="renderMantenimiento()">
       <option value="">Todos los responsables</option>
     </select>
-    <div style="display:flex;gap:4px;background:var(--sur2);border:1px solid var(--bor);border-radius:8px;padding:3px">
+    <div class="adv-period-group">
       <button class="adv-period-btn active" id="mnt-p-mes" onclick="setMntPeriod('mes',this)">Mes</button>
       <button class="adv-period-btn" id="mnt-p-todo" onclick="setMntPeriod('todo',this)">Todo</button>
-      <button class="adv-period-btn" id="mnt-p-custom" onclick="setMntPeriod('custom',this)">📅 Rango</button>
+      <button class="adv-period-btn" id="mnt-p-custom" onclick="setMntPeriod('custom',this)">Rango</button>
     </div>
     <div id="mnt-range-inputs" style="display:none;align-items:center;gap:6px">
       <input type="date" id="mnt-from" class="form-input" style="width:130px;padding:5px 8px;font-size:12px" onchange="_mntFrom=this.value;renderMantenimiento()">
@@ -3223,7 +3249,6 @@ function publishTasksToPWA() {
 <div id="page-personal" class="page">
   <div class="ph">
     <div><div class="pt">👷 Personal</div><div class="ps">Empleados y actividades de campo</div></div>
-    <button class="btn btn-primary" onclick="nuevoEmpleado()">+ Nuevo empleado</button>
     <button class="btn btn-ghost" onclick="exportPersonal()" title="Exportar personal">⬇ Personal</button>
     <button class="btn btn-ghost" onclick="exportAdelantos()" title="Exportar adelantos">⬇ Adelantos</button>
   </div>
@@ -3240,6 +3265,9 @@ function publishTasksToPWA() {
   <div style="margin-top:24px;border-bottom:1px solid var(--bor);display:flex;gap:4px;padding:0 4px">
     <button class="tab-btn active" id="pers-tab-adel-btn" onclick="showPersonalTab('adelantos',this)">💵 Control de Adelantos</button>
     <button class="tab-btn" id="pers-tab-sueldos-btn" onclick="showPersonalTab('sueldos',this)">📅 Historial de Sueldos</button>
+    <button class="tab-btn" id="pers-tab-bonos-btn" onclick="showPersonalTab('bonos',this)">🎁 Bonos/Aguinaldos</button>
+    <button class="tab-btn" id="pers-tab-bajas-btn" onclick="showPersonalTab('bajas',this)">📤 Bajas de Personal</button>
+    <button class="tab-btn" id="pers-tab-contrataciones-btn" onclick="showPersonalTab('contrataciones',this)">📥 Contrataciones</button>
   </div>
 
   <!-- TAB 1: Adelantos -->
@@ -3254,11 +3282,11 @@ function publishTasksToPWA() {
       <select class="form-select" id="adv-filter-emp" style="width:180px;padding:6px 10px;font-size:12px" onchange="renderAdvances()">
         <option value="">Todos los empleados</option>
       </select>
-      <div style="display:flex;gap:4px;background:var(--sur2);border:1px solid var(--bor);border-radius:8px;padding:3px">
-        <select class="form-select" id="adv-month-sel" style="padding:5px 8px;font-size:12px;border:none;background:transparent;min-width:140px" onchange="setAdvPeriod('month-pick',null)"></select>
+      <div class="adv-period-group">
+        <select class="form-select" id="adv-month-sel" onchange="setAdvPeriod('month-pick',null)"></select>
         <button class="adv-period-btn" onclick="setAdvPeriod('semana',this)">Semana</button>
         <button class="adv-period-btn" onclick="setAdvPeriod('todo',this)">Todo</button>
-        <button class="adv-period-btn" onclick="setAdvPeriod('custom',this)">📅 Rango</button>
+        <button class="adv-period-btn" onclick="setAdvPeriod('custom',this)">Rango</button>
       </div>
       <div id="adv-range-inputs" style="display:none;align-items:center;gap:6px">
         <input type="date" id="adv-range-from" class="form-input" style="width:130px;padding:5px 8px;font-size:12px" onchange="_advFrom=this.value;renderAdvances()">
@@ -3307,6 +3335,30 @@ function publishTasksToPWA() {
         </table>
       </div>
     </div>
+  </div>
+
+  <div id="pers-tab-bonos" style="margin-top:18px;display:none">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:13px;color:var(--muted)">Bonos y aguinaldos pagados al personal · se suman como costo de Personal</div>
+      <button class="btn btn-primary btn-sm" onclick="openBonoModal()">+ Bono/Aguinaldo</button>
+    </div>
+    <div class="card"><div class="card-body" style="padding:0"><table class="tbl"><thead><tr><th>Empleado</th><th>Tipo</th><th>Monto</th><th>Fecha</th><th>Nota</th><th>Registró</th><th></th></tr></thead><tbody id="bonos-tbody"></tbody></table></div></div>
+  </div>
+
+  <div id="pers-tab-bajas" style="margin-top:18px;display:none">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:13px;color:var(--muted)">Bajas del personal · con el monto de liquidación pagado (ingreso manual)</div>
+      <button class="btn btn-primary btn-sm" onclick="openBajaPersonalModal()">+ Baja</button>
+    </div>
+    <div class="card"><div class="card-body" style="padding:0"><table class="tbl"><thead><tr><th>Empleado</th><th>Fecha baja</th><th>Motivo</th><th>Liquidación (Bs)</th><th>Nota</th><th>Registró</th><th>Respaldo</th></tr></thead><tbody id="bajas-personal-tbody"></tbody></table></div></div>
+  </div>
+
+  <div id="pers-tab-contrataciones" style="margin-top:18px;display:none">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:13px;color:var(--muted)">Historial de contrataciones (altas de personal)</div>
+      <button class="btn btn-primary btn-sm" onclick="nuevoEmpleado()">+ Nuevo empleado</button>
+    </div>
+    <div class="card"><div class="card-body" style="padding:0"><table class="tbl"><thead><tr><th>Empleado</th><th>Rol</th><th>Fecha ingreso</th><th>Sueldo inicial</th><th>Registró</th><th>Respaldo</th></tr></thead><tbody id="contrataciones-tbody"></tbody></table></div></div>
   </div>
 </div>
 
@@ -4661,6 +4713,78 @@ function publishTasksToPWA() {
   <button class="btn btn-primary" onclick="saveSale()">Registrar venta</button>
 </div></div></div>
 
+<!-- v1.8.77: Wizard de Venta (Opciones Rápidas) — reusa saveSale(), no toca el form actual -->
+<div class="modal-overlay" id="modal-wizard-venta">
+<div class="modal" id="wv-modalbox" style="max-width:640px"><h2>🤝 Vender ganado</h2>
+<div id="wv-stepbar" style="margin-bottom:14px"></div>
+<div class="wv-step" data-step="1">
+  <div class="form-group"><label class="form-label">¿Qué vas a vender?</label>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button type="button" class="btn btn-primary" id="wv-mode-single" onclick="wvSetMode('single')" style="flex:1">Un lote</button>
+      <button type="button" class="btn btn-ghost" id="wv-mode-multi" onclick="wvSetMode('multi')" style="flex:1">Varios lotes</button>
+    </div>
+  </div>
+  <div id="wv-single-lot" class="form-group"><label class="form-label">Lote</label>
+    <select class="form-select" id="wv-lot" onchange="wvOnLot()"><option value="">Seleccionar...</option></select>
+  </div>
+  <div id="wv-multi-picker" style="display:none">
+    <div style="display:flex;gap:14px;align-items:flex-start">
+      <div style="flex:1.6;min-width:0">
+        <div class="form-row">
+          <div class="form-group" style="flex:1"><label class="form-label">Lote</label><select class="form-select" id="wv-lot-filter" onchange="wvFilterAnimals()"><option value="">Todos</option></select></div>
+          <div class="form-group" style="flex:1"><label class="form-label">Buscar por ID</label><input class="form-input" id="wv-anim-search" placeholder="ID..." oninput="wvFilterAnimals()"></div>
+        </div>
+        <div class="form-group"><label class="form-label">Rango de peso (kg)</label><div style="display:flex;gap:6px;align-items:center"><input class="form-input" type="number" id="wv-pmin" placeholder="Min" oninput="wvFilterAnimals()" style="width:80px"><span style="color:var(--muted)">-</span><input class="form-input" type="number" id="wv-pmax" placeholder="Max" oninput="wvFilterAnimals()" style="width:80px"></div></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span id="wv-anim-sum" style="font-size:12px;color:var(--amber2);font-weight:700">0 animales</span>
+          <div style="display:flex;gap:6px"><button type="button" class="btn btn-ghost btn-sm" onclick="wvSelectAllAnimals()">Selec. todos (filtro)</button><button type="button" class="btn btn-ghost btn-sm" onclick="wvClearAnimals()">Limpiar</button></div>
+        </div>
+        <div id="wv-animals-list" style="max-height:300px;overflow-y:auto;border:1px solid var(--bor);border-radius:8px;background:var(--sur2)"></div>
+      </div>
+      <div style="flex:1;min-width:220px;max-width:300px;border-left:1px solid var(--bor);padding-left:14px;align-self:stretch">
+        <div style="font-size:12px;font-weight:700;margin-bottom:8px">🧺 Entran a la venta</div>
+        <div id="wv-cart" style="max-height:360px;overflow-y:auto;font-size:12px"></div>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px">Filtrá por lote / ID / peso, marcá los animales y ajustá su kg de salida.</div>
+  </div>
+  <div id="wv-single-hint" style="font-size:11px;color:var(--muted);margin-top:8px">"Varios lotes" te deja elegir animales puntuales de cualquier lote por ID o peso.</div>
+</div>
+<div class="wv-step" data-step="2" style="display:none">
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">¿Cuántos animales? <span id="wv-count-hint" style="color:var(--muted);font-size:10px"></span></label><input class="form-input" type="number" id="wv-count" min="1" oninput="wvCalcTotal()"></div>
+    <div class="form-group"><label class="form-label">Peso promedio por animal (kg)</label><input class="form-input" type="number" id="wv-peso" step="0.1" min="0" oninput="wvCalcTotal()"></div>
+  </div>
+  <div style="font-size:11px;color:var(--muted)">Por defecto es el lote completo; bajá la cantidad si vendés solo una parte. Se registra como pesaje de salida.</div>
+</div>
+<div class="wv-step" data-step="3" style="display:none">
+  <div class="form-group"><label class="form-label">Comprador</label><input class="form-input" id="wv-buyer" placeholder="Ej: Frigorífico Boliviano S.A."></div>
+  <div class="form-group"><label class="form-label">Tipo</label>
+    <select class="form-select" id="wv-type"><option value="frigorifico">Frigorífico</option><option value="feria">Feria ganadera</option><option value="particular">Particular</option><option value="exportacion">Exportación</option></select></div>
+</div>
+<div class="wv-step" data-step="4" style="display:none">
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Precio Bs./kg</label><input class="form-input" type="number" id="wv-price" step="0.01" min="0" oninput="wvCalcTotal()"></div>
+    <div class="form-group"><label class="form-label">Descuento peso (%) <span style="color:var(--muted);font-size:10px">opcional</span></label><input class="form-input" type="number" id="wv-discount" min="0" max="50" step="0.1" oninput="wvCalcTotal()"></div>
+  </div>
+  <div style="background:var(--sur2);border:1px solid var(--bor);border-radius:8px;padding:12px;text-align:center"><div style="font-size:11px;color:var(--muted)">Total estimado</div><div id="wv-total" style="font-size:20px;font-weight:700;color:var(--green)">Bs 0.00</div></div>
+</div>
+<div class="wv-step" data-step="5" style="display:none">
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Fecha</label><input class="form-input" type="date" id="wv-date"></div>
+    <div class="form-group"><label class="form-label">N° factura <span style="color:var(--muted);font-size:10px">opcional</span></label><input class="form-input" id="wv-invoice" placeholder="FAC-2026-0001"></div>
+  </div>
+  <div class="form-group"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--muted)"><input type="checkbox" id="wv-trace"> Requiere certificado de trazabilidad</label></div>
+  <div id="wv-summary" style="background:rgba(46,160,67,.08);border:1px solid rgba(46,160,67,.3);border-radius:8px;padding:12px;font-size:13px"></div>
+</div>
+<div class="form-actions">
+  <button class="btn btn-ghost" onclick="closeModal('modal-wizard-venta')">Cancelar</button>
+  <button class="btn btn-ghost" id="wv-back" onclick="wvNav(-1)" style="display:none">← Atrás</button>
+  <button class="btn btn-primary" id="wv-next" onclick="wvNav(1)">Siguiente →</button>
+  <button class="btn btn-primary" id="wv-finish" onclick="wvFinish()" style="display:none">✓ Registrar venta</button>
+</div>
+</div></div>
+
 <!-- Modal Compra Ganado -->
 <div class="modal-overlay" id="modal-compra-ganado">
 <div class="modal" style="max-width:800px;max-height:90vh;overflow-y:auto"><h2>🐂 Registrar Compra de Ganado</h2>
@@ -5361,6 +5485,34 @@ function publishTasksToPWA() {
   <button class="btn btn-ghost" onclick="closeModal('modal-advance')">Cancelar</button>
   <button class="btn btn-primary" onclick="saveAdvance()">Registrar adelanto</button>
 </div></div></div>
+
+<!-- v1.8.79: Modal Bono/Aguinaldo -->
+<div class="modal-overlay" id="modal-bono">
+<div class="modal"><h2>🎁 Registrar Bono / Aguinaldo</h2>
+<div class="form-row">
+  <div class="form-group"><label class="form-label">Empleado</label><select class="form-select" id="bono-employee"><option value="">Seleccionar...</option></select></div>
+  <div class="form-group"><label class="form-label">Tipo</label><select class="form-select" id="bono-tipo"><option value="aguinaldo">Aguinaldo</option><option value="doble_aguinaldo">Doble aguinaldo</option><option value="bono">Bono</option><option value="beneficio">Beneficio social</option></select></div>
+</div>
+<div class="form-row">
+  <div class="form-group"><label class="form-label">Monto (Bs.)</label><input class="form-input" type="number" id="bono-amount" placeholder="Ej: 3000"></div>
+  <div class="form-group"><label class="form-label">Fecha</label><input class="form-input" type="date" id="bono-date"></div>
+</div>
+<div class="form-group"><label class="form-label">Nota</label><input class="form-input" id="bono-nota" placeholder="Opcional"></div>
+<div class="form-actions"><button class="btn btn-ghost" onclick="closeModal('modal-bono')">Cancelar</button><button class="btn btn-primary" onclick="saveBono()">Registrar</button></div>
+</div></div>
+
+<!-- v1.8.79: Modal Baja de Personal -->
+<div class="modal-overlay" id="modal-baja-personal">
+<div class="modal"><h2>📤 Dar de baja un empleado</h2>
+<div class="form-group"><label class="form-label">Empleado</label><select class="form-select" id="bajap-employee"><option value="">Seleccionar...</option></select></div>
+<div class="form-row">
+  <div class="form-group"><label class="form-label">Fecha de baja</label><input class="form-input" type="date" id="bajap-date"></div>
+  <div class="form-group"><label class="form-label">Motivo</label><select class="form-select" id="bajap-motivo"><option value="renuncia">Renuncia</option><option value="despido">Despido</option><option value="fin_contrato">Fin de contrato</option><option value="otro">Otro</option></select></div>
+</div>
+<div class="form-group"><label class="form-label">Monto de liquidación pagado (Bs.)</label><input class="form-input" type="number" id="bajap-monto" placeholder="Lo que se le pagó al cerrar"></div>
+<div class="form-group"><label class="form-label">Nota</label><input class="form-input" id="bajap-nota" placeholder="Opcional"></div>
+<div class="form-actions"><button class="btn btn-ghost" onclick="closeModal('modal-baja-personal')">Cancelar</button><button class="btn btn-primary" onclick="saveBajaPersonal()">Dar de baja</button></div>
+</div></div>
 
 <!-- Modal Pesaje -->
 <div class="modal-overlay" id="modal-pesaje">
@@ -6489,7 +6641,8 @@ function pullFromRailwayDesktop(thenPush) {
           var serverCount = (serverLot && typeof serverLot.animal_count === 'number') ? serverLot.animal_count : 0;
           // Si server dice MÁS que el cache (caso de venta parcial registrada en otro device), preferir server
           // Si server dice MENOS, usar cache (cache tiene la verdad de los animales reales)
-          lt.animal_count = Math.max(serverCount, anims.length);
+          // v1.8.78: si el server dice MÁS pero por poco (baja/venta local aún no propagada), seguir la realidad local.
+          if (anims.length >= serverCount || (serverCount - anims.length) <= Math.max(3, serverCount * 0.05)) lt.animal_count = anims.length; else lt.animal_count = Math.max(serverCount, anims.length);
           var ws = anims.map(function(a){ return a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length-1].peso : 0; }).filter(function(w){ return w > 0; });
           if (ws.length) lt.avg_weight = Math.round(ws.reduce(function(s,w){return s+w;},0)/ws.length*10)/10;
         }
@@ -6522,6 +6675,9 @@ function pullFromRailwayDesktop(thenPush) {
         { local: 'kardex',         remote: remote.kardex },
         { local: 'cuentas',        remote: remote.cuentas },
         { local: 'historial_sueldos', remote: remote.historial_sueldos },
+        { local: 'bonos', remote: remote.bonos },
+        { local: 'bajas_personal', remote: remote.bajas_personal },
+        { local: 'contrataciones', remote: remote.contrataciones },
         { local: 'health_alerts',  remote: remote.health_alerts },
         { local: 'employees',      remote: remote.employees },
         // v1.8.66: traer también los movimientos de animales del server (log append-only).
@@ -6667,6 +6823,24 @@ function pullFromRailwayDesktop(thenPush) {
             console.log('[Sync] Preservando lote completo', lc, 'por pending (compras/ventas)');
             merged[lc] = localAnimals[lc];
           }
+        });
+        // v1.8.78: dedupe SEGURO por animal_id. Solo colapsa duplicados IDÉNTICOS (mismo id, misma raza y pesajes).
+        // Si dos comparten id pero son DISTINTOS (colisión de rename), NO se borra: se re-etiqueta uno y se marca para revisión.
+        Object.keys(merged).forEach(function(lc){
+          var _byId={}, _out=[];
+          (merged[lc]||[]).forEach(function(a){
+            var k=String((a&&(a.animal_id||a.id))||'');
+            if(!k){ _out.push(a); return; }
+            var prev=_byId[k];
+            if(!prev){ _byId[k]=a; _out.push(a); return; }
+            var igual = String(prev.raza||prev.breed||'')===String(a.raza||a.breed||'') && JSON.stringify(prev.pesajes||[])===JSON.stringify(a.pesajes||[]);
+            if(igual){ console.log('[Sync] Duplicado idéntico descartado en '+lc+': '+k); return; }
+            var nk=k+'-DUP'+Math.floor(Math.random()*1000);
+            a.animal_id=nk; a.id=nk; a._needs_id=true; a._colision_de=k;
+            _byId[nk]=a; _out.push(a);
+            console.warn('[Sync] COLISIÓN de ID en '+lc+': "'+k+'" (animales distintos) → re-id "'+nk+'" + _needs_id (no se pierde el animal)');
+          });
+          merged[lc]=_out;
         });
         localStorage.setItem('e5m_animals', JSON.stringify(merged));
         var totalMerged = Object.values(merged).reduce(function(s, a){ return s + (a ? a.length : 0); }, 0);
@@ -6850,6 +7024,9 @@ function pushDesktopRecords() {
       diesel:           db.diesel || [],
       aceite:           db.aceite || [],
       historial_sueldos: db.historial_sueldos || [],
+      bonos:            db.bonos || [],
+      bajas_personal:   db.bajas_personal || [],
+      contrataciones:   db.contrataciones || [],
       kardex:           db.kardex || [],
       cuentas:          db.cuentas || [],
       compras_ganado:   db.compras_ganado || [],
@@ -6968,6 +7145,9 @@ function _doPushToRailway() {
       diesel:           db.diesel || [],
       aceite:           db.aceite || [],
       historial_sueldos: db.historial_sueldos || [],
+      bonos:            db.bonos || [],
+      bajas_personal:   db.bajas_personal || [],
+      contrataciones:   db.contrataciones || [],
       kardex:           db.kardex || [],
       cuentas:          db.cuentas || [],
       compras_ganado:   db.compras_ganado || [],
@@ -7039,7 +7219,9 @@ function ensureDB() {
   db.lots.forEach(function(lot) {
     var animals = animalsDB[lot.code];
     if (animals && animals.length > 0) {
-      lot.animal_count = Math.max(lot.animal_count || 0, animals.length);
+      // v1.8.78: seguir la realidad también hacia abajo en caídas chicas (baja/venta); MAX solo si la caída es grande (lote por conteo).
+      var _cur = lot.animal_count || 0;
+      if (animals.length >= _cur || (_cur - animals.length) <= Math.max(3, _cur * 0.05)) lot.animal_count = animals.length; else lot.animal_count = Math.max(_cur, animals.length);
       // Recalcular avg_weight desde el ultimo pesaje de cada animal
       var ws = animals.map(function(a){ return a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length-1].peso : 0; }).filter(function(w){ return w > 0; });
       if (ws.length) lot.avg_weight = Math.round(ws.reduce(function(s,w){return s+w;},0)/ws.length*10)/10;
@@ -7054,6 +7236,9 @@ function ensureDB() {
   if (!db.alimento) db.alimento = [];
   if (!db.maintenance) db.maintenance = [];
   if (!db.advances) db.advances = [];
+  if (!db.bonos) db.bonos = [];
+  if (!db.bajas_personal) db.bajas_personal = [];
+  if (!db.contrataciones) db.contrataciones = [];
   if (!db.lluvias) db.lluvias = [];
   if (!db.diesel) db.diesel = [];
   if (!db.aceite) db.aceite = [];
@@ -7254,7 +7439,12 @@ function renderTopbarSummary() {
     // Cuántos animales: lot.animal_count > 0, sino contar en animDB
     var ac = parseInt(l.animal_count, 10) || 0;
     var anims = (l.code && animDB[l.code]) ? animDB[l.code] : null;
-    if (!ac && anims && anims.length) ac = anims.length;
+    // v1.8.78: contar animales DISTINTOS (un duplicado no infla el header); seguir el real si está individualizado o la caída es chica.
+    if (anims && anims.length) {
+      var _u={}; anims.forEach(function(a){ var k=String((a&&(a.animal_id||a.id))||''); if(k) _u[k]=1; });
+      var _real=Object.keys(_u).length;
+      if (_real>0 && (_real>=ac || (ac-_real)<=Math.max(3, ac*0.05))) ac=_real; else if (!ac) ac=_real;
+    }
     if (!ac) return;
     cab += ac;
     lotesConDatos++;
@@ -10030,6 +10220,153 @@ function calcSaleTotal() {
   }
 }
 
+// v1.8.77: Wizard de Venta (Opciones Rápidas). single=lote (cantidad/peso) | multi=picker por ID/lote/peso (scope individual + __all__). Reusa saveSale().
+var _wvStep = 1, _wvMode = 'single';
+function _wvSeq(){ return _wvMode==='multi' ? [1,3,4,5] : [1,2,3,4,5]; }
+function wvOpen(){
+  _wvStep = 1; _wvMode = 'single';
+  _saleSelectedAnimals = []; _saleAnimalLotMap = {}; _salePesoMap = {};
+  var lots = (db.lots||[]).filter(function(l){ return (l.status!=='vendido'&&l.status!=='sold') && (l.animal_count||0)>0; });
+  var sel = document.getElementById('wv-lot');
+  if(sel){ sel.innerHTML='<option value="">Seleccionar...</option>'; lots.forEach(function(l){ var o=document.createElement('option'); o.value=l.code; o.textContent=l.code+' ('+(l.animal_count||0)+' cab'+(l.category?' · '+l.category:'')+')'; sel.appendChild(o); }); }
+  var lf = document.getElementById('wv-lot-filter');
+  if(lf){ lf.innerHTML='<option value="">Todos</option>'; lots.forEach(function(l){ var o=document.createElement('option'); o.value=l.code; o.textContent=l.code+' ('+(l.animal_count||0)+' cab)'; lf.appendChild(o); }); }
+  ['wv-count','wv-peso','wv-buyer','wv-price','wv-discount','wv-invoice','wv-anim-search','wv-pmin','wv-pmax'].forEach(function(id){ var e=document.getElementById(id); if(e)e.value=''; });
+  var tr=document.getElementById('wv-trace'); if(tr)tr.checked=false;
+  var ty=document.getElementById('wv-type'); if(ty)ty.value='frigorifico';
+  var dt=document.getElementById('wv-date'); if(dt)dt.value=(typeof localDate==='function'?localDate():new Date().toISOString().slice(0,10));
+  wvSetMode('single'); wvRender();
+  if(typeof openModal==='function') openModal('modal-wizard-venta');
+}
+function wvSetMode(m){
+  _wvMode=m; _wvStep=1;
+  _saleSelectedAnimals=[]; _saleAnimalLotMap={}; _salePesoMap={};
+  var sB=document.getElementById('wv-mode-single'), mB=document.getElementById('wv-mode-multi');
+  if(sB) sB.className='btn '+(m==='single'?'btn-primary':'btn-ghost');
+  if(mB) mB.className='btn '+(m==='multi'?'btn-primary':'btn-ghost');
+  var sl=document.getElementById('wv-single-lot'), mp=document.getElementById('wv-multi-picker'), sh=document.getElementById('wv-single-hint');
+  if(sl) sl.style.display=(m==='single'?'block':'none');
+  if(mp) mp.style.display=(m==='multi'?'block':'none');
+  if(sh) sh.style.display=(m==='single'?'block':'none');
+  if(m==='multi') wvRenderAnimals();
+  wvRender();
+}
+function wvOnLot(){
+  var lot=(db.lots||[]).find(function(l){ return l.code===(document.getElementById('wv-lot')||{}).value; });
+  var cEl=document.getElementById('wv-count'), h=document.getElementById('wv-count-hint');
+  if(lot && cEl){ cEl.value=lot.animal_count||''; if(h) h.textContent='(lote completo: '+(lot.animal_count||0)+')'; }
+}
+// ---- Picker individual (todos los lotes, filtros lote/ID/peso). Reusa los globales que lee saveSale. ----
+function wvRenderAnimals(){
+  var cont=document.getElementById('wv-animals-list'); if(!cont) return;
+  var adb=(typeof getAnimalesDB==='function')?getAnimalesDB():{};
+  var active={}; (db.lots||[]).forEach(function(l){ if(l.status!=='vendido'&&l.status!=='sold') active[l.code]=true; });
+  var lotF=(document.getElementById('wv-lot-filter')||{}).value||'';
+  var f=((document.getElementById('wv-anim-search')||{}).value||'').toLowerCase();
+  var pmin=parseFloat((document.getElementById('wv-pmin')||{}).value)||0, pmax=parseFloat((document.getElementById('wv-pmax')||{}).value)||0;
+  var rows=[];
+  Object.keys(adb).forEach(function(lc){ if(!active[lc]) return; if(lotF && lc!==lotF) return; (adb[lc]||[]).forEach(function(a){ rows.push({id:String(a.animal_id||a.id||''), lot:lc, raza:(a.breed||a.raza||''), last:(a.pesajes&&a.pesajes.length?a.pesajes[a.pesajes.length-1].peso:0)}); }); });
+  var filt=rows.filter(function(a){ if(!a.id) return false; if(f && a.id.toLowerCase().indexOf(f)<0) return false; if(pmin && a.last<pmin) return false; if(pmax && a.last>pmax) return false; return true; });
+  if(!filt.length){ cont.innerHTML='<div style="padding:18px;text-align:center;color:var(--muted);font-size:12px">Sin animales que coincidan con el filtro.</div>'; wvAnimSum(); return; }
+  cont.innerHTML=filt.map(function(a){
+    if(a.last && _salePesoMap[a.id]==null) _salePesoMap[a.id]=a.last;
+    var seld=_saleSelectedAnimals.indexOf(a.id)>=0;
+    var pv=_salePesoMap[a.id]||a.last||'';
+    return '<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid rgba(48,54,61,.35);'+(seld?'background:rgba(201,168,76,.08)':'')+'">'+
+      '<input type="checkbox" '+(seld?'checked':'')+' style="accent-color:var(--amber);flex-shrink:0" onchange="wvToggleAnimal(this)" data-aid="'+a.id+'" data-lot="'+a.lot+'">'+
+      '<span style="font-family:DM Mono,monospace;font-size:10px;background:rgba(88,166,255,.1);color:var(--blue);padding:2px 6px;border-radius:4px;flex-shrink:0">'+a.lot+'</span>'+
+      '<span style="font-family:DM Mono,monospace;font-size:12px;font-weight:600;color:var(--amber2);min-width:60px">'+a.id+'</span>'+
+      '<span style="font-size:11px;color:var(--muted)">'+a.raza+(a.last?' ('+a.last+' kg)':'')+'</span>'+
+      '<div style="margin-left:auto;display:flex;align-items:center;gap:4px;flex-shrink:0"><span style="font-size:10px;color:var(--muted)">kg:</span><input type="number" value="'+pv+'" step="0.5" min="0" style="width:70px;padding:3px 6px;font-size:11px;background:var(--sur);border:1px solid var(--bor);border-radius:6px;color:var(--text)" oninput="wvSetAnimalPeso(\''+a.id+'\',this.value)"></div>'+
+    '</div>';
+  }).join('');
+  wvAnimSum();
+}
+function wvToggleAnimal(chk){
+  var aid=chk.getAttribute('data-aid'), lot=chk.getAttribute('data-lot');
+  if(chk.checked){ if(_saleSelectedAnimals.indexOf(aid)<0) _saleSelectedAnimals.push(aid); _saleAnimalLotMap[aid]=lot; }
+  else { var i=_saleSelectedAnimals.indexOf(aid); if(i>=0) _saleSelectedAnimals.splice(i,1); }
+  wvAnimSum(); wvCalcTotal();
+}
+function wvSetAnimalPeso(aid,val){ var pp=parseFloat(val)||0; if(pp>0) _salePesoMap[aid]=pp; wvAnimSum(); wvCalcTotal(); }
+function wvSelectAllAnimals(){ Array.prototype.slice.call(document.querySelectorAll('#wv-animals-list input[type=checkbox]')).forEach(function(c){ if(!c.checked){ c.checked=true; wvToggleAnimal(c);} }); }
+function wvClearAnimals(){ Array.prototype.slice.call(document.querySelectorAll('#wv-animals-list input[type=checkbox]')).forEach(function(c){ if(c.checked){ c.checked=false; wvToggleAnimal(c);} }); }
+function wvFilterAnimals(){ wvRenderAnimals(); }
+function wvAnimSum(){ var kg=0; _saleSelectedAnimals.forEach(function(id){ kg+=_salePesoMap[id]||0; }); var el=document.getElementById('wv-anim-sum'); if(el) el.textContent=_saleSelectedAnimals.length+' animales · '+kg.toFixed(0)+' kg'; wvUpdateCart(); }
+function wvUpdateCart(){
+  var el=document.getElementById('wv-cart'); if(!el) return;
+  if(!_saleSelectedAnimals.length){ el.innerHTML='<div style="color:var(--muted)">Todavía no marcaste animales.</div>'; return; }
+  var byLot={}; _saleSelectedAnimals.forEach(function(id){ var lc=_saleAnimalLotMap[id]||'?'; if(!byLot[lc]) byLot[lc]={ids:[],kg:0}; byLot[lc].ids.push(id); byLot[lc].kg+=_salePesoMap[id]||0; });
+  var tot=0,totKg=0,h='';
+  Object.keys(byLot).forEach(function(lc){ var g=byLot[lc]; tot+=g.ids.length; totKg+=g.kg; h+='<div style="margin-bottom:8px"><div style="font-weight:700;color:var(--blue)">'+lc+' <span style="color:var(--muted);font-weight:400">· '+g.ids.length+' cab · '+g.kg.toFixed(0)+' kg</span></div><div style="color:var(--muted);font-size:11px;word-break:break-word">'+g.ids.join(', ')+'</div></div>'; });
+  h+='<div style="border-top:1px solid var(--bor);margin-top:4px;padding-top:6px;font-weight:700;color:var(--green)">Total: '+tot+' animales · '+totKg.toFixed(0)+' kg</div>';
+  el.innerHTML=h;
+}
+function wvCount(){ if(_wvMode==='multi') return _saleSelectedAnimals.length; return parseFloat((document.getElementById('wv-count')||{}).value)||0; }
+function wvRender(){
+  var seq=_wvSeq(), idx=seq.indexOf(_wvStep); if(idx<0){ idx=0; _wvStep=seq[0]; }
+  var _box=document.getElementById('wv-modalbox'); if(_box) _box.style.maxWidth=((_wvStep===1&&_wvMode==='multi')?'900px':'640px');
+  [1,2,3,4,5].forEach(function(st){ var el=document.querySelector('.wv-step[data-step="'+st+'"]'); if(el) el.style.display=(st===_wvStep?'block':'none'); });
+  var b=document.getElementById('wv-back'), n=document.getElementById('wv-next'), f=document.getElementById('wv-finish');
+  if(b)b.style.display=(idx>0?'inline-flex':'none'); if(n)n.style.display=(idx<seq.length-1?'inline-flex':'none'); if(f)f.style.display=(idx===seq.length-1?'inline-flex':'none');
+  var sb=document.getElementById('wv-stepbar');
+  if(sb){ var labels = _wvMode==='multi' ? ['Animales','Comprador','Precio','Confirmar'] : ['Lote','Cantidad','Comprador','Precio','Confirmar'];
+    sb.innerHTML=seq.map(function(st,i){ var on=st===_wvStep; return '<span style="font-size:11px;padding:3px 9px;border-radius:10px;margin-right:5px;display:inline-block;'+(on?'background:var(--green);color:#000;font-weight:700':'background:var(--sur2);color:var(--muted)')+'">'+(i+1)+'. '+labels[i]+'</span>'; }).join(''); }
+  if(_wvStep===1 && _wvMode==='multi') wvRenderAnimals();
+  if(_wvStep===4) wvCalcTotal();
+  if(_wvStep===5) wvSummary();
+}
+function wvValidate(step){
+  function v(id){ return (document.getElementById(id)||{}).value; }
+  if(step===1){
+    if(_wvMode==='single' && !v('wv-lot')){ toast('Elegí un lote','error'); return false; }
+    if(_wvMode==='multi' && _saleSelectedAnimals.length===0){ toast('Seleccioná al menos un animal','error'); return false; }
+  }
+  if(step===2 && _wvMode==='single'){
+    if((parseFloat(v('wv-peso'))||0)<=0){ toast('Indicá el peso promedio por animal','error'); return false; }
+    var c=parseFloat(v('wv-count'))||0; if(c<=0){ toast('Indicá cuántos animales','error'); return false; }
+    var lot=(db.lots||[]).find(function(l){ return l.code===v('wv-lot'); });
+    if(lot && c>(lot.animal_count||0)){ toast('Supera el total del lote ('+(lot.animal_count||0)+' cab)','error'); return false; }
+  }
+  if(step===3 && !String(v('wv-buyer')||'').trim()){ toast('Nombre del comprador','error'); return false; }
+  if(step===4 && (parseFloat(v('wv-price'))||0)<=0){ toast('Precio Bs/kg','error'); return false; }
+  return true;
+}
+function wvNav(dir){ if(dir>0 && !wvValidate(_wvStep)) return; var seq=_wvSeq(), idx=seq.indexOf(_wvStep); idx=Math.max(0,Math.min(seq.length-1, idx+dir)); _wvStep=seq[idx]; wvRender(); }
+function wvCalcTotal(){
+  var pr=parseFloat((document.getElementById('wv-price')||{}).value)||0, d=parseFloat((document.getElementById('wv-discount')||{}).value)||0, kg=0, c=0;
+  if(_wvMode==='multi'){ c=_saleSelectedAnimals.length; _saleSelectedAnimals.forEach(function(id){ kg+=_salePesoMap[id]||0; }); }
+  else { c=parseFloat((document.getElementById('wv-count')||{}).value)||0; var pe=parseFloat((document.getElementById('wv-peso')||{}).value)||0; kg=c*pe; }
+  var kgF=d>0?kg*(1-d/100):kg, total=kgF*pr;
+  var el=document.getElementById('wv-total'); if(el) el.textContent='Bs '+(total||0).toFixed(2)+'  ('+c+' cab · '+kg.toFixed(0)+' kg'+(d>0?' − '+d+'%':'')+')';
+}
+function wvSummary(){
+  wvCalcTotal();
+  function v(id){ return (document.getElementById(id)||{}).value; }
+  var el=document.getElementById('wv-summary'); if(!el) return;
+  var quien;
+  if(_wvMode==='multi'){ var lo={}; _saleSelectedAnimals.forEach(function(id){ lo[_saleAnimalLotMap[id]]=true; }); quien=Object.keys(lo).join(', ')+' <span style="color:var(--muted)">(multilote)</span>'; }
+  else quien='<b>'+v('wv-lot')+'</b>';
+  el.innerHTML=quien+' · '+wvCount()+' animales<br>Comprador: <b>'+v('wv-buyer')+'</b> · '+v('wv-price')+' Bs/kg<br>'+(document.getElementById('wv-total')||{}).textContent;
+}
+function wvFinish(){
+  var seq=_wvSeq(); for(var k=0;k<seq.length;k++){ if(seq[k]!==5 && !wvValidate(seq[k])) return; }
+  function set(id,val){ var e=document.getElementById(id); if(!e) return; if(e.type==='checkbox') e.checked=!!val; else e.value=val; }
+  function v(id){ return (document.getElementById(id)||{}).value; }
+  set('sale-buyer', v('wv-buyer')); set('sale-type', v('wv-type')); set('sale-price', v('wv-price'));
+  set('sale-discount-pct', v('wv-discount')); set('sale-date', v('wv-date')); set('sale-invoice', v('wv-invoice'));
+  set('sale-trace', (document.getElementById('wv-trace')||{}).checked);
+  if(_wvMode==='multi'){
+    if(_saleSelectedAnimals.length===0){ toast('Seleccioná animales','error'); return; }
+    set('sale-lot','__all__'); set('sale-scope','individual');
+  } else {
+    var c=parseFloat(v('wv-count'))||0;
+    set('sale-lot', v('wv-lot')); set('sale-scope','lot'); set('sale-count', c); set('sale-peso-momento', v('wv-peso')); set('sale-kg', Math.round(c*(parseFloat(v('wv-peso'))||0)*10)/10);
+    _saleSelectedAnimals=[];
+  }
+  closeModal('modal-wizard-venta');
+  if(typeof saveSale==='function') saveSale();
+}
 function saveSale() {
   var lot_code=(document.getElementById('sale-lot')||{}).value||'';
   var buyer=(document.getElementById('sale-buyer')||{}).value.trim()||'';
@@ -11380,6 +11717,103 @@ function setAdvPeriod(period, btn) {
 
 
 var _saveAdvanceInProgress = false;
+// v1.8.79: Bonos/Aguinaldos, Bajas de Personal y Contrataciones (pestañas dedicadas).
+function _fillEmpSelect(id, soloActivos){
+  var sel=document.getElementById(id); if(!sel) return;
+  sel.innerHTML='<option value="">Seleccionar...</option>';
+  var emps=(db.employees||[]).filter(function(e){ return !(soloActivos && e.active===false); });
+  var nameCount={}; emps.forEach(function(e){ var n=String(e.name||''); nameCount[n]=(nameCount[n]||0)+1; });
+  emps.forEach(function(e){ var o=document.createElement('option'); o.value=String(e.id); var lbl=(e.name||'')+(e.role?' ('+e.role+')':''); if(nameCount[String(e.name||'')]>1) lbl+=' · ing. '+(e.hire_date||'?'); o.textContent=lbl; sel.appendChild(o); });
+}
+function _bonoTipoLabel(t){ return t==='aguinaldo'?'Aguinaldo':t==='doble_aguinaldo'?'Doble aguinaldo':t==='beneficio'?'Beneficio social':'Bono'; }
+function _motivoBajaLabel(m){ return m==='renuncia'?'Renuncia':m==='despido'?'Despido':m==='fin_contrato'?'Fin de contrato':'Otro'; }
+function openBonoModal(){ _fillEmpSelect('bono-employee',false); var d=document.getElementById('bono-date'); if(d)d.value=(typeof localDate==='function'?localDate():new Date().toISOString().slice(0,10)); ['bono-amount','bono-nota'].forEach(function(x){var e=document.getElementById(x); if(e)e.value='';}); openModal('modal-bono'); }
+function saveBono(){
+  var empId=(document.getElementById('bono-employee')||{}).value||'';
+  var empObj=(db.employees||[]).find(function(x){return String(x.id)===String(empId);});
+  var tipo=(document.getElementById('bono-tipo')||{}).value||'bono';
+  var amount=parseFloat((document.getElementById('bono-amount')||{}).value)||0;
+  var date=(document.getElementById('bono-date')||{}).value||'';
+  var nota=(document.getElementById('bono-nota')||{}).value||'';
+  if(!empObj||!amount||!date){ toast('Elegí empleado, monto y fecha','error'); return; }
+  if(typeof validateNotFuture==='function' && !validateNotFuture(date,'fecha del bono')) return;
+  if(!Array.isArray(db.bonos)) db.bonos=[];
+  var emp=empObj.name;
+  var by=(typeof _desktopAuthor==='function'?_desktopAuthor():'Escritorio');
+  var rec={ id:'bono_'+Date.now(), employee_id:empObj.id, employee:emp, tipo:tipo, amount:amount, date:date, notes:nota, by:by, created_at:new Date().toISOString() };
+  db.bonos.push(rec); saveDB();
+  try{ replaceTableInRailway('bonos', db.bonos); }catch(e){}
+  try{ auditLog('create','bonos', rec.id, _bonoTipoLabel(tipo)+': '+emp+' · Bs '+amount); }catch(e){}
+  try{ if(typeof addActivity==='function') addActivity(by,'otro','', _bonoTipoLabel(tipo)+': '+emp+' · Bs '+amount.toLocaleString()); }catch(e){}
+  closeModal('modal-bono'); renderBonos(); toast('Registrado: Bs '+amount.toLocaleString()+' a '+emp.split(' ')[0],'success');
+}
+function renderBonos(){
+  var tb=document.getElementById('bonos-tbody'); if(!tb) return;
+  var rows=(db.bonos||[]).slice().sort(function(a,b){return (b.date||'').localeCompare(a.date||'');});
+  if(!rows.length){ tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--muted)">Sin bonos/aguinaldos. Usá "+ Bono/Aguinaldo".</td></tr>'; return; }
+  tb.innerHTML=rows.map(function(r){ return '<tr><td>'+escH(r.employee||'')+'</td><td>'+_bonoTipoLabel(r.tipo)+'</td><td>Bs '+(r.amount||0).toLocaleString()+'</td><td>'+(r.date||'')+'</td><td>'+escH(r.notes||'')+'</td><td style="color:var(--muted);font-size:11px">'+escH(r.by||'')+'</td><td><button class="btn btn-ghost btn-sm" onclick="deleteBono(\''+r.id+'\')">✕</button></td></tr>'; }).join('');
+}
+function deleteBono(id){ if(!confirm('¿Borrar este bono/aguinaldo?')) return; db.bonos=(db.bonos||[]).filter(function(r){return String(r.id)!==String(id);}); saveDB(); try{replaceTableInRailway('bonos',db.bonos);}catch(e){} try{auditLog('delete','bonos',id,'Bono/aguinaldo eliminado');}catch(e){} renderBonos(); }
+function openBajaPersonalModal(){ _fillEmpSelect('bajap-employee',true); var d=document.getElementById('bajap-date'); if(d)d.value=(typeof localDate==='function'?localDate():new Date().toISOString().slice(0,10)); ['bajap-monto','bajap-nota'].forEach(function(x){var e=document.getElementById(x); if(e)e.value='';}); openModal('modal-baja-personal'); }
+function saveBajaPersonal(){
+  var empId=(document.getElementById('bajap-employee')||{}).value||'';
+  var empObj=(db.employees||[]).find(function(x){return String(x.id)===String(empId);});
+  var date=(document.getElementById('bajap-date')||{}).value||'';
+  var motivo=(document.getElementById('bajap-motivo')||{}).value||'otro';
+  var monto=parseFloat((document.getElementById('bajap-monto')||{}).value)||0;
+  var nota=(document.getElementById('bajap-nota')||{}).value||'';
+  if(!empObj||!date){ toast('Elegí empleado y fecha','error'); return; }
+  if(empObj.active===false){ toast(empObj.name+' ya está dado de baja','error'); return; }
+  if(typeof validateNotFuture==='function' && !validateNotFuture(date,'fecha de baja')) return;
+  if(!Array.isArray(db.bajas_personal)) db.bajas_personal=[];
+  var emp=empObj.name;
+  var by=(typeof _desktopAuthor==='function'?_desktopAuthor():'Escritorio');
+  var rec={ id:'bajap_'+Date.now(), employee_id:empObj.id, employee:emp, term_date:date, motivo:motivo, monto_liquidacion:monto, notes:nota, by:by, created_at:new Date().toISOString() };
+  db.bajas_personal.push(rec);
+  empObj.term_date=date; empObj.active=false;
+  saveDB();
+  try{ replaceTableInRailway('bajas_personal', db.bajas_personal); }catch(e){}
+  try{ replaceTableInRailway('employees', db.employees||[]); }catch(e){}
+  try{ auditLog('create','bajas_personal', rec.id, 'Baja: '+emp+' ('+_motivoBajaLabel(motivo)+') · liquidación Bs '+monto); }catch(e){}
+  try{ if(typeof addActivity==='function') addActivity(by,'otro','', 'Baja de personal: '+emp+' ('+_motivoBajaLabel(motivo)+') · liquidación Bs '+monto.toLocaleString()); }catch(e){}
+  closeModal('modal-baja-personal'); renderBajasPersonal(); if(typeof renderPersonal==='function') renderPersonal();
+  toast('Baja registrada: '+emp.split(' ')[0]+' · Bs '+monto.toLocaleString(),'success');
+}
+function renderBajasPersonal(){
+  var tb=document.getElementById('bajas-personal-tbody'); if(!tb) return;
+  var rows=(db.bajas_personal||[]).slice().sort(function(a,b){return (b.term_date||'').localeCompare(a.term_date||'');});
+  if(!rows.length){ tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--muted)">Sin bajas registradas. Usá "+ Baja".</td></tr>'; return; }
+  tb.innerHTML=rows.map(function(r){ var doc = r.has_photo ? '<button class="btn btn-ghost btn-sm" onclick="viewTransactionImage(\''+r.id+'\')" title="Ver respaldo">📷 Ver</button>' : '<button class="btn btn-ghost btn-sm" onclick="_attachPersonalDoc(\'bajas_personal\',\''+r.id+'\')" title="Adjuntar respaldo">📎 Adjuntar</button>'; return '<tr><td>'+escH(r.employee||'')+'</td><td>'+(r.term_date||'')+'</td><td>'+_motivoBajaLabel(r.motivo)+'</td><td>Bs '+(r.monto_liquidacion||0).toLocaleString()+'</td><td>'+escH(r.notes||'')+'</td><td style="color:var(--muted);font-size:11px">'+escH(r.by||'')+'</td><td>'+doc+' <button class="btn btn-ghost btn-sm" onclick="deleteBajaPersonal(\''+r.id+'\')" title="Borrar">✕</button></td></tr>'; }).join('');
+}
+function deleteBajaPersonal(id){ if(!confirm('¿Borrar este registro de baja? (no reactiva al empleado)')) return; db.bajas_personal=(db.bajas_personal||[]).filter(function(r){return String(r.id)!==String(id);}); saveDB(); try{replaceTableInRailway('bajas_personal',db.bajas_personal);}catch(e){} try{auditLog('delete','bajas_personal',id,'Baja de personal eliminada');}catch(e){} renderBajasPersonal(); }
+function renderContrataciones(){
+  var tb=document.getElementById('contrataciones-tbody'); if(!tb) return;
+  var rows=(db.contrataciones||[]).slice().sort(function(a,b){return (b.hire_date||b.created_at||'').localeCompare(a.hire_date||a.created_at||'');});
+  if(!rows.length){ tb.innerHTML='<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--muted)">Sin contrataciones registradas. Se registran al crear un empleado nuevo (no lista a los que ya existían).</td></tr>'; return; }
+  tb.innerHTML=rows.map(function(c){ var doc = c.has_photo ? '<button class="btn btn-ghost btn-sm" onclick="viewTransactionImage(\''+c.id+'\')" title="Ver respaldo">📷 Ver</button>' : '<button class="btn btn-ghost btn-sm" onclick="_attachPersonalDoc(\'contrataciones\',\''+c.id+'\')" title="Adjuntar respaldo">📎 Adjuntar</button>'; return '<tr><td>'+escH(c.employee||'')+'</td><td>'+escH(c.role||'')+'</td><td>'+(c.hire_date||'')+'</td><td>Bs '+(c.salary||0).toLocaleString()+'</td><td style="color:var(--muted);font-size:11px">'+escH(c.by||'')+'</td><td>'+doc+'</td></tr>'; }).join('');
+}
+// v1.8.79: adjuntar respaldo (imagen/archivo) a un registro de Personal (baja, contratación, bono). Reusa /transaction-image + cache local.
+function _attachPersonalDoc(tabla, id){
+  var inp=document.createElement('input'); inp.type='file'; inp.accept='image/*,.pdf'; inp.style.display='none';
+  inp.onchange=function(){
+    var file=inp.files&&inp.files[0]; if(!file){ return; }
+    var reader=new FileReader();
+    reader.onload=function(){
+      var b64=String(reader.result||'');
+      try{ var lp=JSON.parse(localStorage.getItem('e5m_local_photos')||'{}'); lp[String(id)]=b64; localStorage.setItem('e5m_local_photos', JSON.stringify(lp)); }catch(e){}
+      var arr = tabla==='bajas_personal'?db.bajas_personal:(tabla==='contrataciones'?db.contrataciones:db.bonos);
+      var rec=(arr||[]).find(function(r){return String(r.id)===String(id);}); if(rec){ rec.has_photo=true; saveDB(); try{ replaceTableInRailway(tabla, arr); }catch(e){} }
+      try{
+        var apiUrl=getApiUrl(), token=localStorage.getItem('e5m_api_token')||'';
+        fetch(apiUrl+'/transaction-image',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({transaction_id:String(id),transaction_type:tabla,base64:b64.replace(/^data:[^;]+;base64,/,''),mime_type:(file.type||'image/jpeg'),uploaded_by:(typeof _desktopAuthor==='function'?_desktopAuthor():'Desktop')})}).then(function(r){return r.json();}).then(function(){}).catch(function(){});
+      }catch(e){}
+      if(tabla==='bajas_personal') renderBajasPersonal(); else if(tabla==='contrataciones') renderContrataciones(); else if(typeof renderBonos==='function') renderBonos();
+      toast('Respaldo adjuntado','success');
+    };
+    reader.readAsDataURL(file);
+  };
+  document.body.appendChild(inp); inp.click();
+}
 function saveAdvance() {
   // Guard contra doble-click / submits múltiples
   if (_saveAdvanceInProgress) { console.warn('[saveAdvance] Ya está en progreso, ignorando'); return; }
@@ -11639,6 +12073,14 @@ function saveEmployee() {
       var current = (db.employees || []).find(function(e){ return e.id === savedEmpId; });
       var diff = (auditAction === 'update' && oldSnap && current) ? _computeDiff(oldSnap, current) : null;
       auditLog(auditAction, 'employees', savedEmpId, _summarizeRecord('employees', current || savedEmpId), diff);
+    } catch(e){}
+  }
+  // v1.8.79: registrar evento de contratación (alta) para la pestaña Contrataciones
+  if (savedEmpId != null && auditAction === 'create') {
+    try {
+      if(!Array.isArray(db.contrataciones)) db.contrataciones=[];
+      var _ec=(db.employees||[]).find(function(e){return e.id===savedEmpId;});
+      if(_ec){ var _by=(typeof _desktopAuthor==='function'?_desktopAuthor():'Escritorio'); db.contrataciones.push({ id:'contr_'+Date.now(), employee_id:_ec.id, employee:_ec.name, role:_ec.role||'', hire_date:_ec.hire_date||'', salary:_ec.salary||0, by:_by, created_at:new Date().toISOString() }); saveDB(); try{replaceTableInRailway('contrataciones',db.contrataciones);}catch(e2){} try{ if(typeof addActivity==='function') addActivity(_by,'otro','','Contratación: '+_ec.name+(_ec.role?' ('+_ec.role+')':'')); }catch(e2){} }
     } catch(e){}
   }
 }
@@ -20578,6 +21020,16 @@ function renderContabilidad() {
       monto:s.pago_neto||0, origen:'auto', by:'Desktop'
     });
   });
+  // v1.8.79: COSTOS de bonos/aguinaldos
+  (db.bonos||[]).forEach(function(b) {
+    if (!b.date) return;
+    derivados.push({ id:'bono-'+b.id, cuenta:'COSTOS', subcuenta:'Personal', tipo_gasto:'FIJO', tipo:'VARIABLE', fecha:b.date, detalle:(b.tipo==='aguinaldo'?'Aguinaldo':b.tipo==='doble_aguinaldo'?'Doble aguinaldo':b.tipo==='beneficio'?'Beneficio social':'Bono')+' '+b.employee, monto:b.amount||0, origen:'auto', by:b.by||'Desktop' });
+  });
+  // v1.8.79: COSTOS de liquidaciones (bajas de personal)
+  (db.bajas_personal||[]).forEach(function(bp) {
+    if (!bp.term_date || !bp.monto_liquidacion) return;
+    derivados.push({ id:'bajap-'+bp.id, cuenta:'COSTOS', subcuenta:'Personal', tipo_gasto:'FIJO', tipo:'VARIABLE', fecha:bp.term_date, detalle:'Liquidación '+bp.employee+' ('+bp.motivo+')', monto:bp.monto_liquidacion||0, origen:'auto', by:bp.by||'Desktop' });
+  });
 
   // COSTOS: de mantenimiento (con costo)
   (db.maintenance||[]).forEach(function(m) {
@@ -22200,6 +22652,17 @@ function saveEditAnimalId() {
   var lista=animalesDB[lotCode]||[];
   if(!lista[idx])return;
   var idAnterior = String(lista[idx].animal_id || lista[idx].id || '');   // v1.8.75: robusto (crías de parto no tienen .id)
+  // v1.8.78: GUARD anti-colisión — bloquear si el ID nuevo ya existe en OTRO animal (cualquier lote).
+  if (nuevoId && nuevoId !== 'N/A' && nuevoId !== idAnterior) {
+    var _colLote = null;
+    Object.keys(animalesDB).forEach(function(_lc){
+      (animalesDB[_lc]||[]).forEach(function(_a,_i){
+        if (_lc===lotCode && _i===idx) return;
+        if (String(_a.animal_id||_a.id||'')===nuevoId) _colLote = _lc;
+      });
+    });
+    if (_colLote) { toast('Ya existe un animal con ID "'+nuevoId+'" en el lote '+_colLote+'. Elegí otro ID/arete.','error'); return; }
+  }
   lista[idx].id=nuevoId;
   lista[idx].animal_id=nuevoId; // FIX v1.4.29: persistir en ambos campos para que sync sea consistente
   lista[idx].id_updated_at = new Date().toISOString(); // FIX v1.4.29: marca temporal para merge correcto en sync-pull
@@ -22238,6 +22701,11 @@ function saveEditAnimalId() {
     try { pushToRailway(); } catch(e) { console.error('[saveEditAnimalId] push failed:', e); }
   }
 
+  // v1.8.78: registrar el rename en Auditoría y Actividad (antes no quedaba en ningún lado → imposible rastrear).
+  if (idAnterior && idAnterior !== nuevoId) {
+    try { auditLog('update','animals', nuevoId, 'Cambio de ID: '+idAnterior+' → '+nuevoId+' (lote '+lotCode+(_propCount?', '+_propCount+' registros migrados':'')+')', { animal_id:[idAnterior,nuevoId] }); } catch(e){}
+    try { if (typeof addActivity==='function') addActivity((typeof _desktopAuthor==='function'?_desktopAuthor():'Escritorio'),'otro',lotCode,'Cambio de ID de animal: '+idAnterior+' → '+nuevoId+' en '+lotCode); } catch(e){}
+  }
   closeModal('modal-edit-animal-id');
   renderAnimalesLote();
   toast(_propCount ? ('ID actualizado: '+idAnterior+' → '+nuevoId+' · '+_propCount+' registro(s) vinculados migrados') : ('ID actualizado: '+idAnterior+' → '+nuevoId),'success');
@@ -26820,6 +27288,18 @@ function revocarDispositivo(id, btn) {
 
 // ══════════════════════════════════════════════════
 var CHANGELOG_VERSIONS = {
+  '1.8.79': [
+    'Nuevo en Personal: pestaña "Bajas de Personal" (das de baja con el monto de liquidación que ingresás a mano), "Bonos/Aguinaldos" (registro de bonos, aguinaldo, doble aguinaldo, beneficios) y "Contrataciones" (historial de altas).',
+    'Estos eventos quedan registrados en Auditoría y Actividad, y suman como costo de Personal en Contabilidad.',
+  ],
+  '1.8.78': [
+    'Nuevo: al cambiar el ID/arete de un animal, se BLOQUEA si ese ID ya existe en otro animal (antes se podía pisar y se "perdía" el otro animal). Vale para Animales y para la cría en Partos.',
+    'Nuevo: cada cambio de ID/arete queda registrado en Auditoría y en Actividad General (antes no quedaba en ningún lado y no se podía rastrear).',
+    'Corregido: el contador de CABEZAS del header ya no se infla por duplicados; el conteo sigue a los animales reales y baja tras una baja/venta. Si quedaran dos con el mismo ID, se conservan ambos (uno marcado para revisión) sin borrar datos.',
+  ],
+  '1.8.77': [
+    'Nuevo: "Opciones Rápidas" (en el menú Inicio) con flujos guiados paso a paso, sin tocar las pantallas actuales. Primer flujo: Vender ganado — un lote (completo o parcial) o varios lotes a la vez (multilote), paso a paso.',
+  ],
   '1.8.76': [
     'Corregido (de raíz): los cambios de ID/arete ahora SÍ persisten después de sincronizar. Antes el sync con el server podía revertir el ID al valor anterior pasados unos segundos.',
     'Corregido: editar la cría en un parto vuelve a actualizar el animal del lote de forma permanente — la sincronización ya no rompe el vínculo cría↔parto.',
@@ -38319,6 +38799,14 @@ function saveReproParto() {
     var idx = db.partos.findIndex(function(p){ return String(p.id) === String(partoId); });
     if (idx === -1) { alert('Parto no encontrado'); return; }
     var _oldCriaId = String((db.partos[idx]||{}).cria_id||'').trim(); // v1.8.76: para re-encontrar el animal si perdió parto_id
+    // v1.8.78: GUARD anti-colisión — no permitir poner una cría_id que ya tiene OTRO animal del lote.
+    var _criaNew = String(criaId||'').trim();
+    if (_criaNew && _criaNew !== 'N/A' && _criaNew !== _oldCriaId) {
+      var _lotChk = lote || db.partos[idx].lot_code;
+      var _adbChk = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
+      var _colis = (_adbChk[_lotChk]||[]).some(function(x){ return String(x.animal_id||x.id||'')===_criaNew && !(x.parto_id && String(x.parto_id)===String(partoId)); });
+      if (_colis) { toast('Ya existe un animal con ID "'+_criaNew+'" en el lote '+_lotChk+'. Elegí otro arete.','error'); return; }
+    }
     var nowIso = new Date().toISOString();
     db.partos[idx] = Object.assign({}, db.partos[idx], {
       date: date,
@@ -38358,6 +38846,10 @@ function saveReproParto() {
             if (!_an.pesajes.some(function(pj){ return pj.fecha === date; })) _an.pesajes.push({ fecha: date, peso: peso });
           }
           if (typeof saveAnimalesDB === 'function') saveAnimalesDB(animDBe);
+          if (_renamed) {
+            try { auditLog('update','animals', _newCria, 'Cambio de ID (parto): '+_oldAnimId+' → '+_newCria+' en '+_lotKey, { animal_id:[_oldAnimId,_newCria] }); } catch(e){}
+            try { if (typeof addActivity==='function') addActivity((typeof _desktopAuthor==='function'?_desktopAuthor():'Escritorio'),'otro',_lotKey,'Cambio de ID de cría (parto): '+_oldAnimId+' → '+_newCria+' en '+_lotKey); } catch(e){}
+          }
           // v1.8.76 (Opción acotada): si renombramos el animal, registrar el rename {lote, idViejo, idNuevo} para
           // proteger SOLO este animal del server-wins hasta confirmar push, y disparar el push (igual que saveEditAnimalId).
           if (_renamed) {
