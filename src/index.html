@@ -929,8 +929,8 @@ function publishTasksToPWA() {
 <div id="page-opciones-rapidas" class="page">
   <div style="margin-bottom:18px"><h1 style="margin:0 0 4px">⚡ Opciones Rápidas</h1><div style="font-size:13px;color:var(--muted)">Flujos guiados para las tareas más comunes — paso a paso, sin perderte.</div></div>
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px">
-    <div onclick="wvOpen()" style="cursor:pointer;background:var(--sur2);border:1px solid var(--bor);border-radius:12px;padding:20px;transition:transform .15s,border-color .15s" onmouseover="this.style.borderColor='var(--green)';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--bor)';this.style.transform='none'">
-      <div style="font-size:32px;margin-bottom:8px">🤝</div><div style="font-weight:700;font-size:15px;margin-bottom:4px">Vender ganado</div><div style="font-size:12px;color:var(--muted)">Lote → peso → comprador → precio → confirmar.</div>
+    <div style="opacity:.5;background:var(--sur2);border:1px dashed var(--bor);border-radius:12px;padding:20px">
+      <div style="font-size:32px;margin-bottom:8px">🤝</div><div style="font-weight:700;font-size:15px;margin-bottom:4px">Vender ganado</div><div style="font-size:12px;color:var(--muted)">Próximamente</div>
     </div>
     <div style="opacity:.5;background:var(--sur2);border:1px dashed var(--bor);border-radius:12px;padding:20px">
       <div style="font-size:32px;margin-bottom:8px">💸</div><div style="font-weight:700;font-size:15px;margin-bottom:4px">Pagar / liquidar personal</div><div style="font-size:12px;color:var(--muted)">Próximamente</div>
@@ -4561,6 +4561,10 @@ function publishTasksToPWA() {
         <option value="combustible">Combustible</option>
         <option value="lubricante">Lubricante / Aceite</option>
       </optgroup>
+      <optgroup label="Herramientas e insumos">
+        <option value="herramienta">Herramientas</option>
+        <option value="repuesto">Repuestos</option>
+      </optgroup>
       <option value="otro">Otro</option>
     </select>
   </div>
@@ -4728,7 +4732,7 @@ function publishTasksToPWA() {
     <select class="form-select" id="wv-lot" onchange="wvOnLot()"><option value="">Seleccionar...</option></select>
   </div>
   <div id="wv-multi-picker" style="display:none">
-    <div style="display:flex;gap:14px;align-items:flex-start">
+    <div style="display:flex;gap:20px;align-items:flex-start">
       <div style="flex:1.6;min-width:0">
         <div class="form-row">
           <div class="form-group" style="flex:1"><label class="form-label">Lote</label><select class="form-select" id="wv-lot-filter" onchange="wvFilterAnimals()"><option value="">Todos</option></select></div>
@@ -4739,11 +4743,11 @@ function publishTasksToPWA() {
           <span id="wv-anim-sum" style="font-size:12px;color:var(--amber2);font-weight:700">0 animales</span>
           <div style="display:flex;gap:6px"><button type="button" class="btn btn-ghost btn-sm" onclick="wvSelectAllAnimals()">Selec. todos (filtro)</button><button type="button" class="btn btn-ghost btn-sm" onclick="wvClearAnimals()">Limpiar</button></div>
         </div>
-        <div id="wv-animals-list" style="max-height:300px;overflow-y:auto;border:1px solid var(--bor);border-radius:8px;background:var(--sur2)"></div>
+        <div id="wv-animals-list" style="max-height:min(56vh,520px);overflow-y:auto;border:1px solid var(--bor);border-radius:8px;background:var(--sur2)"></div>
       </div>
-      <div style="flex:1;min-width:220px;max-width:300px;border-left:1px solid var(--bor);padding-left:14px;align-self:stretch">
+      <div style="flex:1;min-width:260px;max-width:400px;border-left:1px solid var(--bor);padding-left:18px;align-self:stretch">
         <div style="font-size:12px;font-weight:700;margin-bottom:8px">🧺 Entran a la venta</div>
-        <div id="wv-cart" style="max-height:360px;overflow-y:auto;font-size:12px"></div>
+        <div id="wv-cart" style="max-height:min(56vh,520px);overflow-y:auto;font-size:12px"></div>
       </div>
     </div>
     <div style="font-size:11px;color:var(--muted);margin-top:8px">Filtrá por lote / ID / peso, marcá los animales y ajustá su kg de salida.</div>
@@ -5082,10 +5086,6 @@ function publishTasksToPWA() {
 <div class="form-row">
   <div class="form-group"><label class="form-label">Fecha de ingreso</label><input class="form-input" type="date" id="emp-hire"></div>
   <div class="form-group"><label class="form-label">PIN acceso PWA (4 digitos)</label><input class="form-input" type="password" id="emp-pin" maxlength="4" placeholder="Ej: 1234" inputmode="numeric" pattern="[0-9]{4}"></div>
-</div>
-<div class="form-row">
-  <div class="form-group"><label class="form-label">Fecha de baja <span style="color:var(--muted);font-weight:400">(opcional · al renunciar/retirarse)</span></label><input class="form-input" type="date" id="emp-term"></div>
-  <div class="form-group"></div>
 </div>
 <div class="form-actions">
   <button class="btn btn-ghost" onclick="_editingEmployeeId=null;document.querySelector('#modal-employee h2').textContent='Nuevo Empleado';closeModal('modal-employee')">Cancelar</button>
@@ -8854,28 +8854,32 @@ var _stockSelectedFilter = 'active';
 // Inferencia automática de categoría por nombre del producto
 // IMPORTANTE: combustible (diesel/gasolina) es módulo aparte (página 'diesel'), no Stock
 function _stockGetCategory(p) {
-  var name = (p.name || '').toLowerCase();
   var type = (p.type || '').toLowerCase();
+  var name = (p.name || '').toLowerCase();
+  var CAT = {
+    veterinario:{ type:'veterinario', label:'Veterinario', subLabel:'Vacunas · antiparasitarios · medicamentos', bg:'#FBEAF0', fg:'#4B1528', fgMuted:'#72243E', stroke:'#D4537E', icon:'💉' },
+    sal:{ type:'sal', label:'Sal y suplementos', subLabel:'Sal mineral · suplementos nutricionales', bg:'#FAEEDA', fg:'#412402', fgMuted:'#633806', stroke:'#BA7517', icon:'🧂' },
+    aceite:{ type:'aceite', label:'Aceites y lubricantes', subLabel:'Aceites · lubricantes · refrigerantes', bg:'#E6F1FB', fg:'#042C53', fgMuted:'#0C447C', stroke:'#378ADD', icon:'🛢️' },
+    herramienta:{ type:'herramienta', label:'Herramientas', subLabel:'Herramientas · repuestos · cercos', bg:'#EEEDFE', fg:'#26215C', fgMuted:'#3C3489', stroke:'#7F77DD', icon:'🔧' },
+    otros:{ type:'otros', label:'Otros', subLabel:'Sin categoría asignada', bg:'#F1EFE8', fg:'#2C2C2A', fgMuted:'#5F5E5A', stroke:'#888780', icon:'📦' }
+  };
+  // 1) El TIPO elegido por el usuario MANDA (evita falsos positivos del adivinador, ej. "trampa" -> "amp")
+  var byType = {
+    antiparasitario:'veterinario', vacuna:'veterinario', antibiotico:'veterinario',
+    antiinflamatorio:'veterinario', vitamina_mineral:'veterinario', vitamina:'veterinario', hormona:'veterinario',
+    sal_mineral:'sal', alimento_balanceado:'sal', alimento:'sal',
+    lubricante:'aceite', aceite:'aceite', combustible:'aceite',
+    herramienta:'herramienta', repuesto:'herramienta',
+    otro:'otros'
+  };
+  if (byType[type]) return CAT[byType[type]];
+  // 2) Sin tipo claro -> adivinar por nombre (tokens seguros con limites de palabra)
   var search = name + ' ' + type;
-
-  // Veterinarios (vacunas, antibióticos, antiparasitarios, etc)
-  if (/vacuna|vaccin|antibi|antiparasit|ivermec|pour.?on|clostr|aftosa|rabia|jeringa|aguja|sanidad|medicament|vet|dosis|amp|estreptomi|pen|biotic|tetra|oxitetra|fenbenda|albenda|cura|sulfat|hierro|vitamin|complej.b|fipronil|cypermet|piretroide|tatuad|caravan/.test(search)) {
-    return { type:'veterinario', label:'Veterinario', subLabel:'Vacunas · antiparasitarios · medicamentos', bg:'#FBEAF0', fg:'#4B1528', fgMuted:'#72243E', stroke:'#D4537E', icon:'💉' };
-  }
-  // Sal y suplementos minerales
-  if (/sal\b|sal\s|mineral|calcimin|calcio|fosfor|magnesi|suplement|premix|sodio|yest|tabono/.test(search)) {
-    return { type:'sal', label:'Sal y suplementos', subLabel:'Sal mineral · suplementos nutricionales', bg:'#FAEEDA', fg:'#412402', fgMuted:'#633806', stroke:'#BA7517', icon:'🧂' };
-  }
-  // Aceites y lubricantes (NO combustibles — esos van a su propia pestaña Combustible)
-  if (/aceit|lubricant|grasa|hidr[áa]ulic|refrigerant|anticongel/.test(search)) {
-    return { type:'aceite', label:'Aceites y lubricantes', subLabel:'Aceites · lubricantes · refrigerantes', bg:'#E6F1FB', fg:'#042C53', fgMuted:'#0C447C', stroke:'#378ADD', icon:'🛢️' };
-  }
-  // Herramientas e insumos de campo
-  if (/tornill|clav|alambre|martillo|llave|destornill|repuest|tuerca|perno|broca|disco|cuerda|piol[íi]n|herramient|infraest|caravana/.test(search)) {
-    return { type:'herramienta', label:'Herramientas', subLabel:'Herramientas · repuestos · cercos', bg:'#EEEDFE', fg:'#26215C', fgMuted:'#3C3489', stroke:'#7F77DD', icon:'🔧' };
-  }
-  // Por defecto: Otros
-  return { type:'otros', label:'Otros', subLabel:'Sin categoría asignada', bg:'#F1EFE8', fg:'#2C2C2A', fgMuted:'#5F5E5A', stroke:'#888780', icon:'📦' };
+  if (/vacuna|vaccin|antibi|antiparasit|ivermec|pour.?on|clostr|aftosa|rabia|jeringa|aguja|sanidad|medicament|\bvet\b|dosis|ampoll|estreptomi|penicil|biotic|tetra|oxitetra|fenbenda|albenda|\bcura|sulfat|hierro|vitamin|complej.?b|fipronil|cypermet|piretroide|tatuad|caravan/.test(search)) return CAT.veterinario;
+  if (/\bsal\b|mineral|calcimin|calcio|fosfor|magnesi|suplement|premix|sodio/.test(search)) return CAT.sal;
+  if (/aceit|lubricant|grasa|hidr[áa]ulic|refrigerant|anticongel/.test(search)) return CAT.aceite;
+  if (/tornill|clav|alambre|martillo|llave|destornill|repuest|tuerca|perno|broca|disco|cuerda|piol[íi]n|herramient|infraest|filtro|manguera|correa|rodamiento/.test(search)) return CAT.herramienta;
+  return CAT.otros;
 }
 
 // Estado de salud del producto (prioridad: 1=crítico, 2=advertencia, 5=ok)
@@ -10305,7 +10309,7 @@ function wvUpdateCart(){
 function wvCount(){ if(_wvMode==='multi') return _saleSelectedAnimals.length; return parseFloat((document.getElementById('wv-count')||{}).value)||0; }
 function wvRender(){
   var seq=_wvSeq(), idx=seq.indexOf(_wvStep); if(idx<0){ idx=0; _wvStep=seq[0]; }
-  var _box=document.getElementById('wv-modalbox'); if(_box) _box.style.maxWidth=((_wvStep===1&&_wvMode==='multi')?'900px':'640px');
+  var _box=document.getElementById('wv-modalbox'); if(_box){ var _wide=(_wvStep===1&&_wvMode==='multi'); _box.style.width=_wide?'94vw':'600px'; _box.style.maxWidth=_wide?'1200px':'90vw'; }
   [1,2,3,4,5].forEach(function(st){ var el=document.querySelector('.wv-step[data-step="'+st+'"]'); if(el) el.style.display=(st===_wvStep?'block':'none'); });
   var b=document.getElementById('wv-back'), n=document.getElementById('wv-next'), f=document.getElementById('wv-finish');
   if(b)b.style.display=(idx>0?'inline-flex':'none'); if(n)n.style.display=(idx<seq.length-1?'inline-flex':'none'); if(f)f.style.display=(idx===seq.length-1?'inline-flex':'none');
@@ -11781,9 +11785,12 @@ function saveBajaPersonal(){
 }
 function renderBajasPersonal(){
   var tb=document.getElementById('bajas-personal-tbody'); if(!tb) return;
-  var rows=(db.bajas_personal||[]).slice().sort(function(a,b){return (b.term_date||'').localeCompare(a.term_date||'');});
+  var _formal=(db.bajas_personal||[]).slice();
+  var _seen={}; _formal.forEach(function(r){ if(r.employee_id!=null)_seen['i'+r.employee_id]=1; if(r.employee)_seen['n'+String(r.employee).toLowerCase()]=1; });
+  var _legacy=(db.employees||[]).filter(function(e){ return e.active===false && e.term_date && !_seen['i'+e.id] && !_seen['n'+String(e.name||'').toLowerCase()]; }).map(function(e){ return {_legacy:true,employee:e.name,employee_id:e.id,term_date:e.term_date,notes:'Registrada al editar el empleado (sin liquidación)',by:'—'}; });
+  var rows=_formal.concat(_legacy).sort(function(a,b){return (b.term_date||'').localeCompare(a.term_date||'');});
   if(!rows.length){ tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--muted)">Sin bajas registradas. Usá "+ Baja".</td></tr>'; return; }
-  tb.innerHTML=rows.map(function(r){ var doc = r.has_photo ? '<button class="btn btn-ghost btn-sm" onclick="viewTransactionImage(\''+r.id+'\')" title="Ver respaldo">📷 Ver</button>' : '<button class="btn btn-ghost btn-sm" onclick="_attachPersonalDoc(\'bajas_personal\',\''+r.id+'\')" title="Adjuntar respaldo">📎 Adjuntar</button>'; return '<tr><td>'+escH(r.employee||'')+'</td><td>'+(r.term_date||'')+'</td><td>'+_motivoBajaLabel(r.motivo)+'</td><td>Bs '+(r.monto_liquidacion||0).toLocaleString()+'</td><td>'+escH(r.notes||'')+'</td><td style="color:var(--muted);font-size:11px">'+escH(r.by||'')+'</td><td>'+doc+' <button class="btn btn-ghost btn-sm" onclick="deleteBajaPersonal(\''+r.id+'\')" title="Borrar">✕</button></td></tr>'; }).join('');
+  tb.innerHTML=rows.map(function(r){ if(r._legacy){ return '<tr style="opacity:.7"><td>'+escH(r.employee||'')+'</td><td>'+(r.term_date||'')+'</td><td><span style="color:var(--muted)">— (al editar)</span></td><td style="color:var(--muted)">—</td><td style="color:var(--muted);font-size:11px">'+escH(r.notes||'')+'</td><td style="color:var(--muted)">—</td><td><span style="font-size:10px;color:var(--muted)">legacy</span></td></tr>'; } var doc = r.has_photo ? '<button class="btn btn-ghost btn-sm" onclick="viewTransactionImage(\''+r.id+'\')" title="Ver respaldo">📷 Ver</button>' : '<button class="btn btn-ghost btn-sm" onclick="_attachPersonalDoc(\'bajas_personal\',\''+r.id+'\')" title="Adjuntar respaldo">📎 Adjuntar</button>'; return '<tr><td>'+escH(r.employee||'')+'</td><td>'+(r.term_date||'')+'</td><td>'+_motivoBajaLabel(r.motivo)+'</td><td>Bs '+(r.monto_liquidacion||0).toLocaleString()+'</td><td>'+escH(r.notes||'')+'</td><td style="color:var(--muted);font-size:11px">'+escH(r.by||'')+'</td><td>'+doc+' <button class="btn btn-ghost btn-sm" onclick="deleteBajaPersonal(\''+r.id+'\')" title="Borrar">✕</button></td></tr>'; }).join('');
 }
 function deleteBajaPersonal(id){ if(!confirm('¿Borrar este registro de baja? (no reactiva al empleado)')) return; db.bajas_personal=(db.bajas_personal||[]).filter(function(r){return String(r.id)!==String(id);}); saveDB(); try{replaceTableInRailway('bajas_personal',db.bajas_personal);}catch(e){} try{auditLog('delete','bajas_personal',id,'Baja de personal eliminada');}catch(e){} renderBajasPersonal(); }
 function renderContrataciones(){
@@ -12032,9 +12039,8 @@ function saveEmployee() {
       emp.phone = document.getElementById('emp-phone').value;
       emp.salary = parseFloat(document.getElementById('emp-salary').value)||0;
       emp.hire_date = document.getElementById('emp-hire').value;
-      emp.term_date = (document.getElementById('emp-term').value||'') || null;
-      // Si tiene fecha de baja, queda inactivo; si se la quitan, vuelve activo
-      emp.active = emp.term_date ? false : true;
+      // v1.8.80: la baja ya NO se setea desde Editar (unico camino = boton "+ Baja").
+      // Se preservan term_date/active del empleado para no reactivarlo sin querer.
       var pinVal = (document.getElementById('emp-pin').value||'').trim();
       if(pinVal) emp.pin = pinVal;
       savedEmpId = emp.id;
@@ -12045,7 +12051,7 @@ function saveEmployee() {
   } else {
     // Modo nuevo
     var newPin = (document.getElementById('emp-pin').value||'').trim();
-    var newEmp = {id:db.next_ids.employee++,name,role:document.getElementById('emp-role').value,phone:document.getElementById('emp-phone').value,salary:parseFloat(document.getElementById('emp-salary').value)||0,hire_date:document.getElementById('emp-hire').value,term_date:((document.getElementById('emp-term').value||'')||null),active:!(document.getElementById('emp-term').value||''),pin:newPin||''};
+    var newEmp = {id:db.next_ids.employee++,name,role:document.getElementById('emp-role').value,phone:document.getElementById('emp-phone').value,salary:parseFloat(document.getElementById('emp-salary').value)||0,hire_date:document.getElementById('emp-hire').value,term_date:null,active:true,pin:newPin||''};
     db.employees.push(newEmp);
     savedEmpId = newEmp.id;
     toast('Empleado agregado','success');
@@ -13393,7 +13399,7 @@ function typeLabel(type) {
     antiinflamatorio:'Antiinflamatorio', vitamina_mineral:'Vitamina/Mineral',
     vitamina:'Vitamina/Mineral', hormona:'Hormona',
     sal_mineral:'Sal mineral', alimento_balanceado:'Alimento',
-    combustible:'Combustible', lubricante:'Lubricante', otro:'Otro'
+    combustible:'Combustible', lubricante:'Lubricante', herramienta:'Herramienta', repuesto:'Repuesto', otro:'Otro'
   };
   return m[type] || (type ? type.charAt(0).toUpperCase()+type.slice(1) : '-');
 }
