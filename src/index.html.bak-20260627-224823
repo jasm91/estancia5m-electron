@@ -8450,31 +8450,11 @@ function renderLotAnimalList() {
   }).join('');
 }
 
-function _uniqueLotCode(base, dateStr) {
-  base = String(base || '').trim();
-  if (!base) return base;
-  var lots = db.lots || [];
-  function _ex(c){ return lots.some(function(l){ return String(l.code||'').trim().toUpperCase() === String(c).trim().toUpperCase(); }); }
-  if (!_ex(base)) return base;
-  var d = dateStr ? new Date(String(dateStr) + 'T00:00:00') : new Date();
-  if (isNaN(d.getTime())) d = new Date();
-  var ym = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
-  var cand = base + ' ' + ym;
-  if (!_ex(cand)) return cand;
-  var n = 2;
-  while (n < 100 && _ex(base + ' ' + ym + ' (' + n + ')')) n++;
-  return base + ' ' + ym + ' (' + n + ')';
-}
-
 function saveLot() {
   var code = (document.getElementById('lot-code')||{}).value;
   if(code) code = code.trim();
   if(!code){ toast('Ingresa un codigo para el lote','error'); return; }
-  if(db.lots.find(function(l){ return l.code===code; })){
-    var _uniqL = _uniqueLotCode(code, (document.getElementById('lot-entry')||{}).value || localDate());
-    if(!confirm('Ya existe un lote "'+code+'".\n\nPara no mezclarlo con el anterior, se creará como:\n\n    '+_uniqL+'\n\n¿Continuar?')){ return; }
-    code = _uniqL;
-  }
+  if(db.lots.find(function(l){ return l.code===code; })){ toast('Ese codigo ya existe','error'); return; }
   // FIX v1.4.34: no permitir fechas futuras
   var lotEntryVal = (document.getElementById('lot-entry')||{}).value||localDate();
   if(!validateNotFuture(lotEntryVal, 'fecha de ingreso')) return;
@@ -14009,9 +13989,7 @@ function saveMarcaje() {
     var newCode = (document.getElementById('mc-new-code').value || '').trim().toUpperCase();
     if (!newCode) { toast('Ingresá el código del lote nuevo', 'error'); return; }
     if (db.lots.find(function(l){ return (l.code||'').toUpperCase() === newCode; })) {
-      var _uniqMc = _uniqueLotCode(newCode, fecha || localDate());
-      if(!confirm('Ya existe un lote "'+newCode+'".\n\nPara no mezclarlo, se creará como:\n\n    '+_uniqMc+'\n\n¿Continuar?')){ return; }
-      newCode = _uniqMc;
+      toast('Ya existe un lote con código ' + newCode, 'error'); return;
     }
     var newCat = (document.getElementById('mc-new-category').value) || _mcLoteCuarentena.category || 'novillo';
     var newBreed = (document.getElementById('mc-new-breed').value || '').trim() || _mcLoteCuarentena.breed || '';
@@ -30680,9 +30658,7 @@ function confirmarBulkMover() {
     var newPaddock = document.getElementById('bulk-new-paddock').value || '';
     if (!newCode) { toast('Falta código del nuevo lote', 'error'); return; }
     if ((db.lots||[]).some(function(l){return l.code === newCode;})) {
-      var _uniqBm = _uniqueLotCode(newCode, localDate());
-      if(!confirm('Ya existe un lote "'+newCode+'".\n\nPara no mezclarlo, se creará como:\n\n    '+_uniqBm+'\n\n¿Continuar?')){ return; }
-      newCode = _uniqBm;
+      toast('Ya existe un lote con código "' + newCode + '"', 'error'); return;
     }
     if (!newPaddock) { toast('Seleccioná un potrero destino', 'error'); return; }
 
