@@ -928,18 +928,362 @@ function publishTasksToPWA() {
 <!-- ═══ LOTES ═══ -->
 <div id="page-opciones-rapidas" class="page">
   <div style="margin-bottom:18px"><h1 style="margin:0 0 4px">⚡ Opciones Rápidas</h1><div style="font-size:13px;color:var(--muted)">Flujos guiados para las tareas más comunes — paso a paso, sin perderte.</div></div>
+  <style>.qa-live{background:var(--sur2);border:1px solid var(--bor);border-radius:12px;padding:20px;cursor:pointer;transition:all .15s;position:relative}.qa-live:hover{border-color:var(--amber);transform:translateY(-3px);box-shadow:0 10px 24px rgba(0,0,0,.3)}.qa-live .qa-go{position:absolute;right:16px;bottom:16px;color:var(--amber);font-family:'DM Mono',monospace;font-size:11px;opacity:0;transition:.15s}.qa-live:hover .qa-go{opacity:1}.qa-soon{opacity:.45;background:var(--sur2);border:1px dashed var(--bor);border-radius:12px;padding:20px}</style>
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px">
-    <div style="opacity:.5;background:var(--sur2);border:1px dashed var(--bor);border-radius:12px;padding:20px">
-      <div style="font-size:32px;margin-bottom:8px">🤝</div><div style="font-weight:700;font-size:15px;margin-bottom:4px">Vender ganado</div><div style="font-size:12px;color:var(--muted)">Próximamente</div>
+    <div class="qa-live" onclick="wcOpen()">
+      <div style="font-size:32px;margin-bottom:8px">🐂</div><div style="font-weight:700;font-size:15px;margin-bottom:4px">Comprar ganado</div><div style="font-size:12px;color:var(--muted)">Paso a paso: a cuarentena (sin IDs) o marcando los animales.</div><div class="qa-go">Empezar →</div>
     </div>
-    <div style="opacity:.5;background:var(--sur2);border:1px dashed var(--bor);border-radius:12px;padding:20px">
+    <div class="qa-live" onclick="orMarcajeStart()">
+      <div style="font-size:32px;margin-bottom:8px">🏷️</div><div style="font-weight:700;font-size:15px;margin-bottom:4px">Marcar cuarentena</div><div style="font-size:12px;color:var(--muted)">Asigná aretes a un lote en cuarentena que todavía no marcaste.</div><div class="qa-go">Empezar →</div>
+    </div>
+    <div class="qa-live" onclick="wvOpen()">
+      <div style="font-size:32px;margin-bottom:8px">🤝</div><div style="font-weight:700;font-size:15px;margin-bottom:4px">Vender ganado</div><div style="font-size:12px;color:var(--muted)">Un lote completo/parcial o varios lotes a la vez, paso a paso.</div><div class="qa-go">Empezar →</div>
+    </div>
+    <div class="qa-live" onclick="orPesajeStart()">
+      <div style="font-size:32px;margin-bottom:8px">⚖️</div><div style="font-weight:700;font-size:15px;margin-bottom:4px">Registrar pesaje</div><div style="font-size:12px;color:var(--muted)">Elegí el lote y cargá los pesos con la planilla CSV.</div><div class="qa-go">Empezar →</div>
+    </div>
+    <div class="qa-soon">
       <div style="font-size:32px;margin-bottom:8px">💸</div><div style="font-weight:700;font-size:15px;margin-bottom:4px">Pagar / liquidar personal</div><div style="font-size:12px;color:var(--muted)">Próximamente</div>
     </div>
-    <div style="opacity:.5;background:var(--sur2);border:1px dashed var(--bor);border-radius:12px;padding:20px">
+    <div class="qa-soon">
       <div style="font-size:32px;margin-bottom:8px">📋</div><div style="font-weight:700;font-size:15px;margin-bottom:4px">Dar de baja un animal</div><div style="font-size:12px;color:var(--muted)">Próximamente</div>
     </div>
   </div>
 </div>
+
+<!-- v1.8.83: mini-paso de Pesaje (elegir lote → flujo masivo real) -->
+<div class="modal-overlay" id="or-pesaje-modal">
+  <div class="modal" style="max-width:460px"><h2>⚖️ Registrar pesaje</h2>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Elegí el lote a pesar. Después descargás la planilla pre-cargada, completás los pesos y la subís.</div>
+    <div class="form-group"><label class="form-label">Lote</label>
+      <select class="form-select" id="or-pesaje-lote"><option value="">Seleccionar lote...</option></select></div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeModal('or-pesaje-modal')">Cancelar</button>
+      <button class="btn btn-primary" onclick="orPesajeGo()">Continuar →</button>
+    </div>
+  </div>
+</div>
+<script>
+/* v1.8.83: Opciones Rápidas — Pesaje masivo (elige lote y abre el flujo real de planilla) */
+function orPesajeStart(){
+  var sel=document.getElementById('or-pesaje-lote'); if(!sel) return;
+  var adb=(typeof getAnimalesDB==='function')?getAnimalesDB():{};
+  // Solo lotes ACTIVOS con animales individuales (con arete). Excluye cuarentena/vendido/inactivo/sin aretes.
+  var lots=((typeof db!=='undefined'&&db.lots)?db.lots:[]).filter(function(l){ var s=(l.status||'').toLowerCase(); var n=(adb[l.code]||[]).length; return n>0 && s!=='cuarentena' && s!=='vendido' && s!=='sold' && s!=='fusionado' && s!=='inactivo' && s!=='inactive'; });
+  sel.innerHTML=lots.length?'<option value="">Seleccionar lote...</option>':'<option value="">No hay lotes activos con animales para pesar</option>';
+  lots.forEach(function(l){ var n=(adb[l.code]||[]).length; var o=document.createElement('option'); o.value=l.code; o.textContent=l.code+' · '+n+' animales'+(l.category?(' · '+l.category):''); sel.appendChild(o); });
+  if(typeof openModal==='function') openModal('or-pesaje-modal');
+}
+function orPesajeGo(){
+  var lc=(document.getElementById('or-pesaje-lote')||{}).value;
+  if(!lc){ if(typeof toast==='function') toast('Elegí un lote','error'); return; }
+  if(typeof closeModal==='function') closeModal('or-pesaje-modal');
+  if(typeof openModalPesajeAnimalId==='function') openModalPesajeAnimalId('', lc);
+  else if(typeof toast==='function') toast('Función de pesaje no disponible','error');
+}
+</script>
+
+<!-- v1.8.84: Opción rápida — Marcar lotes en cuarentena (solo no marcados) -->
+<div class="modal-overlay" id="or-marcaje-modal">
+  <div class="modal" style="max-width:480px"><h2>🏷️ Marcar cuarentena</h2>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Elegí el lote en cuarentena a marcar. Solo aparecen los que todavía tienen cabezas sin marcar.</div>
+    <div class="form-group"><label class="form-label">Lote en cuarentena</label>
+      <select class="form-select" id="or-marcaje-lote"><option value="">Seleccionar lote...</option></select></div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeModal('or-marcaje-modal')">Cancelar</button>
+      <button class="btn btn-primary" onclick="orMarcajeGo()">Continuar →</button>
+    </div>
+  </div>
+</div>
+<script>
+/* v1.8.84: Opciones Rápidas — Marcar cuarentena (elige lote cuarentena sin marcar → abre el marcaje real) */
+function orMarcajeStart(){
+  var sel=document.getElementById('or-marcaje-lote'); if(!sel) return;
+  var adb=(typeof getAnimalesDB==='function')?getAnimalesDB():{};
+  // Solo cuarentena con cabezas todavía sin marcar (marcados < total)
+  var lots=((typeof db!=='undefined'&&db.lots)?db.lots:[]).filter(function(l){ var marked=(adb[l.code]||[]).length; return (l.status||'').toLowerCase()==='cuarentena' && (Number(l.animal_count)||0) > marked; });
+  sel.innerHTML=lots.length?'<option value="">Seleccionar lote...</option>':'<option value="">No hay lotes en cuarentena por marcar</option>';
+  lots.forEach(function(l){ var marked=(adb[l.code]||[]).length; var rem=(Number(l.animal_count)||0)-marked; var o=document.createElement('option'); o.value=l.code; o.textContent=l.code+' · faltan '+rem+' de '+(l.animal_count||0)+(l.cuarentena_origen?(' · '+l.cuarentena_origen):''); sel.appendChild(o); });
+  if(typeof openModal==='function') openModal('or-marcaje-modal');
+}
+function orMarcajeGo(){
+  var lc=(document.getElementById('or-marcaje-lote')||{}).value;
+  if(!lc){ if(typeof toast==='function') toast('Elegí un lote','error'); return; }
+  if(typeof closeModal==='function') closeModal('or-marcaje-modal');
+  if(typeof openMarcarCuarentena==='function') openMarcarCuarentena(lc);
+  else if(typeof toast==='function') toast('Función de marcaje no disponible','error');
+}
+</script>
+
+<!-- v1.8.85: Wizard GUIADO de Compra (reusa saveCompraGanado, no toca el modal-compra-ganado) -->
+<style>
+.wc-stepbar{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:16px}
+.wc-pill{font-family:'DM Mono',monospace;font-size:11px;padding:4px 10px;border-radius:11px;background:var(--sur2);color:var(--muted)}
+.wc-pill.on{background:var(--amber);color:#0D1117;font-weight:600}
+.wc-pill.done{background:rgba(63,185,80,.18);color:var(--green)}
+.wc-modes{display:flex;gap:12px;margin-top:6px}
+.wc-tile{flex:1;background:var(--sur2);border:1px solid var(--bor);border-radius:12px;padding:16px 14px;text-align:center;cursor:pointer;transition:all .15s}
+.wc-tile:hover{border-color:var(--amber)}
+.wc-tile.on{border-color:var(--amber);background:rgba(212,160,23,.08);box-shadow:0 0 0 1px var(--amber) inset}
+.wc-md{font-size:11px;color:var(--muted);line-height:1.4;margin-top:3px}
+@media(max-width:560px){.wc-modes{flex-direction:column}}
+/* v1.8.88: layout vertical — header fijo + cuerpo scrolleable + footer siempre visible (nada tapado, sin espacio muerto en pasos cortos) */
+#wc-box{display:flex;flex-direction:column;overflow:hidden;max-height:88vh}
+#wc-box > h2, #wc-box > .wc-sub, #wc-box > .wc-stepbar, #wc-box > .form-actions{flex:0 0 auto}
+.wc-body{flex:1 1 auto;min-height:0;overflow-y:auto}
+</style>
+<div class="modal-overlay" id="wc-modal">
+<div class="modal" id="wc-box" style="max-width:820px;width:92vw">
+  <h2>🐂 Comprar ganado</h2>
+  <div class="wc-sub" style="font-size:12px;color:var(--muted);margin-bottom:14px">Paso a paso: a cuarentena (sin IDs) o marcando los animales.</div>
+  <div class="wc-stepbar" id="wc-stepbar"></div>
+
+  <div class="wc-body">
+  <div class="wc-step" data-step="modo">
+    <div class="form-label">¿Cómo entran los animales?</div>
+    <div class="wc-modes">
+      <div class="wc-tile" id="wc-modo-cuar" onclick="wcSetMode('cuarentena')"><div style="font-size:24px">🚧</div><div style="font-weight:700;margin-top:4px">A cuarentena</div><div class="wc-md">Solo cantidad y peso prom. Sin IDs — los marcás después.</div></div>
+      <div class="wc-tile" id="wc-modo-marca" onclick="wcSetMode('marcaje')"><div style="font-size:24px">🏷️</div><div style="font-weight:700;margin-top:4px">Marcar ahora</div><div class="wc-md">Cada animal con su arete y peso, entran a un lote.</div></div>
+    </div>
+  </div>
+
+  <div class="wc-step" data-step="origen" style="display:none">
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Proveedor / Vendedor</label><input class="form-input" id="wc-prov" placeholder="Ej: Estancia San José — Pedro López"></div>
+      <div class="form-group"><label class="form-label">Fecha de compra</label><input class="form-input" type="date" id="wc-fecha"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Categoría</label><select class="form-select" id="wc-cat"></select></div>
+      <div class="form-group"><label class="form-label">Raza</label><select class="form-select" id="wc-raza"></select></div>
+    </div>
+  </div>
+
+  <div class="wc-step" data-step="datos" style="display:none">
+    <div id="wc-d-cuar">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Cantidad de cabezas</label><input class="form-input" type="number" id="wc-cant" min="1" placeholder="150" oninput="wcCalc()"></div>
+        <div class="form-group"><label class="form-label">Peso promedio estimado (kg)</label><input class="form-input" type="number" id="wc-pprom" step="0.1" min="0" placeholder="380" oninput="wcCalc()"></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted)">Se crea un lote temporal <b>CUAR-xxx</b>; marcás los animales más tarde.</div>
+    </div>
+    <div id="wc-d-marca" style="display:none">
+      <div class="form-group"><label class="form-label">Lote destino</label><select class="form-select" id="wc-lote" onchange="wcLoteChange()"></select></div>
+      <div class="form-group" id="wc-newlote-wrap" style="display:none"><label class="form-label">Código del lote nuevo</label><input class="form-input" id="wc-newlote" placeholder="Ej: TROPA 4" onkeydown="if(event.key==='Enter')event.preventDefault()"></div>
+      <div style="border:1px dashed var(--bor);border-radius:10px;padding:12px;margin-bottom:12px;background:var(--sur2)">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <span style="font-size:12px;font-weight:600">📋 Cargar planilla CSV <span style="color:var(--muted);font-weight:400">— columnas: arete, peso</span></span>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="wcDownloadTemplate()">⬇ Plantilla</button>
+            <label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">⬆ Subir CSV<input type="file" id="wc-csv-file" accept=".csv,text/csv" style="display:none" onchange="wcCsvFile(event)"></label>
+          </div>
+        </div>
+        <textarea id="wc-csv-text" placeholder="O pegá aquí (una línea por animal):&#10;0042, 395&#10;0043, 410&#10;0044, 388" style="width:100%;box-sizing:border-box;min-height:60px;background:var(--sur);color:var(--text);border:1px solid var(--bor);border-radius:8px;padding:8px;font-family:'DM Mono',monospace;font-size:11px;resize:vertical"></textarea>
+        <div style="display:flex;justify-content:flex-end;margin-top:6px"><button type="button" class="btn btn-primary btn-sm" onclick="wcCsvParse()">Procesar planilla →</button></div>
+      </div>
+      <div style="text-align:center;font-size:11px;color:var(--muted);margin:0 0 10px">— o cargalos uno por uno —</div>
+      <div class="form-row" style="align-items:end">
+        <div class="form-group" style="margin-bottom:0"><label class="form-label">Arete / ID</label><input class="form-input" id="wc-aid" placeholder="0042" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('wc-apeso').focus();}"></div>
+        <div class="form-group" style="margin-bottom:0"><label class="form-label">Peso (kg)</label><div style="display:flex;gap:6px"><input class="form-input" type="number" id="wc-apeso" step="0.5" min="0" placeholder="395" onkeydown="if(event.key==='Enter'){event.preventDefault();wcAddAnimal();}"><button class="btn btn-primary" style="flex-shrink:0" onclick="wcAddAnimal()">+ Agregar</button></div></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 5px"><span style="font-size:11px;color:var(--muted)">Animales cargados</span><span id="wc-asum" style="font-size:12px;color:var(--amber2);font-weight:700">0 cab · 0 kg</span></div>
+      <div id="wc-alist" style="max-height:42vh;overflow-y:auto;border:1px solid var(--bor);border-radius:8px;background:var(--sur2)"></div>
+    </div>
+  </div>
+
+  <div class="wc-step" data-step="precio" style="display:none">
+    <div class="form-group"><label class="form-label">Precio Bs./kg</label><input class="form-input" type="number" id="wc-precio" step="0.01" min="0" placeholder="18.50" oninput="wcCalc()"></div>
+    <div style="background:var(--sur2);border:1px solid var(--bor);border-radius:10px;padding:14px;text-align:center"><div style="font-size:11px;color:var(--muted)">Total estimado</div><div id="wc-total" style="font-size:22px;font-weight:700;color:var(--green)">Bs 0.00</div></div>
+    <div class="form-group" style="margin-top:14px"><label class="form-label">Notas (opcional)</label><input class="form-input" id="wc-notas" placeholder="Ej: 12 días de cuarentena, vacunados al ingreso"></div>
+  </div>
+
+  <div class="wc-step" data-step="confirmar" style="display:none">
+    <div id="wc-summary" style="border-radius:10px;padding:13px 14px;font-size:12.5px;line-height:1.5;background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.3)"></div>
+  </div>
+  </div><!-- /.wc-body -->
+
+  <div class="form-actions" style="background:var(--sur);z-index:5;margin:18px -28px -28px;padding:14px 28px;border-top:1px solid var(--bor)">
+    <button class="btn btn-ghost" onclick="closeModal('wc-modal')">Cancelar</button>
+    <button class="btn btn-ghost" id="wc-back" onclick="wcNav(-1)" style="display:none">← Atrás</button>
+    <button class="btn btn-primary" id="wc-next" onclick="wcNav(1)">Siguiente →</button>
+    <button class="btn btn-primary" id="wc-finish" onclick="wcFinish()" style="display:none">✓ Registrar compra</button>
+  </div>
+</div></div>
+<script>
+/* v1.8.85: Wizard guiado de Compra — reusa saveCompraGanado() completando los campos cg-* + _cgAnimals */
+(function(){
+  var WC={ step:'modo', mode:null, animals:[] };
+  var SEQ=['modo','origen','datos','precio','confirmar'];
+  var LBL={modo:'Modo',origen:'Origen',datos:'Datos',precio:'Precio',confirmar:'Confirmar'};
+  function $w(id){return document.getElementById(id);}
+  function val(id){var e=$w(id);return e?e.value:'';}
+  function num(id){return parseFloat(val(id))||0;}
+  function setv(id,v){var e=$w(id);if(e)e.value=v;}
+  function money(n){return 'Bs '+(Number(n)||0).toLocaleString('es-BO',{minimumFractionDigits:2,maximumFractionDigits:2});}
+  function _toast(m,t){ if(typeof toast==='function') toast(m,t); }
+  function ensureOpt(selId,v){ var s=$w(selId); if(!s) return; var has=false; for(var i=0;i<s.options.length;i++){ if(s.options[i].value===v){has=true;break;} } if(!has){ var o=document.createElement('option'); o.value=v; o.textContent=v; s.appendChild(o); } s.value=v; }
+
+  window.wcOpen=function(){
+    WC={step:'modo',mode:null,animals:[]};
+    ['wc-prov','wc-cant','wc-pprom','wc-aid','wc-apeso','wc-precio','wc-notas','wc-newlote','wc-csv-text','wc-csv-file'].forEach(function(i){setv(i,'');});
+    setv('wc-fecha', (typeof localDate==='function'?localDate():new Date().toISOString().slice(0,10)));
+    $w('wc-modo-cuar').classList.remove('on'); $w('wc-modo-marca').classList.remove('on');
+    var params=(typeof getParams==='function')?getParams():{categorias:[],razas:[]};
+    $w('wc-cat').innerHTML=((params.categorias||[]).map(function(c){return '<option>'+c.name+'</option>';}).join(''))||'<option>Novillo</option><option>Vaca</option><option>Vaquillona</option><option>Toro</option><option>Ternero</option>';
+    $w('wc-raza').innerHTML=((params.razas||[]).map(function(r){return '<option>'+r.name+'</option>';}).join(''))||'<option>Nelore</option><option>Brahman</option><option>Criollo</option>';
+    var adb=(typeof getAnimalesDB==='function')?getAnimalesDB():{};
+    var loteSel=$w('wc-lote'); loteSel.innerHTML='<option value="">Seleccionar lote...</option>';
+    ((typeof db!=='undefined'&&db.lots)?db.lots:[]).forEach(function(l){ if(l.status==='activo'||l.status==='active'||!l.status){ var n=(adb[l.code]||[]).length||l.animal_count||0; loteSel.innerHTML+='<option value="'+l.code+'">'+l.code+' - '+(l.category||'')+' ('+n+' cab.)</option>'; } });
+    loteSel.innerHTML+='<option value="__new__">➕ Crear lote nuevo…</option>';
+    var _nlw=$w('wc-newlote-wrap'); if(_nlw) _nlw.style.display='none';
+    WC.animals=[]; wcRenderAnimals(); wcRender();
+    if(typeof openModal==='function') openModal('wc-modal');
+  };
+  window.wcSetMode=function(m){ WC.mode=m; $w('wc-modo-cuar').classList.toggle('on',m==='cuarentena'); $w('wc-modo-marca').classList.toggle('on',m==='marcaje'); };
+  window.wcLoteChange=function(){ var w=$w('wc-newlote-wrap'); if(!w) return; var isNew=(val('wc-lote')==='__new__'); w.style.display=isNew?'block':'none'; if(isNew){ var i=$w('wc-newlote'); if(i) setTimeout(function(){ i.focus(); },30); } };
+  // ¿ya existe un lote con ese código? (case-insensitive, igual criterio que saveLot)
+  function wcLoteExists(name){ try{ var L=(typeof db!=='undefined'&&db.lots)?db.lots:[]; return L.some(function(l){ return String(l.code||'').trim().toUpperCase()===String(name||'').trim().toUpperCase(); }); }catch(e){ return false; } }
+  // Código único con sufijo CORTO: "SSD3 - 06/26" (mes/año). Si vuelve a chocar: " (2)", " (3)"...
+  function wcUniqueLote(base, dateStr){
+    base=String(base||'').trim(); if(!base) return base;
+    if(!wcLoteExists(base)) return base;
+    var d=dateStr?new Date(String(dateStr)+'T00:00:00'):new Date(); if(isNaN(d.getTime())) d=new Date();
+    var mmYY=String(d.getMonth()+1).padStart(2,'0')+'/'+String(d.getFullYear()).slice(-2);
+    var cand=base+' - '+mmYY; if(!wcLoteExists(cand)) return cand;
+    var n=2; while(n<100 && wcLoteExists(base+' - '+mmYY+' ('+n+')')) n++;
+    return base+' - '+mmYY+' ('+n+')';
+  }
+  // Crea un lote real (espejo de saveLot) y devuelve su código; '' si falla
+  function wcCreateLote(){
+    var nv=(val('wc-newlote')||'').trim();
+    if(!nv){ _toast('Escribí el código del lote nuevo','error'); var i=$w('wc-newlote'); if(i) i.focus(); return ''; }
+    if(typeof db==='undefined' || !db.lots){ _toast('No se pudo crear el lote','error'); return ''; }
+    var finalCode=wcUniqueLote(nv, val('wc-fecha'));
+    if(finalCode!==nv){
+      if(typeof confirm==='function' && !confirm('Ya existe un lote "'+nv+'".\n\nPara no mezclarlo con el anterior, se creará como:\n\n    '+finalCode+'\n\n¿Aceptar?')){ return ''; }
+    }
+    var newLot={
+      id:(db.next_ids && typeof db.next_ids.lot==='number') ? db.next_ids.lot++ : Date.now(),
+      code:finalCode,
+      category:String(val('wc-cat')||'novillo').toLowerCase(),
+      breed:val('wc-raza')||'',
+      paddock:'',
+      animal_count:0,
+      avg_weight:null,
+      entry_date:val('wc-fecha') || (typeof localDate==='function'?localDate():''),
+      status:'active',
+      notes:'Creado desde compra guiada'
+    };
+    db.lots.push(newLot);
+    if(typeof _ensureRotationEntry==='function'){ try{ _ensureRotationEntry(newLot,{reason:'Lote creado desde compra guiada'}); }catch(e){} }
+    if(typeof saveDB==='function'){ try{ saveDB(); }catch(e){} }
+    return finalCode;
+  }
+  // IDs que YA existen en el rebaño (mismo criterio que saveCompraGanado)
+  function wcExistingIds(){
+    var ids={};
+    try{ var animals=(typeof getAnimalesDB==='function')?getAnimalesDB():{}; Object.keys(animals).forEach(function(k){ (animals[k]||[]).forEach(function(a){ if(a&&a.id!=null&&a.id!=='') ids[String(a.id)]=true; }); }); }catch(e){}
+    return ids;
+  }
+  // Plantilla CSV (arete,peso) — Blob+download, como el resto del app
+  window.wcDownloadTemplate=function(){
+    try{
+      var csv='arete,peso\r\n0042,395\r\n0043,410\r\n0044,388\r\n';
+      var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+      var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+      a.download='plantilla_compra_'+(typeof localDate==='function'?localDate():'')+'.csv';
+      document.body.appendChild(a); a.click();
+      setTimeout(function(){ try{ URL.revokeObjectURL(a.href); }catch(e){} if(a.parentNode) a.parentNode.removeChild(a); },150);
+      _toast('Plantilla CSV descargada','success');
+    }catch(e){ _toast('No se pudo descargar la plantilla','error'); }
+  };
+  // Subir archivo CSV -> leer texto -> parsear
+  window.wcCsvFile=function(ev){
+    var f=ev&&ev.target&&ev.target.files&&ev.target.files[0]; if(!f) return;
+    var rd=new FileReader();
+    rd.onload=function(e){ setv('wc-csv-text', String((e.target&&e.target.result)||'')); if(ev.target) ev.target.value=''; window.wcCsvParse(); };
+    rd.onerror=function(){ _toast('No se pudo leer el archivo','error'); };
+    rd.readAsText(f);
+  };
+  // Parsear textarea: arete,peso (o arete,raza,peso). Valida vs lista actual Y vs rebaño (alerta temprana).
+  window.wcCsvParse=function(){
+    var raw=val('wc-csv-text');
+    if(!raw||!raw.trim()){ _toast('Pegá o subí un CSV primero','warn'); return; }
+    if(WC.mode!=='marcaje'){ _toast('La planilla aplica al modo Marcar','warn'); return; }
+    var ex=wcExistingIds();
+    var added=0,dup=0,exists=0,bad=0,existsIds=[];
+    raw.split(/\r?\n/).forEach(function(line){
+      if(!line||!line.trim()) return;
+      var t=line.split(/[,;\t]+/).map(function(s){return s.trim();}).filter(function(s){return s!=='';});
+      if(!t.length) return;
+      var id,peso;
+      if(t.length>=3){ id=t[0]; peso=parseFloat(String(t[t.length-1]).replace(',','.')); }
+      else if(t.length===2){ id=t[0]; peso=parseFloat(String(t[1]).replace(',','.')); }
+      else { bad++; return; }
+      if(!id||isNaN(peso)||peso<=0){ bad++; return; }                 // header o fila inválida
+      if(WC.animals.find(function(a){return a.id===id;})){ dup++; return; }
+      if(ex[String(id)]){ exists++; if(existsIds.length<8) existsIds.push(id); return; }
+      WC.animals.push({id:id,peso:peso}); added++;
+    });
+    wcRenderAnimals();
+    var parts=['✓ '+added+' cargado'+(added===1?'':'s')];
+    if(dup) parts.push(dup+' ya en lista');
+    if(exists) parts.push(exists+' ya en rebaño');
+    if(bad) parts.push(bad+' omitido'+(bad===1?'':'s'));
+    _toast(parts.join(' · '), (exists||bad)&&!added ? 'error' : ((exists||bad)?'warn':'success'));
+    if(exists){ _toast('⚠ Aretes que YA existen en el rebaño (omitidos): '+existsIds.join(', ')+(exists>existsIds.length?'…':''),'error'); }
+    if(added) setv('wc-csv-text','');
+  };
+  function wcRender(){
+    var idx=SEQ.indexOf(WC.step);
+    var sb=$w('wc-stepbar'); if(sb) sb.innerHTML=SEQ.map(function(s,i){ return '<span class="wc-pill'+(s===WC.step?' on':(i<idx?' done':''))+'">'+(i+1)+'. '+LBL[s]+'</span>'; }).join('');
+    Array.prototype.forEach.call(document.querySelectorAll('#wc-modal .wc-step'),function(el){ el.style.display=(el.getAttribute('data-step')===WC.step?'block':'none'); });
+    if(WC.step==='datos'){ $w('wc-d-cuar').style.display=WC.mode==='cuarentena'?'block':'none'; $w('wc-d-marca').style.display=WC.mode==='marcaje'?'block':'none'; }
+    var b=$w('wc-back'),n=$w('wc-next'),f=$w('wc-finish');
+    if(b)b.style.display=idx>0?'inline-flex':'none'; if(n)n.style.display=idx<SEQ.length-1?'inline-flex':'none'; if(f)f.style.display=idx===SEQ.length-1?'inline-flex':'none';
+    if(WC.step==='precio') wcCalc();
+    if(WC.step==='confirmar') wcSummary();
+  }
+  function wcValidate(step){
+    if(step==='modo'&&!WC.mode){ _toast('Elegí cuarentena o marcaje','error'); return false; }
+    if(step==='origen'){ if(!val('wc-prov').trim()){ _toast('Ingresá el proveedor','error'); return false; } if(!val('wc-fecha')){ _toast('Ingresá la fecha','error'); return false; } }
+    if(step==='datos'){ if(WC.mode==='cuarentena'){ if(num('wc-cant')<=0){ _toast('Cantidad de cabezas','error'); return false; } if(num('wc-pprom')<=0){ _toast('Peso promedio estimado','error'); return false; } } else { var _l=val('wc-lote'); if(!_l){ _toast('Elegí el lote destino','error'); return false; } if(_l==='__new__' && !val('wc-newlote').trim()){ _toast('Escribí el código del lote nuevo','error'); var _i=$w('wc-newlote'); if(_i) _i.focus(); return false; } if(!WC.animals.length){ _toast('Agregá al menos un animal','error'); return false; } } }
+    if(step==='precio'&&num('wc-precio')<=0){ _toast('Precio Bs/kg','error'); return false; }
+    return true;
+  }
+  window.wcNav=function(dir){ if(dir>0&&!wcValidate(WC.step)) return; var idx=SEQ.indexOf(WC.step); idx=Math.max(0,Math.min(SEQ.length-1,idx+dir)); WC.step=SEQ[idx]; wcRender(); };
+  window.wcAddAnimal=function(){ var id=val('wc-aid').trim(), p=num('wc-apeso'); if(!id){ _toast('Arete / ID','error'); $w('wc-aid').focus(); return; } if(p<=0){ _toast('Peso del animal','error'); $w('wc-apeso').focus(); return; } if(WC.animals.find(function(a){return a.id===id;})){ _toast('Ese arete ya está en la lista','warn'); $w('wc-aid').focus(); return; } if(wcExistingIds()[id]){ _toast('El arete '+id+' ya existe en el rebaño — usá otro','error'); $w('wc-aid').focus(); return; } WC.animals.push({id:id,peso:p}); setv('wc-aid','');setv('wc-apeso',''); $w('wc-aid').focus(); wcRenderAnimals(); };
+  window.wcDelAnimal=function(id){ WC.animals=WC.animals.filter(function(a){return a.id!==id;}); wcRenderAnimals(); };
+  function wcRenderAnimals(){ var c=$w('wc-alist'); if(!c) return; var kg=WC.animals.reduce(function(s,a){return s+a.peso;},0); var s=$w('wc-asum'); if(s) s.textContent=WC.animals.length+' cab · '+kg.toFixed(0)+' kg'; c.innerHTML=WC.animals.length?WC.animals.map(function(a){ return '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid rgba(48,54,61,.4)"><span style="font-family:DM Mono,monospace;font-weight:600;color:var(--amber2)">'+a.id+'</span><span style="font-size:12px;color:var(--muted)">'+a.peso+' kg</span><button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="wcDelAnimal(\''+String(a.id).replace(/'/g,"\\'")+'\')">✕</button></div>'; }).join(''):'<div style="padding:14px;text-align:center;color:var(--muted);font-size:12px">Cargá el primer animal con su arete y peso.</div>'; }
+  function wcKg(){ if(WC.mode==='marcaje'){ var kg=WC.animals.reduce(function(s,a){return s+a.peso;},0); return {kg:kg,cab:WC.animals.length}; } var cab=num('wc-cant'),pp=num('wc-pprom'); return {kg:Math.round(cab*pp*10)/10,cab:cab}; }
+  function wcCalc(){ var k=wcKg(),pr=num('wc-precio'); var t=Math.round(k.kg*pr*100)/100; var el=$w('wc-total'); if(el) el.textContent=money(t)+'  ('+k.cab+' cab · '+k.kg.toFixed(0)+' kg)'; return t; }
+  window.wcCalc=wcCalc;  // los oninput del markup lo llaman como global
+  function wcSummary(){ var k=wcKg(),t=wcCalc(); var h='<div style="font-weight:700;margin-bottom:6px">'+(WC.mode==='cuarentena'?'🚧 Compra a cuarentena':'🏷️ Compra con marcaje')+'</div>'; h+='Proveedor: <b>'+val('wc-prov')+'</b><br>'+val('wc-cat')+' · '+val('wc-raza')+' · '+val('wc-fecha')+'<br>'; if(WC.mode==='cuarentena') h+='Lote <b>CUAR-xxx</b> · <b>'+k.cab+'</b> cabezas (≈'+val('wc-pprom')+' kg/cab)<br>'; else h+='<b>'+k.cab+'</b> animales → lote <b>'+val('wc-lote')+'</b><br>'; h+=k.kg.toFixed(0)+' kg · '+val('wc-precio')+' Bs/kg<br><div style="font-size:16px;font-weight:700;color:var(--green);margin-top:6px">'+money(t)+'</div>'; $w('wc-summary').innerHTML=h; }
+  window.wcFinish=function(){
+    for(var i=0;i<SEQ.length;i++){ if(SEQ[i]!=='confirmar' && !wcValidate(SEQ[i])) return; }
+    // Completar los campos del modal real y delegar en saveCompraGanado()
+    setv('cg-proveedor', val('wc-prov')); setv('cg-fecha', val('wc-fecha')); setv('cg-precio-kg', val('wc-precio')); setv('cg-notas', val('wc-notas'));
+    ensureOpt('cg-categoria', val('wc-cat')); ensureOpt('cg-raza', val('wc-raza'));
+    var marcar=$w('cg-marcar-ahora'); if(marcar) marcar.checked=(WC.mode==='marcaje');
+    if(WC.mode==='cuarentena'){
+      setv('cg-cuarentena-count', String(num('wc-cant'))); setv('cg-cuarentena-peso-prom', val('wc-pprom'));
+      window._cgAnimals=[];
+    } else {
+      // Chequeo FINAL de aretes duplicados ANTES de crear lote / cerrar (no dejar lote huérfano ni alerta tardía)
+      var _ex=wcExistingIds();
+      var _dupes=WC.animals.filter(function(a){ return _ex[String(a.id)]; }).map(function(a){ return a.id; });
+      if(_dupes.length){ _toast('Aretes que ya existen en el rebaño: '+_dupes.slice(0,10).join(', ')+(_dupes.length>10?'…':'')+'. Corregilos antes de guardar.','error'); WC.step='datos'; wcRender(); return; }
+      var loteCode=val('wc-lote');
+      if(loteCode==='__new__'){ loteCode=wcCreateLote(); if(!loteCode){ return; } }
+      ensureOpt('cg-lote', loteCode);
+      var rz=val('wc-raza');
+      window._cgAnimals=WC.animals.map(function(a){ return { id:a.id, peso:a.peso, raza:rz }; });
+    }
+    if(typeof closeModal==='function') closeModal('wc-modal');
+    if(typeof saveCompraGanado==='function') saveCompraGanado();
+    else _toast('Función de compra no disponible','error');
+  };
+})();
+</script>
 <div id="page-lotes" class="page">
   <div class="ph">
     <div><div class="pt">🐄 Lotes</div><div class="ps" id="lotes-sub">Inventario por lote</div></div>
@@ -3914,6 +4258,24 @@ function publishTasksToPWA() {
 <div id="page-config" class="page">
   <div class="ph"><div><div class="pt">⚙️ Configuracion</div><div class="ps">Identidad · Sincronizacion · API · Estado</div></div></div>
 
+  <!-- v1.8.82: Pagar Soporte (cobro self-serve por QR BANECO) -->
+  <div class="card" id="eps-card" style="margin-bottom:20px;border-left:3px solid var(--green)">
+    <div class="card-hd"><div class="card-title">💳 Pagar Soporte</div><span id="eps-badge"></span></div>
+    <div class="card-body">
+      <div style="display:flex;gap:30px;flex-wrap:wrap;margin-bottom:14px">
+        <div><div style="font-size:11px;color:var(--muted)">Cuota mensual</div><div style="font-size:22px;font-weight:700" id="eps-fee">—</div></div>
+        <div><div style="font-size:11px;color:var(--muted)">Próximo vencimiento</div><div style="font-size:16px;font-weight:600;margin-top:4px" id="eps-due">—</div></div>
+      </div>
+      <div id="eps-line" style="font-size:13px;color:var(--muted);margin-bottom:14px">Cargando tu estado de cuenta…</div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-primary" id="eps-pay" onclick="epPayQR()" disabled>📲 Pagar con QR</button>
+        <button class="btn btn-ghost" onclick="epBillingLoad()">🔄 Actualizar</button>
+        <span style="font-size:11px;color:var(--muted)">Se acredita solo apenas el banco confirma — sin mandar comprobante.</span>
+      </div>
+      <div id="eps-history" style="margin-top:14px"></div>
+    </div>
+  </div>
+
   <!-- Apariencia / Tema (v1.8.72) -->
   <div class="card" style="margin-bottom:20px;border-left:3px solid var(--amber2)">
     <div class="card-hd"><div class="card-title">🎨 Apariencia</div></div>
@@ -4781,7 +5143,7 @@ function publishTasksToPWA() {
   <div class="form-group"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--muted)"><input type="checkbox" id="wv-trace"> Requiere certificado de trazabilidad</label></div>
   <div id="wv-summary" style="background:rgba(46,160,67,.08);border:1px solid rgba(46,160,67,.3);border-radius:8px;padding:12px;font-size:13px"></div>
 </div>
-<div class="form-actions">
+<div class="form-actions" style="position:sticky;bottom:0;background:var(--sur);z-index:5;margin:20px -28px -28px;padding:14px 28px;border-top:1px solid var(--bor)">
   <button class="btn btn-ghost" onclick="closeModal('modal-wizard-venta')">Cancelar</button>
   <button class="btn btn-ghost" id="wv-back" onclick="wvNav(-1)" style="display:none">← Atrás</button>
   <button class="btn btn-primary" id="wv-next" onclick="wvNav(1)">Siguiente →</button>
@@ -9726,6 +10088,13 @@ function renderVentas() {
       delBtn.textContent = '✕';
       delBtn.onclick = (function(id){ return function(){ deleteSale(id); }; })(s.id);
       tr.lastElementChild.appendChild(delBtn);
+      // v1.8.85: comprobante por venta (📎 adjuntar / 📷 ver)
+      var docBtn = document.createElement('button');
+      docBtn.className = 'btn btn-ghost btn-sm'; docBtn.style.marginRight = '4px';
+      docBtn.title = s.has_photo ? 'Ver comprobante' : 'Adjuntar comprobante';
+      docBtn.textContent = s.has_photo ? '📷' : '📎';
+      docBtn.onclick = (function(id, has){ return function(){ if(has) viewTransactionImage(id); else _attachSaleDoc(id); }; })(s.id, !!s.has_photo);
+      tr.lastElementChild.insertBefore(docBtn, tr.lastElementChild.firstChild);
       saleTbody.appendChild(tr);
 
       // Fila expandible de detalle
@@ -11836,6 +12205,28 @@ function _attachPersonalDoc(tabla, id){
       }catch(e){}
       if(tabla==='bajas_personal') renderBajasPersonal(); else if(tabla==='contrataciones') renderContrataciones(); else if(typeof renderBonos==='function') renderBonos();
       toast('Respaldo adjuntado','success');
+    };
+    reader.readAsDataURL(file);
+  };
+  document.body.appendChild(inp); inp.click();
+}
+
+// v1.8.85: adjuntar comprobante a una VENTA (mismo sistema que personal/compras: cache local + /transaction-image + has_photo)
+function _attachSaleDoc(id){
+  var inp=document.createElement('input'); inp.type='file'; inp.accept='image/*,.pdf'; inp.style.display='none';
+  inp.onchange=function(){
+    var file=inp.files&&inp.files[0]; if(!file){ return; }
+    var reader=new FileReader();
+    reader.onload=function(){
+      var b64=String(reader.result||'');
+      try{ var lp=JSON.parse(localStorage.getItem('e5m_local_photos')||'{}'); lp[String(id)]=b64; localStorage.setItem('e5m_local_photos', JSON.stringify(lp)); }catch(e){}
+      var rec=(db.sales||[]).find(function(r){return String(r.id)===String(id);}); if(rec){ rec.has_photo=true; saveDB(); try{ replaceTableInRailway('sales', db.sales); }catch(e){} }
+      try{
+        var apiUrl=getApiUrl(), token=localStorage.getItem('e5m_api_token')||'';
+        fetch(apiUrl+'/transaction-image',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({transaction_id:String(id),transaction_type:'sales',base64:b64.replace(/^data:[^;]+;base64,/,''),mime_type:(file.type||'image/jpeg'),uploaded_by:(typeof _desktopAuthor==='function'?_desktopAuthor():'Desktop')})}).then(function(r){return r.json();}).then(function(){}).catch(function(){});
+      }catch(e){}
+      if(typeof renderVentas==='function') renderVentas();
+      toast('Comprobante adjuntado','success');
     };
     reader.readAsDataURL(file);
   };
@@ -31694,23 +32085,33 @@ function deleteAnimal(animalId,lotCode){
 }
 
 function filterAnimalSelect(text) {
+  // v1.8.84: lista inline que filtra al instante por ID o raza
   var modal=document.getElementById("modal-animal");
   if(!modal||!modal._lotCode) return;
   var all=getAnimalesDB();
   var animals=all[modal._lotCode]||[];
-  var sel=document.getElementById("animal-id");
-  if(!sel) return;
-  var curVal=sel.value;
-  sel.innerHTML='<option value="">-- Seleccionar --</option>';
-  var filtered=text?animals.filter(function(a){return a.id.includes(text);}):animals;
-  filtered.forEach(function(a){
-    var o=document.createElement("option");
-    o.value=a.id;
-    var last=a.pesajes&&a.pesajes.length?a.pesajes[a.pesajes.length-1].peso+" kg":"sin pesaje";
-    o.textContent=a.id+(a.raza?" ("+a.raza+")":"")+" - "+last;
-    o.selected=(a.id===curVal);
-    sel.appendChild(o);
-  });
+  var cont=document.getElementById("animal-results");
+  if(!cont) return;
+  var f=String(text||"").toLowerCase().trim();
+  var cur=(document.getElementById("animal-id")||{}).value||"";
+  var filtered=f?animals.filter(function(a){ var id=String(a.id||"").toLowerCase(); var rz=String(a.raza||a.breed||"").toLowerCase(); return id.indexOf(f)>=0||rz.indexOf(f)>=0; }):animals;
+  if(!filtered.length){ cont.innerHTML='<div style="padding:14px;text-align:center;color:var(--muted);font-size:12px">'+(animals.length?'Ningún animal coincide':'Este lote no tiene animales con arete')+'</div>'; return; }
+  cont.innerHTML=filtered.map(function(a){
+    var aid=String(a.id||"");
+    var last=a.pesajes&&a.pesajes.length?(a.pesajes[a.pesajes.length-1].peso+" kg"):"sin pesaje";
+    var on=aid===String(cur);
+    return '<div class="an-row" data-id="'+aid+'" onclick="selectAnimalRow(\''+aid.replace(/'/g,"\\'")+'\')" style="display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;border-bottom:1px solid rgba(48,54,61,.4);'+(on?'background:rgba(212,160,23,.14)':'')+'">'+
+      '<span style="font-family:DM Mono,monospace;font-weight:600;color:var(--amber2);min-width:72px">'+aid+'</span>'+
+      '<span style="font-size:12px;color:var(--muted)">'+(a.raza||a.breed||"")+'</span>'+
+      '<span style="margin-left:auto;font-size:11px;color:var(--muted)">'+last+'</span>'+
+    '</div>';
+  }).join('');
+}
+function selectAnimalRow(id){
+  var h=document.getElementById("animal-id"); if(h) h.value=id;
+  Array.prototype.forEach.call(document.querySelectorAll("#animal-results .an-row"), function(r){ r.style.background=(r.getAttribute("data-id")===String(id))?"rgba(212,160,23,.14)":""; });
+  if(typeof onAnimalSelectChange==="function") onAnimalSelectChange(id);
+  var p=document.getElementById("animal-peso"); if(p) p.focus();
 }
 
 function onAnimalSelectChange(animalId) {
@@ -31746,6 +32147,7 @@ function openModalAnimal(){
   var d=document.getElementById("animal-pesaje-date");if(d)d.value=localDate();
   var pw=document.getElementById("animal-peso");if(pw)pw.value="";
   var searchEl=document.getElementById("animal-id-search");if(searchEl)searchEl.value="";
+  var hid=document.getElementById("animal-id");if(hid)hid.value="";
   var infoEl=document.getElementById("animal-select-info");if(infoEl)infoEl.style.display="none";
   // Poblar selector con todos los animales del lote
   filterAnimalSelect("");
@@ -31787,21 +32189,34 @@ function openModalPesajeAnimal(){
 }
 
 function _buildPesajeOptions(animals, filterText, selectedId) {
-  var sel=document.getElementById("pa-animal-id");
-  if(!sel) return;
-  var filtered = filterText
-    ? animals.filter(function(a){return a.id.toLowerCase().includes(filterText.toLowerCase());})
+  // v1.8.84: lista inline que filtra al instante por ID o raza (en vez de input+dropdown)
+  var cont=document.getElementById("pa-results");
+  if(!cont) return;
+  var f=String(filterText||"").toLowerCase().trim();
+  var filtered = f
+    ? animals.filter(function(a){ var id=String(a.id||a.animal_id||"").toLowerCase(); var rz=String(a.raza||a.breed||"").toLowerCase(); return id.indexOf(f)>=0 || rz.indexOf(f)>=0; })
     : animals;
-  sel.innerHTML='<option value="">Seleccionar animal...</option>';
-  filtered.forEach(function(a){
-    var o=document.createElement("option");
-    o.value=a.id;
-    var last=a.pesajes&&a.pesajes.length?a.pesajes[a.pesajes.length-1].peso+" kg":"sin pesaje";
-    o.textContent=a.id+(a.raza?" ("+a.raza+")":"")+" - "+last;
-    o.selected=(a.id===selectedId);
-    sel.appendChild(o);
-  });
+  if(!filtered.length){
+    cont.innerHTML='<div style="padding:14px;text-align:center;color:var(--muted);font-size:12px">'+(animals.length?('Ningún animal coincide'):'Este lote no tiene animales con arete')+'</div>';
+    return;
+  }
+  cont.innerHTML=filtered.map(function(a){
+    var aid=String(a.id||a.animal_id||"");
+    var last=a.pesajes&&a.pesajes.length?(a.pesajes[a.pesajes.length-1].peso+" kg"):"sin pesaje";
+    var on=aid===String(selectedId||"");
+    return '<div class="pa-row" data-id="'+aid+'" onclick="selectPesajeAnimal(\''+aid.replace(/'/g,"\\'")+'\')" style="display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;border-bottom:1px solid rgba(48,54,61,.4);'+(on?'background:rgba(212,160,23,.14)':'')+'">'+
+      '<span style="font-family:DM Mono,monospace;font-weight:600;color:var(--amber2);min-width:72px">'+aid+'</span>'+
+      '<span style="font-size:12px;color:var(--muted)">'+(a.raza||a.breed||"")+'</span>'+
+      '<span style="margin-left:auto;font-size:11px;color:var(--muted)">'+last+'</span>'+
+    '</div>';
+  }).join('');
   if(selectedId) onPesajeAnimalChange(selectedId);
+}
+function selectPesajeAnimal(id){
+  var h=document.getElementById("pa-animal-id"); if(h) h.value=id;
+  Array.prototype.forEach.call(document.querySelectorAll("#pa-results .pa-row"), function(r){ r.style.background=(r.getAttribute("data-id")===String(id))?"rgba(212,160,23,.14)":""; });
+  if(typeof onPesajeAnimalChange==="function") onPesajeAnimalChange(id);
+  var p=document.getElementById("pa-peso"); if(p) p.focus();
 }
 
 function filterPesajeAnimals(text) {
@@ -32339,12 +32754,11 @@ function renderPesajesFromAnimales(){
 <div id="modal-animal-lot" style="font-size:12px;color:var(--muted);margin-bottom:4px"></div>
 <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Registrá el peso de un animal del lote. (No crea animales nuevos; para pesar varios a la vez usá «+ Pesaje».)</div>
 <div class="form-group"><label class="form-label">Buscar animal por ID</label>
-  <input class="form-input" id="animal-id-search" placeholder="Escribi el ID para filtrar..." oninput="filterAnimalSelect(this.value)">
+  <input class="form-input" id="animal-id-search" placeholder="Escribí para filtrar al instante…" oninput="filterAnimalSelect(this.value)" autocomplete="off">
 </div>
+<input type="hidden" id="animal-id">
 <div class="form-group"><label class="form-label">Seleccionar animal</label>
-  <select class="form-select" id="animal-id" onchange="onAnimalSelectChange(this.value)" size="6" style="height:auto;min-height:140px">
-    <option value="">-- Seleccionar --</option>
-  </select>
+  <div id="animal-results" style="max-height:200px;overflow-y:auto;border:1px solid var(--bor);border-radius:8px;background:var(--sur2)"></div>
 </div>
 <div id="animal-select-info" style="display:none;background:var(--sur2);border:1px solid var(--bor);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px">
   <div style="display:flex;gap:16px">
@@ -32367,9 +32781,16 @@ function renderPesajesFromAnimales(){
 </div></div></div>
 
 <!-- MODAL PESAJE INDIVIDUAL -->
+<style>
+/* v1.8.91: modal pesaje aprovecha el alto — header fijo + cuerpo scrolleable + footer siempre visible */
+#pa-box{display:flex;flex-direction:column;overflow:hidden;max-height:90vh}
+#pa-box > h2, #pa-box > #pa-lot-label, #pa-box > .form-actions{flex:0 0 auto}
+#pa-box > .pa-body{flex:1 1 auto;min-height:0;overflow-y:auto}
+</style>
 <div class="modal-overlay" id="modal-pesaje-animal">
-<div class="modal" style="max-width:580px"><h2>⚖️ Registrar Pesaje</h2>
+<div class="modal" id="pa-box" style="max-width:580px"><h2>⚖️ Registrar Pesaje</h2>
 <div id="pa-lot-label" style="font-size:12px;color:var(--muted);margin-bottom:12px"></div>
+<div class="pa-body">
 
 <!-- Botones de carga masiva -->
 <div style="background:var(--sur2);border:1px solid var(--bor);border-radius:10px;padding:12px 14px;margin-bottom:14px">
@@ -32386,13 +32807,12 @@ function renderPesajesFromAnimales(){
 <div style="height:1px;background:var(--bor);margin:14px 0"></div>
 <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.04em">⚖️ Pesaje individual</div>
 
-<div class="form-group"><label class="form-label">Buscar animal por ID</label>
-  <input class="form-input" id="pa-search" placeholder="Escribi el ID para filtrar..." oninput="filterPesajeAnimals(this.value)">
+<div class="form-group"><label class="form-label">Buscar animal (ID o raza)</label>
+  <input class="form-input" id="pa-search" placeholder="Escribí para filtrar al instante…" oninput="filterPesajeAnimals(this.value)" autocomplete="off">
 </div>
+<input type="hidden" id="pa-animal-id">
 <div class="form-group"><label class="form-label">Animal</label>
-  <select class="form-select" id="pa-animal-id" onchange="onPesajeAnimalChange(this.value)">
-    <option value="">Seleccionar animal...</option>
-  </select>
+  <div id="pa-results" style="max-height:40vh;overflow-y:auto;border:1px solid var(--bor);border-radius:8px;background:var(--sur2)"></div>
 </div>
 <div id="pa-animal-info" style="display:none;background:var(--sur2);border:1px solid var(--bor);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px">
   <div style="display:flex;gap:16px">
@@ -32409,7 +32829,8 @@ function renderPesajesFromAnimales(){
     <input class="form-input" type="date" id="pa-fecha">
   </div>
 </div>
-<div class="form-actions">
+</div><!-- /.pa-body -->
+<div class="form-actions" style="background:var(--sur);margin:14px -28px -28px;padding:14px 28px;border-top:1px solid var(--bor)">
   <button class="btn btn-ghost" onclick="closeModal('modal-pesaje-animal')">Cancelar</button>
   <button class="btn btn-primary" onclick="savePesajeAnimal()">Guardar pesaje</button>
 </div></div></div>
@@ -40361,5 +40782,124 @@ function renderReproInteligencia() {
 
 </script>
 
+<!-- v1.8.82: Modal QR — Pagar Soporte -->
+<style>@keyframes eps-spin{to{transform:rotate(360deg)}}.eps-spinner{width:40px;height:40px;border:3px solid var(--bor);border-top-color:var(--amber);border-radius:50%;animation:eps-spin .8s linear infinite}</style>
+<div class="modal-overlay" id="eps-modal">
+  <div class="modal" style="max-width:420px;text-align:center">
+    <div id="eps-stage-loading">
+      <h2 style="margin-top:0">📲 Generando tu QR…</h2>
+      <div class="eps-spinner" style="margin:26px auto"></div>
+      <div style="font-size:12px;color:var(--muted)">Le estamos pidiendo el QR al banco — un segundo.</div>
+    </div>
+    <div id="eps-stage-pay" style="display:none">
+      <h2 style="margin-top:0">📲 Pagá tu soporte</h2>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Escaneá el QR desde la app de tu banco. Se acredita solo.</div>
+      <div id="eps-qr" style="background:#fff;border-radius:12px;padding:12px;width:230px;height:230px;display:flex;align-items:center;justify-content:center;margin:0 auto"></div>
+      <div style="margin-top:12px;font-size:20px;font-weight:700;color:var(--green)" id="eps-amount">—</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px" id="eps-meta">—</div>
+      <div style="margin-top:14px;font-size:12px;color:var(--amber2)" id="eps-wait">⏳ Esperando el pago…</div>
+      <div class="form-actions" style="justify-content:center;margin-top:16px;gap:8px"><button class="btn btn-ghost" onclick="epSaveQR()">💾 Guardar QR</button><button class="btn btn-ghost" onclick="epCloseModal()">Cerrar</button></div>
+    </div>
+    <div id="eps-stage-ok" style="display:none">
+      <div style="width:62px;height:62px;border-radius:50%;background:rgba(63,185,80,.15);border:2px solid var(--green);color:var(--green);display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 12px">✓</div>
+      <h2 style="margin-top:0">¡Pago acreditado!</h2>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:16px" id="eps-ok-msg">Tu plan quedó al día.</div>
+      <button class="btn btn-primary" onclick="epCloseModal()">Listo</button>
+    </div>
+  </div>
+</div>
+<script>
+/* v1.8.82: Pagar Soporte — cobro self-serve por QR BANECO (módulo aditivo, usa getApiUrl/getApiToken) */
+(function(){
+  var _epPoll=null, _epQrId=null, _epQrData=null;
+  function _api(){ return (typeof getApiUrl==='function')?getApiUrl():'https://estancia5m-api-production.up.railway.app/api'; }
+  function _tok(){ return (typeof getApiToken==='function')?getApiToken():''; }
+  function $e(id){ return document.getElementById(id); }
+  function _money(n){ return 'Bs '+(Number(n)||0).toLocaleString('es-BO',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function _toast(m,t){ if(typeof toast==='function'){ try{ toast(m,t); return; }catch(e){} } }
+  function _badge(s){ var m={al_dia:['#3FB950','✅ Al día'],pendiente:['#F0C040','⏳ Pendiente'],vencido:['#F85149','🔴 Vencido']}; var x=m[s]||['#7D8590',s||'—']; return '<span style="font-family:DM Mono,monospace;font-size:10px;font-weight:600;padding:3px 9px;border-radius:20px;color:'+x[0]+';border:1px solid '+x[0]+'55;background:'+x[0]+'1a">'+x[1]+'</span>'; }
+  async function _fetch(path,opts){ opts=opts||{}; var r=await fetch(_api()+path, Object.assign({},opts,{headers:Object.assign({'Content-Type':'application/json','Authorization':'Bearer '+_tok()},opts.headers||{})})); var d=null; try{ d=await r.json(); }catch(e){} if(!r.ok||(d&&d.ok===false)) throw new Error((d&&d.error)||('HTTP '+r.status)); return d; }
+
+  window.epBillingLoad=async function(){
+    if(!$e('eps-card')) return;
+    try{
+      var d=await _fetch('/me/billing');
+      if($e('eps-badge')) $e('eps-badge').innerHTML=_badge(d.billing_status);
+      var fee=Number(d.monthly_fee_bs)||0;
+      $e('eps-fee').textContent=fee>0?(_money(fee)+' /mes'):'Sin cargo';
+      $e('eps-due').textContent=d.next_due_date?String(d.next_due_date).slice(0,10):'—';
+      var line;
+      if(!d.baneco){ line='El pago por QR no está disponible por ahora.'; }
+      else if(fee<=0){ line='Tu plan no tiene cargo de soporte. ¡Nada que pagar!'; }
+      else if(d.billing_status==='vencido'){ line='🔴 Tu cuota está vencida. Pagá para seguir al día.'; }
+      else if(d.amount_due_bs>0){ line='Tenés <b style="color:var(--amber2)">'+_money(d.amount_due_bs)+'</b> por pagar este período.'; }
+      else { line='Estás al día. Próximo pago: '+(d.next_due_date?String(d.next_due_date).slice(0,10):'—')+'.'; }
+      $e('eps-line').innerHTML=line;
+      $e('eps-pay').disabled=!(d.baneco && d.amount_due_bs>0);
+      var h=d.history||[];
+      $e('eps-history').innerHTML=h.length?('<div style="font-size:11px;color:var(--muted);margin-bottom:6px">Historial</div>'+h.slice(0,6).map(function(p){ return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--bor);font-size:12px"><span>'+p.period+' <span style="color:var(--muted)">· '+(p.method==='qr_baneco'?'QR':p.method)+'</span></span><span style="font-weight:700;color:var(--green)">'+_money(p.amount_bs)+'</span></div>'; }).join('')):'';
+    }catch(e){ if($e('eps-line')) $e('eps-line').innerHTML='No se pudo cargar tu estado de cuenta ('+e.message+').'; }
+  };
+  window.epPayQR=async function(){
+    var btn=$e('eps-pay'), orig=btn?btn.textContent:'📲 Pagar con QR';
+    try{
+      if(btn){ btn.disabled=true; btn.textContent='⏳ Generando QR…'; }
+      _toast('Generando tu QR…');
+      // feedback inmediato: abrir el modal en estado "generando" con spinner
+      $e('eps-stage-loading').style.display='block'; $e('eps-stage-pay').style.display='none'; $e('eps-stage-ok').style.display='none';
+      $e('eps-modal').classList.add('open');
+      var d=await _fetch('/me/billing/baneco-qr',{method:'POST',body:'{}'});
+      _epQrId=d.qrId;
+      _epQrData=(String(d.qrImage).indexOf('data:')===0?d.qrImage:('data:image/png;base64,'+d.qrImage));
+      $e('eps-qr').innerHTML='<img src="'+_epQrData+'" style="width:100%;height:100%;image-rendering:pixelated" alt="QR">';
+      $e('eps-amount').textContent=_money(d.amount);
+      $e('eps-meta').textContent='Vence '+String(d.dueDate).slice(0,10);
+      $e('eps-wait').textContent='⏳ Esperando el pago…';
+      $e('eps-stage-loading').style.display='none'; $e('eps-stage-pay').style.display='block';
+      _epPoll=setInterval(_epCheck,5000);
+    }catch(e){ $e('eps-modal').classList.remove('open'); _toast('No se pudo generar el QR: '+e.message,'error'); }
+    finally{ if(btn){ btn.disabled=false; btn.textContent=orig; } }
+  };
+  async function _epCheck(){ if(!_epQrId) return;
+    try{ var d=await _fetch('/me/billing/baneco-qr/'+encodeURIComponent(_epQrId)+'/status');
+      if(d.statusQrCode===1||d.credited){ clearInterval(_epPoll); _epPoll=null; $e('eps-stage-pay').style.display='none'; $e('eps-stage-ok').style.display='block'; _toast('Pago acreditado','success'); epBillingLoad(); }
+      else if(d.statusQrCode===9){ clearInterval(_epPoll); _epPoll=null; $e('eps-wait').textContent='🚫 QR anulado.'; }
+    }catch(e){}
+  }
+  window.epCloseModal=function(){ if(_epPoll){ clearInterval(_epPoll); _epPoll=null; } $e('eps-modal').classList.remove('open'); };
+  window.epSaveQR=async function(){
+    if(!_epQrData){ _toast('Generá el QR primero','warn'); return; }
+    var b64=String(_epQrData).replace(/^data:image\/png;base64,/,'');
+    var fname='QR-soporte-'+(_epQrId||Date.now())+'.png';
+    try{
+      // 1) handler nativo del electron → directo a Descargas, sin diálogo
+      if(window.estancia && window.estancia.qr && window.estancia.qr.saveToDownloads){
+        var r=await window.estancia.qr.saveToDownloads(b64, fname);
+        if(r && r.ok){ _toast('QR guardado en Descargas'); return; }
+      }
+      // 2) fallback navegador (descarga estándar)
+      var a=document.createElement('a'); a.href=_epQrData; a.download=fname; document.body.appendChild(a); a.click(); setTimeout(function(){ a.remove(); },120);
+      _toast('QR descargado');
+    }catch(e){ _toast('No se pudo guardar el QR: '+e.message,'error'); }
+  };
+
+  function _maybe(){ var p=$e('page-config'); if(p && p.classList.contains('active') && $e('eps-card')) epBillingLoad(); }
+  if(document.readyState!=='loading') setTimeout(_maybe,600); else document.addEventListener('DOMContentLoaded',function(){ setTimeout(_maybe,600); });
+  try{ var pc=$e('page-config'); if(pc && window.MutationObserver) new MutationObserver(_maybe).observe(pc,{attributes:true,attributeFilter:['class']}); }catch(e){}
+})();
+</script>
+
+<style>
+/* v1.8.86: transiciones suaves globales — apertura/cierre de modales, pasos del wizard y cambios de página */
+.modal-overlay{ display:flex; opacity:0; visibility:hidden; pointer-events:none; transition:opacity .17s ease, visibility .17s ease; }
+.modal-overlay.open{ opacity:1; visibility:visible; pointer-events:auto; }
+.modal-overlay > .modal{ transform:translateY(12px) scale(.985); opacity:.5; transition:transform .24s cubic-bezier(.2,.85,.25,1), opacity .18s ease; }
+.modal-overlay.open > .modal{ transform:none; opacity:1; }
+@keyframes epStepIn{ from{ opacity:0; transform:translateY(7px); } to{ opacity:1; transform:none; } }
+.wv-step, .wc-step{ animation:epStepIn .24s ease both; }
+@keyframes epPageIn{ from{ opacity:0; transform:translateY(8px); } to{ opacity:1; transform:none; } }
+.page.active{ animation:epPageIn .22s ease both; }
+@media (prefers-reduced-motion: reduce){ .modal-overlay, .modal-overlay > .modal, .wv-step, .wc-step, .page.active{ transition:none !important; animation:none !important; } }
+</style>
 </body>
 </html>
