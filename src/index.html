@@ -4386,12 +4386,77 @@ function orMarcajeGo(){
   <div class="card" style="margin-bottom:20px">
     <div class="card-hd"><div class="card-title">📱 Dispositivos</div></div>
     <div class="card-body">
-      <div style="color:var(--muted);font-size:12.5px;margin-bottom:14px">Vinculá celulares de capataces con un código de un solo uso. Cada uno tiene su propio acceso; revocar uno no afecta a los demás ni a este equipo.</div>
+      <div style="color:var(--muted);font-size:12.5px;margin-bottom:10px">Vinculá celulares de capataces con un código de un solo uso. Cada uno tiene su propio acceso y su rol; revocar uno no afecta a los demás ni a este equipo.</div>
+
+      <details style="margin-bottom:14px;background:var(--sur2);border:1px solid var(--bor);border-radius:10px;padding:10px 14px">
+        <summary style="cursor:pointer;font-size:12.5px;font-weight:600">🔑 ¿Qué puede hacer cada rol?</summary>
+        <div style="overflow-x:auto;margin-top:10px">
+          <table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:520px">
+            <thead><tr style="color:var(--muted);text-align:center">
+              <th style="text-align:left;padding:4px 6px;border-bottom:1px solid var(--bor)">Módulo</th>
+              <th style="padding:4px 6px;border-bottom:1px solid var(--bor)">🔑 Admin</th>
+              <th style="padding:4px 6px;border-bottom:1px solid var(--bor)">📋 Encarg.</th>
+              <th style="padding:4px 6px;border-bottom:1px solid var(--bor)">🧑‍🌾 Capataz</th>
+              <th style="padding:4px 6px;border-bottom:1px solid var(--bor)">🩺 Veter.</th>
+              <th style="padding:4px 6px;border-bottom:1px solid var(--bor)">👷 Peón</th>
+              <th style="padding:4px 6px;border-bottom:1px solid var(--bor)">👁 Lectura</th>
+            </tr></thead>
+            <tbody style="text-align:center">
+              <tr><td style="text-align:left;padding:4px 6px">Registro de campo (pesajes, lluvia, curaciones, sal, partos, tareas, mover animales)</td><td>✏️</td><td>✏️</td><td>✏️</td><td>✏️</td><td>✏️</td><td>👁</td></tr>
+              <tr><td style="text-align:left;padding:4px 6px">Diésel y aceite</td><td>✏️</td><td>✏️</td><td>✏️</td><td>—</td><td>✏️</td><td>👁</td></tr>
+              <tr><td style="text-align:left;padding:4px 6px">Compra de ganado y bajas</td><td>✏️</td><td>✏️</td><td>✏️</td><td>—</td><td>—</td><td>👁</td></tr>
+              <tr><td style="text-align:left;padding:4px 6px">Lotes, productos, maquinaria y rotación</td><td>✏️</td><td>✏️</td><td>✏️</td><td>—</td><td>—</td><td>👁</td></tr>
+              <tr><td style="text-align:left;padding:4px 6px">Ventas</td><td>✏️</td><td>✏️</td><td>—</td><td>—</td><td>—</td><td>👁</td></tr>
+              <tr><td style="text-align:left;padding:4px 6px">Personal y sueldos</td><td>✏️</td><td>✏️</td><td>—</td><td>—</td><td>—</td><td>👁</td></tr>
+              <tr><td style="text-align:left;padding:4px 6px">Contabilidad (cuentas y kardex)</td><td>✏️</td><td>✏️</td><td>—</td><td>—</td><td>—</td><td>👁</td></tr>
+              <tr><td style="text-align:left;padding:4px 6px">Vincular dispositivos y cambiar roles</td><td>✏️</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="color:var(--muted);font-size:11px;margin-top:8px;line-height:1.6">✏️ registra y edita · 👁 solo consulta · — sin acceso. Esta matriz la aplica el <b>server</b> en cada acción (v4.16.0) — aunque alguien modifique la app del celular, el server la hace cumplir. La matriz de MÓDULOS es fija en el server; los BOTONES del inicio de la app de campo se personalizan abajo. 👇</div>
+        <div style="color:var(--muted);font-size:11px;margin-top:6px;line-height:1.6"><b>Cargos → permisos:</b> Vaquero, Tractorista, Alambrador, Cocinero/a y Auxiliar usan permisos de <b>Peón</b> · Gerente usa <b>Encargado</b> · Administrador usa <b>Admin</b> · Contador y Doméstica usan <b>Solo lectura</b>.</div>
+      </details>
+
+      <details style="margin-bottom:14px;background:var(--sur2);border:1px solid var(--bor);border-radius:10px;padding:10px 14px" ontoggle="if(this.open)cargarRolAcciones()">
+        <summary style="cursor:pointer;font-size:12.5px;font-weight:600">📲 Botones del inicio (app de campo) — qué ve cada rol</summary>
+        <div style="color:var(--muted);font-size:11.5px;margin-top:8px;line-height:1.6">Destildá lo que un rol NO debe ver en su celular. Ocultar un botón también <b>bloquea esa transacción en el server</b> para ese rol. Admin siempre ve todo; Solo lectura nunca registra nada.</div>
+        <div id="ra-wrap" style="margin-top:10px;overflow-x:auto"><div style="color:var(--muted);font-size:12px">Abrí esta sección con internet para cargar la configuración.</div></div>
+        <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+          <button class="btn btn-primary" style="font-size:12.5px" onclick="guardarRolAcciones()">💾 Guardar cambios</button>
+          <button class="btn btn-ghost" style="font-size:12.5px" onclick="cargarRolAcciones()">↻ Recargar</button>
+          <span id="ra-status" style="font-size:11.5px;color:var(--muted)"></span>
+        </div>
+      </details>
 
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">
         <div class="form-group" style="flex:1;min-width:220px;margin:0">
           <label class="form-label">Nombre del dispositivo nuevo</label>
           <input class="form-input" id="dev-name" placeholder="Ej: Celular de Juan" maxlength="60" onkeydown="if(event.key==='Enter')generarCodigoDispositivo()">
+        </div>
+        <div class="form-group" style="min-width:170px;margin:0">
+          <label class="form-label">Cargo (como en Personal)</label>
+          <select class="form-input" id="dev-role" onchange="_devRoleHint()">
+            <optgroup label="Operativos">
+              <option value="capataz">Capataz</option>
+              <option value="encargado">Encargado / Jefe de campo</option>
+              <option value="peon" selected>Peón</option>
+              <option value="vaquero">Vaquero</option>
+              <option value="tractorista">Tractorista / Operador de maquinaria</option>
+              <option value="alambrador">Alambrador</option>
+              <option value="cocinero">Cocinero/a</option>
+            </optgroup>
+            <optgroup label="Técnicos / Administrativos">
+              <option value="veterinario">Veterinario</option>
+              <option value="administrador">Administrador</option>
+              <option value="contador">Contador</option>
+              <option value="gerente">Gerente</option>
+            </optgroup>
+            <optgroup label="Otros">
+              <option value="auxiliar">Auxiliar</option>
+              <option value="domestica">Doméstica / Servicio</option>
+            </optgroup>
+          </select>
+          <div id="dev-role-hint" style="font-size:10.5px;color:var(--muted);margin-top:3px">→ permisos: 👷 Peón</div>
         </div>
         <button class="btn btn-primary" onclick="generarCodigoDispositivo()" style="min-width:190px">➕ Vincular dispositivo</button>
       </div>
@@ -25662,6 +25727,63 @@ document.addEventListener('DOMContentLoaded', function(){
 var _e5mSesionesData = [];
 
 // Identidad estable del dispositivo (generada una vez por instalación)
+
+// ══════════════════════════════════════════════════
+// v1.8.92 CONFIG COLAPSABLE — la pantalla de Configuración quedó muy poblada (12 tarjetas).
+// Cada tarjeta de #page-config con .card-hd + .card-body se pliega clickeando el encabezado.
+// Estado por título en localStorage (default: TODO plegado). Kill switch: __CFG_COLAPSE_OFF.
+// Delegación de eventos → sobrevive a cualquier re-render de los cuerpos (ej. renderDispositivos).
+// ══════════════════════════════════════════════════
+(function () {
+  if (window.__CFG_COLAPSE_OFF) return;
+  var KEY = 'e5m_cfg_collapsed_v1';
+  function loadSt() { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { return {}; } }
+  function saveSt(s) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {} }
+  function titleOf(card) { var t = card.querySelector('.card-hd .card-title'); return t ? t.textContent.trim() : ''; }
+  function cfgCollapseApply() {
+    var pg = document.getElementById('page-config'); if (!pg) return;
+    var st = loadSt();
+    pg.querySelectorAll('.card').forEach(function (card) {
+      var hd = card.querySelector('.card-hd'), bd = card.querySelector('.card-body');
+      if (!hd || !bd) return;
+      if (!card.classList.contains('e5m-clps-ready')) {
+        card.classList.add('e5m-clps-ready');
+        hd.style.cursor = 'pointer';
+        hd.title = 'Click para plegar/desplegar';
+        var ch = document.createElement('span');
+        ch.className = 'e5m-clps-ch';
+        ch.textContent = '▸';
+        hd.appendChild(ch);
+      }
+      var t = titleOf(card);
+      var collapsed = (t in st) ? !!st[t] : true;
+      card.classList.toggle('e5m-clps', collapsed);
+    });
+  }
+  var css = document.createElement('style');
+  css.textContent = '#page-config .card.e5m-clps .card-body{display:none}' +
+    '#page-config .card-hd{display:flex;align-items:center;gap:8px}' +
+    '#page-config .e5m-clps-ch{margin-left:auto;color:var(--muted);font-size:13px;transition:transform .15s}' +
+    '#page-config .card:not(.e5m-clps) .e5m-clps-ch{transform:rotate(90deg)}';
+  (document.head || document.documentElement).appendChild(css);
+  document.addEventListener('click', function (ev) {
+    var hd = ev.target.closest ? ev.target.closest('#page-config .card-hd') : null;
+    if (!hd) {
+      var nav = ev.target.closest ? ev.target.closest('.nav-btn') : null;
+      if (nav) setTimeout(cfgCollapseApply, 60);
+      return;
+    }
+    if (ev.target.closest('button,select,input,a,textarea,label')) return;
+    var card = hd.closest('.card'); if (!card) return;
+    var st = loadSt(); var now = !card.classList.contains('e5m-clps');
+    card.classList.toggle('e5m-clps', now);
+    st[titleOf(card)] = now; saveSt(st);
+  });
+  window.cfgCollapseApply = cfgCollapseApply;
+  if (document.readyState !== 'loading') cfgCollapseApply();
+  else document.addEventListener('DOMContentLoaded', cfgCollapseApply);
+})();
+
 function _getDeviceId() {
   var id = localStorage.getItem('e5m_device_id');
   if (!id) {
@@ -27577,6 +27699,91 @@ function showUpdateNotification(version, downloaded) {
 // ══════════════════════════════════════════════════
 var _devLastCode = null, _devCodeTimer = null;
 
+// v1.8.92 PERMISOS: roles por dispositivo. El server valida siempre; esto es la gestion.
+var E5M_ROLE_LABELS = { admin:'🔑 Admin', encargado:'📋 Encargado', capataz:'🧑‍🌾 Capataz', veterinario:'🩺 Veterinario', peon:'👷 Peón', lectura:'👁 Solo lectura' };
+// v4.16.2 COHERENCIA: el selector usa los MISMOS cargos del modulo Personal (emp-role).
+// Cada cargo mapea a uno de los 6 roles de permisos del server.
+var E5M_CARGO_LABELS = { capataz:'Capataz', encargado:'Encargado / Jefe de campo', peon:'Peón', vaquero:'Vaquero', tractorista:'Tractorista / Operador de maquinaria', alambrador:'Alambrador', cocinero:'Cocinero/a', veterinario:'Veterinario', administrador:'Administrador', contador:'Contador', gerente:'Gerente', auxiliar:'Auxiliar', domestica:'Doméstica / Servicio' };
+var E5M_CARGO_ROL = { capataz:'capataz', encargado:'encargado', peon:'peon', vaquero:'peon', tractorista:'peon', alambrador:'peon', cocinero:'peon', veterinario:'veterinario', administrador:'admin', contador:'lectura', gerente:'encargado', auxiliar:'peon', domestica:'lectura' };
+var E5M_ROL_CARGO_DEFAULT = { admin:'administrador', encargado:'encargado', capataz:'capataz', veterinario:'veterinario', peon:'peon', lectura:'contador' };
+function _devRoleHint() {
+  var el = document.getElementById('dev-role'), h = document.getElementById('dev-role-hint');
+  if (!el || !h) return;
+  h.textContent = '→ permisos: ' + (E5M_ROLE_LABELS[E5M_CARGO_ROL[el.value] || 'peon'] || '');
+}
+function _devRoleSelect(d) {
+  var curCargo = (d.cargo && E5M_CARGO_LABELS[d.cargo]) ? d.cargo : (E5M_ROL_CARGO_DEFAULT[d.role || 'admin'] || 'peon');
+  var rol = E5M_CARGO_ROL[curCargo] || 'peon';
+  var s = '<select class="form-input" style="width:auto;font-size:12px;padding:5px 8px;max-width:210px" onchange="cambiarRolDispositivo(' + d.id + ', this)" title="Cargo (permisos: ' + (E5M_ROLE_LABELS[rol] || rol) + ') — el server lo aplica en cada acción">';
+  var grupos = { 'Operativos': ['capataz','encargado','peon','vaquero','tractorista','alambrador','cocinero'], 'Técnicos / Administrativos': ['veterinario','administrador','contador','gerente'], 'Otros': ['auxiliar','domestica'] };
+  Object.keys(grupos).forEach(function(g){
+    s += '<optgroup label="' + g + '">';
+    grupos[g].forEach(function(c){ s += '<option value="' + c + '"' + (c === curCargo ? ' selected' : '') + '>' + E5M_CARGO_LABELS[c] + '</option>'; });
+    s += '</optgroup>';
+  });
+  return s + '</select><span style="font-size:10px;color:var(--muted);white-space:nowrap">' + (E5M_ROLE_LABELS[rol] || '') + '</span>';
+}
+// v4.16.1 — Editor de ACCIONES DE INICIO por rol (matriz de checkboxes → POST /tenant/role-actions)
+var _raRolesEdit = ['encargado', 'capataz', 'veterinario', 'peon'];
+var _raData = null;
+function cargarRolAcciones() {
+  var wrap = document.getElementById('ra-wrap'); if (!wrap) return;
+  if (!navigator.onLine) { wrap.innerHTML = '<div style="color:var(--muted);font-size:12px">Sin conexión.</div>'; return; }
+  wrap.innerHTML = '<div style="color:var(--muted);font-size:12px">Cargando…</div>';
+  _devApi('/tenant/role-actions', { method: 'GET' })
+    .then(function (res) {
+      if (res.status === 404) { wrap.innerHTML = '<div style="color:var(--muted);font-size:12px">El servidor todavía no tiene esta función (actualizá a v4.16.1).</div>'; return; }
+      if (res.status !== 200 || !res.j || !res.j.ok) { wrap.innerHTML = '<div style="color:var(--red);font-size:12px">No se pudo cargar.</div>'; return; }
+      _raData = res.j;
+      var cfg = res.j.config || {};
+      var html = '<table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:480px"><thead><tr style="color:var(--muted)"><th style="text-align:left;padding:4px 6px;border-bottom:1px solid var(--bor)">Botón del inicio</th>';
+      _raRolesEdit.forEach(function (r) { html += '<th style="padding:4px 6px;border-bottom:1px solid var(--bor);text-align:center">' + (E5M_ROLE_LABELS[r] || r) + '</th>'; });
+      html += '</tr></thead><tbody>';
+      Object.keys(res.j.actions).forEach(function (a) {
+        html += '<tr><td style="padding:4px 6px;border-bottom:1px solid var(--bor)">' + escH(res.j.actions[a].label) + ' <span style="color:var(--muted2);font-size:10px">(' + escH((res.j.actions[a].tables || []).join(',')) + ')</span></td>';
+        _raRolesEdit.forEach(function (r) {
+          var visible = !(cfg[r] && cfg[r][a] === false);
+          html += '<td style="text-align:center;padding:4px 6px;border-bottom:1px solid var(--bor)"><input type="checkbox" data-ra="' + r + ':' + a + '"' + (visible ? ' checked' : '') + ' style="cursor:pointer"></td>';
+        });
+        html += '</tr>';
+      });
+      wrap.innerHTML = html + '</tbody></table>';
+      var st = document.getElementById('ra-status'); if (st) st.textContent = '';
+    })
+    .catch(function () { wrap.innerHTML = '<div style="color:var(--red);font-size:12px">Error de conexión.</div>'; });
+}
+function guardarRolAcciones() {
+  if (!_raData) { toast('Primero cargá la configuración', 'error'); return; }
+  var config = {};
+  document.querySelectorAll('#ra-wrap input[data-ra]').forEach(function (inp) {
+    if (inp.checked) return;
+    var p = inp.getAttribute('data-ra').split(':');
+    (config[p[0]] = config[p[0]] || {})[p[1]] = false;
+  });
+  var st = document.getElementById('ra-status'); if (st) st.textContent = 'Guardando…';
+  _devApi('/tenant/role-actions', { method: 'POST', body: JSON.stringify({ config: config }) })
+    .then(function (res) {
+      if (res.status === 200 && res.j && res.j.ok) {
+        toast('Botones por rol guardados', 'success');
+        if (st) st.textContent = 'Guardado. Los celulares lo toman al reconectar.';
+      } else { toast((res.j && res.j.error) || 'No se pudo guardar', 'error'); if (st) st.textContent = ''; }
+    })
+    .catch(function () { toast('Error de conexión', 'error'); if (st) st.textContent = ''; });
+}
+function cambiarRolDispositivo(id, sel) {
+  var cargo = sel.value;
+  var role = E5M_CARGO_ROL[cargo] || 'peon';
+  sel.disabled = true;
+  _devApi('/devices/' + id + '/role', { method: 'PATCH', body: JSON.stringify({ role: role, cargo: cargo }) })
+    .then(function(res) {
+      sel.disabled = false;
+      if (res.status === 200) { toast('Cargo: ' + (E5M_CARGO_LABELS[cargo] || cargo) + ' · permisos ' + (E5M_ROLE_LABELS[role] || role), 'success'); renderDispositivos(); }
+      else if (res.status === 404 && !(res.j && res.j.device)) { toast('El servidor todavía no tiene Permisos (actualizá a v4.16.0)', 'error'); renderDispositivos(); }
+      else { toast((res.j && res.j.error) || 'No se pudo cambiar el rol', 'error'); renderDispositivos(); }
+    })
+    .catch(function() { sel.disabled = false; toast('Error de conexión', 'error'); renderDispositivos(); });
+}
+
 function _devApi(path, opts) {
   var url = getApiUrl() + path;
   var token = getApiToken();
@@ -27591,13 +27798,16 @@ function generarCodigoDispositivo() {
   var nameEl = document.getElementById('dev-name');
   var name = (nameEl && nameEl.value || '').trim();
   if (!name) { toast('Poné un nombre para el dispositivo', 'error'); return; }
+  var _roleEl = document.getElementById('dev-role');
+  var _devCargo = (_roleEl && _roleEl.value) || 'peon';
+  var _devRole = E5M_CARGO_ROL[_devCargo] || 'peon';
   if (!navigator.onLine) { toast('Necesitás internet para generar el código', 'error'); return; }
-  _devApi('/devices/pair-code', { method: 'POST', body: JSON.stringify({ device_name: name, app_type: 'pwa' }) })
+  _devApi('/devices/pair-code', { method: 'POST', body: JSON.stringify({ device_name: name, app_type: 'pwa', role: _devRole, cargo: _devCargo }) })
     .then(function(res) {
       if (res.status === 200 && res.j && res.j.code) {
         _devLastCode = res.j.code;
         var panel = document.getElementById('dev-code-panel'); if (panel) panel.style.display = '';
-        var lbl = document.getElementById('dev-code-label'); if (lbl) lbl.textContent = 'CÓDIGO PARA “' + name + '”';
+        var lbl = document.getElementById('dev-code-label'); if (lbl) lbl.textContent = 'CÓDIGO PARA “' + name + '” · ' + (E5M_CARGO_LABELS[_devCargo] || _devCargo) + ' (' + (E5M_ROLE_LABELS[_devRole] || _devRole) + ')';
         var num = document.getElementById('dev-code-num'); if (num) { num.style.opacity = 1; num.textContent = res.j.code.slice(0, 3) + ' ' + res.j.code.slice(3); }
         _devStartCountdown(res.j.expires_in || 600);
       } else if (res.status === 404) {
@@ -27682,8 +27892,9 @@ function renderDispositivos() {
         html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--bor)' + (revoked ? ';opacity:.5' : '') + '">' +
           '<div style="flex:1;min-width:0">' +
             '<div style="font-weight:600;font-size:13px">📱 ' + escH(d.device_name || 'Dispositivo') + '</div>' +
-            '<div style="color:var(--muted);font-size:11px">' + escH(d.token_hint || '') + ' · ' + escH(d.app_type || 'pwa') + ' · últ. vez ' + escH(last) + '</div>' +
+            '<div style="color:var(--muted);font-size:11px">' + escH(d.token_hint || '') + ' · ' + escH(d.app_type || 'pwa') + ' · últ. vez ' + escH(last) + (d.persona ? ' · 👤 ' + escH(d.persona) : '') + '</div>' +
           '</div>' +
+          (revoked ? '' : _devRoleSelect(d)) +
           (revoked
             ? '<span style="font-size:11px;color:var(--red);font-weight:600">revocado</span>'
             : '<button class="btn btn-ghost" style="padding:6px 12px;font-size:12px;color:var(--red);border-color:rgba(248,81,73,.4)" onclick="revocarDispositivo(' + d.id + ', this)">Revocar</button>') +
