@@ -4507,8 +4507,11 @@ function orMarcajeGo(){
       <div id="mp-mgr-loaded" style="display:none">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <span id="mp-mgr-status" style="font-size:12.5px;color:var(--green)"></span>
+          <button class="btn btn-primary" style="font-size:11.5px;padding:4px 10px" onclick="mpCrearPotreros()">🐄 Crear/actualizar potreros del sistema</button>
           <button class="btn btn-ghost" style="font-size:11.5px;padding:4px 10px" onclick="document.getElementById('mp-file').click()">↻ Reemplazar</button>
           <button class="btn btn-ghost" style="font-size:11.5px;padding:4px 10px;color:var(--red)" onclick="mpQuitar()">✕ Quitar</button>
+        </div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:8px">Crear/actualizar carga los potreros del mapa (nombre + superficie + habilitado) en el sistema y los sincroniza. Los existentes conservan capacidad, pasto y días.
         </div>
       </div>
     </div>
@@ -25887,7 +25890,7 @@ var _e5mSesionesData = [];
     var wrap = document.getElementById('mp-wrap'), cv = document.getElementById('mp-canvas');
     var mgrE = document.getElementById('mp-mgr-empty'), mgrL = document.getElementById('mp-mgr-loaded'), st = document.getElementById('mp-mgr-status');
     var m = mpGet();
-    var hay = !!(m && m.imagen && Array.isArray(m.potreros) && m.potreros.length);
+    var hay = !!(m && Array.isArray(m.potreros) && m.potreros.length);
     if (mgrE) mgrE.style.display = hay ? 'none' : '';
     if (mgrL) mgrL.style.display = hay ? '' : 'none';
     if (st && hay) st.textContent = '✓ ' + (m.nombre || 'Mapa') + ' · ' + m.potreros.length + ' potreros cargados en este equipo';
@@ -25900,18 +25903,29 @@ var _e5mSesionesData = [];
       var pts = (p.pts || []).map(function (q) { return q[0] + ',' + q[1]; }).join(' ');
       var cx = 0, cy = 0, n = (p.pts || []).length || 1;
       (p.pts || []).forEach(function (q) { cx += q[0]; cy += q[1]; }); cx /= n; cy /= n;
-      polys += '<polygon points="' + pts + '" data-mp="' + i + '" style="fill:rgba(63,185,80,.10);stroke:' + (p.dudoso ? '#F0C040' : '#3FB950') + ';stroke-width:.35' + (p.dudoso ? ';stroke-dasharray:1.4,.9' : '') + ';cursor:pointer" onmouseover="this.style.fill=(String(this.style.fill).indexOf(\'.32\')<0?\'rgba(63,185,80,.32)\':this.style.fill)" onmouseout="this.style.fill=\'rgba(63,185,80,.10)\'" onclick="mpSel(' + i + ')"><title>' + mpEsc(p.nombre) + ' · ' + (p.superficie_has != null ? p.superficie_has : '?') + ' has' + (p.dudoso ? ' (verificar)' : '') + '</title></polygon>';
+      polys += '<polygon points="' + pts + '" data-mp="' + i + '" style="fill:rgba(63,185,80,.30);stroke:' + (p.dudoso ? '#F0C040' : '#3FB950') + ';stroke-width:.35' + (p.dudoso ? ';stroke-dasharray:1.4,.9' : '') + ';cursor:pointer" onmouseover="this.style.fill=(String(this.style.fill).indexOf(\'.45\')<0?\'rgba(63,185,80,.45)\':this.style.fill)" onmouseout="this.style.fill=\'rgba(63,185,80,.30)\'" onclick="mpSel(' + i + ')"><title>' + mpEsc(p.nombre) + ' · ' + (p.superficie_has != null ? p.superficie_has : '?') + ' has' + (p.dudoso ? ' (verificar)' : '') + '</title></polygon>';
       polys += '<text x="' + cx.toFixed(1) + '" y="' + cy.toFixed(1) + '" style="font:2.2px Inter,sans-serif;font-weight:700;fill:#fff;paint-order:stroke;stroke:rgba(0,0,0,.75);stroke-width:.45;text-anchor:middle;pointer-events:none">' + mpEsc(p.nombre) + '</text>';
     });
-    cv.innerHTML = '<img src="' + m.imagen + '" style="display:block;width:100%" alt="mapa de potreros">' +
-      '<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%">' + polys + '</svg>';
+    var _svg = '<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%">' + polys + '</svg>';
+    if (m.imagen) {
+      // con foto: la imagen define el alto, ancho completo (como antes)
+      cv.style.aspectRatio = ''; cv.style.maxWidth = ''; cv.style.marginLeft = ''; cv.style.marginRight = '';
+      cv.innerHTML = '<img src="' + m.imagen + '" style="display:block;width:100%" alt="mapa de potreros">' + _svg;
+    } else {
+      // sin fondo: el canvas toma el ASPECTO real del recorte (no sobra negro) y se topea el tamaño
+      var _asp = (Number(m.img_w) > 0 && Number(m.img_h) > 0) ? (Number(m.img_w) + '/' + Number(m.img_h)) : '1.35/1';
+      cv.style.aspectRatio = _asp; cv.style.maxWidth = '820px'; cv.style.marginLeft = 'auto'; cv.style.marginRight = 'auto';
+      cv.innerHTML = _svg;
+    }
     mpApplyCollapse();
   }
   window.mpSel = function (i) {
     var m = mpGet(); if (!m) return; var p = m.potreros[i]; if (!p) return;
     var sys = null;
     try {
-      var pads = (typeof db !== 'undefined' && db && (db.paddocks || db.potreros)) || [];
+      var pads = [];
+      try { if (typeof getParams === 'function') pads = (getParams().potreros) || []; } catch (e0) {}
+      try { if (typeof db !== 'undefined' && db) pads = pads.concat(db.paddocks || db.potreros || []); } catch (e1) {}
       for (var k = 0; k < pads.length; k++) {
         var nm = String(pads[k].name || pads[k].nombre || '').trim().toLowerCase();
         if (nm === String(p.nombre).trim().toLowerCase()) { sys = pads[k]; break; }
@@ -25930,15 +25944,52 @@ var _e5mSesionesData = [];
     r.onload = function () {
       try {
         var m = JSON.parse(r.result);
-        if (!m || m.version !== 1 || !m.imagen || !Array.isArray(m.potreros) || !m.potreros.length) throw new Error('formato');
-        if (String(m.imagen).indexOf('data:image/') !== 0) throw new Error('imagen');
+        if (!m || m.version !== 1 || !Array.isArray(m.potreros) || !m.potreros.length) throw new Error('formato');
+        if (m.imagen && String(m.imagen).indexOf('data:image/') !== 0) throw new Error('imagen');
         try { localStorage.setItem(KEY, r.result); } catch (eq) { toast('El mapa es muy grande para guardarlo en este equipo', 'error'); return; }
         try { localStorage.setItem(KCOL, '0'); } catch (e2) {}
         mpRender();
         toast('Mapa cargado: ' + (m.nombre || '') + ' (' + m.potreros.length + ' potreros) — velo en Lotes → Rotación', 'success');
+        try { if (typeof window.mpCrearPotreros === 'function') window.mpCrearPotreros(); } catch (e3) {}
       } catch (e) { toast('Archivo inválido — se espera el JSON de mapa de potreros', 'error'); }
     };
     r.readAsText(f);
+  };
+  // v1.8.95: crea/actualiza los potreros REALES del sistema (params.potreros) desde el mapa.
+  // Nuevos → se crean con superficie+habilitado; existentes → se actualizan hectáreas (conserva
+  // capacidad/pasto/días). saveParams sincroniza a Railway (PWA/Bot lo reciben).
+  window.mpCrearPotreros = function (silent) {
+    var m = mpGet();
+    if (!m || !Array.isArray(m.potreros) || !m.potreros.length) { if (!silent) toast('Primero cargá un mapa de potreros', 'error'); return; }
+    if (typeof getParams !== 'function' || typeof saveParams !== 'function') { if (!silent) toast('No se pudo acceder a la configuración de potreros', 'error'); return; }
+    var params = getParams(); if (!Array.isArray(params.potreros)) params.potreros = [];
+    var byName = {};
+    params.potreros.forEach(function (p) { byName[String(p.name == null ? '' : p.name).trim().toLowerCase()] = p; });
+    var nuevos = 0, actualizados = 0;
+    m.potreros.forEach(function (mp) {
+      var nom = String(mp.nombre == null ? '' : mp.nombre).trim(); if (!nom) return;
+      var sup = (mp.superficie_has != null) ? Number(mp.superficie_has) : null;
+      var hab = (mp.habilitado_has != null) ? Number(mp.habilitado_has) : null;
+      var ex = byName[nom.toLowerCase()];
+      if (ex) {
+        var ch = false;
+        if (sup != null && !isNaN(sup) && ex.hectares !== sup) { ex.hectares = sup; ch = true; }
+        if (hab != null && !isNaN(hab) && ex.habilitado !== hab) { ex.habilitado = hab; ch = true; }
+        if (ch) actualizados++;
+      } else {
+        var np = { name: nom, capacity: 0, hectares: (sup != null && !isNaN(sup) ? sup : 0), habilitado: (hab != null && !isNaN(hab) ? hab : 0), pasture_type: '', max_days: 30, rest_days: 30 };
+        params.potreros.push(np); byName[nom.toLowerCase()] = np; nuevos++;
+      }
+    });
+    if (!nuevos && !actualizados) { if (!silent) toast('Los potreros del sistema ya están al día con el mapa', 'info'); return; }
+    if (!silent && typeof confirm === 'function') {
+      var msg = 'Desde el mapa:\n\n• ' + nuevos + ' potrero(s) NUEVO(s) a crear\n• ' + actualizados + ' existente(s) a actualizar hectáreas\n\n¿Aplicar al sistema? (se sincroniza a la nube)';
+      if (!confirm(msg)) return;
+    }
+    try { saveParams(params); } catch (eS) { toast('No se pudo guardar la configuración', 'error'); return; }
+    try { if (typeof renderParams === 'function') renderParams(); } catch (eR) {}
+    mpRender();
+    toast('Potreros del sistema: ' + nuevos + ' creados' + (actualizados ? (', ' + actualizados + ' actualizados') : '') + ' y sincronizados', 'success');
   };
   window.mpQuitar = function () {
     if (!confirm('¿Quitar el mapa de potreros de este equipo? El archivo JSON no se borra: podés volver a cargarlo cuando quieras.')) return;
@@ -29323,6 +29374,7 @@ function renderParams() {
         var extraInfo = [];
         if (item.capacity) extraInfo.push(item.capacity + ' cab');
         if (item.hectares) extraInfo.push(item.hectares + ' ha');
+        if (item.habilitado) extraInfo.push('Hab: ' + item.habilitado + ' ha');
         if (item.grass_type) extraInfo.push(item.grass_type);
         if (item.max_occupation_days) extraInfo.push('Ocup: ' + item.max_occupation_days + 'd');
         if (item.rest_days) extraInfo.push('Desc: ' + item.rest_days + 'd');
@@ -29806,9 +29858,10 @@ function editParam(key, idx) {
   if (key === 'potreros') {
     html += '<div style="margin-bottom:10px"><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Capacidad (cabezas)</label><input class="form-input" type="number" id="edit-param-cap" value="'+(item.capacity||'')+'" placeholder="Sin limite" style="width:100%"></div>';
     html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">';
-    html += '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Hectareas</label><input class="form-input" type="number" id="edit-param-ha" value="'+(item.hectares||'')+'" step="0.5" style="width:100%"></div>';
-    html += '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Tipo de pasto</label><input class="form-input" id="edit-param-pasture" value="'+escH(item.pasture_type||'')+'" placeholder="Ej: Brachiaria" style="width:100%"></div>';
+    html += '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Superficie (ha)</label><input class="form-input" type="number" id="edit-param-ha" value="'+(item.hectares||'')+'" step="0.5" style="width:100%"></div>';
+    html += '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Habilitado (ha)</label><input class="form-input" type="number" id="edit-param-hab" value="'+(item.habilitado||'')+'" step="0.5" style="width:100%"></div>';
     html += '</div>';
+    html += '<div style="margin-bottom:10px"><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Tipo de pasto</label><input class="form-input" id="edit-param-pasture" value="'+escH(item.pasture_type||'')+'" placeholder="Ej: Brachiaria" style="width:100%"></div>';
     html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">';
     html += '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Dias max ocupacion</label><input class="form-input" type="number" id="edit-param-maxdays" value="'+(item.max_days||30)+'" style="width:100%"></div>';
     html += '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Dias descanso</label><input class="form-input" type="number" id="edit-param-restdays" value="'+(item.rest_days||25)+'" style="width:100%"></div>';
@@ -29828,6 +29881,7 @@ function editParam(key, idx) {
     if (key === 'potreros') {
       item.capacity = parseInt(document.getElementById('edit-param-cap').value) || 0;
       item.hectares = parseFloat(document.getElementById('edit-param-ha').value) || 0;
+      var _habEl = document.getElementById('edit-param-hab'); if (_habEl) item.habilitado = parseFloat(_habEl.value) || 0;
       item.pasture_type = (document.getElementById('edit-param-pasture').value||'').trim();
       item.max_days = parseInt(document.getElementById('edit-param-maxdays').value) || 30;
       item.rest_days = parseInt(document.getElementById('edit-param-restdays').value) || 25;
