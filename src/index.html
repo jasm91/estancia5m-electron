@@ -1597,6 +1597,23 @@ function orMarcajeGo(){
 
   <!-- ROTACION TAB -->
   <div id="lotes-tab-rotacion" class="tab-pane" style="display:none">
+<div id="mp-wrap" style="display:none;margin-bottom:16px">
+  <div class="card" id="mp-card">
+    <div class="card-hd" style="cursor:pointer" onclick="mpToggle()" title="Plegar/desplegar el mapa">
+      <div class="card-title">🗺️ Mapa de potreros <span id="mp-title-sub" style="font-weight:400;color:var(--muted);font-size:12px"></span></div>
+      <span id="mp-chev" style="margin-left:auto;color:var(--muted);font-size:13px;transition:transform .18s">▸</span>
+    </div>
+    <div id="mp-body" style="display:grid;grid-template-rows:0fr;transition:grid-template-rows .22s ease">
+      <div style="min-height:0;overflow:hidden">
+        <div style="padding:12px">
+          <div id="mp-canvas" style="position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--bor)"></div>
+          <div id="mp-info" style="margin-top:10px;font-size:12.5px;color:var(--muted)">Tocá un potrero para ver sus datos. El paquete se gestiona en Configuración → 🗺️ Mapa de potreros.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
     <div id="rotacion-content"></div>
   </div>
 
@@ -4218,22 +4235,6 @@ function orMarcajeGo(){
 
 <!-- ROTACION DE POTREROS -->
 <div id="page-rotacion" class="page">
-<div id="mp-wrap" style="margin-bottom:16px">
-  <button class="btn btn-ghost" id="mp-load-btn" style="font-size:12px;display:none" onclick="document.getElementById('mp-file').click()">🗺️ Cargar mapa de potreros…</button>
-  <input type="file" id="mp-file" accept=".json,application/json" style="display:none" onchange="mpFileSelected(this)">
-  <div class="card" id="mp-card" style="display:none">
-    <div class="card-hd"><div class="card-title">🗺️ Mapa de potreros <span id="mp-title-sub" style="font-weight:400;color:var(--muted);font-size:12px"></span></div>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-ghost" style="font-size:11.5px;padding:4px 10px" onclick="document.getElementById('mp-file').click()">↻ Reemplazar</button>
-        <button class="btn btn-ghost" style="font-size:11.5px;padding:4px 10px;color:var(--red)" onclick="mpQuitar()">✕ Quitar</button>
-      </div>
-    </div>
-    <div class="card-body">
-      <div id="mp-canvas" style="position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--bor)"></div>
-      <div id="mp-info" style="margin-top:10px;font-size:12.5px;color:var(--muted)">Tocá un potrero para ver sus datos.</div>
-    </div>
-  </div>
-</div>
   <div class="ph">
     <div><div class="ph-title">🔄 Rotacion de Potreros</div><div class="ph-sub">Estado actual y historial de rotacion</div></div>
   </div>
@@ -4496,6 +4497,23 @@ function orMarcajeGo(){
   </div>
 
   <!-- Onboarding inicial -->
+  
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-hd"><div class="card-title">🗺️ Mapa de potreros</div></div>
+    <div class="card-body">
+      <div style="color:var(--muted);font-size:12.5px;margin-bottom:12px">Paquete de mapa de la estancia (un JSON con el mosaico dron y los potreros de la mensura, generado a medida por SG). El mapa interactivo se ve en <b>Lotes → Rotación</b>. Si tu estancia no tiene paquete, esta sección queda vacía y no afecta nada.</div>
+      <input type="file" id="mp-file" accept=".json,application/json" style="display:none" onchange="mpFileSelected(this)">
+      <div id="mp-mgr-empty"><button class="btn btn-primary" id="mp-load-btn" style="font-size:12.5px" onclick="document.getElementById('mp-file').click()">🗺️ Cargar mapa de potreros…</button></div>
+      <div id="mp-mgr-loaded" style="display:none">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span id="mp-mgr-status" style="font-size:12.5px;color:var(--green)"></span>
+          <button class="btn btn-ghost" style="font-size:11.5px;padding:4px 10px" onclick="document.getElementById('mp-file').click()">↻ Reemplazar</button>
+          <button class="btn btn-ghost" style="font-size:11.5px;padding:4px 10px;color:var(--red)" onclick="mpQuitar()">✕ Quitar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="card" style="margin-bottom:20px">
     <div class="card-hd">
       <div class="card-title">📥 Onboarding Inicial</div>
@@ -25842,23 +25860,40 @@ var _e5mSesionesData = [];
 
 
 // ══════════════════════════════════════════════════
-// v1.8.93 MAPA DE POTREROS (aditivo, por tenant/equipo).
-// Solo se muestra si el dueño cargó un paquete de mapa (JSON con imagen + poligonos
-// en % relativos + nombres que matchean la mensura). Sin mapa cargado, la card no
-// existe y solo queda un boton ghost chico — cero impacto para tenants sin mapa.
-// El paquete se genera offline (mosaico dron + KMZ + CSV mensura). Kill: __MAPA_OFF.
+// v1.8.93 MAPA DE POTREROS (aditivo). GESTION en Configuracion (cargar/reemplazar/quitar);
+// el MAPA interactivo vive en Lotes → Rotacion dentro de una card COLAPSABLE que solo
+// existe si hay paquete cargado. Sin paquete: Rotacion queda identica y Config muestra
+// solo el boton de carga. Paquete = JSON {version:1, nombre, imagen dataURL, potreros[]}.
+// Kill switch: __MAPA_OFF. Persistencia por equipo: localStorage.
 // ══════════════════════════════════════════════════
 (function () {
   if (window.__MAPA_OFF) return;
-  var KEY = 'e5m_mapa_potreros_v1';
+  var KEY = 'e5m_mapa_potreros_v1', KCOL = 'e5m_mapa_colapsado';
   function mpGet() { try { var s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
   function mpEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function mpColapsado() { try { return localStorage.getItem(KCOL) !== '0'; } catch (e) { return true; } }
+  function mpApplyCollapse() {
+    var body = document.getElementById('mp-body'), ch = document.getElementById('mp-chev');
+    if (!body) return;
+    var abierto = !mpColapsado();
+    body.style.gridTemplateRows = abierto ? '1fr' : '0fr';
+    if (ch) ch.style.transform = abierto ? 'rotate(90deg)' : '';
+  }
+  window.mpToggle = function () {
+    try { localStorage.setItem(KCOL, mpColapsado() ? '0' : '1'); } catch (e) {}
+    mpApplyCollapse();
+  };
   function mpRender() {
-    var card = document.getElementById('mp-card'), btn = document.getElementById('mp-load-btn'), cv = document.getElementById('mp-canvas');
-    if (!card || !btn || !cv) return;
+    var wrap = document.getElementById('mp-wrap'), cv = document.getElementById('mp-canvas');
+    var mgrE = document.getElementById('mp-mgr-empty'), mgrL = document.getElementById('mp-mgr-loaded'), st = document.getElementById('mp-mgr-status');
     var m = mpGet();
-    if (!m || !m.imagen || !Array.isArray(m.potreros) || !m.potreros.length) { card.style.display = 'none'; btn.style.display = 'inline-flex'; return; }
-    btn.style.display = 'none'; card.style.display = '';
+    var hay = !!(m && m.imagen && Array.isArray(m.potreros) && m.potreros.length);
+    if (mgrE) mgrE.style.display = hay ? 'none' : '';
+    if (mgrL) mgrL.style.display = hay ? '' : 'none';
+    if (st && hay) st.textContent = '✓ ' + (m.nombre || 'Mapa') + ' · ' + m.potreros.length + ' potreros cargados en este equipo';
+    if (!wrap || !cv) return;
+    if (!hay) { wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
     var sub = document.getElementById('mp-title-sub'); if (sub) sub.textContent = '· ' + (m.nombre || '') + ' · ' + m.potreros.length + ' potreros';
     var polys = '';
     m.potreros.forEach(function (p, i) {
@@ -25870,6 +25905,7 @@ var _e5mSesionesData = [];
     });
     cv.innerHTML = '<img src="' + m.imagen + '" style="display:block;width:100%" alt="mapa de potreros">' +
       '<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%">' + polys + '</svg>';
+    mpApplyCollapse();
   }
   window.mpSel = function (i) {
     var m = mpGet(); if (!m) return; var p = m.potreros[i]; if (!p) return;
@@ -25897,8 +25933,9 @@ var _e5mSesionesData = [];
         if (!m || m.version !== 1 || !m.imagen || !Array.isArray(m.potreros) || !m.potreros.length) throw new Error('formato');
         if (String(m.imagen).indexOf('data:image/') !== 0) throw new Error('imagen');
         try { localStorage.setItem(KEY, r.result); } catch (eq) { toast('El mapa es muy grande para guardarlo en este equipo', 'error'); return; }
+        try { localStorage.setItem(KCOL, '0'); } catch (e2) {}
         mpRender();
-        toast('Mapa cargado: ' + (m.nombre || '') + ' (' + m.potreros.length + ' potreros)', 'success');
+        toast('Mapa cargado: ' + (m.nombre || '') + ' (' + m.potreros.length + ' potreros) — velo en Lotes → Rotación', 'success');
       } catch (e) { toast('Archivo inválido — se espera el JSON de mapa de potreros', 'error'); }
     };
     r.readAsText(f);
@@ -25909,9 +25946,15 @@ var _e5mSesionesData = [];
     mpRender(); toast('Mapa quitado', 'info');
   };
   window.mpRender = mpRender;
+  try {
+    var mcss = document.createElement('style');
+    mcss.textContent = '@media (prefers-reduced-motion: reduce){#mp-body,#mp-chev{transition:none !important}}';
+    (document.head || document.documentElement).appendChild(mcss);
+  } catch (e) {}
   if (document.readyState !== 'loading') mpRender(); else document.addEventListener('DOMContentLoaded', mpRender);
-  document.addEventListener('click', function (ev) { var b = ev.target.closest && ev.target.closest('.nav-btn'); if (b) setTimeout(mpRender, 60); });
+  document.addEventListener('click', function (ev) { var b = ev.target.closest && ev.target.closest('.nav-btn, #lotes-tab-rotacion-btn'); if (b) setTimeout(mpRender, 60); });
 })();
+
 
 function _getDeviceId() {
   var id = localStorage.getItem('e5m_device_id');
