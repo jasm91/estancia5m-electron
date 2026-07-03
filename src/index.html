@@ -4218,6 +4218,22 @@ function orMarcajeGo(){
 
 <!-- ROTACION DE POTREROS -->
 <div id="page-rotacion" class="page">
+<div id="mp-wrap" style="margin-bottom:16px">
+  <button class="btn btn-ghost" id="mp-load-btn" style="font-size:12px;display:none" onclick="document.getElementById('mp-file').click()">🗺️ Cargar mapa de potreros…</button>
+  <input type="file" id="mp-file" accept=".json,application/json" style="display:none" onchange="mpFileSelected(this)">
+  <div class="card" id="mp-card" style="display:none">
+    <div class="card-hd"><div class="card-title">🗺️ Mapa de potreros <span id="mp-title-sub" style="font-weight:400;color:var(--muted);font-size:12px"></span></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost" style="font-size:11.5px;padding:4px 10px" onclick="document.getElementById('mp-file').click()">↻ Reemplazar</button>
+        <button class="btn btn-ghost" style="font-size:11.5px;padding:4px 10px;color:var(--red)" onclick="mpQuitar()">✕ Quitar</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div id="mp-canvas" style="position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--bor)"></div>
+      <div id="mp-info" style="margin-top:10px;font-size:12.5px;color:var(--muted)">Tocá un potrero para ver sus datos.</div>
+    </div>
+  </div>
+</div>
   <div class="ph">
     <div><div class="ph-title">🔄 Rotacion de Potreros</div><div class="ph-sub">Estado actual y historial de rotacion</div></div>
   </div>
@@ -4419,7 +4435,7 @@ function orMarcajeGo(){
 
       <details style="margin-bottom:14px;background:var(--sur2);border:1px solid var(--bor);border-radius:10px;padding:10px 14px" ontoggle="if(this.open)cargarRolAcciones()">
         <summary style="cursor:pointer;font-size:12.5px;font-weight:600">📲 Botones del inicio (app de campo) — qué ve cada rol</summary>
-        <div style="color:var(--muted);font-size:11.5px;margin-top:8px;line-height:1.6">Destildá lo que un rol NO debe ver en su celular. Ocultar un botón también <b>bloquea esa transacción en el server</b> para ese rol. Admin siempre ve todo; Solo lectura nunca registra nada.</div>
+        <div style="color:var(--muted);font-size:11.5px;margin-top:8px;line-height:1.6">Destildá lo que cada <b>cargo</b> NO debe ver en su celular (deslizá la tabla hacia la derecha →). Ocultar un botón también <b>bloquea esa transacción en el server</b>. Administrador siempre ve todo; el detalle base por nivel sigue en “¿Qué puede hacer cada rol?”.</div>
         <div id="ra-wrap" style="margin-top:10px;overflow-x:auto"><div style="color:var(--muted);font-size:12px">Abrí esta sección con internet para cargar la configuración.</div></div>
         <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
           <button class="btn btn-primary" style="font-size:12.5px" onclick="guardarRolAcciones()">💾 Guardar cambios</button>
@@ -25754,6 +25770,13 @@ var _e5mSesionesData = [];
         ch.className = 'e5m-clps-ch';
         ch.textContent = '▸';
         hd.appendChild(ch);
+        try {
+          if (bd.querySelector && !bd.querySelector('.e5m-clps-inner')) {
+            var w = document.createElement('div'); w.className = 'e5m-clps-inner';
+            while (bd.firstChild) { w.appendChild(bd.firstChild); }
+            bd.appendChild(w);
+          }
+        } catch (e) {}
       }
       var t = titleOf(card);
       var collapsed = (t in st) ? !!st[t] : true;
@@ -25761,11 +25784,44 @@ var _e5mSesionesData = [];
     });
   }
   var css = document.createElement('style');
-  css.textContent = '#page-config .card.e5m-clps .card-body{display:none}' +
+  css.textContent = '#page-config .card .card-body{display:grid;grid-template-rows:1fr;transition:grid-template-rows .22s ease, padding .22s ease}' +
+    '#page-config .card .card-body > .e5m-clps-inner{min-height:0;overflow:hidden}' +
+    '#page-config .card.e5m-clps .card-body{grid-template-rows:0fr;padding-top:0;padding-bottom:0}' +
     '#page-config .card-hd{display:flex;align-items:center;gap:8px}' +
-    '#page-config .e5m-clps-ch{margin-left:auto;color:var(--muted);font-size:13px;transition:transform .15s}' +
-    '#page-config .card:not(.e5m-clps) .e5m-clps-ch{transform:rotate(90deg)}';
+    '#page-config .e5m-clps-ch{margin-left:auto;color:var(--muted);font-size:13px;transition:transform .18s}' +
+    '#page-config .card:not(.e5m-clps) .e5m-clps-ch{transform:rotate(90deg)}' +
+    '#page-config details > .e5m-det-inner{display:grid;grid-template-rows:0fr;transition:grid-template-rows .22s ease}' +
+    '#page-config details.e5m-abierto > .e5m-det-inner{grid-template-rows:1fr}' +
+    '#page-config details > .e5m-det-inner > .e5m-det-inner2{min-height:0;overflow:hidden}' +
+    '@media (prefers-reduced-motion: reduce){#page-config .card .card-body,#page-config details > .e5m-det-inner,#page-config .e5m-clps-ch{transition:none !important}}';
   (document.head || document.documentElement).appendChild(css);
+  // Suavizar <details> (subpestañas): se envuelve el contenido y se anima con grid-rows.
+  // El atributo open queda en true mientras dura el cierre para que la animación se vea.
+  function cfgDetailsInit() {
+    var pg = document.getElementById('page-config'); if (!pg || !pg.querySelectorAll) return;
+    pg.querySelectorAll('details').forEach(function (d) {
+      if (d.classList.contains('e5m-det-ready')) return;
+      d.classList.add('e5m-det-ready');
+      try {
+        var inner = document.createElement('div'); inner.className = 'e5m-det-inner';
+        var inner2 = document.createElement('div'); inner2.className = 'e5m-det-inner2';
+        inner.appendChild(inner2);
+        var kids = [];
+        for (var i = 0; i < d.childNodes.length; i++) { var n = d.childNodes[i]; if (!(n.tagName && n.tagName.toLowerCase() === 'summary')) kids.push(n); }
+        kids.forEach(function (n) { inner2.appendChild(n); });
+        d.appendChild(inner);
+        if (d.open) d.classList.add('e5m-abierto');
+        var sm = d.querySelector('summary');
+        if (sm) sm.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          if (!d.open) { d.open = true; setTimeout(function () { d.classList.add('e5m-abierto'); }, 15); }
+          else { d.classList.remove('e5m-abierto'); setTimeout(function () { d.open = false; }, 240); }
+        });
+      } catch (e) {}
+    });
+  }
+  window.cfgDetailsInit = cfgDetailsInit;
+  if (document.readyState !== 'loading') cfgDetailsInit(); else document.addEventListener('DOMContentLoaded', cfgDetailsInit);
   document.addEventListener('click', function (ev) {
     var hd = ev.target.closest ? ev.target.closest('#page-config .card-hd') : null;
     if (!hd) {
@@ -25782,6 +25838,79 @@ var _e5mSesionesData = [];
   window.cfgCollapseApply = cfgCollapseApply;
   if (document.readyState !== 'loading') cfgCollapseApply();
   else document.addEventListener('DOMContentLoaded', cfgCollapseApply);
+})();
+
+
+// ══════════════════════════════════════════════════
+// v1.8.93 MAPA DE POTREROS (aditivo, por tenant/equipo).
+// Solo se muestra si el dueño cargó un paquete de mapa (JSON con imagen + poligonos
+// en % relativos + nombres que matchean la mensura). Sin mapa cargado, la card no
+// existe y solo queda un boton ghost chico — cero impacto para tenants sin mapa.
+// El paquete se genera offline (mosaico dron + KMZ + CSV mensura). Kill: __MAPA_OFF.
+// ══════════════════════════════════════════════════
+(function () {
+  if (window.__MAPA_OFF) return;
+  var KEY = 'e5m_mapa_potreros_v1';
+  function mpGet() { try { var s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+  function mpEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function mpRender() {
+    var card = document.getElementById('mp-card'), btn = document.getElementById('mp-load-btn'), cv = document.getElementById('mp-canvas');
+    if (!card || !btn || !cv) return;
+    var m = mpGet();
+    if (!m || !m.imagen || !Array.isArray(m.potreros) || !m.potreros.length) { card.style.display = 'none'; btn.style.display = 'inline-flex'; return; }
+    btn.style.display = 'none'; card.style.display = '';
+    var sub = document.getElementById('mp-title-sub'); if (sub) sub.textContent = '· ' + (m.nombre || '') + ' · ' + m.potreros.length + ' potreros';
+    var polys = '';
+    m.potreros.forEach(function (p, i) {
+      var pts = (p.pts || []).map(function (q) { return q[0] + ',' + q[1]; }).join(' ');
+      var cx = 0, cy = 0, n = (p.pts || []).length || 1;
+      (p.pts || []).forEach(function (q) { cx += q[0]; cy += q[1]; }); cx /= n; cy /= n;
+      polys += '<polygon points="' + pts + '" data-mp="' + i + '" style="fill:rgba(63,185,80,.10);stroke:' + (p.dudoso ? '#F0C040' : '#3FB950') + ';stroke-width:.35' + (p.dudoso ? ';stroke-dasharray:1.4,.9' : '') + ';cursor:pointer" onmouseover="this.style.fill=(String(this.style.fill).indexOf(\'.32\')<0?\'rgba(63,185,80,.32)\':this.style.fill)" onmouseout="this.style.fill=\'rgba(63,185,80,.10)\'" onclick="mpSel(' + i + ')"><title>' + mpEsc(p.nombre) + ' · ' + (p.superficie_has != null ? p.superficie_has : '?') + ' has' + (p.dudoso ? ' (verificar)' : '') + '</title></polygon>';
+      polys += '<text x="' + cx.toFixed(1) + '" y="' + cy.toFixed(1) + '" style="font:2.2px Inter,sans-serif;font-weight:700;fill:#fff;paint-order:stroke;stroke:rgba(0,0,0,.75);stroke-width:.45;text-anchor:middle;pointer-events:none">' + mpEsc(p.nombre) + '</text>';
+    });
+    cv.innerHTML = '<img src="' + m.imagen + '" style="display:block;width:100%" alt="mapa de potreros">' +
+      '<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%">' + polys + '</svg>';
+  }
+  window.mpSel = function (i) {
+    var m = mpGet(); if (!m) return; var p = m.potreros[i]; if (!p) return;
+    var sys = null;
+    try {
+      var pads = (typeof db !== 'undefined' && db && (db.paddocks || db.potreros)) || [];
+      for (var k = 0; k < pads.length; k++) {
+        var nm = String(pads[k].name || pads[k].nombre || '').trim().toLowerCase();
+        if (nm === String(p.nombre).trim().toLowerCase()) { sys = pads[k]; break; }
+      }
+    } catch (e) {}
+    var el = document.getElementById('mp-info'); if (!el) return;
+    el.innerHTML = '<b style="color:var(--text);font-size:14px">Potrero ' + mpEsc(p.nombre) + '</b>' + (p.dudoso ? ' <span style="color:var(--amber2);font-size:11px">⚠ matcheado por superficie — verificar contra la etiqueta del mosaico</span>' : '') +
+      ' &nbsp;·&nbsp; Superficie ' + (p.superficie_has != null ? p.superficie_has + ' has' : '—') +
+      ' &nbsp;·&nbsp; Habilitado ' + (p.habilitado_has != null ? p.habilitado_has + ' has' : '—') +
+      (sys ? ' &nbsp;·&nbsp; <span style="color:var(--green)">✓ existe en potreros del sistema</span>' : ' &nbsp;·&nbsp; <span style="color:var(--muted)">no está en los potreros del sistema</span>');
+  };
+  window.mpFileSelected = function (inp) {
+    var f = inp.files && inp.files[0]; if (!f) return;
+    inp.value = '';
+    var r = new FileReader();
+    r.onload = function () {
+      try {
+        var m = JSON.parse(r.result);
+        if (!m || m.version !== 1 || !m.imagen || !Array.isArray(m.potreros) || !m.potreros.length) throw new Error('formato');
+        if (String(m.imagen).indexOf('data:image/') !== 0) throw new Error('imagen');
+        try { localStorage.setItem(KEY, r.result); } catch (eq) { toast('El mapa es muy grande para guardarlo en este equipo', 'error'); return; }
+        mpRender();
+        toast('Mapa cargado: ' + (m.nombre || '') + ' (' + m.potreros.length + ' potreros)', 'success');
+      } catch (e) { toast('Archivo inválido — se espera el JSON de mapa de potreros', 'error'); }
+    };
+    r.readAsText(f);
+  };
+  window.mpQuitar = function () {
+    if (!confirm('¿Quitar el mapa de potreros de este equipo? El archivo JSON no se borra: podés volver a cargarlo cuando quieras.')) return;
+    try { localStorage.removeItem(KEY); } catch (e) {}
+    mpRender(); toast('Mapa quitado', 'info');
+  };
+  window.mpRender = mpRender;
+  if (document.readyState !== 'loading') mpRender(); else document.addEventListener('DOMContentLoaded', mpRender);
+  document.addEventListener('click', function (ev) { var b = ev.target.closest && ev.target.closest('.nav-btn'); if (b) setTimeout(mpRender, 60); });
 })();
 
 function _getDeviceId() {
@@ -27724,7 +27853,15 @@ function _devRoleSelect(d) {
   return s + '</select><span style="font-size:10px;color:var(--muted);white-space:nowrap">' + (E5M_ROLE_LABELS[rol] || '') + '</span>';
 }
 // v4.16.1 — Editor de ACCIONES DE INICIO por rol (matriz de checkboxes → POST /tenant/role-actions)
-var _raRolesEdit = ['encargado', 'capataz', 'veterinario', 'peon'];
+// v4.16.3: matriz POR CARGO (12 columnas agrupadas, scroll horizontal, 1ra columna fija).
+// Cada fila guardada usa la clave del CARGO; el server prioriza la fila del cargo del
+// dispositivo y cae a la del rol si no existe. Administrador no se edita (siempre todo).
+var _raGrupos = [
+  ['Operativos', ['capataz', 'encargado', 'peon', 'vaquero', 'tractorista', 'alambrador', 'cocinero']],
+  ['Técnicos / Adm.', ['veterinario', 'contador', 'gerente']],
+  ['Otros', ['auxiliar', 'domestica']]
+];
+var _raCargoLbl = { capataz: 'Capataz', encargado: 'Encargado', peon: 'Peón', vaquero: 'Vaquero', tractorista: 'Tractorista', alambrador: 'Alambrador', cocinero: 'Cocinero/a', veterinario: 'Veterinario', contador: 'Contador', gerente: 'Gerente', auxiliar: 'Auxiliar', domestica: 'Doméstica' };
 var _raData = null;
 function cargarRolAcciones() {
   var wrap = document.getElementById('ra-wrap'); if (!wrap) return;
@@ -27736,15 +27873,24 @@ function cargarRolAcciones() {
       if (res.status !== 200 || !res.j || !res.j.ok) { wrap.innerHTML = '<div style="color:var(--red);font-size:12px">No se pudo cargar.</div>'; return; }
       _raData = res.j;
       var cfg = res.j.config || {};
-      var html = '<table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:480px"><thead><tr style="color:var(--muted)"><th style="text-align:left;padding:4px 6px;border-bottom:1px solid var(--bor)">Botón del inicio</th>';
-      _raRolesEdit.forEach(function (r) { html += '<th style="padding:4px 6px;border-bottom:1px solid var(--bor);text-align:center">' + (E5M_ROLE_LABELS[r] || r) + '</th>'; });
+      function _raVisible(cargo, a) {
+        if (cfg[cargo] && cfg[cargo][a] === false) return false;
+        var rol = E5M_CARGO_ROL[cargo] || 'peon';
+        if (cfg[rol] && cfg[rol][a] === false) return false;
+        return true;
+      }
+      var _stick = 'position:sticky;left:0;background:var(--sur);z-index:1;';
+      var html = '<table style="border-collapse:collapse;font-size:11.5px;min-width:980px"><thead>';
+      html += '<tr style="color:var(--muted)"><th style="' + _stick + 'text-align:left;padding:4px 8px"></th>';
+      _raGrupos.forEach(function (g) { html += '<th colspan="' + g[1].length + '" style="padding:3px 6px;border-bottom:1px solid var(--bor);text-align:center;font-size:10px;letter-spacing:.6px;text-transform:uppercase">' + g[0] + '</th>'; });
+      html += '</tr><tr style="color:var(--muted)"><th style="' + _stick + 'text-align:left;padding:4px 8px;border-bottom:1px solid var(--bor)">Botón del inicio</th>';
+      _raGrupos.forEach(function (g) { g[1].forEach(function (c) { html += '<th style="padding:4px 6px;border-bottom:1px solid var(--bor);text-align:center;white-space:nowrap">' + _raCargoLbl[c] + '</th>'; }); });
       html += '</tr></thead><tbody>';
       Object.keys(res.j.actions).forEach(function (a) {
-        html += '<tr><td style="padding:4px 6px;border-bottom:1px solid var(--bor)">' + escH(res.j.actions[a].label) + ' <span style="color:var(--muted2);font-size:10px">(' + escH((res.j.actions[a].tables || []).join(',')) + ')</span></td>';
-        _raRolesEdit.forEach(function (r) {
-          var visible = !(cfg[r] && cfg[r][a] === false);
-          html += '<td style="text-align:center;padding:4px 6px;border-bottom:1px solid var(--bor)"><input type="checkbox" data-ra="' + r + ':' + a + '"' + (visible ? ' checked' : '') + ' style="cursor:pointer"></td>';
-        });
+        html += '<tr><td style="' + _stick + 'padding:4px 8px;border-bottom:1px solid var(--bor);white-space:nowrap">' + escH(res.j.actions[a].label) + ' <span style="color:var(--muted2);font-size:10px">(' + escH((res.j.actions[a].tables || []).join(',')) + ')</span></td>';
+        _raGrupos.forEach(function (g) { g[1].forEach(function (c) {
+          html += '<td style="text-align:center;padding:4px 6px;border-bottom:1px solid var(--bor)"><input type="checkbox" data-ra="' + c + ':' + a + '"' + (_raVisible(c, a) ? ' checked' : '') + ' style="cursor:pointer"></td>';
+        }); });
         html += '</tr>';
       });
       wrap.innerHTML = html + '</tbody></table>';

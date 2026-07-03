@@ -1,6 +1,6 @@
 {
   "name": "estancia5m",
-  "version": "1.8.92",
+  "version": "1.8.93",
   "description": "Sistema de Gestión Ganadera — Estancia 5M",
   "main": "main.js",
   "scripts": {
