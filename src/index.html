@@ -4770,7 +4770,14 @@ function orMarcajeGo(){
   <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Activan funciones para ESTA estancia y sincronizan a todos sus equipos. Los demás tenants no ven nada.</div>
   <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer"><input type="checkbox" id="cfg-mod-agro" onchange="cfgModuloToggle('modulo_agro',this)"> 🌾 Módulo Agricultura (parcelas, campañas, labores, costos/ha)</label>
   <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer"><input type="checkbox" id="cfg-mod-cabana" onchange="cfgModuloToggle('perfil_cabana',this)"> 🏆 Perfil cabaña (registro RGN/RGD + genealogía en Reproducción)</label>
-  <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="cfg-mod-rfid" onchange="cfgIdentidadToggle(this)"> 🔗 RFID / identidad dual (chip electrónico además del arete — captura en marcaje, compra, onboarding y edición)</label>
+  <label style="display:flex;align-items:center;gap:8px;font-size:13px;flex-wrap:wrap">🔗 Identidad del animal:
+    <select id="cfg-mod-identidad" onchange="cfgIdentidadSelect(this)" style="background:var(--sur2);border:1px solid var(--bor);color:inherit;border-radius:8px;padding:5px 8px;font-size:12.5px">
+      <option value="arete">Solo arete (como hoy)</option>
+      <option value="dual">Arete + chip RFID</option>
+      <option value="rfid">Solo RFID (ID derivado del chip)</option>
+    </select>
+    <span style="font-size:11px;color:var(--muted)">RFID habilita: columna chip en marcaje/compra/onboarding, planilla de pesaje por chip y siembra arete↔RFID</span>
+  </label>
 </div></div>
 <div class="card" style="margin-bottom:16px"><div class="card-body">
   <div class="card-title" style="margin-bottom:6px">🔎 Tamaño de letra (este equipo)</div>
@@ -14516,6 +14523,10 @@ function saveCompraGanado() {
   // Obtener DB de animales
   var animals = getAnimalesDB();
 
+  // v1.8.103 (modo solo-RFID): filas con chip y sin ID reciben ID derivado del chip
+  // (las que queden sin ID caen al esquema maxId+1 de siempre)
+  if (typeof e5mRfidAutofillIds === 'function') e5mRfidAutofillIds(_cgAnimals);
+
   // Validar IDs duplicados
   var allExistingIds = {};
   Object.values(animals).forEach(function(list) {
@@ -14796,6 +14807,9 @@ function saveMarcaje() {
   if (!fecha) { toast('Ingresá fecha de marcaje', 'error'); return; }
   // FIX v1.4.34: no permitir fechas futuras
   if (!validateNotFuture(fecha, 'fecha de marcaje')) return;
+
+  // v1.8.103 (modo solo-RFID): filas con chip y sin ID reciben ID derivado del chip ANTES de validar
+  if (typeof e5mRfidAutofillIds === 'function') { e5mRfidAutofillIds(_mcAnimals); if (typeof renderMCAnimals === 'function') try { renderMCAnimals(); } catch(eR){} }
 
   // Validar: todos deben tener ID y peso
   var sinId = _mcAnimals.filter(function(a) { return !String(a.id || '').trim(); });
@@ -16734,9 +16748,12 @@ function parseOnboardingWorkbook(raw) {
     if (_isExampleOrEmptyRow(r)) return;
     var lc = _getColStr(r, ['LOTECODE','LOTE']);
     var aid = _getColStr(r, ['ANIMALID','ID']);
+    var aRfid = _getColStr(r, ['RFID','EID','CHIP']); // v1.8.101: columna opcional
+    // v1.8.103 (modo solo-RFID): fila con chip y sin ID → ID derivado del chip
+    if (!aid && aRfid && typeof e5mSoloRfid === 'function' && e5mSoloRfid() && typeof e5mRfidDeriveId === 'function') aid = e5mRfidDeriveId(aRfid);
     if (!lc || !aid) return;
     var animBreed = _getColStr(r, ['RAZA']);
-    result.animales.push({ lot_code: lc, animal_id: aid, breed: animBreed, peso: _getColNum(r, ['PESO']), fecha: _getColStr(r, ['FECHAPESAJE','FECHA']), sexo: _getColStr(r, ['SEXO']), rfid: _getColStr(r, ['RFID','EID','CHIP']), obs: _getColStr(r, ['OBSERVACIONES']) }); // v1.8.101: +rfid (columna opcional)
+    result.animales.push({ lot_code: lc, animal_id: aid, breed: animBreed, peso: _getColNum(r, ['PESO']), fecha: _getColStr(r, ['FECHAPESAJE','FECHA']), sexo: _getColStr(r, ['SEXO']), rfid: aRfid, obs: _getColStr(r, ['OBSERVACIONES']) });
     var meta = _ensureLotMeta(lc);
     if (!meta.category) meta.category = _getColStr(r, ['CATEGORIA']);
     if (!meta.breed) meta.breed = animBreed;
@@ -31352,6 +31369,44 @@ window.rfidEnUso = function(rfid, exceptId){
   });
   return hit;
 };
+// v1.8.103 (F4, modo solo-RFID): ¿el modo del tenant es 'rfid'?
+window.e5mSoloRfid = function(){
+  try { return (typeof e5mRfidOn==='function') && e5mRfidOn() && ((typeof getParams==='function'?(getParams()||{}):{}).identidad==='rfid'); } catch(e){ return false; }
+};
+// ¿El ID/arete ya está en uso por OTRO animal? (espejo de rfidEnUso, para la derivación)
+window.e5mIdEnUso = function(id, exceptId){
+  var k = String(id==null?'':id).trim(); if (!k) return null;
+  var all = (typeof getAnimalesDB==='function') ? (getAnimalesDB()||{}) : {};
+  var hit = null, ex = String(exceptId==null?'':exceptId);
+  Object.keys(all).forEach(function(lc){
+    (all[lc]||[]).forEach(function(a){
+      if (hit || !a) return;
+      var aid = String(a.animal_id||a.id||'').trim();
+      if (ex && aid===ex) return;
+      if (aid===k) hit = { id: aid, lot: lc };
+    });
+  });
+  return hit;
+};
+// Deriva un ID de trabajo desde el chip: últimos 8 dígitos sin ceros a la izquierda,
+// alargando hacia la izquierda si colisiona con un ID existente. SIEMPRE editable después.
+window.e5mRfidDeriveId = function(rfid, exceptId){
+  var n = normRfid(rfid); if (!n) return '';
+  for (var len = Math.min(8, n.length); len <= n.length; len++) {
+    var cand = n.slice(-len).replace(/^0+/, '') || n.slice(-len);
+    if (!e5mIdEnUso(cand, exceptId)) return cand;
+  }
+  return n;
+};
+// Autofill para marcaje/compra en modo solo-RFID: filas con chip y sin ID reciben ID derivado
+window.e5mRfidAutofillIds = function(rows){
+  if (!e5mSoloRfid()) return;
+  (rows||[]).forEach(function(a){
+    if (!a || String(a.id||'').trim()) return;
+    var n = normRfid(a.rfid); if (!n) return;
+    a.id = e5mRfidDeriveId(n);
+  });
+};
 // Valida los rfid de un batch (marcaje/compra): normaliza in-place y devuelve mensaje de error o null
 window.e5mRfidValidarBatch = function(rows){
   if (!(typeof e5mRfidOn==='function' && e5mRfidOn())) return null;
@@ -43012,17 +43067,21 @@ function cfgModulosRender(){
   var a=agEl('cfg-mod-agro'), c=agEl('cfg-mod-cabana');
   if(a) a.checked=!!p.modulo_agro;
   if(c) c.checked=!!p.perfil_cabana;
-  var r=agEl('cfg-mod-rfid'); // v1.8.101
-  if(r) r.checked=(p.identidad==='dual'||p.identidad==='rfid');
+  var r=agEl('cfg-mod-identidad'); // v1.8.103: selector de 3 modos (era checkbox en v1.8.101)
+  if(r) r.value=(p.identidad==='dual'||p.identidad==='rfid')?p.identidad:'arete';
 }
-// v1.8.101: toggle de identidad dual (params.identidad es STRING, no boolean — no usa cfgModuloToggle)
-function cfgIdentidadToggle(el){
+// v1.8.103: modo de identidad por tenant (params.identidad es STRING: arete|dual|rfid)
+function cfgIdentidadSelect(el){
   try {
     if (typeof getParams!=='function' || typeof saveParams!=='function') { agToast('Configuración no disponible','error'); return; }
     var p=getParams()||{};
-    p.identidad=(el&&el.checked)?'dual':'arete';
+    var v=(el&&el.value)||'arete';
+    p.identidad=(v==='dual'||v==='rfid')?v:'arete';
     saveParams(p);
-    agToast(el&&el.checked?'Identidad dual RFID activada (sincroniza a todos los equipos)':'Identidad dual desactivada — los chips guardados no se borran','success');
+    var msg = p.identidad==='arete' ? 'Modo solo arete — los chips guardados no se borran'
+      : (p.identidad==='dual' ? 'Identidad dual arete+RFID activada (sincroniza a todos los equipos)'
+      : 'Modo solo RFID: al crear animales sin arete, el ID se deriva del chip (editable)');
+    agToast(msg,'success');
   } catch(e){ agToast('No se pudo guardar','error'); }
 }
 function cfgModuloToggle(key,el){
@@ -43816,7 +43875,7 @@ function el(id){ return document.getElementById(id); }
 var rsRows = []; // {arete, rfid, estado, detalle, animal, lot}
 function rsCard(){
   if (el('rs-card')) return el('rs-card');
-  var mod = el('cfg-mod-rfid'); if (!mod) return null;
+  var mod = el('cfg-mod-identidad') || el('cfg-mod-rfid'); if (!mod) return null; // v1.8.103: selector (fallback checkbox viejo)
   var host = mod.closest('.card') || mod.closest('div'); if (!host || !host.parentElement) return null;
   var c = document.createElement('div');
   c.id = 'rs-card'; c.className = 'card'; c.style.marginTop = '16px';
