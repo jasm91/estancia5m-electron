@@ -25867,7 +25867,13 @@ var _e5mSesionesData = [];
 // el MAPA interactivo vive en Lotes → Rotacion dentro de una card COLAPSABLE que solo
 // existe si hay paquete cargado. Sin paquete: Rotacion queda identica y Config muestra
 // solo el boton de carga. Paquete = JSON {version:1, nombre, imagen dataURL, potreros[]}.
-// Kill switch: __MAPA_OFF. Persistencia por equipo: localStorage.
+// v1.8.95: mpCrearPotreros crea/actualiza los potreros reales; mapa sin fondo (img_w/img_h).
+// v1.8.96 OCUPACION EN VIVO: click en un potrero → POPUP con lote(s) presentes, cabezas y
+// dias de ocupacion (db.lots + entry abierta de db.rotation_history); vacios → dias libres
+// contra rest_days del potrero; el mapa pinta ocupados (verde) vs libres (gris) y marca en
+// rojo los pasados de max_days. Paquete v2: 'sector' por potrero — las parcelas agricolas
+// se dibujan en azul y mpCrearPotreros NO las crea como potreros ganaderos.
+// Solo lectura sobre lots/rotation_history: no toca datos. Kill switch: __MAPA_OFF.
 // ══════════════════════════════════════════════════
 (function () {
   if (window.__MAPA_OFF) return;
@@ -25886,6 +25892,82 @@ var _e5mSesionesData = [];
     try { localStorage.setItem(KCOL, mpColapsado() ? '0' : '1'); } catch (e) {}
     mpApplyCollapse();
   };
+  // v1.8.96: estado de ocupacion por NOMBRE de potrero. Espejo de la logica de Rotacion:
+  // ocupantes = db.lots con paddock igual (case-insensitive), status vivo y animal_count>0;
+  // dias ahi = entry ABIERTA (sin exit_date) del lote en rotation_history; dias libre =
+  // ultima exit_date del potrero; rest_days/max_days salen de params.potreros. Solo lee.
+  function mpEstado(nombre) {
+    var nom = String(nombre == null ? '' : nombre).trim().toLowerCase();
+    var r = { ocupado: false, lotes: [], cabezas: 0, diasLibre: null, restDays: null, maxDays: null, overdue: false, sinRegistros: true };
+    if (!nom) return r;
+    var _db = null; try { if (typeof db !== 'undefined' && db) _db = db; } catch (e0) {}
+    var lots = (_db && _db.lots) || [];
+    var hist = (_db && _db.rotation_history) || [];
+    try {
+      if (typeof getParams === 'function') {
+        var _ps = (getParams().potreros) || [];
+        for (var s = 0; s < _ps.length; s++) {
+          if (String(_ps[s].name == null ? '' : _ps[s].name).trim().toLowerCase() === nom) {
+            if (_ps[s].rest_days) r.restDays = Number(_ps[s].rest_days) || null;
+            if (_ps[s].max_days) r.maxDays = Number(_ps[s].max_days) || null;
+            break;
+          }
+        }
+      }
+    } catch (e1) {}
+    var now = new Date();
+    function dias(dstr) { if (!dstr) return null; var t = new Date(dstr); if (isNaN(t)) return null; return Math.max(0, Math.round((now - t) / 86400000)); }
+    for (var i = 0; i < lots.length; i++) {
+      var l = lots[i] || {};
+      var st = String(l.status || '').toLowerCase();
+      if (st === 'sold' || st === 'vendido' || st === 'inactive' || st === 'inactivo') continue;
+      if ((l.animal_count || 0) <= 0) continue;
+      if (String(l.paddock || '').trim().toLowerCase() !== nom) continue;
+      var entry = null;
+      for (var h = 0; h < hist.length; h++) {
+        var rh = hist[h] || {};
+        if (rh && rh.lot_code === l.code && !rh.exit_date && String(rh.potrero || '').trim().toLowerCase() === nom) { entry = rh; break; }
+      }
+      var d = entry ? dias(entry.entry_date) : null;
+      r.lotes.push({ code: l.code || '', category: l.category || '', cabezas: l.animal_count || 0, dias: d, desde: entry ? (entry.entry_date || '') : '' });
+      r.cabezas += l.animal_count || 0;
+    }
+    r.ocupado = r.lotes.length > 0;
+    if (r.ocupado) {
+      r.sinRegistros = false;
+      if (r.maxDays) {
+        for (var j = 0; j < r.lotes.length; j++) { if (r.lotes[j].dias != null && r.lotes[j].dias > r.maxDays) { r.overdue = true; break; } }
+      }
+    } else {
+      var last = null;
+      for (var k = 0; k < hist.length; k++) {
+        var rx = hist[k] || {};
+        if (!rx.exit_date) continue;
+        if (String(rx.potrero || '').trim().toLowerCase() !== nom) continue;
+        if (!last || String(rx.exit_date).localeCompare(String(last.exit_date)) > 0) last = rx;
+      }
+      if (last) { r.sinRegistros = false; r.diasLibre = dias(last.exit_date); }
+    }
+    return r;
+  }
+  function mpFecha(s) { s = String(s || ''); return s.length >= 10 ? (s.slice(8, 10) + '/' + s.slice(5, 7)) : s; }
+  function mpDiasTxt(n) { return n == null ? 's/f' : (n + (n === 1 ? ' día' : ' días')); }
+  function mpEstadoTxt(est) {
+    if (est.ocupado) {
+      var partes = [];
+      for (var i = 0; i < est.lotes.length; i++) {
+        var L = est.lotes[i];
+        partes.push(L.code + ' (' + L.cabezas + ' cab' + (L.dias != null ? ', ' + mpDiasTxt(L.dias) : '') + ')');
+      }
+      return 'Ocupado: ' + partes.join(' + ');
+    }
+    if (est.sinRegistros) return 'Libre · sin registros de uso';
+    return 'Libre hace ' + mpDiasTxt(est.diasLibre);
+  }
+  window.mpEstado = mpEstado;
+  window.mpCerrarPop = function () {
+    try { var o = document.getElementById('mp-pop'); if (o && o.parentNode) o.parentNode.removeChild(o); } catch (e) {}
+  };
   function mpRender() {
     var wrap = document.getElementById('mp-wrap'), cv = document.getElementById('mp-canvas');
     var mgrE = document.getElementById('mp-mgr-empty'), mgrL = document.getElementById('mp-mgr-loaded'), st = document.getElementById('mp-mgr-status');
@@ -25897,16 +25979,29 @@ var _e5mSesionesData = [];
     if (!wrap || !cv) return;
     if (!hay) { wrap.style.display = 'none'; return; }
     wrap.style.display = '';
+    window.mpCerrarPop();
     var sub = document.getElementById('mp-title-sub'); if (sub) sub.textContent = '· ' + (m.nombre || '') + ' · ' + m.potreros.length + ' potreros';
     var polys = '';
     m.potreros.forEach(function (p, i) {
       var pts = (p.pts || []).map(function (q) { return q[0] + ',' + q[1]; }).join(' ');
       var cx = 0, cy = 0, n = (p.pts || []).length || 1;
       (p.pts || []).forEach(function (q) { cx += q[0]; cy += q[1]; }); cx /= n; cy /= n;
-      polys += '<polygon points="' + pts + '" data-mp="' + i + '" style="fill:rgba(63,185,80,.30);stroke:' + (p.dudoso ? '#F0C040' : '#3FB950') + ';stroke-width:.35' + (p.dudoso ? ';stroke-dasharray:1.4,.9' : '') + ';cursor:pointer" onmouseover="this.style.fill=(String(this.style.fill).indexOf(\'.45\')<0?\'rgba(63,185,80,.45)\':this.style.fill)" onmouseout="this.style.fill=\'rgba(63,185,80,.30)\'" onclick="mpSel(' + i + ')"><title>' + mpEsc(p.nombre) + ' · ' + (p.superficie_has != null ? p.superficie_has : '?') + ' has' + (p.dudoso ? ' (verificar)' : '') + '</title></polygon>';
+      var est = null; try { est = mpEstado(p.nombre); } catch (eE) {}
+      var occ = !!(est && est.ocupado), ovd = !!(est && est.overdue);
+      var agro = String(p.sector || '') === 'agricola';
+      var f0 = occ ? 'rgba(63,185,80,.38)' : (agro ? 'rgba(111,168,220,.14)' : 'rgba(148,163,184,.18)');
+      var fh = occ ? 'rgba(63,185,80,.52)' : (agro ? 'rgba(111,168,220,.28)' : 'rgba(148,163,184,.32)');
+      var stk = ovd ? '#EF4444' : (p.dudoso ? '#F0C040' : (agro ? '#6FA8DC' : '#3FB950'));
+      var tit = mpEsc(p.nombre) + (agro ? ' · agrícola' : '') + ' · ' + (p.superficie_has != null ? p.superficie_has : '?') + ' has · ' + mpEsc(est ? mpEstadoTxt(est) : '') + (ovd && est.maxDays ? ' ⚠ pasado de días (máx ' + est.maxDays + ')' : '') + (p.dudoso ? ' (verificar)' : '');
+      polys += '<polygon points="' + pts + '" data-mp="' + i + '" data-f0="' + f0 + '" data-fh="' + fh + '" style="fill:' + f0 + ';stroke:' + stk + ';stroke-width:' + (ovd ? '.5' : '.35') + (p.dudoso ? ';stroke-dasharray:1.4,.9' : '') + ';cursor:pointer" onmouseover="this.style.fill=this.dataset.fh" onmouseout="this.style.fill=this.dataset.f0" onclick="event.stopPropagation();mpSel(' + i + ')"><title>' + tit + '</title></polygon>';
       polys += '<text x="' + cx.toFixed(1) + '" y="' + cy.toFixed(1) + '" style="font:2.2px Inter,sans-serif;font-weight:700;fill:#fff;paint-order:stroke;stroke:rgba(0,0,0,.75);stroke-width:.45;text-anchor:middle;pointer-events:none">' + mpEsc(p.nombre) + '</text>';
+      if (occ) {
+        var l1 = est.lotes[0];
+        var d1 = (est.lotes.length === 1 && l1.dias != null) ? (l1.dias + 'd') : '';
+        polys += '<text x="' + cx.toFixed(1) + '" y="' + (cy + 2.6).toFixed(1) + '" style="font:1.7px Inter,sans-serif;font-weight:600;fill:#fff;paint-order:stroke;stroke:rgba(0,0,0,.7);stroke-width:.4;text-anchor:middle;pointer-events:none">🐄 ' + est.cabezas + 'c' + (d1 ? ' · ' + d1 : '') + '</text>';
+      }
     });
-    var _svg = '<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%">' + polys + '</svg>';
+    var _svg = '<svg viewBox="0 0 100 100" preserveAspectRatio="none" onclick="mpCerrarPop()" style="position:absolute;inset:0;width:100%;height:100%">' + polys + '</svg>';
     if (m.imagen) {
       // con foto: la imagen define el alto, ancho completo (como antes)
       cv.style.aspectRatio = ''; cv.style.maxWidth = ''; cv.style.marginLeft = ''; cv.style.marginRight = '';
@@ -25931,11 +26026,51 @@ var _e5mSesionesData = [];
         if (nm === String(p.nombre).trim().toLowerCase()) { sys = pads[k]; break; }
       }
     } catch (e) {}
-    var el = document.getElementById('mp-info'); if (!el) return;
-    el.innerHTML = '<b style="color:var(--text);font-size:14px">Potrero ' + mpEsc(p.nombre) + '</b>' + (p.dudoso ? ' <span style="color:var(--amber2);font-size:11px">⚠ matcheado por superficie — verificar contra la etiqueta del mosaico</span>' : '') +
-      ' &nbsp;·&nbsp; Superficie ' + (p.superficie_has != null ? p.superficie_has + ' has' : '—') +
-      ' &nbsp;·&nbsp; Habilitado ' + (p.habilitado_has != null ? p.habilitado_has + ' has' : '—') +
-      (sys ? ' &nbsp;·&nbsp; <span style="color:var(--green)">✓ existe en potreros del sistema</span>' : ' &nbsp;·&nbsp; <span style="color:var(--muted)">no está en los potreros del sistema</span>');
+    var est = null; try { est = mpEstado(p.nombre); } catch (eS) {}
+    var el = document.getElementById('mp-info');
+    if (el) {
+      el.innerHTML = '<b style="color:var(--text);font-size:14px">Potrero ' + mpEsc(p.nombre) + '</b>' + (p.dudoso ? ' <span style="color:var(--amber2);font-size:11px">⚠ matcheado por superficie — verificar contra la etiqueta del mosaico</span>' : '') +
+        ' &nbsp;·&nbsp; Superficie ' + (p.superficie_has != null ? p.superficie_has + ' has' : '—') +
+        ' &nbsp;·&nbsp; Habilitado ' + (p.habilitado_has != null ? p.habilitado_has + ' has' : '—') +
+        (sys ? ' &nbsp;·&nbsp; <span style="color:var(--green)">✓ existe en potreros del sistema</span>' : ' &nbsp;·&nbsp; <span style="color:var(--muted)">no está en los potreros del sistema</span>') +
+        (est ? ' &nbsp;·&nbsp; <span style="color:' + (est.ocupado ? 'var(--green)' : 'var(--muted)') + '">' + (est.ocupado ? '🐄 ' : '🌿 ') + mpEsc(mpEstadoTxt(est)) + '</span>' : '');
+    }
+    // v1.8.96: popup flotante sobre el mapa (si falla el DOM, mp-info ya quedo actualizado)
+    try {
+      var cv = document.getElementById('mp-canvas'); if (!cv || !est) return;
+      window.mpCerrarPop();
+      var cx = 0, cy = 0, n = (p.pts || []).length || 1;
+      (p.pts || []).forEach(function (q) { cx += q[0]; cy += q[1]; }); cx /= n; cy /= n;
+      var agro = String(p.sector || '') === 'agricola';
+      var h = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+        '<b style="font-size:13px;color:var(--text,#fff)">' + (agro ? 'Parcela ' : 'Potrero ') + mpEsc(p.nombre) + '</b>' +
+        (agro ? '<span style="font-size:10.5px;padding:2px 8px;border-radius:99px;font-weight:700;background:rgba(111,168,220,.14);color:#6FA8DC;border:1px solid rgba(111,168,220,.35)">🌾 AGRÍCOLA</span>' : '') +
+        '<span style="font-size:10.5px;padding:2px 8px;border-radius:99px;font-weight:700;' + (est.ocupado ? 'background:rgba(63,185,80,.15);color:#3FB950;border:1px solid rgba(63,185,80,.35)' : 'background:rgba(148,163,184,.12);color:var(--muted,#9aa4b2);border:1px solid rgba(148,163,184,.3)') + '">' + (est.ocupado ? '🐄 OCUPADO' : '🌿 LIBRE') + '</span>' +
+        '<span onclick="mpCerrarPop()" style="margin-left:auto;cursor:pointer;color:var(--muted,#9aa4b2);font-size:14px;line-height:1;padding:2px 4px">✕</span></div>';
+      if (est.ocupado) {
+        for (var x = 0; x < est.lotes.length; x++) {
+          var L = est.lotes[x];
+          h += '<div style="margin:3px 0;font-size:12px;color:var(--text,#e6e9f0)"><b>' + mpEsc(L.code) + '</b>' + (L.category ? ' · ' + mpEsc(L.category) : '') + ' · ' + L.cabezas + ' cab · ' + (L.dias != null ? mpDiasTxt(L.dias) + ' aquí' + (L.desde ? ' (desde ' + mpFecha(L.desde) + ')' : '') : 'entrada sin fecha') + '</div>';
+        }
+        if (est.lotes.length > 1) h += '<div style="margin-top:4px;font-size:11.5px;color:var(--muted,#9aa4b2)">Total: <b style="color:var(--text,#fff)">' + est.cabezas + ' cabezas</b></div>';
+        if (est.overdue && est.maxDays) h += '<div style="margin-top:5px;font-size:11.5px;color:#EF4444">⚠ Pasado de días de ocupación (máx ' + est.maxDays + ')</div>';
+      } else if (est.sinRegistros) {
+        h += '<div style="font-size:12px;color:var(--muted,#9aa4b2)">Sin registros de uso todavía</div>';
+      } else {
+        h += '<div style="font-size:12px;color:var(--text,#e6e9f0)">Libre hace <b>' + mpDiasTxt(est.diasLibre) + '</b></div>';
+        if (est.restDays) {
+          var listo = est.diasLibre != null && est.diasLibre >= est.restDays;
+          h += '<div style="margin-top:3px;font-size:11.5px;color:' + (listo ? '#3FB950' : 'var(--amber2,#F0C040)') + '">' + (listo ? '✅ Descanso cumplido (mín ' + est.restDays + ' días)' : '🌱 En descanso: ' + (est.diasLibre != null ? est.diasLibre : 0) + '/' + est.restDays + ' días') + '</div>';
+        }
+      }
+      h += '<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--bor,#2a3242);font-size:11px;color:var(--muted,#9aa4b2)">' + (p.superficie_has != null ? p.superficie_has + ' has' : '—') + (p.habilitado_has != null ? ' · habilitado ' + p.habilitado_has + ' has' : '') + (p.dudoso ? ' · ⚠ verificar' : '') + '</div>';
+      var pop = document.createElement('div');
+      pop.id = 'mp-pop';
+      pop.innerHTML = h;
+      var left = Math.max(12, Math.min(88, cx)), abajo = cy < 28;
+      pop.style.cssText = 'position:absolute;left:' + left + '%;top:' + cy + '%;transform:translate(-50%,' + (abajo ? '10px' : 'calc(-100% - 8px)') + ');z-index:40;min-width:190px;max-width:280px;background:var(--card,#151b28);border:1px solid var(--bor,#2a3242);border-radius:10px;padding:10px 12px;box-shadow:0 10px 28px rgba(0,0,0,.45);animation:mpPopIn .16s ease';
+      cv.appendChild(pop);
+    } catch (eP) {}
   };
   window.mpFileSelected = function (inp) {
     var f = inp.files && inp.files[0]; if (!f) return;
@@ -25968,6 +26103,7 @@ var _e5mSesionesData = [];
     var nuevos = 0, actualizados = 0;
     m.potreros.forEach(function (mp) {
       var nom = String(mp.nombre == null ? '' : mp.nombre).trim(); if (!nom) return;
+      if (String(mp.sector || '') === 'agricola') return; // v1.8.96: las parcelas agricolas NO se crean como potreros ganaderos
       var sup = (mp.superficie_has != null) ? Number(mp.superficie_has) : null;
       var hab = (mp.habilitado_has != null) ? Number(mp.habilitado_has) : null;
       var ex = byName[nom.toLowerCase()];
@@ -25999,9 +26135,10 @@ var _e5mSesionesData = [];
   window.mpRender = mpRender;
   try {
     var mcss = document.createElement('style');
-    mcss.textContent = '@media (prefers-reduced-motion: reduce){#mp-body,#mp-chev{transition:none !important}}';
+    mcss.textContent = '@keyframes mpPopIn{from{opacity:0;transform:translate(-50%,calc(-100% - 2px))}to{opacity:1}}@media (prefers-reduced-motion: reduce){#mp-body,#mp-chev{transition:none !important}#mp-pop{animation:none !important}}';
     (document.head || document.documentElement).appendChild(mcss);
   } catch (e) {}
+  document.addEventListener('keydown', function (ev) { if (ev && (ev.key === 'Escape' || ev.keyCode === 27)) { try { window.mpCerrarPop(); } catch (e) {} } });
   if (document.readyState !== 'loading') mpRender(); else document.addEventListener('DOMContentLoaded', mpRender);
   document.addEventListener('click', function (ev) { var b = ev.target.closest && ev.target.closest('.nav-btn, #lotes-tab-rotacion-btn'); if (b) setTimeout(mpRender, 60); });
 })();
