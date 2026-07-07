@@ -7560,12 +7560,10 @@ function pullFromRailwayDesktop(thenPush) {
             var aid = a.animal_id || a.id || '';
             var la = localById[String(aid)] || {};
             var obj = { id: aid, animal_id: aid, raza: a.breed || a.raza || la.raza || '', breed: a.breed || a.raza || la.breed || '', pesajes: a.pesajes || [] };
-            var partoId = (a.parto_id != null && a.parto_id !== '') ? a.parto_id : la.parto_id;
-            if (partoId != null && partoId !== '') obj.parto_id = partoId;
-            var sexo = a.sexo || la.sexo;
-            if (sexo) obj.sexo = sexo;
-            if (la.id_updated_at) obj.id_updated_at = la.id_updated_at;
-            if (la._needs_id) obj._needs_id = la._needs_id;
+            // v1.8.100 ANIMAL_FIELDS: reemplaza el carry manual (parto_id/sexo/id_updated_at/_needs_id)
+            // por la lista única — suma rfid + campos cabaña (rgn/rgd/serie_sui/tatuaje) con la MISMA
+            // semántica: server-first para los que viajan, local para los markers.
+            e5mAnimMergeFields(a, la, obj);
             return obj;
           });
         });
@@ -9290,7 +9288,7 @@ function saveLot() {
     // Pushear animales normalizados a Railway
     var animalesNorm = {};
     animalesNorm[code] = animalesDB[code].map(function(a){
-      return { animal_id:a.id, breed:a.raza, pesajes:a.pesajes };
+      return e5mAnimPushFields(a, { animal_id:a.id, breed:a.raza, pesajes:a.pesajes }); // v1.8.100 ANIMAL_FIELDS
     });
     var apiUrl = getApiUrl();
     var token = localStorage.getItem('e5m_api_token') || '';
@@ -9300,7 +9298,7 @@ function saveLot() {
     var allAnimalsNorm = {};
     Object.keys(existingRaw).forEach(function(lc){
       allAnimalsNorm[lc] = (existingRaw[lc]||[]).map(function(a){
-        return { animal_id:a.animal_id||a.id||'', breed:a.breed||a.raza||'', pesajes:a.pesajes||[] };
+        return e5mAnimPushFields(a, { animal_id:a.animal_id||a.id||'', breed:a.breed||a.raza||'', pesajes:a.pesajes||[] }); // v1.8.100 ANIMAL_FIELDS
       });
     });
     fetch(apiUrl+'/bulk-push', {
@@ -31215,6 +31213,51 @@ function getAnimalesDB(){
     return normalized;
   }catch(e){return {};}
 }
+// ════════════════════════════════════════════════════════════════
+// v1.8.100 ANIMAL_FIELDS — lista ÚNICA de campos extra del animal.
+// Regla de oro: TODO campo nuevo del animal se suma ACÁ y viaja solo.
+// Antes cada punto tenía su propia lista hardcodeada de 3 campos
+// (push marcaje ~9293, push existentes ~9303, saveAnimalesDB ~31228,
+// merge del pull ~7562) → los campos cabaña (rgn/rgd/serie_sui/tatuaje)
+// se PERDÍAN en el próximo pull (bug latente v1.8.99) y el rfid (F2 del
+// diseño RFID) habría muerto igual. Round-trip del server verificado:
+// 'animals' está en objectTables (JSON opaco, no normaliza campos).
+// - SYNC: viajan al server; en el merge gana el server si trae valor,
+//   si no se arrastra el local (misma semántica que tenía parto_id).
+// - LOCAL: markers del cliente; NO se pushean, se arrastran del local.
+// Kill switch: window.__ANIMAL_FIELDS_OFF = true (vuelve al recorte viejo).
+// ════════════════════════════════════════════════════════════════
+window.E5M_ANIMAL_FIELDS_SYNC = ['sexo','parto_id','rfid','rgn','rgd','serie_sui','tatuaje'];
+window.E5M_ANIMAL_FIELDS_LOCAL = ['id_updated_at','_needs_id','_colision_de'];
+window.e5mAnimPushFields = function(src, out){
+  if (window.__ANIMAL_FIELDS_OFF) return out;
+  E5M_ANIMAL_FIELDS_SYNC.forEach(function(f){
+    if (src && src[f] != null && src[f] !== '') out[f] = src[f];
+  });
+  return out;
+};
+window.e5mAnimMergeFields = function(serverA, localA, out){
+  if (window.__ANIMAL_FIELDS_OFF) {
+    // fallback exacto al carry manual de v1.8.76 (parto_id/sexo server-first + markers locales)
+    var _p = (serverA && serverA.parto_id != null && serverA.parto_id !== '') ? serverA.parto_id : (localA ? localA.parto_id : null);
+    if (_p != null && _p !== '') out.parto_id = _p;
+    var _s = (serverA && serverA.sexo) || (localA && localA.sexo);
+    if (_s) out.sexo = _s;
+    if (localA && localA.id_updated_at) out.id_updated_at = localA.id_updated_at;
+    if (localA && localA._needs_id) out._needs_id = localA._needs_id;
+    return out;
+  }
+  E5M_ANIMAL_FIELDS_SYNC.forEach(function(f){
+    var v = (serverA && serverA[f] != null && serverA[f] !== '') ? serverA[f] : (localA ? localA[f] : undefined);
+    if (v != null && v !== '') out[f] = v;
+  });
+  E5M_ANIMAL_FIELDS_LOCAL.forEach(function(f){
+    var lv = localA ? localA[f] : undefined;
+    if (lv != null && lv !== '' && lv !== false) out[f] = lv;
+  });
+  return out;
+};
+
 function saveAnimalesDB(d){
   localStorage.setItem("e5m_animals",JSON.stringify(d));
   // Auto-push animals to Railway
@@ -31225,7 +31268,7 @@ function saveAnimalesDB(d){
       var normalized = {};
       Object.keys(d).forEach(function(lotCode) {
         normalized[lotCode] = (d[lotCode]||[]).map(function(a) {
-          return { animal_id: a.animal_id || a.id || '', breed: a.breed || a.raza || '', pesajes: a.pesajes || [] };
+          return e5mAnimPushFields(a, { animal_id: a.animal_id || a.id || '', breed: a.breed || a.raza || '', pesajes: a.pesajes || [] }); // v1.8.100 ANIMAL_FIELDS
         });
       });
       replaceTableInRailway('animals', normalized);
