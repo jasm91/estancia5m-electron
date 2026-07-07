@@ -4769,7 +4769,8 @@ function orMarcajeGo(){
   <div class="card-title" style="margin-bottom:6px">🧩 Módulos de la estancia</div>
   <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Activan funciones para ESTA estancia y sincronizan a todos sus equipos. Los demás tenants no ven nada.</div>
   <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer"><input type="checkbox" id="cfg-mod-agro" onchange="cfgModuloToggle('modulo_agro',this)"> 🌾 Módulo Agricultura (parcelas, campañas, labores, costos/ha)</label>
-  <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="cfg-mod-cabana" onchange="cfgModuloToggle('perfil_cabana',this)"> 🏆 Perfil cabaña (registro RGN/RGD + genealogía en Reproducción)</label>
+  <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer"><input type="checkbox" id="cfg-mod-cabana" onchange="cfgModuloToggle('perfil_cabana',this)"> 🏆 Perfil cabaña (registro RGN/RGD + genealogía en Reproducción)</label>
+  <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="cfg-mod-rfid" onchange="cfgIdentidadToggle(this)"> 🔗 RFID / identidad dual (chip electrónico además del arete — captura en marcaje, compra, onboarding y edición)</label>
 </div></div>
 <div class="card" style="margin-bottom:16px"><div class="card-body">
   <div class="card-title" style="margin-bottom:6px">🔎 Tamaño de letra (este equipo)</div>
@@ -5628,7 +5629,7 @@ function orMarcajeGo(){
   </div>
   <div style="max-height:250px;overflow-y:auto" id="cg-animals-list">
     <table class="tbl" style="font-size:11px">
-      <thead><tr><th>ID / Caravana</th><th>Peso (kg)</th><th>Raza</th><th></th></tr></thead>
+      <thead><tr><th>ID / Caravana</th><th id="cg-th-rfid" style="display:none">RFID</th><th>Peso (kg)</th><th>Raza</th><th></th></tr></thead>
       <tbody id="cg-animals-tbody"></tbody>
     </table>
   </div>
@@ -5710,7 +5711,7 @@ function orMarcajeGo(){
     </div>
     <div style="max-height:300px;overflow-y:auto">
       <table class="tbl" style="font-size:11px">
-        <thead><tr><th>#</th><th>ID / Caravana</th><th>Peso real (kg)</th><th>Categoría</th><th>Raza</th><th></th></tr></thead>
+        <thead><tr><th>#</th><th>ID / Caravana</th><th id="mc-th-rfid" style="display:none">RFID</th><th>Peso real (kg)</th><th>Categoría</th><th>Raza</th><th></th></tr></thead>
         <tbody id="mc-animals-tbody"></tbody>
       </table>
     </div>
@@ -6077,6 +6078,10 @@ function orMarcajeGo(){
   <div id="edit-aid-info" style="font-size:12px;color:var(--muted);margin-bottom:12px"></div>
   <div class="form-group"><label class="form-label">Nuevo ID</label>
     <input class="form-input" id="edit-aid-value" placeholder="Ej: 1234" style="font-size:16px;font-weight:700;font-family:DM Mono,monospace">
+  </div>
+  <div class="form-group" id="edit-aid-rfid-wrap" style="display:none"><label class="form-label">🔗 RFID (chip electrónico)</label>
+    <input class="form-input" id="edit-aid-rfid" placeholder="15 dígitos — vacío = sin chip" style="font-family:DM Mono,monospace">
+    <div style="font-size:10.5px;color:var(--muted);margin-top:4px">Cambiarlo re-chipa al animal (queda auditado). Único por estancia.</div>
   </div>
   <div class="form-actions">
     <button class="btn btn-ghost" onclick="closeModal('modal-edit-animal-id')">Cancelar</button>
@@ -14348,9 +14353,12 @@ function renderCGAnimalsTable() {
     return;
   }
   var raza = document.getElementById('cg-raza').value;
+  var _rfOnCG = (typeof e5mRfidOn==='function') && e5mRfidOn(); // v1.8.101
+  var _thRCG = document.getElementById('cg-th-rfid'); if (_thRCG) _thRCG.style.display = _rfOnCG ? '' : 'none';
   tbody.innerHTML = _cgAnimals.map(function(a, i) {
     return '<tr>' +
       '<td><input class="form-input" style="width:100px;padding:4px 8px;font-size:11px" value="' + (a.id||'') + '" placeholder="ID-' + (i+1) + '" oninput="_cgAnimals['+i+'].id=this.value"></td>' +
+      (_rfOnCG ? '<td><input class="form-input" style="width:130px;padding:4px 8px;font-size:11px;font-family:DM Mono,monospace" value="' + (a.rfid||'') + '" placeholder="chip (15 díg.)" oninput="_cgAnimals['+i+'].rfid=this.value"></td>' : '') +
       '<td><input class="form-input" type="number" style="width:80px;padding:4px 8px;font-size:11px" value="' + (a.peso||'') + '" placeholder="kg" oninput="_cgAnimals['+i+'].peso=parseFloat(this.value)||0;calcCGTotal()"></td>' +
       '<td><input class="form-input" style="width:80px;padding:4px 8px;font-size:11px" value="' + (a.raza||raza) + '" oninput="_cgAnimals['+i+'].raza=this.value"></td>' +
       '<td><button class="btn btn-ghost btn-sm" onclick="removeCGAnimal('+i+')" style="padding:2px 6px;color:var(--red)">✕</button></td>' +
@@ -14537,14 +14545,20 @@ function saveCompraGanado() {
     return;
   }
 
+  // v1.8.101 RFID: normalizar + unicidad (batch y tenant) — helper único
+  var _rfErrCG = (typeof e5mRfidValidarBatch==='function') ? e5mRfidValidarBatch(_cgAnimals) : null;
+  if (_rfErrCG) { toast(_rfErrCG, 'error'); return; }
+
   // Agregar animales al lote
   if (!animals[lote]) animals[lote] = [];
   _cgAnimals.forEach(function(a) {
-    animals[lote].push({
+    var _nuevo = {
       id: String(a.id),
       raza: a.raza || '',
       pesajes: [{ fecha: fecha, peso: a.peso }]
-    });
+    };
+    if (a.rfid) _nuevo.rfid = a.rfid; // v1.8.101
+    animals[lote].push(_nuevo);
   });
   saveAnimalesDB(animals);
 
@@ -14629,7 +14643,8 @@ function openMarcarCuarentena(lotIdOrCode) {
       id: a.id || a.animal_id || '',
       peso: (a.pesajes && a.pesajes.length) ? a.pesajes[a.pesajes.length-1].peso : 0,
       categoria: a.categoria || lot.category || '',
-      raza: a.raza || a.breed || lot.breed || ''
+      raza: a.raza || a.breed || lot.breed || '',
+      rfid: a.rfid || '' // v1.8.101: conservar el chip si ya lo tenía
     });
   });
 
@@ -14738,6 +14753,8 @@ function renderMCAnimals() {
   var params = (typeof getParams === 'function') ? getParams() : { categorias: [], razas: [] };
   var catOptions = (params.categorias || []).map(function(c) { return c.name; });
   var razOptions = (params.razas || []).map(function(r) { return r.name; });
+  var _rfOn = (typeof e5mRfidOn==='function') && e5mRfidOn(); // v1.8.101
+  var _thR = document.getElementById('mc-th-rfid'); if (_thR) _thR.style.display = _rfOn ? '' : 'none';
   tbody.innerHTML = _mcAnimals.map(function(a, i) {
     var catSel = '<select class="form-select" style="width:90px;padding:4px 6px;font-size:11px" oninput="_mcAnimals['+i+'].categoria=this.value">' +
       catOptions.map(function(c){ return '<option value="'+c+'"'+(a.categoria===c?' selected':'')+'>'+c+'</option>'; }).join('') + '</select>';
@@ -14746,6 +14763,7 @@ function renderMCAnimals() {
     return '<tr>' +
       '<td style="color:var(--muted);font-size:10px">'+(i+1)+'</td>' +
       '<td><input class="form-input" style="width:110px;padding:4px 8px;font-size:11px" value="' + escH(String(a.id||'')) + '" placeholder="ej: '+(_mcLoteCuarentena?_mcLoteCuarentena.code:'C')+'-'+String(i+1).padStart(4,'0')+'" oninput="_mcAnimals['+i+'].id=this.value"></td>' +
+      (_rfOn ? '<td><input class="form-input" style="width:130px;padding:4px 8px;font-size:11px;font-family:DM Mono,monospace" value="' + escH(String(a.rfid||'')) + '" placeholder="chip (15 díg.)" oninput="_mcAnimals['+i+'].rfid=this.value"></td>' : '') +
       '<td><input class="form-input" type="number" step="0.1" style="width:80px;padding:4px 8px;font-size:11px" value="' + (a.peso||'') + '" placeholder="kg" oninput="_mcAnimals['+i+'].peso=parseFloat(this.value)||0;updateMCStats()"></td>' +
       '<td>' + catSel + '</td>' +
       '<td>' + razSel + '</td>' +
@@ -14785,6 +14803,10 @@ function saveMarcaje() {
   if (sinId.length) { toast(sinId.length + ' animales sin ID', 'error'); return; }
   if (sinPeso.length) { toast(sinPeso.length + ' animales sin peso', 'error'); return; }
   if (!_mcAnimals.length) { toast('Marcá al menos 1 animal', 'error'); return; }
+
+  // v1.8.101 RFID: normalizar + unicidad (dentro del batch y contra todo el tenant) — helper único
+  var _rfErr = (typeof e5mRfidValidarBatch==='function') ? e5mRfidValidarBatch(_mcAnimals) : null;
+  if (_rfErr) { toast(_rfErr, 'error'); return; }
 
   // Validar IDs únicos dentro del marcaje
   var idsSet = {};
@@ -14848,12 +14870,14 @@ function saveMarcaje() {
   if (!rawAnim[loteDest]) rawAnim[loteDest] = [];
 
   _mcAnimals.forEach(function(a) {
-    rawAnim[loteDest].push({
+    var _nuevo = {
       id: String(a.id),
       raza: a.raza || _mcLoteCuarentena.breed || '',
       categoria: a.categoria || _mcLoteCuarentena.category || '',
       pesajes: [{ fecha: fecha, peso: a.peso, tipo: 'marcaje', nota: 'Marcaje desde ' + _mcLoteCuarentena.code }]
-    });
+    };
+    if (a.rfid) _nuevo.rfid = a.rfid; // v1.8.101: ya normalizado por e5mRfidValidarBatch
+    rawAnim[loteDest].push(_nuevo);
   });
   localStorage.setItem('e5m_animals', JSON.stringify(rawAnim));
 
@@ -16712,7 +16736,7 @@ function parseOnboardingWorkbook(raw) {
     var aid = _getColStr(r, ['ANIMALID','ID']);
     if (!lc || !aid) return;
     var animBreed = _getColStr(r, ['RAZA']);
-    result.animales.push({ lot_code: lc, animal_id: aid, breed: animBreed, peso: _getColNum(r, ['PESO']), fecha: _getColStr(r, ['FECHAPESAJE','FECHA']), sexo: _getColStr(r, ['SEXO']), obs: _getColStr(r, ['OBSERVACIONES']) });
+    result.animales.push({ lot_code: lc, animal_id: aid, breed: animBreed, peso: _getColNum(r, ['PESO']), fecha: _getColStr(r, ['FECHAPESAJE','FECHA']), sexo: _getColStr(r, ['SEXO']), rfid: _getColStr(r, ['RFID','EID','CHIP']), obs: _getColStr(r, ['OBSERVACIONES']) }); // v1.8.101: +rfid (columna opcional)
     var meta = _ensureLotMeta(lc);
     if (!meta.category) meta.category = _getColStr(r, ['CATEGORIA']);
     if (!meta.breed) meta.breed = animBreed;
@@ -16795,6 +16819,16 @@ function validateOnboardingImport(parsed) {
     var k = a.lot_code + ':' + a.animal_id;
     if (animKey[k]) errors.push('Animal duplicado en Excel: ' + a.animal_id + ' en lote ' + a.lot_code);
     animKey[k] = true;
+  });
+  // v1.8.101 RFID: unicidad del chip dentro del Excel y contra los animales ya cargados (I2, siempre — no depende del gate)
+  var rfidKey = {};
+  parsed.animales.forEach(function(a){
+    var n = (typeof normRfid==='function') ? normRfid(a.rfid) : String(a.rfid||'');
+    if (!n) return;
+    if (rfidKey[n]) errors.push('RFID duplicado en Excel: ' + n + ' (animal ' + a.animal_id + ')');
+    rfidKey[n] = true;
+    var u = (typeof rfidEnUso==='function') ? rfidEnUso(n, String(a.animal_id||'')) : null;
+    if (u) errors.push('RFID ' + n + ' ya está en el animal ' + u.id + ' (lote ' + u.lot + ')');
   });
   var pluvNames = {};
   parsed.pluviometros.forEach(function(p){ pluvNames[p.name] = true; });
@@ -17033,7 +17067,10 @@ async function confirmOnboardingImport() {
       if (existsId) return;
       var pesajes = [];
       if (a.peso) pesajes.push({ fecha: a.fecha || (typeof localDate==='function'?localDate():new Date().toISOString().slice(0,10)), peso: a.peso });
-      animDB[a.lot_code].push({ animal_id: String(a.animal_id), id: String(a.animal_id), breed: a.breed || '', raza: a.breed || '', sexo: _normOnbSexo(a.sexo), pesajes: pesajes });   // v1.8.70: +sexo
+      var _oAnim = { animal_id: String(a.animal_id), id: String(a.animal_id), breed: a.breed || '', raza: a.breed || '', sexo: _normOnbSexo(a.sexo), pesajes: pesajes };   // v1.8.70: +sexo
+      var _oRf = (typeof normRfid==='function') ? normRfid(a.rfid) : '';
+      if (_oRf) _oAnim.rfid = _oRf; // v1.8.101: se guarda aunque el gate esté off (dato del cliente, no se pierde)
+      animDB[a.lot_code].push(_oAnim);
     });
     localStorage.setItem('e5m_animals', JSON.stringify(animDB));
 
@@ -23463,6 +23500,11 @@ function editAnimalId(lotCode, idx) {
   document.getElementById('edit-aid-info').textContent='Lote: '+lotCode+' · ID actual: '+animal.id+(animal.raza?' · Raza: '+animal.raza:'');
   var valEl=document.getElementById('edit-aid-value');
   if(valEl) valEl.value=animal.id==='N/A'?'':animal.id;
+  // v1.8.101 RFID: mostrar/prefillar el campo solo con identidad dual activa
+  var _rfWrap=document.getElementById('edit-aid-rfid-wrap'), _rfEl=document.getElementById('edit-aid-rfid');
+  var _rfOn=(typeof e5mRfidOn==='function')&&e5mRfidOn();
+  if(_rfWrap) _rfWrap.style.display=_rfOn?'':'none';
+  if(_rfEl) _rfEl.value=_rfOn?String(animal.rfid||''):'';
   openModal('modal-edit-animal-id');
   setTimeout(function(){if(valEl)valEl.focus();},200);
 }
@@ -23485,9 +23527,29 @@ function saveEditAnimalId() {
     });
     if (_colLote) { toast('Ya existe un animal con ID "'+nuevoId+'" en el lote '+_colLote+'. Elegí otro ID/arete.','error'); return; }
   }
+  // v1.8.101 RFID: guard de unicidad (I2) + re-chipado auditado (I4). Vacío = quitar el chip.
+  var _rfNuevo = null, _rfCambio = false;
+  if ((typeof e5mRfidOn==='function') && e5mRfidOn()) {
+    var _rfEl2 = document.getElementById('edit-aid-rfid');
+    if (_rfEl2) {
+      _rfNuevo = normRfid(_rfEl2.value);
+      var _rfViejo = normRfid(lista[idx].rfid);
+      if (_rfNuevo !== _rfViejo) {
+        if (_rfNuevo) {
+          var _uso = rfidEnUso(_rfNuevo, idAnterior);
+          if (_uso) { toast('El RFID '+_rfNuevo+' ya está en el animal '+_uso.id+' (lote '+_uso.lot+')','error'); return; }
+        }
+        _rfCambio = true;
+      }
+    }
+  }
   lista[idx].id=nuevoId;
   lista[idx].animal_id=nuevoId; // FIX v1.4.29: persistir en ambos campos para que sync sea consistente
   lista[idx].id_updated_at = new Date().toISOString(); // FIX v1.4.29: marca temporal para merge correcto en sync-pull
+  if (_rfCambio) { // v1.8.101: re-chipado explícito y auditado (I4)
+    if (_rfNuevo) lista[idx].rfid = _rfNuevo; else delete lista[idx].rfid;
+    try { auditLog('update','animals', nuevoId, 'RFID '+(_rfNuevo?('asignado/re-chipado: '+_rfNuevo):'quitado')+' (lote '+lotCode+')', { rfid: _rfNuevo||'' }); } catch(eRf){}
+  }
   localStorage.setItem('e5m_animals',JSON.stringify(animalesDB));
   // v1.8.76 (Opción acotada): registrar el rename {lote, idViejo, idNuevo} para proteger SOLO este animal del
   // server-wins hasta que el push confirme (se limpia e5m_pending_renames en push OK). Reemplaza la ventana de 60s.
@@ -31258,6 +31320,55 @@ window.e5mAnimMergeFields = function(serverA, localA, out){
   return out;
 };
 
+// ════════════════════════════════════════════════════════════════
+// v1.8.101 RFID (F2 del diseño RFID) — captura con identidad dual.
+// Gate por tenant: params.identidad = 'arete' (default, César: cero cambios)
+// | 'dual' (arete + chip) | 'rfid' (F4, futuro). Kill switch: __RFID_OFF.
+// Invariantes: I2 RFID único por tenant · I6 normalizado a solo dígitos
+// (ISO 11784 = 15 díg.; no se bloquean otros largos hasta ver los chips
+// reales del cliente). El campo 'rfid' ya viaja por el sync (v1.8.100
+// ANIMAL_FIELDS). Helpers ÚNICOS — ningún flujo valida por su cuenta.
+// ════════════════════════════════════════════════════════════════
+window.e5mRfidOn = function(){
+  try {
+    if (window.__RFID_OFF) return false;
+    var p = (typeof getParams==='function') ? (getParams()||{}) : {};
+    return p.identidad==='dual' || p.identidad==='rfid';
+  } catch(e){ return false; }
+};
+window.normRfid = function(x){ return String(x==null?'':x).replace(/\D/g,''); };
+// ¿El RFID ya está en uso por OTRO animal? → {id, lot} | null. exceptId = animal_id del animal que se está editando.
+window.rfidEnUso = function(rfid, exceptId){
+  var n = normRfid(rfid); if (!n) return null;
+  var all = (typeof getAnimalesDB==='function') ? (getAnimalesDB()||{}) : {};
+  var hit = null, ex = String(exceptId==null?'':exceptId);
+  Object.keys(all).forEach(function(lc){
+    (all[lc]||[]).forEach(function(a){
+      if (hit || !a || !a.rfid) return;
+      var aid = String(a.animal_id||a.id||'');
+      if (ex && aid===ex) return;
+      if (normRfid(a.rfid)===n) hit = { id: aid, lot: lc };
+    });
+  });
+  return hit;
+};
+// Valida los rfid de un batch (marcaje/compra): normaliza in-place y devuelve mensaje de error o null
+window.e5mRfidValidarBatch = function(rows){
+  if (!(typeof e5mRfidOn==='function' && e5mRfidOn())) return null;
+  var vistos = {}, err = null;
+  (rows||[]).forEach(function(a){
+    if (err || !a) return;
+    var n = normRfid(a.rfid);
+    if (!n) { a.rfid=''; return; }
+    a.rfid = n;
+    if (vistos[n]) { err = 'RFID repetido en la lista: ' + n; return; }
+    vistos[n] = 1;
+    var u = rfidEnUso(n, String(a.id||''));
+    if (u) err = 'El RFID ' + n + ' ya está en el animal ' + u.id + ' (lote ' + u.lot + ')';
+  });
+  return err;
+};
+
 function saveAnimalesDB(d){
   localStorage.setItem("e5m_animals",JSON.stringify(d));
   // Auto-push animals to Railway
@@ -31471,6 +31582,7 @@ function renderAnimalesLote(){
       (showLotCol?'<td style="font-size:11px;font-weight:600;color:var(--blue)">'+escH(aLot)+'</td>':'')+
       '<td style="font-family:DM Mono,monospace;font-weight:600;color:'+(isNA?'var(--muted)':'var(--amber2)')+'">'+
         a.id+(isNA?'<span style="font-size:9px;background:rgba(255,165,0,.15);color:var(--amber2);padding:1px 5px;border-radius:3px;margin-left:4px">SIN ID</span>':'')+
+        ((a.rfid && typeof e5mRfidOn==='function' && e5mRfidOn())?'<div style="font-size:9px;color:var(--muted);font-weight:400">🔗 '+escH(String(a.rfid))+'</div>':'')+
       '</td>'+
       '<td><span style="background:var(--sur2);padding:2px 6px;border-radius:4px;font-size:11px">'+( a.raza||"-")+'</span></td>'+
       '<td style="font-weight:600">'+( last?last.peso+" kg":"-")+'</td>'+
@@ -33292,19 +33404,23 @@ function downloadPesajesTemplate() {
     "Peso nuevo (kg)",
     "Notas"
   ];
+  var _rfOnT = (typeof e5mRfidOn === 'function') && e5mRfidOn(); // v1.8.102: columna RFID en la planilla
+  if (_rfOnT) headerPesajes.splice(2, 0, "RFID");
 
   var rowsPesajes = [headerPesajes];
   animals.forEach(function(a) {
     var pesajes = (a.pesajes || []).slice().sort(function(x, y) { return String(x.fecha).localeCompare(y.fecha); });
     var ultimo = pesajes.length ? pesajes[pesajes.length - 1] : null;
-    rowsPesajes.push([
+    var _fila = [
       String(a.id || a.animal_id || ""),
       a.raza || a.breed || "",
       ultimo ? ultimo.peso : "",
       ultimo ? ultimo.fecha : "",
       "", // PESO NUEVO — vacío para que César complete
       ""
-    ]);
+    ];
+    if (_rfOnT) _fila.splice(2, 0, String(a.rfid || "")); // v1.8.102
+    rowsPesajes.push(_fila);
   });
 
   // Hoja 2: Instrucciones
@@ -33474,9 +33590,11 @@ function _ipProcessRows(rows) {
   });
 
   // Detectar columnas
-  var idIdx = 0, pesoIdx = 1, anteriorIdx = -1;
+  var idIdx = 0, pesoIdx = 1, anteriorIdx = -1, rfidIdx = -1; // v1.8.102: +rfidIdx
   if (hasHeader) {
     firstRow.forEach(function(c, i) {
+      // v1.8.102: detectar RFID PRIMERO y cortar — "rfid"/"eid" contienen "id" y rompían la detección del arete
+      if (c.indexOf("rfid") >= 0 || c.indexOf("eid") >= 0 || c.indexOf("chip") >= 0) { if (rfidIdx < 0) rfidIdx = i; return; }
       if (c.indexOf("id") >= 0 || c.indexOf("caravana") >= 0) idIdx = i;
       if (c.indexOf("peso nuevo") >= 0) pesoIdx = i;
       else if (pesoIdx === 1 && (c.indexOf("peso") >= 0 && c.indexOf("anterior") < 0)) pesoIdx = i;
@@ -33490,25 +33608,34 @@ function _ipProcessRows(rows) {
   dataRows.forEach(function(r, rowIdx) {
     if (!r || !r.length) return;
     var idRaw = String(r[idIdx] || "").trim();
+    var rfidRaw = (rfidIdx >= 0) ? String(r[rfidIdx] || "").trim() : ""; // v1.8.102
     var pesoRaw = String(r[pesoIdx] || "").trim().replace(",", ".");
-    if (!idRaw || !pesoRaw) {
-      // ID sin peso → ignorar silenciosamente (animal no pesado)
-      if (idRaw && !pesoRaw) {
-        return; // OK, simplemente no se pesó
-      }
+    if ((!idRaw && !rfidRaw) || !pesoRaw) {
+      // fila sin identificador o sin peso → ignorar silenciosamente (animal no pesado)
       return;
     }
     var peso = parseFloat(pesoRaw);
     if (!peso || peso <= 0) return;
 
-    // Buscar animal en el lote
-    var animal = animals.find(function(a) {
-      return String(a.id || a.animal_id || "").trim() === idRaw;
-    });
+    // v1.8.102 (regla del portero, I5): resolución DETERMINISTA — RFID exacto primero,
+    // después arete exacto; nunca adivinar. El chip gana porque es el dato de máquina.
+    var _rfN = (rfidRaw && typeof normRfid === 'function') ? normRfid(rfidRaw) : "";
+    var animal = null, _viaRfid = false;
+    if (_rfN) {
+      animal = animals.find(function(a) { return a && a.rfid && normRfid(a.rfid) === _rfN; });
+      if (animal) _viaRfid = true;
+    }
+    if (!animal && idRaw) {
+      animal = animals.find(function(a) {
+        return String(a.id || a.animal_id || "").trim() === idRaw;
+      });
+    }
 
     var item = {
       row: rowIdx + (hasHeader ? 2 : 1),
-      id: idRaw,
+      id: idRaw || (animal ? String(animal.id || animal.animal_id || '') : ('RFID ' + _rfN)),
+      rfid: _rfN,
+      viaRfid: _viaRfid,
       peso: peso,
       animal: animal,
       pesoAnterior: null,
@@ -33518,8 +33645,17 @@ function _ipProcessRows(rows) {
     };
 
     if (!animal) {
-      item.error = "ID no encontrado en este lote";
+      if (_rfN) {
+        var _otro = (typeof rfidEnUso === 'function') ? rfidEnUso(_rfN) : null;
+        item.error = _otro ? ("El RFID está en el animal " + _otro.id + " del lote " + _otro.lot + " (no en este lote)") : "RFID no asignado a ningún animal (cargar siembra arete↔RFID primero)";
+      } else {
+        item.error = "ID no encontrado en este lote";
+      }
     } else {
+      // v1.8.102: si la fila trae arete Y chip y no coinciden, gana el chip pero se avisa
+      if (_viaRfid && idRaw && String(animal.id || animal.animal_id || '').trim() !== idRaw) {
+        item.warnings.push("El arete de la fila (" + idRaw + ") no coincide con el del chip (" + (animal.id || animal.animal_id) + ") — se usó el chip");
+      }
       // Calcular peso anterior y delta
       var pesajes = (animal.pesajes || []).slice().sort(function(x, y) { return String(x.fecha).localeCompare(y.fecha); });
       var ultimo = pesajes.length ? pesajes[pesajes.length - 1] : null;
@@ -42876,6 +43012,18 @@ function cfgModulosRender(){
   var a=agEl('cfg-mod-agro'), c=agEl('cfg-mod-cabana');
   if(a) a.checked=!!p.modulo_agro;
   if(c) c.checked=!!p.perfil_cabana;
+  var r=agEl('cfg-mod-rfid'); // v1.8.101
+  if(r) r.checked=(p.identidad==='dual'||p.identidad==='rfid');
+}
+// v1.8.101: toggle de identidad dual (params.identidad es STRING, no boolean — no usa cfgModuloToggle)
+function cfgIdentidadToggle(el){
+  try {
+    if (typeof getParams!=='function' || typeof saveParams!=='function') { agToast('Configuración no disponible','error'); return; }
+    var p=getParams()||{};
+    p.identidad=(el&&el.checked)?'dual':'arete';
+    saveParams(p);
+    agToast(el&&el.checked?'Identidad dual RFID activada (sincroniza a todos los equipos)':'Identidad dual desactivada — los chips guardados no se borran','success');
+  } catch(e){ agToast('No se pudo guardar','error'); }
 }
 function cfgModuloToggle(key,el){
   try {
@@ -43647,6 +43795,120 @@ try {
 function prmInit(){ prmApply(); stkRender(); }
 if (document.readyState !== 'loading') prmInit(); else document.addEventListener('DOMContentLoaded', prmInit);
 document.addEventListener('click', function(ev){ var b=ev.target && ev.target.closest && ev.target.closest('#lotes-tab-params-btn'); if(b) setTimeout(function(){ prmApply(); stkRender(); }, 80); });
+})();
+</script>
+
+<script id="siembra-rfid-v18102">
+/* ═══════════════════════════════════════════════════════════════
+   v1.8.102 — SIEMBRA ARETE↔RFID (F3 del diseño RFID, módulo aditivo)
+   Card en Config, DEBAJO de la card 🧩 Módulos, visible solo con
+   identidad dual activa (e5mRfidOn). Carga un CSV/lista arete,rfid
+   y asigna los chips a animales EXISTENTES con preview y guards:
+   I2 (chip único, helper rfidEnUso), I4 (re-chipado avisado+auditado),
+   I5 (nada se aplica en silencio: preview clasifica TODO).
+   Caso real: la tabla arete↔RFID de Chaco Lejos (o el padrón DIIO de
+   SINTRABOL) → desbloquea el import de los 545 pesajes por chip.
+   Kill switch: window.__SIEMBRA_RFID_OFF = true.
+   ═══════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+function el(id){ return document.getElementById(id); }
+var rsRows = []; // {arete, rfid, estado, detalle, animal, lot}
+function rsCard(){
+  if (el('rs-card')) return el('rs-card');
+  var mod = el('cfg-mod-rfid'); if (!mod) return null;
+  var host = mod.closest('.card') || mod.closest('div'); if (!host || !host.parentElement) return null;
+  var c = document.createElement('div');
+  c.id = 'rs-card'; c.className = 'card'; c.style.marginTop = '16px';
+  c.innerHTML = '<div class="card-title" style="margin-bottom:6px">🔗 Siembra arete ↔ RFID</div>'+
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Pegá la tabla <b>arete,rfid</b> (una por línea; acepta coma, punto y coma o tab; con o sin encabezado). Asigna los chips a animales YA cargados — no crea animales. Sirve para el padrón oficial (SINTRABOL) o la planilla del cliente.</div>'+
+    '<textarea id="rs-input" rows="6" class="form-input" style="font-family:DM Mono,monospace;font-size:12px;width:100%" placeholder="arete,rfid\n1041,068000012345678\n1043,068000012345679"></textarea>'+
+    '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">'+
+    '<button class="btn btn-ghost btn-sm" onclick="rsPreview()">🔎 Previsualizar</button>'+
+    '<button class="btn btn-primary btn-sm" id="rs-aplicar-btn" onclick="rsAplicar()" disabled>💾 Aplicar siembra</button>'+
+    '<span id="rs-status" style="font-size:11.5px;color:var(--muted)"></span></div>'+
+    '<div id="rs-preview" style="margin-top:10px;display:none;max-height:260px;overflow-y:auto"></div>';
+  host.parentElement.insertBefore(c, host.nextSibling);
+  return c;
+}
+function rsGateApply(){
+  var c = rsCard(); if (!c) return;
+  var on = !window.__SIEMBRA_RFID_OFF && (typeof e5mRfidOn === 'function') && e5mRfidOn();
+  c.style.display = on ? '' : 'none';
+}
+function rsParse(text){
+  var lines = String(text||'').split(/\r?\n/).map(function(l){ return l.trim(); }).filter(Boolean);
+  var out = [];
+  lines.forEach(function(l){
+    var sep = l.indexOf('\t') >= 0 ? '\t' : (l.indexOf(';') >= 0 ? ';' : ',');
+    var p = l.split(sep).map(function(x){ return x.trim().replace(/^"|"$/g,''); });
+    if (p.length < 2) return;
+    var a = String(p[0]||'').toLowerCase();
+    if (a === 'arete' || a === 'id' || a.indexOf('caravana') >= 0) return; // encabezado
+    out.push({ arete: String(p[0]||'').trim(), rfid: String(p[1]||'').trim() });
+  });
+  return out;
+}
+window.rsPreview = function(){
+  var pares = rsParse((el('rs-input')||{}).value);
+  var all = (typeof getAnimalesDB === 'function') ? (getAnimalesDB()||{}) : {};
+  var porArete = {};
+  Object.keys(all).forEach(function(lc){ (all[lc]||[]).forEach(function(a){ var k = String(a.animal_id||a.id||'').trim(); if (k && !porArete[k]) porArete[k] = { a: a, lot: lc }; }); });
+  var vistosR = {}, vistosA = {};
+  rsRows = pares.map(function(p){
+    var r = { arete: p.arete, rfid: (typeof normRfid==='function')?normRfid(p.rfid):p.rfid, estado: '', detalle: '', animal: null, lot: '' };
+    if (!r.arete) { r.estado = 'error'; r.detalle = 'fila sin arete'; return r; }
+    if (vistosA[r.arete]) { r.estado = 'error'; r.detalle = 'arete repetido en la lista'; return r; }
+    vistosA[r.arete] = 1;
+    if (!r.rfid) { r.estado = 'error'; r.detalle = 'RFID vacío/inválido'; return r; }
+    if (vistosR[r.rfid]) { r.estado = 'error'; r.detalle = 'RFID repetido en la lista'; return r; }
+    vistosR[r.rfid] = 1;
+    var hit = porArete[r.arete];
+    if (!hit) { r.estado = 'error'; r.detalle = 'arete no encontrado en ningún lote'; return r; }
+    r.animal = hit.a; r.lot = hit.lot;
+    var uso = (typeof rfidEnUso==='function') ? rfidEnUso(r.rfid, r.arete) : null;
+    if (uso) { r.estado = 'error'; r.detalle = 'chip ya asignado a ' + uso.id + ' (lote ' + uso.lot + ')'; return r; }
+    var actual = (typeof normRfid==='function') ? normRfid(hit.a.rfid) : String(hit.a.rfid||'');
+    if (actual && actual === r.rfid) { r.estado = 'igual'; r.detalle = 'ya tiene ese chip (sin cambio)'; return r; }
+    if (actual) { r.estado = 'rechip'; r.detalle = 're-chipado: tenía ' + actual; return r; }
+    r.estado = 'ok'; r.detalle = 'asignar (lote ' + r.lot + ')';
+    return r;
+  });
+  var n = { ok:0, rechip:0, igual:0, error:0 };
+  rsRows.forEach(function(r){ n[r.estado] = (n[r.estado]||0) + 1; });
+  var pv = el('rs-preview'), st = el('rs-status'), btn = el('rs-aplicar-btn');
+  if (st) st.textContent = pares.length ? (n.ok + ' para asignar · ' + n.rechip + ' re-chipados · ' + n.igual + ' sin cambio · ' + n.error + ' con error') : 'Pegá la tabla primero';
+  if (btn) btn.disabled = !(n.ok + n.rechip);
+  if (pv) {
+    var color = { ok:'var(--green)', rechip:'var(--amber2)', igual:'var(--muted)', error:'var(--red)' };
+    pv.innerHTML = '<table class="tbl" style="font-size:11px"><thead><tr><th>Arete</th><th>RFID</th><th>Resultado</th></tr></thead><tbody>'+
+      rsRows.map(function(r){ return '<tr><td style="font-family:DM Mono,monospace">'+r.arete+'</td><td style="font-family:DM Mono,monospace">'+r.rfid+'</td><td style="color:'+(color[r.estado]||'inherit')+'">'+r.detalle+'</td></tr>'; }).join('')+
+      '</tbody></table>';
+    pv.style.display = rsRows.length ? '' : 'none';
+  }
+};
+window.rsAplicar = function(){
+  var aplicables = rsRows.filter(function(r){ return r.estado === 'ok' || r.estado === 'rechip'; });
+  if (!aplicables.length) { if (typeof toast==='function') toast('Nada para aplicar — previsualizá primero','error'); return; }
+  var all = (typeof getAnimalesDB === 'function') ? (getAnimalesDB()||{}) : {};
+  var hechos = 0, rechips = 0;
+  aplicables.forEach(function(r){
+    var a = (all[r.lot]||[]).find(function(x){ return String(x.animal_id||x.id||'').trim() === r.arete; });
+    if (!a) return;
+    if (r.estado === 'rechip') { rechips++; try { auditLog('update','animals', r.arete, 'RFID re-chipado por siembra: ' + r.rfid + ' (lote ' + r.lot + ')', { rfid: r.rfid }); } catch(e){} }
+    a.rfid = r.rfid;
+    hechos++;
+  });
+  try { if (typeof saveAnimalesDB === 'function') saveAnimalesDB(all); } catch(e1){}
+  try { if (typeof saveDB === 'function') saveDB(); } catch(e2){}
+  try { auditLog('update','animals','(siembra)','Siembra arete↔RFID: ' + hechos + ' chip(s) asignado(s), ' + rechips + ' re-chipado(s)', {}); } catch(e3){}
+  if (typeof toast === 'function') toast('Siembra aplicada: ' + hechos + ' chip(s)' + (rechips ? (' (' + rechips + ' re-chipados)') : ''), 'success');
+  var btn = el('rs-aplicar-btn'); if (btn) btn.disabled = true;
+  window.rsPreview(); // re-clasifica: los aplicados pasan a "sin cambio"
+};
+function rsInit(){ if (!rsCard()) { setTimeout(rsInit, 900); return; } rsGateApply(); }
+if (document.readyState !== 'loading') setTimeout(rsInit, 700); else document.addEventListener('DOMContentLoaded', function(){ setTimeout(rsInit, 700); });
+document.addEventListener('click', function(){ setTimeout(rsGateApply, 400); });
 })();
 </script>
 
