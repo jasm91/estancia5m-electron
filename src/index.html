@@ -7938,6 +7938,10 @@ function _doPushToRailway() {
         try {
           var raw = JSON.parse(localStorage.getItem('e5m_animals')||'{}');
           // Normalizar: convertir {id, raza} a {animal_id, breed} para la PWA
+          // v1.8.106d FIX CRÍTICO: este pusher (pushToRailway, corre de fondo cada ciclo) tenía su
+          // PROPIA lista recortada de 3 campos → BORRABA rfid/rgn/rgd/serie_sui/tatuaje del server
+          // en cada push (el 4º mapeo perdido; la auditoría de F1 solo encontró 3 porque este es
+          // multilínea). Ahora usa la lista ÚNICA e5mAnimPushFields como los demás.
           var normalized = {};
           Object.keys(raw).forEach(function(lotCode) {
             normalized[lotCode] = (raw[lotCode]||[]).map(function(a) {
@@ -7946,9 +7950,11 @@ function _doPushToRailway() {
                 breed: a.breed || a.raza || '',
                 pesajes: a.pesajes || []
               };
-              // v1.8.76: conservar el vínculo cría↔parto y el sexo en el server (si hace round-trip de campos extra)
-              if (a.parto_id != null && a.parto_id !== '') o.parto_id = a.parto_id;
-              if (a.sexo) o.sexo = a.sexo;
+              if (typeof e5mAnimPushFields === 'function') { e5mAnimPushFields(a, o); }
+              else { // fallback pre-v1.8.100 (no debería correr)
+                if (a.parto_id != null && a.parto_id !== '') o.parto_id = a.parto_id;
+                if (a.sexo) o.sexo = a.sexo;
+              }
               return o;
             });
           });
