@@ -1100,7 +1100,8 @@ function orMarcajeGo(){
       <div style="text-align:center;font-size:11px;color:var(--muted);margin:0 0 10px">— o cargalos uno por uno —</div>
       <div class="form-row" style="align-items:end">
         <div class="form-group" style="margin-bottom:0"><label class="form-label">Arete / ID</label><input class="form-input" id="wc-aid" placeholder="0042" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('wc-apeso').focus();}"></div>
-        <div class="form-group" style="margin-bottom:0"><label class="form-label">Peso (kg)</label><div style="display:flex;gap:6px"><input class="form-input" type="number" id="wc-apeso" step="0.5" min="0" placeholder="395" onkeydown="if(event.key==='Enter'){event.preventDefault();wcAddAnimal();}"><button class="btn btn-primary" style="flex-shrink:0" onclick="wcAddAnimal()">+ Agregar</button></div></div>
+        <div class="form-group" style="margin-bottom:0"><label class="form-label">Peso (kg)</label><div style="display:flex;gap:6px"><input class="form-input" type="number" id="wc-apeso" step="0.5" min="0" placeholder="395" onkeydown="if(event.key==='Enter'){event.preventDefault();wcAddAnimal();}"><button class="btn btn-primary" style="flex-shrink:0" onclick="wcAddAnimal()">+ Agregar</button></div>
+        <div class="form-group" id="wc-arfid-wrap" style="margin-bottom:0;display:none"><label class="form-label">Chip RFID</label><input class="form-input" id="wc-arfid" placeholder="964…" style="font-family:DM Mono,monospace" onkeydown="if(event.key==='Enter'){event.preventDefault();wcAddAnimal();}"></div> <!-- v1.8.114 GR2 --></div>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 5px"><span style="font-size:11px;color:var(--muted)">Animales cargados</span><span id="wc-asum" style="font-size:12px;color:var(--amber2);font-weight:700">0 cab · 0 kg</span></div>
       <div id="wc-alist" style="max-height:42vh;overflow-y:auto;border:1px solid var(--bor);border-radius:8px;background:var(--sur2)"></div>
@@ -1268,9 +1269,13 @@ function orMarcajeGo(){
     return true;
   }
   window.wcNav=function(dir){ if(dir>0&&!wcValidate(WC.step)) return; var idx=SEQ.indexOf(WC.step); idx=Math.max(0,Math.min(SEQ.length-1,idx+dir)); WC.step=SEQ[idx]; wcRender(); };
-  window.wcAddAnimal=function(){ var id=val('wc-aid').trim(), p=num('wc-apeso'); if(!id){ _toast('Arete / ID','error'); $w('wc-aid').focus(); return; } if(p<=0){ _toast('Peso del animal','error'); $w('wc-apeso').focus(); return; } if(WC.animals.find(function(a){return a.id===id;})){ _toast('Ese arete ya está en la lista','warn'); $w('wc-aid').focus(); return; } if(wcExistingIds()[id]){ _toast('El arete '+id+' ya existe en el rebaño — usá otro','error'); $w('wc-aid').focus(); return; } WC.animals.push({id:id,peso:p}); setv('wc-aid','');setv('wc-apeso',''); $w('wc-aid').focus(); wcRenderAnimals(); };
+  window.wcAddAnimal=function(){ var id=val('wc-aid').trim(), p=num('wc-apeso'); if(!id){ _toast('Arete / ID','error'); $w('wc-aid').focus(); return; } if(p<=0){ _toast('Peso del animal','error'); $w('wc-apeso').focus(); return; } if(WC.animals.find(function(a){return a.id===id;})){ _toast('Ese arete ya está en la lista','warn'); $w('wc-aid').focus(); return; } if(wcExistingIds()[id]){ _toast('El arete '+id+' ya existe en el rebaño — usá otro','error'); $w('wc-aid').focus(); return; } var _rf=($w('wc-arfid')&&$w('wc-arfid').value)?String($w('wc-arfid').value).replace(/\D/g,''):''; /* v1.8.114 GR2 */
+    if(_rf&&(_rf.length<13||_rf.length>16)){ _toast('El chip debe tener 13-16 dígitos','error'); return; }
+    if(_rf&&WC.animals.some(function(a){return a.rfid===_rf;})){ _toast('El chip '+_rf+' ya está en la lista','error'); return; }
+    var _oa={id:id,peso:p}; if(_rf)_oa.rfid=_rf;
+    WC.animals.push(_oa); setv('wc-aid','');setv('wc-apeso',''); if($w('wc-arfid'))$w('wc-arfid').value=''; $w('wc-aid').focus(); wcRenderAnimals(); };
   window.wcDelAnimal=function(id){ WC.animals=WC.animals.filter(function(a){return a.id!==id;}); wcRenderAnimals(); };
-  function wcRenderAnimals(){ var c=$w('wc-alist'); if(!c) return; var kg=WC.animals.reduce(function(s,a){return s+a.peso;},0); var s=$w('wc-asum'); if(s) s.textContent=WC.animals.length+' cab · '+kg.toFixed(0)+' kg'; c.innerHTML=WC.animals.length?WC.animals.map(function(a){ return '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid rgba(48,54,61,.4)"><span style="font-family:DM Mono,monospace;font-weight:600;color:var(--amber2)">'+a.id+'</span><span style="font-size:12px;color:var(--muted)">'+a.peso+' kg</span><button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="wcDelAnimal(\''+String(a.id).replace(/'/g,"\\'")+'\')">✕</button></div>'; }).join(''):'<div style="padding:14px;text-align:center;color:var(--muted);font-size:12px">Cargá el primer animal con su arete y peso.</div>'; }
+  function wcRenderAnimals(){ var _wrf=$w('wc-arfid-wrap'); if(_wrf) _wrf.style.display=((typeof e5mRfidOn==='function')&&e5mRfidOn())?'':'none'; /* v1.8.114 GR2 */ var c=$w('wc-alist'); if(!c) return; var kg=WC.animals.reduce(function(s,a){return s+a.peso;},0); var s=$w('wc-asum'); if(s) s.textContent=WC.animals.length+' cab · '+kg.toFixed(0)+' kg'; c.innerHTML=WC.animals.length?WC.animals.map(function(a){ return '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid rgba(48,54,61,.4)"><span style="font-family:DM Mono,monospace;font-weight:600;color:var(--amber2)">'+a.id+'</span>'+(a.rfid?'<span style="font-size:10px;color:var(--muted);font-family:DM Mono,monospace">🔗'+a.rfid+'</span>':'')+'<span style="font-size:12px;color:var(--muted)">'+a.peso+' kg</span><button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="wcDelAnimal(\''+String(a.id).replace(/'/g,"\\'")+'\')">✕</button></div>'; }).join(''):'<div style="padding:14px;text-align:center;color:var(--muted);font-size:12px">Cargá el primer animal con su arete y peso.</div>'; }
   function wcKg(){ if(WC.mode==='marcaje'){ var kg=WC.animals.reduce(function(s,a){return s+a.peso;},0); return {kg:kg,cab:WC.animals.length}; } var cab=num('wc-cant'),pp=num('wc-pprom'); return {kg:Math.round(cab*pp*10)/10,cab:cab}; }
   function wcCalc(){ var k=wcKg(),pr=num('wc-precio'); var t=Math.round(k.kg*pr*100)/100; var el=$w('wc-total'); if(el) el.textContent=money(t)+'  ('+k.cab+' cab · '+k.kg.toFixed(0)+' kg)'; return t; }
   window.wcCalc=wcCalc;  // los oninput del markup lo llaman como global
@@ -1293,7 +1298,7 @@ function orMarcajeGo(){
       if(loteCode==='__new__'){ loteCode=wcCreateLote(); if(!loteCode){ return; } }
       ensureOpt('cg-lote', loteCode);
       var rz=val('wc-raza');
-      window._cgAnimals=WC.animals.map(function(a){ return { id:a.id, peso:a.peso, raza:rz }; });
+      window._cgAnimals=WC.animals.map(function(a){ var _o={ id:a.id, peso:a.peso, raza:rz }; if(a.rfid)_o.rfid=a.rfid; return _o; }); /* v1.8.114 GR2: saveCompraGanado ya lo preserva */
     }
     if(typeof closeModal==='function') closeModal('wc-modal');
     if(typeof saveCompraGanado==='function') saveCompraGanado();
@@ -1520,7 +1525,7 @@ function orMarcajeGo(){
         <select class="form-select" id="animales-lot-filter" style="width:140px;padding:6px 10px;font-size:12px" onchange="renderAnimalesLote()">
           <option value="">Todos los lotes</option>
         </select>
-        <input class="form-input" id="animales-search" placeholder="Buscar ID o raza..." style="width:160px;padding:6px 10px;font-size:12px" oninput="renderAnimalesLote()">
+        <input class="form-input" id="animales-search" placeholder="Buscar ID, raza o chip..." style="width:160px;padding:6px 10px;font-size:12px" oninput="renderAnimalesLote()">
         <div style="display:flex;align-items:center;gap:4px">
           <span style="font-size:10px;color:var(--muted)">⚖️</span>
           <input class="form-input" type="number" id="animales-peso-min" placeholder="Min kg" style="width:80px;padding:6px 8px;font-size:11px" oninput="renderAnimalesLote()">
@@ -5071,7 +5076,7 @@ function orMarcajeGo(){
   <div class="modal" style="width:700px;max-height:85vh;overflow-y:auto">
     <h2>📥 Carga Masiva de Animales</h2>
     <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
-      Sube un archivo CSV con los animales. Formato: <strong>ID, Raza, Peso (kg)</strong> — una fila por animal.<br>
+      Sube un archivo CSV con los animales. Formato: <strong>ID, Raza, Peso (kg), Chip RFID (opcional)</strong> — una fila por animal.<br>
       <span style="color:var(--amber2)">Tip: Desde Excel, guarda cada hoja como CSV (Archivo → Guardar como → CSV UTF-8)</span>
     </div>
     <div class="form-row">
@@ -5087,7 +5092,7 @@ function orMarcajeGo(){
     <div class="form-group">
       <label class="form-label">Archivo CSV o pegar datos</label>
       <input type="file" id="bulk-file-input" accept=".csv,.txt" style="margin-bottom:8px" onchange="parseBulkFile(this)">
-      <textarea class="form-textarea" id="bulk-paste-area" placeholder="O pega aquí los datos (ID, Raza, Peso):&#10;1041, F1, 370&#10;1043, F1, 391&#10;1045, F1, 339" style="min-height:100px;font-family:DM Mono,monospace;font-size:11px"></textarea>
+      <textarea class="form-textarea" id="bulk-paste-area" placeholder="O pega aquí los datos (ID, Raza, Peso[, Chip]):&#10;1041, F1, 370, 964001069712345&#10;1043, F1, 391&#10;1045, F1, 339" style="min-height:100px;font-family:DM Mono,monospace;font-size:11px"></textarea>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px">
       <button class="btn btn-ghost" onclick="previewBulkAnimals()" style="font-size:12px">👁 Previsualizar</button>
@@ -5237,6 +5242,7 @@ function orMarcajeGo(){
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
       <span style="font-size:11px;color:var(--muted)">ID:</span>
       <input class="form-input" id="lot-new-animal-id" placeholder="Ej: 1041" style="width:90px;padding:4px 8px;font-size:12px" onkeydown="if(event.key==='Enter')addLotAnimal()">
+      <span id="lot-new-rfid-wrap" style="display:none"><span style="font-size:11px;color:var(--muted)">Chip:</span> <input class="form-input" id="lot-new-animal-rfid" placeholder="RFID (15 díg.)" style="width:135px;padding:4px 8px;font-size:12px;font-family:DM Mono,monospace" onkeydown="if(event.key==='Enter')addLotAnimal()"></span> <!-- v1.8.114 GR1 -->
       <span style="font-size:11px;color:var(--muted)">Raza:</span>
       <select class="form-select" id="lot-new-animal-raza" style="width:90px;padding:4px 6px;font-size:12px">
         <option value="F1">F1</option><option value="NE">Nelore</option>
@@ -5653,7 +5659,7 @@ function orMarcajeGo(){
       <button class="btn btn-ghost btn-sm" onclick="openBulkPaste('cg')" style="color:var(--green);border-color:rgba(57,211,83,.3)" title="Pegar lista o cargar CSV">📥 Pegar / CSV</button>
     </div>
   </div>
-  <div style="max-height:250px;overflow-y:auto" id="cg-animals-list">
+  <div style="max-height:250px;overflow-y:auto;overflow-x:auto" id="cg-animals-list"> <!-- v1.8.113 G6: con chip activo la fila no se corta -->
     <table class="tbl" style="font-size:11px">
       <thead><tr><th>ID / Caravana</th><th id="cg-th-rfid" style="display:none">RFID</th><th>Peso (kg)</th><th>Raza</th><th></th></tr></thead>
       <tbody id="cg-animals-tbody"></tbody>
@@ -9215,7 +9221,16 @@ function addLotAnimal() {
   if(_lotNewAnimals.find(function(a){ return a.id===id; })){ toast('El ID '+id+' ya esta en la lista','error'); return; }
   var raza = razaSel ? razaSel.value : '';
   var peso = parseFloat(pesoInput ? pesoInput.value : '') || null;
-  _lotNewAnimals.push({id:id, raza:raza, peso:peso, pesajes: peso?[{fecha:localDate(), peso:peso}]:[]});
+  var _rfIn=document.getElementById('lot-new-animal-rfid');
+  var _rf=(_rfIn&&_rfIn.value)?String(_rfIn.value).replace(/\D/g,''):''; /* v1.8.114 GR1 */
+  if(_rf){
+    if(_rf.length<13||_rf.length>16){ toast('El chip debe tener 13-16 dígitos','error'); return; }
+    if(_lotNewAnimals.some(function(a){return a.rfid===_rf;})){ toast('El chip '+_rf+' ya está en la lista','error'); return; }
+  }
+  var _nla={id:id, raza:raza, peso:peso, pesajes: peso?[{fecha:localDate(), peso:peso}]:[]};
+  if(_rf) _nla.rfid=_rf;
+  _lotNewAnimals.push(_nla);
+  if(_rfIn) _rfIn.value='';
   idInput.value='';
   if(pesoInput) pesoInput.value='';
   renderLotAnimalList();
@@ -9233,6 +9248,7 @@ function clearLotAnimals() {
 }
 
 function renderLotAnimalList() {
+  var _rfW=document.getElementById('lot-new-rfid-wrap'); if(_rfW) _rfW.style.display=((typeof e5mRfidOn==='function')&&e5mRfidOn())?'':'none'; /* v1.8.114 GR1 */
   var el = document.getElementById('lot-animal-list');
   var badge = document.getElementById('lot-animal-count-badge');
   var empty = document.getElementById('lot-animal-list-empty');
@@ -9244,7 +9260,7 @@ function renderLotAnimalList() {
   }
   el.innerHTML = _lotNewAnimals.map(function(a, i){
     return '<div style="display:flex;align-items:center;gap:10px;padding:6px 12px;border-bottom:1px solid rgba(48,54,61,.3);font-size:12px">'+
-      '<span style="font-family:DM Mono,monospace;font-weight:700;color:var(--amber2);min-width:70px">'+a.id+'</span>'+
+      '<span style="font-family:DM Mono,monospace;font-weight:700;color:var(--amber2);min-width:70px">'+a.id+'</span>'+ (a.rfid?'<span style="font-size:10px;color:var(--muted);font-family:DM Mono,monospace">🔗'+a.rfid+'</span>':'')+ /* v1.8.114 GR1 */
       '<span style="color:var(--muted);min-width:50px">'+a.raza+'</span>'+
       '<span style="font-family:DM Mono,monospace;min-width:70px">'+(a.peso?a.peso+' kg':'-')+'</span>'+
       '<button onclick="removeLotAnimal(\'' + a.id + '\')" style="margin-left:auto;background:none;border:none;color:var(--red);cursor:pointer;font-size:14px;padding:0 4px">&times;</button>'+
@@ -9308,6 +9324,8 @@ function saveLot() {
       db.next_ids.lot--; return;
     }
   }
+  var _rfErrNL=(typeof e5mRfidValidarBatch==='function')?e5mRfidValidarBatch(_lotNewAnimals):null; /* v1.8.114 GR1 */
+  if(_rfErrNL){ toast(_rfErrNL,'error'); db.next_ids.lot--; return; }
   db.lots.push(newLot);
   // v1.4.104: garantizar entry en rotation_history si el lote tiene paddock
   _ensureRotationEntry(newLot, { reason: 'Lote creado desde Desktop' });
@@ -9316,7 +9334,9 @@ function saveLot() {
   if(totalAnimals > 0) {
     var animalesDB = getAnimalesDB();
     animalesDB[code] = _lotNewAnimals.map(function(a){
-      return { id:a.id, raza:a.raza, pesajes:a.pesajes||[] };
+      var _o = { id:a.id, raza:a.raza, pesajes:a.pesajes||[] };
+      if (a.rfid) _o.rfid = a.rfid; // v1.8.114 GR1: el chip del alta ya no se pierde
+      return _o;
     });
     saveAnimalesDB(animalesDB);
     // FIX continuidad: forzar animal_count = animales reales antes del push
@@ -33355,7 +33375,7 @@ function _buildPesajeOptions(animals, filterText, selectedId) {
   if(!cont) return;
   var f=String(filterText||"").toLowerCase().trim();
   var filtered = f
-    ? animals.filter(function(a){ var id=String(a.id||a.animal_id||"").toLowerCase(); var rz=String(a.raza||a.breed||"").toLowerCase(); return id.indexOf(f)>=0 || rz.indexOf(f)>=0; })
+    ? animals.filter(function(a){ var id=String(a.id||a.animal_id||"").toLowerCase(); var rz=String(a.raza||a.breed||"").toLowerCase(); return id.indexOf(f)>=0 || rz.indexOf(f)>=0 || (a.rfid||"").toString().indexOf(f)>=0; }) /* v1.8.113 G5 */
     : animals;
   if(!filtered.length){
     cont.innerHTML='<div style="padding:14px;text-align:center;color:var(--muted);font-size:12px">'+(animals.length?('Ningún animal coincide'):'Este lote no tiene animales con arete')+'</div>';
@@ -33414,15 +33434,18 @@ function onPesajeAnimalChange(animalId) {
 function openModalPesajeAnimalId(animalId,lotCode){
   var modal=document.getElementById("modal-pesaje-animal");if(!modal) return;
   modal._lotCode=lotCode;
-  var lbl=document.getElementById("pa-lot-label");
-  if(lbl){
-    var lot=(db.lots||[]).find(function(l){return l.code===lotCode;});
-    lbl.textContent="Lote: "+lotCode+(lot?" - "+lot.category+" - "+lot.paddock:"");
-  }
-  var searchEl=document.getElementById("pa-search");if(searchEl)searchEl.value="";
-  var infoEl=document.getElementById("pa-animal-info");if(infoEl)infoEl.style.display="none";
-  var all=getAnimalesDB();
-  var animals=all[lotCode]||[];
+   var lbl=document.getElementById("pa-lot-label");
+   if(lbl){
+     if(lotCode==="__ALL__"){ lbl.textContent="Todos los lotes"; } /* v1.8.113 G2 */
+     else { var lot=(db.lots||[]).find(function(l){return l.code===lotCode;}); lbl.textContent="Lote: "+lotCode+(lot?" - "+lot.category+" - "+lot.paddock:""); }
+   }
+   var searchEl=document.getElementById("pa-search");if(searchEl)searchEl.value="";
+   var infoEl=document.getElementById("pa-animal-info");if(infoEl)infoEl.style.display="none";
+   var all=getAnimalesDB();
+   var animals;
+   if(lotCode==="__ALL__"){ /* v1.8.113 G2: pesaje individual también desde "Ver todos" */
+     animals=[]; Object.keys(all).forEach(function(k){ (all[k]||[]).forEach(function(a){ a._lot=k; animals.push(a); }); });
+   } else { animals=all[lotCode]||[]; }
   _buildPesajeOptions(animals,"",animalId);
   var d=document.getElementById("pa-fecha");if(d)d.value=localDate();
   var pw=document.getElementById("pa-peso");if(pw)pw.value="";
@@ -33438,8 +33461,15 @@ function savePesajeAnimal(){
   if(!animalId||!peso||!fecha){toast("Completa animal, peso y fecha","error");return;}
   // FIX v1.4.34: no permitir fechas futuras
   if(!validateNotFuture(fecha, 'fecha del pesaje')) return;
-  var all=getAnimalesDB();var animals=all[lotCode]||[];
-  var animal=animals.find(function(a){return a.id===animalId;});
+  var all=getAnimalesDB();
+   if(lotCode==="__ALL__"){ /* v1.8.113 G2: resolver el lote real del animal elegido */
+     var _lotReal=null;
+     Object.keys(all).some(function(k){ if((all[k]||[]).some(function(x){return x.id===animalId;})){ _lotReal=k; return true; } return false; });
+     if(!_lotReal){toast("Animal no encontrado","error");return;}
+     lotCode=_lotReal;
+   }
+   var animals=all[lotCode]||[];
+   var animal=animals.find(function(a){return a.id===animalId;});
   if(!animal){toast("Animal no encontrado","error");return;}
   animal.pesajes=animal.pesajes||[];
   var exists=animal.pesajes.find(function(p){return p.fecha===fecha;});
@@ -33695,7 +33725,10 @@ function _ipProcessRows(rows) {
   dataRows.forEach(function(r, rowIdx) {
     if (!r || !r.length) return;
     var idRaw = String(r[idIdx] || "").trim();
-    var rfidRaw = (rfidIdx >= 0) ? String(r[rfidIdx] || "").trim() : ""; // v1.8.102
+    var _rfCell = (rfidIdx >= 0) ? r[rfidIdx] : "";
+    if (typeof _rfCell === "number") _rfCell = _rfCell.toFixed(0); /* v1.8.114 GR4: Excel numérico */
+    else if (/^\d+(?:\.\d+)?[eE]\+?\d+$/.test(String(_rfCell||"").trim())) _rfCell = Number(_rfCell).toFixed(0); /* 9.64E+14 -> dígitos */
+    var rfidRaw = String(_rfCell || "").trim(); // v1.8.102 + v1.8.114 GR4
     var pesoRaw = String(r[pesoIdx] || "").trim().replace(",", ".");
     if ((!idRaw && !rfidRaw) || !pesoRaw) {
       // fila sin identificador o sin peso → ignorar silenciosamente (animal no pesado)
@@ -33992,7 +34025,7 @@ function renderPesajesFromAnimales(){
 <div style="height:1px;background:var(--bor);margin:14px 0"></div>
 <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.04em">⚖️ Pesaje individual</div>
 
-<div class="form-group"><label class="form-label">Buscar animal (ID o raza)</label>
+<div class="form-group"><label class="form-label">Buscar animal (ID, raza o chip)</label>
   <input class="form-input" id="pa-search" placeholder="Escribí para filtrar al instante…" oninput="filterPesajeAnimals(this.value)" autocomplete="off">
 </div>
 <input type="hidden" id="pa-animal-id">
@@ -36309,7 +36342,16 @@ function parseBulkData(text) {
     // Dedup
     if (seen[id]) return;
     seen[id] = true;
-    animals.push({ id: id, raza: raza, peso: peso });
+    // v1.8.113 G1: detectar chip RFID en cualquier columna (13-16 dígitos; acepta espacios)
+    var rfid = '';
+    for (var rj = startCol + 1; rj < parts.length; rj++) {
+      var _dg = String(parts[rj]||'').replace(/\D/g, '');
+      if (_dg.length >= 13 && _dg.length <= 16 && /^[\d\s]+$/.test(String(parts[rj]||'').trim())) { rfid = _dg; break; }
+    }
+    if (rfid && String(raza).replace(/\D/g,'') === rfid) raza = ''; // el chip venía en la columna de raza
+    var _obj = { id: id, raza: raza, peso: peso };
+    if (rfid) _obj.rfid = rfid;
+    animals.push(_obj);
   });
   return animals;
 }
@@ -36341,11 +36383,11 @@ function previewBulkAnimals() {
   });
   var avgPeso = _bulkAnimals.reduce(function(s, a) { return s + a.peso; }, 0) / _bulkAnimals.length;
   table.innerHTML = '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">Peso promedio: <strong>' + Math.round(avgPeso * 10) / 10 + ' kg</strong></div>' +
-    '<table class="tbl" style="font-size:11px"><thead><tr><th>#</th><th>ID</th><th>Raza</th><th>Peso</th><th>Estado</th></tr></thead><tbody>' +
+    '<table class="tbl" style="font-size:11px"><thead><tr><th>#</th><th>ID</th><th>Raza</th><th>Peso</th><th>RFID</th><th>Estado</th></tr></thead><tbody>' +
     _bulkAnimals.map(function(a, i) {
       var dup = existing[a.id];
       var estado = dup ? '<span style="color:var(--amber)">⚠ Ya existe en ' + dup + '</span>' : '<span style="color:var(--green)">✓ Nuevo</span>';
-      return '<tr><td>' + (i + 1) + '</td><td style="font-family:DM Mono;font-weight:700;color:var(--amber2)">' + escH(a.id) + '</td><td>' + escH(a.raza) + '</td><td style="font-family:DM Mono">' + (a.peso || '—') + ' kg</td><td>' + estado + '</td></tr>';
+      return '<tr><td>' + (i + 1) + '</td><td style="font-family:DM Mono;font-weight:700;color:var(--amber2)">' + escH(a.id) + '</td><td>' + escH(a.raza) + '</td><td style="font-family:DM Mono">' + (a.peso || '—') + ' kg</td><td style="font-family:DM Mono;font-size:10px">' + (a.rfid ? '🔗 ' + a.rfid : '—') + '</td><td>' + estado + '</td></tr>'; /* v1.8.113 G1 */
     }).join('') +
     '</tbody></table>';
 }
@@ -36357,6 +36399,8 @@ function confirmBulkAnimals() {
   // FIX v1.4.34: no permitir fechas futuras
   if (!validateNotFuture(date, 'fecha del pesaje')) return;
   if (!_bulkAnimals.length) { toast('No hay animales para cargar', 'error'); return; }
+  var _rfErrBulk = (typeof e5mRfidValidarBatch === 'function') ? e5mRfidValidarBatch(_bulkAnimals) : null; /* v1.8.113 G1 */
+  if (_rfErrBulk) { toast(_rfErrBulk, 'error'); return; }
   var lot = db.lots.find(function(l) { return l.code === lotCode; });
   if (!lot) { toast('Lote no encontrado', 'error'); return; }
   if (!confirm('Cargar ' + _bulkAnimals.length + ' animales al lote ' + lotCode + '?')) return;
@@ -36375,6 +36419,7 @@ function confirmBulkAnimals() {
       breed: a.raza || '',
       pesajes: []
     };
+    if (a.rfid) animal.rfid = a.rfid; // v1.8.113 G1: el chip pegado en carga masiva ya no se pierde
     if (a.peso > 0) {
       animal.pesajes.push({ fecha: date, peso: a.peso, tipo: 'entrada', nota: 'Carga masiva' });
     }
@@ -44002,7 +44047,7 @@ function rsCard(){
   c.id = 'rs-card'; c.className = 'card'; c.style.marginTop = '16px';
   c.innerHTML = '<div class="card-title" style="margin-bottom:6px">🔗 Siembra arete ↔ RFID</div>'+
     '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Pegá la tabla <b>arete,rfid</b> (una por línea; acepta coma, punto y coma o tab; con o sin encabezado). Asigna los chips a animales YA cargados — no crea animales. Sirve para el padrón oficial (SINTRABOL) o la planilla del cliente.</div>'+
-    '<textarea id="rs-input" rows="6" class="form-input" style="font-family:DM Mono,monospace;font-size:12px;width:100%" placeholder="arete,rfid\n1041,068000012345678\n1043,068000012345679"></textarea>'+
+    '<textarea id="rs-input" rows="6" class="form-input" oninput="if(!this.value.trim()){var t=document.getElementById(\'rs-preview\');if(t)t.innerHTML=\'\';var r=document.getElementById(\'rs-status\');if(r)r.textContent=\'\';var b=document.getElementById(\'rs-aplicar-btn\');if(b)b.disabled=true;}" style="font-family:DM Mono,monospace;font-size:12px;width:100%" placeholder="arete,rfid\n1041,068000012345678\n1043,068000012345679"></textarea>'+
     '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">'+
     '<button class="btn btn-ghost btn-sm" onclick="rsPreview()">🔎 Previsualizar</button>'+
     '<button class="btn btn-primary btn-sm" id="rs-aplicar-btn" onclick="rsAplicar()" disabled>💾 Aplicar siembra</button>'+
