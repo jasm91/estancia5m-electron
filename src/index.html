@@ -4778,7 +4778,6 @@ function orMarcajeGo(){
     </select>
     <span style="font-size:11px;color:var(--muted)">RFID habilita: columna chip en marcaje/compra/onboarding, planilla de pesaje por chip y siembra arete↔RFID</span>
   </label>
-  <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-top:8px;cursor:pointer"><input type="checkbox" id="cfg-mod-multiestancia" onchange="cfgModuloToggle('multi_estancia',this)"> 🏡 Multi-estancia (varias propiedades en esta cuenta: potreros por estancia + selector con filtro en Rotación y Lotes)</label>
 </div></div>
 <div class="card" style="margin-bottom:16px"><div class="card-body">
   <div class="card-title" style="margin-bottom:6px">🔎 Tamaño de letra (este equipo)</div>
@@ -8781,30 +8780,16 @@ if (!db.pasture_evals) db.pasture_evals = [];
   });
   if (rotacionExistenteRecien) {
     console.warn('[moveLot] Rotación ya creada hace <5s para lote+potrero, omitiendo duplicación');
-  }
-  // v1.8.105 multi-estancia fase 2: rotación hacia potrero de OTRA estancia = TRASLADO marcado
-  var _meTraslado = null;
-  try {
-    if (typeof meActivo === 'function' && meActivo() && typeof meEstanciaDe === 'function') {
-      var _meDe = meEstanciaDe(old), _meA = meEstanciaDe(newPaddock);
-      if (_meDe !== _meA && (_meDe || _meA)) _meTraslado = { de: _meDe || '', a: _meA || '' };
-    }
-  } catch (eMe) {}
-  if (!rotacionExistenteRecien) {
+  } else {
     // Open new occupation
-    var _rotNueva = {
+    db.rotation_history.push({
       id: Date.now(), lot_code: lot.code, potrero: newPaddock, from_potrero: old||'',
       entry_date: localDate(), entry_at: new Date().toISOString(),
       exit_date: null, exit_at: null, days_occupied: 0,
       cabezas: lot.animal_count||0, reason: reason||'', by: 'Desktop'
-    };
-    if (_meTraslado) _rotNueva.traslado_estancia = _meTraslado; // v1.8.105: queda en el registro (viaja por sync)
-    db.rotation_history.push(_rotNueva);
+    });
   }
-  if (_meTraslado) {
-    try { auditLog('update', 'lots', lot.id, 'TRASLADO entre estancias: ' + lot.code + ' · ' + (typeof meNombreDe==='function'?meNombreDe(_meTraslado.de):_meTraslado.de || '(sin estancia)') + ' → ' + (typeof meNombreDe==='function'?meNombreDe(_meTraslado.a):_meTraslado.a || '(sin estancia)') + ' (' + (lot.animal_count||0) + ' cab)', { traslado_estancia: [_meTraslado.de, _meTraslado.a] }); } catch (eA) {}
-  }
-  addActivity('Sistema', 'movimiento', lot.code, 'Lote '+(lot.code)+' movido de '+(old)+' a '+(newPaddock)+'. '+(reason)+(_meTraslado?' [TRASLADO entre estancias]':'')+'');
+  addActivity('Sistema', 'movimiento', lot.code, 'Lote '+(lot.code)+' movido de '+(old)+' a '+(newPaddock)+'. '+(reason)+'');
   // Auto-Kardex
   if (!db.kardex) db.kardex = [];
   db.kardex.push({id:Date.now()+3,lote:lot.code,tipo:'movimiento',fecha:localDate(),cabezas:lot.animal_count||0,precio:0,total:0,desc:'Rotacion: '+(old||'?')+' → '+newPaddock+(reason?' ('+reason+')':''),by:'Desktop',created_at:new Date().toISOString(),auto:true});
@@ -43084,8 +43069,6 @@ function cfgModulosRender(){
   if(c) c.checked=!!p.perfil_cabana;
   var r=agEl('cfg-mod-identidad'); // v1.8.103: selector de 3 modos (era checkbox en v1.8.101)
   if(r) r.value=(p.identidad==='dual'||p.identidad==='rfid')?p.identidad:'arete';
-  var me=agEl('cfg-mod-multiestancia'); // v1.8.104
-  if(me) me.checked=!!p.multi_estancia;
 }
 // v1.8.103: modo de identidad por tenant (params.identidad es STRING: arete|dual|rfid)
 function cfgIdentidadSelect(el){
@@ -43989,234 +43972,156 @@ document.addEventListener('click', function(){ setTimeout(rsGateApply, 400); });
 })();
 </script>
 
-<script id="multi-estancia-v18104">
+<script id="estancia-switcher-v18106">
 /* ═══════════════════════════════════════════════════════════════
-   v1.8.104 — MULTI-ESTANCIA fase 1 (opción C del diseño, módulo aditivo)
-   La estancia es un AGRUPADOR liviano anclado en POTREROS: cada potrero
-   declara su estancia y los lotes/animales heredan por su potrero.
-   - Datos: params.estancias = [{id,nombre}] + params.potreros[i].estancia
-     (todo en params → sincroniza por el canal existente, CERO whitelist nueva).
-   - Gate por tenant: params.multi_estancia (checkbox en Config → Módulos).
-   - Selector en la topbar (elección POR EQUIPO en localStorage, no sincroniza).
-   - Filtro: wraps encadenados sobre renderRotacion (getParams filtrado durante
-     el render → KPIs y cards salen bien solos) y renderLotes (db.lots filtrado
-     durante el render, restaurado en finally). "Todas" = consolidado = la app
-     de hoy. Preserva wraps previos (__mpWrap del mapa): se envuelve la función
-     VIGENTE, flag __meWrap.
-   - Kill switch: window.__MULTIESTANCIA_OFF = true.
-   Fase 2 (después): filtro en stock/personal/reportes, estancia en PDFs,
-   flag traslado_estancia en movimientos, mapa JSON por estancia, PWA.
+   v1.8.106 — SWITCHER DE ESTANCIAS (multi-estancia opción A)
+   Modelo elegido por José: 1 TENANT = 1 ESTANCIA (aislamiento total —
+   propiedades distintas jamás mezclan datos). Este módulo guarda VARIOS
+   tokens en ESTE equipo (localStorage, jamás sincroniza: los tokens son
+   secretos por estancia) y permite cambiar entre estancias.
+   El cambio es SEGURO contra contaminación cross-tenant (lección del
+   incidente de sync): preserva solo prefs del equipo (whitelist), LIMPIA
+   todo el cache de datos e5m_* del tenant anterior, setea el token nuevo
+   y recarga → pull completo de la estancia elegida desde el server.
+   Card debajo de "🌐 Servidor API" + selector 🏡 en la topbar (si ≥2).
+   Kill switch: window.__SWITCHER_OFF = true.
    ═══════════════════════════════════════════════════════════════ */
 (function(){
 'use strict';
+var KEY = 'e5m_estancias_guardadas';
+// Prefs de EQUIPO que sobreviven al cambio (todo lo demás e5m_* se limpia: es data del tenant)
+var PRESERVAR = [KEY, 'e5m_api_url', 'e5m_font_scale', 'e5m_gemini_key', 'e5m_agro_key',
+  'e5m_auto_backup_enabled', 'e5m_auto_backup_freq', 'e5m_device_label', 'e5m_operator', 'e5m_nav_collapsed_secs'];
 function el(id){ return document.getElementById(id); }
 function esc(x){ return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
-function meP(){ try { return (typeof getParams==='function')?(getParams()||{}):{}; } catch(e){ return {}; } }
-function meOn(){ return !window.__MULTIESTANCIA_OFF && !!meP().multi_estancia; }
-function meEstancias(){ var e=meP().estancias; return Array.isArray(e)?e:[]; }
-window.meSel = function(){ if (!meOn()) return ''; var s=localStorage.getItem('e5m_estancia_sel')||''; return meEstancias().some(function(x){return x&&x.id===s;})?s:''; };
-// estancia de un potrero (por nombre) → id | ''
-window.meEstanciaDe = function(potName){
-  var pots=meP().potreros||[]; var k=String(potName||'');
-  var p=pots.find(function(x){ return x && String(x.name||'')===k; });
-  return (p && p.estancia) || '';
-};
-// v1.8.105 fase 2: expuestos para moveLot (traslados) y UI
-window.meActivo = meOn;
-window.meNombreDe = function(id){ var e=meEstancias().find(function(x){ return x && x.id===id; }); return (e && e.nombre) || ''; };
-// set {nombrePotrero:true} de la estancia seleccionada
-function mePotSet(sel){
-  var out={}; (meP().potreros||[]).forEach(function(p){ if(p && String(p.estancia||'')===sel) out[String(p.name||'')]=true; });
-  return out;
+function swLista(){ try { var l = JSON.parse(localStorage.getItem(KEY)||'[]'); return Array.isArray(l)?l:[]; } catch(e){ return []; } }
+function swTokenActual(){ return localStorage.getItem('e5m_api_token')||''; }
+function swMask(t){ t=String(t||''); return t.length>8 ? t.slice(0,4)+'····'+t.slice(-4) : '····'; }
+function swNombreActual(){
+  var t = swTokenActual();
+  var hit = swLista().find(function(x){ return x && x.token===t; });
+  if (hit) return hit.nombre;
+  try { var rp = JSON.parse(localStorage.getItem('e5m_report_params')||'{}'); if (rp.nombre_estancia) return rp.nombre_estancia; } catch(e){}
+  return '';
 }
-
-/* ── WRAPS de filtro (encadenados, preservan los previos) ── */
-function meWrapRenders(){
-  if (typeof window.renderRotacion==='function' && !window.renderRotacion.__meWrap) {
-    var _rr = window.renderRotacion;
-    window.renderRotacion = function(){
-      var sel = window.meSel();
-      if (!sel) return _rr.apply(this, arguments); // Todas / gate off → tal cual hoy
-      var _gp = window.getParams;
-      try {
-        window.getParams = function(){
-          var p = _gp()||{}; var q = Object.assign({}, p);
-          q.potreros = (p.potreros||[]).filter(function(x){ return x && String(x.estancia||'')===sel; });
-          return q;
-        };
-        return _rr.apply(this, arguments);
-      } finally { window.getParams = _gp; }
-    };
-    window.renderRotacion.__meWrap = true;
-  }
-  if (typeof window.renderLotes==='function' && !window.renderLotes.__meWrap) {
-    var _rl = window.renderLotes;
-    window.renderLotes = function(){
-      var sel = window.meSel();
-      if (!sel) return _rl.apply(this, arguments);
-      var keep = mePotSet(sel);
-      var _lots = db.lots;
-      try {
-        db.lots = (_lots||[]).filter(function(l){ return l && keep[String(l.paddock||'')]; });
-        return _rl.apply(this, arguments);
-      } finally { db.lots = _lots; }
-    };
-    window.renderLotes.__meWrap = true;
-  }
-  // v1.8.105 fase 2: la página Animales también filtra (dropdown de lotes por estancia)
-  if (typeof window.renderAnimalesLote==='function' && !window.renderAnimalesLote.__meWrap) {
-    var _ra = window.renderAnimalesLote;
-    window.renderAnimalesLote = function(){
-      var sel = window.meSel();
-      if (!sel) return _ra.apply(this, arguments);
-      var keep = mePotSet(sel);
-      var _lots = db.lots;
-      try {
-        db.lots = (_lots||[]).filter(function(l){ return l && keep[String(l.paddock||'')]; });
-        return _ra.apply(this, arguments);
-      } finally { db.lots = _lots; }
-    };
-    window.renderAnimalesLote.__meWrap = true;
-  }
+function swCard(){
+  if (el('sw-card')) return el('sw-card');
+  var anchor = el('cfg-url'); if (!anchor) return null;
+  var host = anchor.closest('.card'); if (!host || !host.parentElement) return null;
+  var c = document.createElement('div');
+  c.id = 'sw-card'; c.className = 'card'; c.style.marginTop = '16px';
+  c.innerHTML = '<div class="card-hd"><div class="card-title">🏡 Mis estancias (este equipo)</div></div>'+
+    '<div class="card-body">'+
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Cada estancia es una cuenta AISLADA con su propio token. Acá guardás los tokens de tus estancias <b>solo en este equipo</b> y cambiás entre ellas con el selector 🏡 de arriba. Al cambiar se limpia el cache local (los datos quedan en el server de cada estancia) y la app recarga con la estancia elegida.</div>'+
+    '<div id="sw-lista" style="margin-bottom:12px"></div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
+    '<input id="sw-nombre" class="form-input" placeholder="Nombre (ej: Chaco Lejos Norte)" style="width:200px;padding:6px 10px;font-size:12.5px">'+
+    '<input id="sw-token" class="form-input" type="password" placeholder="Token (vacío = usar el actual)" style="width:230px;padding:6px 10px;font-size:12.5px">'+
+    '<button class="btn btn-primary btn-sm" onclick="swGuardar()">💾 Guardar estancia</button>'+
+    '<span id="sw-status" style="font-size:11.5px;color:var(--muted)"></span></div>'+
+    '</div>';
+  host.parentElement.insertBefore(c, host.nextSibling);
+  return c;
 }
-
-/* ── v1.8.105 fase 2: mapa — potreros de otras estancias ATENUADOS ──
-   Solo toca opacity/pointerEvents del SVG ya pintado por el módulo del mapa
-   (lee el MISMO JSON de localStorage para mapear data-mp → nombre). */
-function meMapaFiltra(){
-  try {
-    var cv = document.getElementById('mp-canvas'); if (!cv) return;
-    var svg = cv.querySelector('svg'); if (!svg) return;
-    var sel = window.meSel();
-    var keep = sel ? mePotSet(sel) : null;
-    var m = null; try { m = JSON.parse(localStorage.getItem('e5m_mapa_potreros_v1')||'null'); } catch(eJ){}
-    var dim = false;
-    Array.prototype.forEach.call(svg.children, function(node){
-      var tag = String(node.tagName||'').toLowerCase();
-      if (tag === 'polygon') {
-        var i = parseInt(node.getAttribute('data-mp'));
-        var nombre = (m && m.potreros && m.potreros[i]) ? String(m.potreros[i].nombre||'') : '';
-        dim = !!(keep && nombre && !keep[nombre]);
-        node.style.opacity = dim ? '0.13' : '';
-        node.style.pointerEvents = dim ? 'none' : '';
-      } else if (tag === 'text') {
-        node.style.opacity = dim ? '0.13' : '';
-      }
-    });
-  } catch(eM){}
+function swCardRender(){
+  var c = swCard(); if (!c) return;
+  if (window.__SWITCHER_OFF) { c.style.display='none'; return; }
+  var lista = swLista(), actual = swTokenActual();
+  var box = el('sw-lista'); if (!box) return;
+  if (!lista.length) { box.innerHTML = '<span style="font-size:12px;color:var(--muted)">Sin estancias guardadas todavía. Poné un nombre y 💾 (token vacío = guarda la estancia ACTUAL), o pegá el token de otra estancia.</span>'; return; }
+  box.innerHTML = '<table class="tbl" style="font-size:12px"><thead><tr><th>Estancia</th><th>Token</th><th></th></tr></thead><tbody>'+
+    lista.map(function(x, i){
+      var es = x.token===actual;
+      return '<tr'+(es?' style="background:rgba(63,185,80,.06)"':'')+'>'+
+        '<td style="font-weight:600">🏡 '+esc(x.nombre)+(es?' <span style="font-size:10px;background:rgba(63,185,80,.15);color:var(--green);padding:1px 6px;border-radius:4px">ACTUAL</span>':'')+'</td>'+
+        '<td style="font-family:DM Mono,monospace;font-size:11px;color:var(--muted)">'+esc(swMask(x.token))+'</td>'+
+        '<td><div style="display:flex;gap:6px">'+
+        (es?'':'<button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="swCambiar('+i+')">→ Usar</button>')+
+        '<button class="btn btn-ghost btn-sm" style="font-size:11px;color:var(--red)" onclick="swQuitar('+i+')">✕</button></div></td></tr>';
+    }).join('')+'</tbody></table>';
 }
-window.meMapaFiltra = meMapaFiltra;
-
-/* ── Selector en la topbar ── */
-function meSelector(){
-  var s = el('me-selector');
+function swSelector(){
+  var s = el('sw-selector');
   if (!s) {
     var host = document.querySelector('.topbar-right'); if (!host) return null;
     s = document.createElement('select');
-    s.id = 'me-selector';
-    s.style.cssText = 'display:none;background:var(--sur2,#1C2333);border:1px solid var(--bor,#30363D);color:inherit;border-radius:8px;padding:5px 8px;font-size:12px;margin-right:8px;max-width:170px';
-    s.title = 'Estancia (filtra Rotación y Lotes en este equipo)';
-    s.onchange = function(){ localStorage.setItem('e5m_estancia_sel', s.value||''); meRefresh(); };
+    s.id = 'sw-selector';
+    s.style.cssText = 'display:none;background:var(--sur2,#1C2333);border:1px solid var(--bor,#30363D);color:inherit;border-radius:8px;padding:5px 8px;font-size:12px;margin-right:8px;max-width:180px';
+    s.title = 'Cambiar de estancia (limpia el cache local y recarga)';
+    s.onchange = function(){
+      var i = parseInt(s.value);
+      swSelectorRender(); // repone la selección visual; el cambio real pasa por confirm
+      if (!isNaN(i)) window.swCambiar(i);
+    };
     host.insertBefore(s, host.firstChild);
   }
   return s;
 }
-function meSelectorRender(){
-  var s = meSelector(); if (!s) return;
-  var ests = meEstancias();
-  if (!meOn() || !ests.length) { s.style.display='none'; return; }
-  var sel = window.meSel();
-  s.innerHTML = '<option value="">🏡 Todas las estancias</option>' +
-    ests.map(function(e){ return '<option value="'+esc(e.id)+'"'+(sel===e.id?' selected':'')+'>🏡 '+esc(e.nombre)+'</option>'; }).join('');
+function swSelectorRender(){
+  var s = swSelector(); if (!s) return;
+  var lista = swLista();
+  if (window.__SWITCHER_OFF || lista.length < 2) { s.style.display='none'; return; }
+  var actual = swTokenActual();
+  s.innerHTML = lista.map(function(x, i){
+    return '<option value="'+i+'"'+(x.token===actual?' selected':'')+'>🏡 '+esc(x.nombre)+'</option>';
+  }).join('');
   s.style.display='';
 }
-function meRefresh(){
-  meSelectorRender();
-  try { if (typeof renderRotacion==='function') renderRotacion(); } catch(e1){}
-  try { if (typeof renderLotes==='function') renderLotes(); } catch(e2){}
-  try { if (typeof renderAnimalesLote==='function') renderAnimalesLote(); } catch(e3){} // v1.8.105
-  meCardRender();
-  setTimeout(meMapaFiltra, 150); // v1.8.105: después de que el mapa se re-pinte
-}
-
-/* ── Card de gestión en Config (debajo de la siembra RFID / Módulos) ── */
-function meCard(){
-  if (el('me-card')) return el('me-card');
-  var anchor = el('rs-card') || (el('cfg-mod-identidad') && el('cfg-mod-identidad').closest('.card'));
-  if (!anchor || !anchor.parentElement) return null;
-  var c = document.createElement('div');
-  c.id = 'me-card'; c.className = 'card'; c.style.marginTop = '16px';
-  c.innerHTML = '<div class="card-title" style="margin-bottom:6px">🏡 Estancias (multi-estancia)</div>'+
-    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Creá las estancias y asignale una a cada potrero. Los lotes y animales heredan la estancia por su potrero. El selector de arriba filtra Rotación y Lotes; "Todas" = consolidado. Sincroniza a todos los equipos.</div>'+
-    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">'+
-    '<input id="me-nueva" class="form-input" placeholder="Nombre de la estancia (ej: Chaco Lejos Norte)" style="width:260px;padding:6px 10px;font-size:12.5px">'+
-    '<button class="btn btn-primary btn-sm" onclick="meAgregar()">＋ Agregar estancia</button>'+
-    '<span id="me-status" style="font-size:11.5px;color:var(--muted)"></span></div>'+
-    '<div id="me-lista" style="margin-bottom:12px"></div>'+
-    '<div id="me-potreros"></div>';
-  anchor.parentElement.insertBefore(c, anchor.nextSibling);
-  return c;
-}
-function meCardRender(){
-  var c = meCard(); if (!c) return;
-  c.style.display = meOn() ? '' : 'none';
-  if (!meOn()) return;
-  var p = meP(); var ests = meEstancias(); var pots = p.potreros||[];
-  var porEst = {}; pots.forEach(function(x){ var e=String((x&&x.estancia)||''); porEst[e]=(porEst[e]||0)+1; });
-  var lista = el('me-lista');
-  if (lista) lista.innerHTML = ests.length ? ('<div style="display:flex;gap:8px;flex-wrap:wrap">'+ests.map(function(e){
-    var n = porEst[e.id]||0;
-    return '<span style="background:var(--sur2);border:1px solid var(--bor);border-radius:8px;padding:5px 10px;font-size:12px">🏡 <b>'+esc(e.nombre)+'</b> · '+n+' potrero(s)'+
-      (n===0?' <button onclick="meBorrar(\''+esc(e.id)+'\')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:12px" title="borrar (solo sin potreros)">✕</button>':'')+'</span>';
-  }).join('')+(porEst['']?'<span style="font-size:11.5px;color:var(--amber2);align-self:center">⚠ '+porEst['']+' potrero(s) sin estancia (no aparecen al filtrar)</span>':'')+'</div>') : '<span style="font-size:12px;color:var(--muted)">Sin estancias todavía — agregá la primera arriba.</span>';
-  var pot = el('me-potreros');
-  if (pot) pot.innerHTML = (ests.length && pots.length) ? ('<div style="max-height:240px;overflow-y:auto"><table class="tbl" style="font-size:12px"><thead><tr><th>Potrero</th><th>Estancia</th></tr></thead><tbody>'+
-    pots.map(function(x,i){
-      return '<tr><td style="font-weight:600">'+esc(x.name||'')+'</td><td><select onchange="meAsignar('+i+',this.value)" style="background:var(--sur2);border:1px solid var(--bor);color:inherit;border-radius:6px;padding:4px 8px;font-size:12px">'+
-        '<option value=""'+(!x.estancia?' selected':'')+'>— sin asignar —</option>'+
-        ests.map(function(e){ return '<option value="'+esc(e.id)+'"'+(x.estancia===e.id?' selected':'')+'>'+esc(e.nombre)+'</option>'; }).join('')+
-        '</select></td></tr>';
-    }).join('')+'</tbody></table></div>') : '';
-}
-window.meAgregar = function(){
-  var inp = el('me-nueva'); var nombre = String((inp&&inp.value)||'').trim();
+window.swGuardar = function(){
+  var nombre = String((el('sw-nombre')||{}).value||'').trim();
+  var token = String((el('sw-token')||{}).value||'').trim() || swTokenActual();
   if (!nombre) { if(typeof toast==='function') toast('Poné el nombre de la estancia','error'); return; }
-  var p = meP(); var ests = Array.isArray(p.estancias)?p.estancias.slice():[];
-  if (ests.some(function(e){ return e && String(e.nombre||'').toLowerCase()===nombre.toLowerCase(); })) { if(typeof toast==='function') toast('Ya existe una estancia con ese nombre','error'); return; }
-  var max = 0; ests.forEach(function(e){ var n=parseInt(String(e&&e.id||'').replace(/\D/g,''))||0; if(n>max)max=n; });
-  ests.push({ id: 'est'+(max+1), nombre: nombre });
-  p.estancias = ests;
-  try { saveParams(p); } catch(e){}
-  if (inp) inp.value='';
-  var st = el('me-status'); if (st) st.textContent = '✅ Estancia "'+nombre+'" creada — asignale potreros abajo';
-  meRefresh();
+  if (!token) { if(typeof toast==='function') toast('No hay token: configurá el Servidor API primero o pegá un token','error'); return; }
+  var lista = swLista();
+  var ya = lista.find(function(x){ return x && x.token===token; });
+  if (ya) { ya.nombre = nombre; } else { lista.push({ nombre: nombre, token: token }); }
+  localStorage.setItem(KEY, JSON.stringify(lista));
+  if (el('sw-nombre')) el('sw-nombre').value=''; if (el('sw-token')) el('sw-token').value='';
+  var st = el('sw-status'); if (st) st.textContent = '✅ "'+nombre+'" guardada en este equipo';
+  swCardRender(); swSelectorRender();
 };
-window.meBorrar = function(id){
-  var p = meP(); var ests = Array.isArray(p.estancias)?p.estancias.slice():[];
-  var usados = (p.potreros||[]).some(function(x){ return x && x.estancia===id; });
-  if (usados) { if(typeof toast==='function') toast('Esa estancia tiene potreros asignados — reasignalos primero','error'); return; }
-  p.estancias = ests.filter(function(e){ return !(e && e.id===id); });
-  if (localStorage.getItem('e5m_estancia_sel')===id) localStorage.setItem('e5m_estancia_sel','');
-  try { saveParams(p); } catch(e){}
-  meRefresh();
+window.swQuitar = function(i){
+  var lista = swLista(); if (!lista[i]) return;
+  if (lista[i].token===swTokenActual()) { if(typeof toast==='function') toast('No podés quitar la estancia ACTUAL','error'); return; }
+  lista.splice(i,1);
+  localStorage.setItem(KEY, JSON.stringify(lista));
+  swCardRender(); swSelectorRender();
 };
-window.meAsignar = function(idx, estId){
-  var p = meP(); var pots = p.potreros||[];
-  if (!pots[idx]) return;
-  if (estId) pots[idx].estancia = estId; else delete pots[idx].estancia;
-  try { saveParams(p); } catch(e){}
-  var st = el('me-status'); if (st) st.textContent = '✅ '+(pots[idx].name||'potrero')+' → '+(estId?(meEstancias().find(function(e){return e.id===estId;})||{}).nombre||estId:'sin asignar');
-  meRefresh();
+window.swCambiar = function(i){
+  var lista = swLista(); var dest = lista[i]; if (!dest || !dest.token) return;
+  if (dest.token===swTokenActual()) return;
+  var pend = 0; try { pend = (JSON.parse(localStorage.getItem('e5m_pending_renames')||'[]')||[]).length; } catch(e){}
+  var msg = 'Cambiar a la estancia "'+dest.nombre+'".\n\n'+
+    '• Se limpia el cache local de la estancia actual (sus datos QUEDAN en el server).\n'+
+    '• La app recarga y baja todo de "'+dest.nombre+'".\n'+
+    (pend?('\n⚠ HAY '+pend+' cambio(s) locales pendientes de sync — esperá el sync verde antes de cambiar.\n'):'')+
+    '\n¿Continuar?';
+  if (!window.confirm(msg)) { swSelectorRender(); return; }
+  // LIMPIEZA ANTI-CONTAMINACIÓN (lección del incidente de sync): borrar TODO e5m_* salvo prefs de equipo
+  var borrar = [];
+  for (var k = 0; k < localStorage.length; k++) {
+    var key = localStorage.key(k);
+    if (key && key.indexOf('e5m_') === 0 && PRESERVAR.indexOf(key) < 0) borrar.push(key);
+  }
+  borrar.forEach(function(key){ try { localStorage.removeItem(key); } catch(e){} });
+  localStorage.setItem('e5m_api_token', dest.token);
+  try { if (typeof toast==='function') toast('Cambiando a '+dest.nombre+'…','success'); } catch(e){}
+  setTimeout(function(){ location.reload(); }, 400);
 };
-
-function meInit(){
-  if (!meCard()) { setTimeout(meInit, 900); return; }
-  meWrapRenders();
-  meSelectorRender();
-  meCardRender();
+function swInit(){
+  if (!swCard()) { setTimeout(swInit, 900); return; }
+  // sugerencia: si el equipo ya tiene token y no está guardado, precargar el nombre real
+  var lista = swLista(), t = swTokenActual();
+  if (t && !lista.some(function(x){ return x && x.token===t; })) {
+    var st = el('sw-status'); var n = swNombreActual();
+    if (st) st.textContent = 'ℹ La estancia actual'+(n?(' ("'+n+'")'):'')+' todavía no está guardada — dale un nombre y 💾.';
+    if (n && el('sw-nombre') && !el('sw-nombre').value) el('sw-nombre').value = n;
+  }
+  swCardRender(); swSelectorRender();
 }
-if (document.readyState !== 'loading') setTimeout(meInit, 800); else document.addEventListener('DOMContentLoaded', function(){ setTimeout(meInit, 800); });
-document.addEventListener('click', function(){ setTimeout(function(){ meWrapRenders(); meSelectorRender(); meCardRender(); meMapaFiltra(); }, 450); });
+if (document.readyState !== 'loading') setTimeout(swInit, 800); else document.addEventListener('DOMContentLoaded', function(){ setTimeout(swInit, 800); });
+document.addEventListener('click', function(){ setTimeout(function(){ swCardRender(); swSelectorRender(); }, 500); });
+setInterval(swSelectorRender, 5000); // auto-sanado si algo re-renderiza la topbar
 })();
 </script>
 
