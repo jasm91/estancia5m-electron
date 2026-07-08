@@ -69,7 +69,7 @@ body{background:var(--bg);color:var(--text);font-family:Inter,'Segoe UI Emoji','
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 
 /* SIDEBAR — v1.4.71 premium look */
-.sidebar{background:var(--sur);border-right:1px solid var(--bor);padding:14px 0 18px;position:sticky;top:56px;height:calc(100vh - 56px);overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column}
+.sidebar{background:var(--sur);border-right:1px solid var(--bor);padding:14px 0 18px;position:sticky;top:56px;height:calc(100vh - 56px);overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;overscroll-behavior:contain} /* v1.8.106c: la rueda sobre el sidebar scrollea SOLO el sidebar (no encadena a la página) */
 .sidebar::-webkit-scrollbar{width:6px}
 .sidebar::-webkit-scrollbar-track{background:transparent}
 .sidebar::-webkit-scrollbar-thumb{background:var(--bor);border-radius:3px}
@@ -31541,7 +31541,7 @@ function renderAnimalesLote(){
       // Lote huérfano (no existe en db.lots) → no mostrar
       animals = [];
     } else {
-      (animalsAll[lotCode]||[]).forEach(function(a){ animals.push({id:a.id,raza:a.raza,pesajes:a.pesajes||[],_lot:lotCode}); });
+      (animalsAll[lotCode]||[]).forEach(function(a){ animals.push({id:a.id,raza:a.raza,pesajes:a.pesajes||[],rfid:a.rfid||'',_lot:lotCode}); }); // v1.8.106c: +rfid (el mapeo lo recortaba y la columna salía vacía)
     }
   } else {
     Object.keys(animalsAll).forEach(function(lc){
@@ -31551,7 +31551,7 @@ function renderAnimalesLote(){
       if (soldLotCodes[lc] && !includeSold) return;
       // v1.4.82: excluir SIEMPRE lotes no-activos (cuarentena, marcado, etc.)
       if (inactiveLotCodes[lc]) return;
-      (animalsAll[lc]||[]).forEach(function(a){ animals.push({id:a.id,raza:a.raza,pesajes:a.pesajes||[],_lot:lc}); });
+      (animalsAll[lc]||[]).forEach(function(a){ animals.push({id:a.id,raza:a.raza,pesajes:a.pesajes||[],rfid:a.rfid||'',_lot:lc}); }); // v1.8.106c: +rfid
     });
   }
   var sub=document.getElementById("animales-subtitle");
@@ -31594,7 +31594,7 @@ function renderAnimalesLote(){
   var pesoMin = parseFloat((document.getElementById('animales-peso-min')||{}).value) || 0;
   var pesoMax = parseFloat((document.getElementById('animales-peso-max')||{}).value) || 0;
   var filtered=animals;
-  if(search) filtered=filtered.filter(function(a){var aid=(a.id||'').toString();return aid.toLowerCase().includes(search)||(a.raza||"").toLowerCase().includes(search)||a._lot.toLowerCase().includes(search);});
+  if(search) filtered=filtered.filter(function(a){var aid=(a.id||'').toString();return aid.toLowerCase().includes(search)||(a.raza||"").toLowerCase().includes(search)||a._lot.toLowerCase().includes(search)||(a.rfid||'').toString().includes(search);}); // v1.8.106c: busca también por chip
   if(pesoMin || pesoMax) {
     filtered=filtered.filter(function(a){
       var ps=a.pesajes||[];
