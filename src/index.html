@@ -2417,7 +2417,7 @@ function orMarcajeGo(){
         <table class="tbl">
           <thead><tr>
             <th>Lote</th>
-            <th style="width:70px">Vacas</th>
+            <th style="width:70px">Animales</th>
             <th style="width:80px">Servicios</th>
             <th style="width:80px">Partos</th>
             <th style="width:80px">% Preñez</th>
@@ -2842,6 +2842,7 @@ function orMarcajeGo(){
           <input type="number" id="repro-obj-paricion" min="0" max="100" step="1" placeholder="80" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;width:100%">
         </div>
       </div>
+        <div style="grid-column:1 / -1;margin-top:2px"><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Días de gestación (parto esperado) — v1.8.112</label><input type="number" id="repro-obj-gestacion" min="250" max="320" step="1" placeholder="280" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;width:100%"><div style="font-size:10px;color:var(--muted);margin-top:3px">Bos taurus ≈283 · Nelore/cebuinos ≈290–296. Afecta todas las fechas esperadas.</div></div>
 
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;font-size:10.5px;line-height:1.5;color:var(--muted)">
         <div style="color:var(--text);margin-bottom:4px;font-weight:500">Semáforo (deltas vs objetivo)</div>
@@ -4969,7 +4970,7 @@ function orMarcajeGo(){
           <button class="btn btn-ghost btn-sm" onclick="guardarGeminiKey()" style="font-size:11px">Guardar</button>
         </div>
         <input type="password" class="form-input" id="cfg-gemini-key" placeholder="AIzaSy..." style="font-size:12px;font-family:DM Mono,monospace">
-        <div style="font-size:10px;color:var(--muted);margin-top:3px">Para el asistente IA integrado. Obtener en <a href="#" style="color:var(--blue)" onclick="require('electron').shell.openExternal('https://aistudio.google.com/apikey')">aistudio.google.com</a></div>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">Para el asistente IA integrado. Obtener en <a href="#" style="color:var(--blue)" onclick="window.open('https://aistudio.google.com/apikey')">aistudio.google.com</a></div>
       </div>
       <!-- ACTUALIZACIONES -->
       <div style="padding:14px 18px;border-bottom:1px solid rgba(48,54,61,.4)">
@@ -39151,8 +39152,7 @@ function _reproQuickDiag(srvId, newResult) {
     });
     if (typeof toast === 'function') {
       if (newResult === 'preñada' && srv.date) {
-        var esperada = new Date(new Date(srv.date).getTime() + 280*86400000).toISOString().slice(0,10);
-        toast('✓ Marcada Preñada · Esperado parto: ' + _reproFmtDate(esperada), 'success');
+        var _expT = _reproExpectedPartoDate(srv); var esperada = _expT ? _reproFmtDateObj(_expT) : '?'; /* v1.8.110b: cálculo ÚNICO */
       } else if (newResult === 'preñada') {
         toast('✓ Marcada Preñada', 'success');
       } else {
@@ -39565,7 +39565,7 @@ function saveReproServicio() {
   try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch(e) { console.error('[Repro] save localStorage', e); }
 
   // v1.8.99 cabana: si es IA con lote del inventario, descontar pajuela
-  try { if (tipo === 'IA' && semen && !existing && typeof window.cab2UsoSemen === 'function') window.cab2UsoSemen(semen, animalId, record.id); } catch (eSem) {}
+  try { if (tipo === 'IA' && semen && !existing && typeof window.cab2UsoSemen === 'function') { var _semRes = window.cab2UsoSemen(semen, animalId, record.id); if (_semRes === false && typeof toast === 'function') toast('⚠ La pajuela "' + semen + '" no está en el termo de Cabaña — NO se descontó stock', 'warning'); } } catch (eSem) {} /* v1.8.112 R3 */
 
   // Push al server
   _reproPushServicio(record);
@@ -39827,7 +39827,7 @@ function _reproPartosComputeStats(records) {
     var d = new Date(s.date);
     return d >= lastYearStart && d < lastYearEnd;
   }).length;
-  var paricionPct = prenadasLastYear > 0 ? Math.round((partosThisYear / prenadasLastYear) * 100) : null;
+  var paricionPct = (prenadasLastYear > 0 && partosThisYear > 0) ? Math.round((partosThisYear / prenadasLastYear) * 100) : null; /* v1.8.112 S2: sin partos aún = sin datos (antes 0% en rojo alarmaba sin razón) */
 
   // IEP = promedio de días entre partos consecutivos por vaca (madre_id)
   var byMadre = {};
@@ -39877,7 +39877,7 @@ function _reproPartosRenderStats(stats) {
   }
   if (el('repro-partos-stat-mortalidad')) {
     el('repro-partos-stat-mortalidad').textContent = stats.mortalidadPct != null ? (stats.mortalidadPct + '%') : '—';
-    el('repro-partos-stat-mortalidad').style.color = (stats.mortalidadPct != null && stats.mortalidadPct > 5) ? 'var(--red)' : 'var(--amber)';
+    el('repro-partos-stat-mortalidad').style.color = stats.mortalidadPct == null ? 'var(--muted)' : (stats.mortalidadPct > 5 ? 'var(--red)' : 'var(--amber)'); /* v1.8.112 S2 */
   }
 }
 
@@ -40033,15 +40033,18 @@ function _reproRenderPartosEsperados() {
   prenadas.forEach(function(s){ if (!byVaca[s.animal_id]) byVaca[s.animal_id] = s; });
 
   var lista = Object.keys(byVaca).map(function(k){ return byVaca[k]; }).sort(function(a, b){
-    var da = a.date ? new Date(a.date).getTime() + 280*86400000 : Infinity;
-    var db_ = b.date ? new Date(b.date).getTime() + 280*86400000 : Infinity;
+    var da = a.date ? new Date(a.date).getTime() + _reproGestDias()*86400000 : Infinity;
+    var db_ = b.date ? new Date(b.date).getTime() + _reproGestDias()*86400000 : Infinity;
     return da - db_;
   });
 
+  // v1.8.112 S1: misma ventana que Inteligencia — solo <=60 dias (o vencidos); antes mostraba partos a 9 meses
+  var _todas = lista.slice();
+  lista = lista.filter(function(sv){ var _d=_reproExpectedPartoDate(sv); if(!_d) return true; return Math.round((_d.getTime()-Date.now())/86400000) <= 60; });
   if (!lista.length) {
     cont.innerHTML =
       '<div style="background:var(--sur);border:0.5px dashed var(--bor);border-radius:10px;padding:18px;text-align:center;color:var(--muted);font-size:12px">' +
-        '🤰 No hay partos esperados.<br>' +
+        '🤰 No hay partos esperados en los próximos 60 días.' + (_todas.length ? '<br>El más cercano: <b>' + escH(_todas[0].animal_id) + '</b> — ' + (function(){var _d=_reproExpectedPartoDate(_todas[0]);return _d?(_reproFmtDateObj(_d)+' (en '+Math.round((_d.getTime()-Date.now())/86400000)+'d)'):'?';})() : '') + '<br>' +
         '<span style="font-size:11px">Para que una vaca aparezca acá, registrá un + Servicio con diagnóstico Preñada.</span>' +
       '</div>';
     return;
@@ -40057,8 +40060,9 @@ function _reproRenderPartosEsperados() {
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">';
 
   lista.forEach(function(s){
-    var esperadaMs = s.date ? new Date(s.date).getTime() + 280*86400000 : 0;
-    var esperadaStr = esperadaMs ? new Date(esperadaMs).toISOString().slice(0,10) : '?';
+    var _expD = _reproExpectedPartoDate(s); /* v1.8.110b: cálculo ÚNICO — el inline UTC difería 1 día de la tabla Servicios */
+    var esperadaMs = _expD ? _expD.getTime() : 0;
+    var esperadaStr = _expD ? _reproFmtDateObj(_expD) : '?';
     var dias = esperadaMs ? Math.round((esperadaMs - hoyMs) / 86400000) : null;
 
     // Categorizar urgencia
@@ -40340,8 +40344,8 @@ function _reproPartoPopulateMadres() {
 
   // Ordenar por fecha esperada de parto (date + 280d)
   var lista = Object.keys(byVaca).map(function(k) { return byVaca[k]; }).sort(function(a, b) {
-    var da = a.date ? new Date(a.date).getTime() + 280*86400000 : Infinity;
-    var db_ = b.date ? new Date(b.date).getTime() + 280*86400000 : Infinity;
+    var da = a.date ? new Date(a.date).getTime() + _reproGestDias()*86400000 : Infinity;
+    var db_ = b.date ? new Date(b.date).getTime() + _reproGestDias()*86400000 : Infinity;
     return da - db_;
   });
 
@@ -40353,7 +40357,7 @@ function _reproPartoPopulateMadres() {
   }
 
   sel.innerHTML = '<option value="">— Elegí una vaca —</option>' + lista.map(function(s) {
-    var esperada = s.date ? new Date(new Date(s.date).getTime() + 280*86400000).toISOString().slice(0, 10) : '?';
+    var _expL = _reproExpectedPartoDate(s); var esperada = _expL ? _reproFmtDateObj(_expL) : '?'; /* v1.8.110b: cálculo ÚNICO */
     var label = s.animal_id + ' · servicio ' + _reproFmtDate(s.date) + ' · esperado ' + esperada;
     return '<option value="' + s.id + '">' + label + '</option>';
   }).join('');
@@ -40405,7 +40409,7 @@ function _reproPartoOnMadreChange() {
   var ctx = 'Madre <b>' + srv.animal_id + '</b> · servicio ' + _reproFmtDate(srv.date) + ' · ' + _reproTipoLabel(srv.tipo_servicio);
   if (srv.lot_code) ctx += ' · lote ' + srv.lot_code;
   if (srv.date) {
-    var esperada = new Date(new Date(srv.date).getTime() + 280*86400000).toISOString().slice(0, 10);
+    var _expDa = _reproExpectedPartoDate(srv); var esperada = _expDa ? _reproFmtDateObj(_expDa) : '?'; /* v1.8.110b: cálculo ÚNICO */
     ctx += ' · fecha esperada parto ' + esperada;
   }
   document.getElementById('repro-parto-context').innerHTML = ctx;
@@ -40672,7 +40676,8 @@ var REPRO_OBJ_DEFAULTS = {
   prenez_pct: 65,    // % de preñez objetivo (mayor = mejor)
   iep_dias: 380,     // intervalo entre partos máximo (menor = mejor)
   sc_max: 1.5,       // servicios/concepción máximo (menor = mejor)
-  paricion_pct: 80   // % parición objetivo (mayor = mejor)
+  paricion_pct: 80,  // % parición objetivo (mayor = mejor)
+  gestacion_dias: 280 // v1.8.112 S4: días de gestación (Bos taurus ~283, Nelore/cebuinos ~290-296)
 };
 
 function _reproGetObjetivos() {
@@ -40696,6 +40701,7 @@ function openReproObjetivosModal() {
   document.getElementById('repro-obj-iep').value = obj.iep_dias;
   document.getElementById('repro-obj-sc').value = obj.sc_max;
   document.getElementById('repro-obj-paricion').value = obj.paricion_pct;
+  var _g=document.getElementById('repro-obj-gestacion'); if (_g) _g.value = obj.gestacion_dias || 280;
   openModal('modal-repro-objetivos');
 }
 
@@ -40704,7 +40710,8 @@ function saveReproObjetivos() {
     prenez_pct: parseFloat(document.getElementById('repro-obj-prenez').value) || REPRO_OBJ_DEFAULTS.prenez_pct,
     iep_dias: parseFloat(document.getElementById('repro-obj-iep').value) || REPRO_OBJ_DEFAULTS.iep_dias,
     sc_max: parseFloat(document.getElementById('repro-obj-sc').value) || REPRO_OBJ_DEFAULTS.sc_max,
-    paricion_pct: parseFloat(document.getElementById('repro-obj-paricion').value) || REPRO_OBJ_DEFAULTS.paricion_pct
+    paricion_pct: parseFloat(document.getElementById('repro-obj-paricion').value) || REPRO_OBJ_DEFAULTS.paricion_pct,
+    gestacion_dias: parseFloat((document.getElementById('repro-obj-gestacion')||{}).value) || REPRO_OBJ_DEFAULTS.gestacion_dias || 280
   };
   // Validar rangos sanos
   if (obj.prenez_pct < 0 || obj.prenez_pct > 100) { alert('% preñez fuera de rango (0-100)'); return; }
@@ -41405,7 +41412,9 @@ function exportReproHistorialMadre(madreId) {
 // ═════════════════════════════════════════════════════════════
 
 // ─── F-08: PREDICCIONES DE FECHAS ─────────────────────────────
-var REPRO_GESTATION_DAYS = 280;
+var REPRO_GESTATION_DAYS = 280; // fallback
+// v1.8.112 S4: gestación configurable en 🎯 Objetivos (Nelore ~290-296)
+function _reproGestDias(){ try { if (typeof _reproGetObjetivos === 'function') { var v = Number(_reproGetObjetivos().gestacion_dias); if (v >= 250 && v <= 320) return v; } } catch(e){} return REPRO_GESTATION_DAYS; }
 
 function _reproExpectedPartoDate(servicio) {
   if (!servicio || servicio.result !== 'preñada') return null;
@@ -41414,13 +41423,15 @@ function _reproExpectedPartoDate(servicio) {
     // (monta continua sin fecha de servicio exacta): parto = diag + (283 - edad*30.4)
     var _ef = Number(servicio.edad_fetal_meses);
     if (_ef > 0 && servicio.diagnosis_date) {
-      var d2 = new Date(servicio.diagnosis_date);
-      d2.setDate(d2.getDate() + Math.round(REPRO_GESTATION_DAYS - _ef * 30.4));
+      var _p2 = String(servicio.diagnosis_date).slice(0,10).split('-'); var d2 = new Date(Number(_p2[0]), Number(_p2[1])-1, Number(_p2[2])); /* v1.8.110b: parse LOCAL */
+      d2.setDate(d2.getDate() + Math.round(_reproGestDias() - _ef * 30.4));
       return d2;
     }
     if (!servicio.date) return null;
-    var d = new Date(servicio.date);
-    d.setDate(d.getDate() + REPRO_GESTATION_DAYS);
+    // v1.8.110b: parse LOCAL — new Date('YYYY-MM-DD') es UTC y en Bolivia (UTC-4) corría la fecha un día
+    var _p = String(servicio.date).slice(0,10).split('-');
+    var d = new Date(Number(_p[0]), Number(_p[1])-1, Number(_p[2]));
+    d.setDate(d.getDate() + _reproGestDias());
     return d;
   } catch(e) { return null; }
 }
@@ -42133,7 +42144,7 @@ function renderReproInteligencia() {
         <div><label class="form-label">Cultivo *</label><select class="form-input" id="agc-cultivo"></select></div>
       </div>
       <div class="frow3">
-        <div><label class="form-label">Ciclo *</label><select class="form-input" id="agc-ciclo"><option value="verano">Verano (Nov–Abr)</option><option value="invierno">Invierno (May–Nov)</option></select></div>
+        <div><label class="form-label">Ciclo *</label><select class="form-input" id="agc-ciclo"><option value="verano">Verano (siembra Nov–Dic)</option><option value="invierno">Invierno (siembra May–Jul)</option></select></div>
         <div><label class="form-label">Año agrícola *</label><input class="form-input" id="agc-anio" placeholder="2026/27"></div>
         <div><label class="form-label">Siembra planificada</label><input class="form-input" id="agc-siembra" type="date"></div>
       </div>
@@ -42150,7 +42161,7 @@ function renderReproInteligencia() {
 <div class="modal-overlay agx" id="ag-modal-insumos">
   <div class="ag-modal" style="width:640px">
     <h2>🧪 Insumos agrícolas</h2>
-    <div class="m-sub">Catálogo propio del módulo agro (semillas, agroquímicos, fertilizantes). Las labores descuentan este stock.</div>
+    <div class="m-sub">Catálogo propio del módulo agro (semillas, agroquímicos, fertilizantes). Las labores descuentan este stock. Lo ganadero/veterinario vive en <a href="#" onclick="agCloseModal('ag-modal-insumos');showPage('compras',null);return false" style="color:var(--blue)">🛒 Compras Insumos</a>.</div>
     <div class="m-body">
       <table class="tbl"><thead><tr><th>Insumo</th><th>Unidad</th><th class="num">Costo Bs/u</th><th class="num">Stock</th><th></th></tr></thead><tbody id="agi-tbody"></tbody></table>
       <div style="border-top:1px solid var(--bor);margin-top:12px;padding-top:12px">
@@ -42184,7 +42195,7 @@ function renderReproInteligencia() {
         <div class="agw-tiles" id="agw-tiles">
           <div class="agw-tile" data-tipo="siembra" onclick="agwSetTipo('siembra')">🌱<br>Siembra</div>
           <div class="agw-tile" data-tipo="fertilizacion" onclick="agwSetTipo('fertilizacion')">🧪<br>Fertilización</div>
-          <div class="agw-tile" data-tipo="fumigada" onclick="agwSetTipo('fumigada')">🧴<br>Fumigada</div>
+          <div class="agw-tile" data-tipo="fumigada" onclick="agwSetTipo('fumigada')">🧴<br>Fumigación</div>
           <div class="agw-tile" data-tipo="cosecha" onclick="agwSetTipo('cosecha')">🌾<br>Cosecha</div>
           <div class="agw-tile" data-tipo="otra" onclick="agwSetTipo('otra')">🔧<br>Otra</div>
         </div>
@@ -42200,6 +42211,16 @@ function renderReproInteligencia() {
         <select class="form-input" id="agw-campana" onchange="agwCampanaInfo()"></select>
         <div id="agw-campana-info" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
         <div id="agw-err-campana" class="err" style="display:none">Elegí una campaña.</div>
+        <div id="agw-nc-form" style="display:none;margin-top:10px;padding:12px;border:1px dashed var(--bor);border-radius:8px">
+          <div class="form-label" style="margin-bottom:8px">➕ Nueva campaña (rápida)</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <select class="form-input" id="agw-nc-parcela"></select>
+            <input class="form-input" id="agw-nc-cultivo" placeholder="Cultivo (ej: Soya)">
+            <select class="form-input" id="agw-nc-ciclo"><option value="verano">Verano (siembra Nov–Dic)</option><option value="invierno">Invierno (siembra May–Jul)</option></select>
+            <input class="form-input" id="agw-nc-anio" type="number" placeholder="Año (ej: 2026)">
+          </div>
+          <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="agwCrearCampanaInline()">Crear y usar</button>
+        </div>
       </div>
 
       <div class="agw-step" data-step="insumos">
@@ -42208,6 +42229,17 @@ function renderReproInteligencia() {
           <div class="ins-row ins-head"><div>Insumo</div><div>Dosis/ha</div><div>Total</div><div>Costo Bs</div><div></div></div>
           <div id="agw-ins-rows"></div>
           <button class="btn btn-ghost btn-sm" onclick="agwAddInsumo()">➕ Agregar insumo</button>
+          <button class="btn btn-ghost btn-sm" onclick="agwToggleNuevoInsumo()">🧪 Crear insumo nuevo</button>
+          <div id="agw-ni-form" style="display:none;margin-top:10px;padding:12px;border:1px dashed var(--bor);border-radius:8px">
+            <div class="form-label" style="margin-bottom:8px">🧪 Nuevo insumo (va al catálogo agro)</div>
+            <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px">
+              <input class="form-input" id="agw-ni-nombre" placeholder="Nombre (ej: Semilla soya)">
+              <select class="form-input" id="agw-ni-unidad"><option value="kg">kg</option><option value="l">l</option><option value="unidad">unidad</option></select>
+              <input class="form-input" id="agw-ni-costo" type="number" placeholder="Bs/unidad">
+              <input class="form-input" id="agw-ni-stock" type="number" placeholder="Stock">
+            </div>
+            <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="agwCrearInsumoInline()">Crear y agregar a la labor</button>
+          </div>
           <div id="agw-stock-warn" class="warn" style="display:none"></div>
         </div>
         <div id="agw-cosecha-wrap" style="display:none">
@@ -42547,7 +42579,7 @@ if (window.__AGRO_OFF) { console.warn('[agro] modulo desactivado por __AGRO_OFF'
 var AG_QQ = 46;
 var AG_TARIFA_MAQ_BS_H = 145;
 var AG_CULTIVOS = ['Soya','Maíz','Sorgo','Arroz','Trigo','Girasol','Sésamo','Chía','Otro'];
-var LABOR_TIPOS = { siembra:'🌱 Siembra', fertilizacion:'🧪 Fertilización', fumigada:'🧴 Fumigada', cosecha:'🌾 Cosecha', otra:'🔧 Otra' };
+var LABOR_TIPOS = { siembra:'🌱 Siembra', fertilizacion:'🧪 Fertilización', fumigada:'🧴 Fumigación', cosecha:'🌾 Cosecha', otra:'🔧 Otra' };
 
 /* ═══ Capa de datos: cuelga del db REAL ═══ */
 function agDbOk(){ try { return (typeof db !== 'undefined') && db; } catch(e){ return false; } }
@@ -42676,7 +42708,7 @@ function agRenderDashboard(){
   var ult=d.labores.slice().sort(function(a,b){return (b.fecha||'').localeCompare(a.fecha||'');}).slice(0,6);
   var html=''; ult.forEach(function(l){ var c=agById(d.campanas,l.campana_id); var cost=laborCosto(l);
     html+='<tr><td>'+agFecha(l.fecha)+'</td><td>'+LABOR_TIPOS[l.tipo]+'</td><td>'+escA(c?campLabel(d,c):'?')+'</td><td>'+escA(l.resp||'—')+'</td><td class="num">'+fmtA(cost.total)+'</td><td>'+(l.estado==='ejecutada'?'<span class="pill g">Ejecutada</span>':'<span class="pill a">Planificada</span>')+'</td></tr>'; });
-  agEl('agd-ultimas').innerHTML= html || '<tr><td colspan="6" class="empty">Sin labores. Empezá creando una parcela y su campaña.</td></tr>';
+  agEl('agd-ultimas').innerHTML= html || '<tr><td colspan="6" class="empty">Sin labores todavía.<div style="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="agShowPage(\'parcelas\');agOpenParcela()">➕ Nueva parcela</button><button class="btn btn-ghost btn-sm" onclick="agShowPage(\'campanas\');agOpenCampana()">📅 Nueva campaña</button><button class="btn btn-primary btn-sm" onclick="agShowPage(\'labores\');agwOpen()">🚜 Registrar labor</button></div></td></tr>' /* v1.8.112 R4 */;
 }
 
 /* ═══ Render: Parcelas ═══ */
@@ -42685,7 +42717,7 @@ function agRenderParcelas(){
   if (!agEl('agp-tbody')) return;
   d.parcelas.forEach(function(p){
     var cur=d.campanas.filter(function(c){return String(c.parcela_id)===String(p.id)&&c.estado==='en_curso';}).map(function(c){return c.cultivo+' '+(c.ciclo==='verano'?'☀️':'❄️');}).join(', ');
-    html+='<tr><td><b>'+escA(p.code)+'</b></td><td>'+escA(p.nombre||'—')+'</td><td class="num">'+fmtA(p.ha,1)+'</td><td>'+(cur||'<span style="color:var(--muted)">barbecho / libre</span>')+'</td><td>'+(cur?'<span class="pill g">Sembrada</span>':'<span class="pill b">Disponible</span>')+'</td>'+
+    html+='<tr><td><b>'+escA(p.code)+'</b></td><td>'+escA(p.nombre||'—')+'</td><td class="num">'+fmtA(p.ha,1)+'</td><td>'+(cur||'<span style="color:var(--muted)">barbecho / libre</span>')+'</td><td>'+(cur?'<span class="pill g">Sembrada</span>':'<span style="color:var(--muted);font-size:12px">Libre</span>') /* v1.8.112 R5 */+'</td>'+
       '<td><button class="btn btn-ghost btn-sm" onclick="agOpenParcela('+p.id+')">✏️ Editar</button></td></tr>';
   });
   agEl('agp-tbody').innerHTML= html || '<tr><td colspan="6" class="empty">Sin parcelas. Creá la primera.</td></tr>';
@@ -42790,7 +42822,7 @@ function agRenderLabores(){
     acts+='<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agDelLabor('+l.id+')">🗑</button>';
     html+='<tr><td>'+agFecha(l.fecha)+'</td><td>'+LABOR_TIPOS[l.tipo]+'</td><td>'+escA(c?campLabel(d,c):'?')+'</td><td style="font-size:12px;color:var(--muted)">'+escA(ins||'—')+'</td><td>'+escA(l.resp||'—')+'</td><td class="num">'+fmtA(cost.total)+'</td><td>'+(l.estado==='ejecutada'?'<span class="pill g">Ejecutada</span>':'<span class="pill a">Planificada</span>')+'</td><td style="white-space:nowrap">'+acts+'</td></tr>';
   });
-  agEl('agl-tbody').innerHTML= html || '<tr><td colspan="8" class="empty">Sin labores con ese filtro.</td></tr>';
+  agEl('agl-tbody').innerHTML= html || '<tr><td colspan="8" class="empty">'+(d.labores.length?'Sin labores con ese filtro.':'Aún no hay labores. Registrá la primera con “+ Registrar labor”.')+'</td></tr>'; /* v1.8.110b */
 }
 function agDelLabor(id){
   var d=agGetDB(), l=agById(d.labores,id); if(!l)return;
@@ -42904,7 +42936,7 @@ var AGW={steps:['tipo','campana','insumos','recursos','confirmar'],idx:0,tipo:nu
 
 function agwOpen(execId,mode,tipoPreset){
   var d=agGetDB();
-  if(!d.campanas.length && !execId){ agToast('Primero creá una campaña (Parcelas → Campañas)','error'); return; }
+  if(!d.parcelas.length && !execId){ agToast('Primero creá una parcela (Agricultura → Parcelas)','error'); return; } /* v1.8.112 R1: sin campañas ya no bloquea — se crea desde el paso 2 */
   AGW.idx=0; AGW.tipo=null; AGW.mode=(mode==='plan')?'plan':(execId?'exec':'real'); AGW.execId=execId||null;
   agEl('agw-fecha').value=agHoy();
   agEl('agw-resp').value='';
@@ -42918,6 +42950,7 @@ function agwOpen(execId,mode,tipoPreset){
   var sel=agEl('agw-campana'); sel.innerHTML='<option value="">— Elegí una campaña —</option>';
   d.campanas.forEach(function(c){ if(c.estado==='cosechada'&&!execId)return;
     var o=document.createElement('option'); o.value=c.id; o.textContent=campLabel(d,c)+' ('+campHa(d,c)+' ha)'; sel.appendChild(o); });
+  var oN=document.createElement('option'); oN.value='__nueva'; oN.textContent='➕ Nueva campaña…'; sel.appendChild(oN); /* v1.8.112 R1 */
   agEl('agw-campana-info').textContent='';
   agEl('agw-plan-hint').style.display=AGW.mode==='plan'?'block':'none';
   agEl('agw-title').textContent= AGW.mode==='exec'?'▶ Ejecutar labor planificada': AGW.mode==='plan'?'📋 Planificar labor':'🚜 Registrar labor';
@@ -42943,16 +42976,48 @@ function agwSetTipo(t){
   agEl('agw-cosecha-wrap').style.display=esCos?'block':'none';
 }
 function agwCampanaInfo(){
-  var d=agGetDB(), id=agEl('agw-campana').value;
+  var d=agGetDB(), id=agEl('agw-campana').value; if(id){ var _e=agEl('agw-err-campana'); if(_e) _e.style.display='none'; } /* v1.8.110b: el error quedaba visible tras elegir */
+  var _nf=agEl('agw-nc-form');
+  if(id==='__nueva'){ /* v1.8.112 R1 */
+    if(_nf){ _nf.style.display='block'; var _ps=agEl('agw-nc-parcela'); _ps.innerHTML='<option value="">— Parcela —</option>'; d.parcelas.forEach(function(p){ _ps.innerHTML+='<option value="'+p.id+'">'+escA(p.code)+' ('+fmtA(p.ha,1)+' ha)</option>'; }); var _an=agEl('agw-nc-anio'); if(_an&&!_an.value) _an.value=new Date().getFullYear(); }
+    var _inf=agEl('agw-campana-info'); if(_inf) _inf.textContent='';
+    return;
+  }
+  if(_nf) _nf.style.display='none';
   var c=id?agById(d.campanas,id):null, el=agEl('agw-campana-info');
   if(!c){ el.textContent=''; return; }
   var cost=campCosto(d,c.id), ha=campHa(d,c);
   el.innerHTML='Superficie: <b>'+fmtA(ha,1)+' ha</b> · Labores ejecutadas: <b>'+cost.n+'</b> · Costo acumulado: <b>Bs '+fmtA(cost.total)+'</b>'+(ha&&cost.total?(' ('+fmtA(cost.total/ha)+' /ha)'):'');
   agwRecalcAll();
 }
+function agwCrearCampanaInline(){ /* v1.8.112 R1: crear campaña sin salir del wizard */
+  var d=agGetDB();
+  var pid=Number(agEl('agw-nc-parcela').value), cult=(agEl('agw-nc-cultivo').value||'').trim();
+  var ciclo=agEl('agw-nc-ciclo').value, anio=String(agEl('agw-nc-anio').value||'').trim();
+  if(!pid||!cult||!anio){ agToast('Parcela, cultivo y año son obligatorios','error'); return; }
+  var dup=d.campanas.some(function(c){ return String(c.parcela_id)===String(pid)&&c.ciclo===ciclo&&String(c.anio)===String(anio); });
+  if(dup && !confirm('Ya hay una campaña en esa parcela para ese ciclo/año. ¿Crear igual?')) return;
+  var data={parcela_id:pid,cultivo:cult,ciclo:ciclo,anio:anio,siembra_plan:'',estado:'planificada',updated_at:new Date().toISOString()};
+  data.id=agNextId(d.campanas); data.created_at=data.updated_at; d.campanas.push(data); agSaveDB();
+  var sel=agEl('agw-campana'); var o=document.createElement('option'); o.value=data.id; o.textContent=campLabel(d,data)+' ('+campHa(d,data)+' ha)';
+  var oN=sel.querySelector('option[value="__nueva"]'); if(oN) sel.insertBefore(o,oN); else sel.appendChild(o);
+  sel.value=data.id; agwCampanaInfo(); agToast('Campaña creada: '+campLabel(d,data),'success');
+}
+function agwToggleNuevoInsumo(force){ var f=agEl('agw-ni-form'); if(!f) return; f.style.display=(force===true||f.style.display==='none')?'block':'none'; } /* v1.8.112 R2 */
+function agwCrearInsumoInline(){ /* v1.8.112 R2: alta de insumo sin salir del wizard */
+  var d=agGetDB(); var nombre=(agEl('agw-ni-nombre').value||'').trim(), unidad=agEl('agw-ni-unidad').value;
+  var costo=parseFloat(agEl('agw-ni-costo').value), stock=parseFloat(agEl('agw-ni-stock').value)||0;
+  if(!nombre||!(costo>=0)){ agToast('Nombre y costo son obligatorios','error'); return; }
+  if(d.insumos.some(function(x){return String(x.nombre).toLowerCase()===nombre.toLowerCase();})){ agToast('Ya existe un insumo con ese nombre','error'); return; }
+  var nuevo={id:agNextId(d.insumos),nombre:nombre,unidad:unidad,costo:costo,stock:stock,created_at:new Date().toISOString()};
+  d.insumos.push(nuevo); agSaveDB();
+  agEl('agw-ni-nombre').value='';agEl('agw-ni-costo').value='';agEl('agw-ni-stock').value='';
+  agEl('agw-ni-form').style.display='none';
+  agwAddInsumo(nuevo.id); agToast('Insumo creado: '+nombre,'success');
+}
 function agwAddInsumo(presetId,presetDosis){
   var d=agGetDB(), wrap=agEl('agw-ins-rows');
-  if(!d.insumos.length){ agToast('No hay insumos agro. Cargalos con 🧪 Insumos agro (en Labores).','error'); return; }
+  if(!d.insumos.length){ agwToggleNuevoInsumo(true); agToast('No hay insumos en el catálogo agro — crealo acá mismo 👇','info'); return; } /* v1.8.112 R2 */
   var row=document.createElement('div'); row.className='ins-row';
   var opts='<option value="">— Insumo —</option>';
   d.insumos.forEach(function(x){ opts+='<option value="'+x.id+'"'+(String(presetId)===String(x.id)?' selected':'')+'>'+escA(x.nombre)+' (Bs '+x.costo+'/'+x.unidad+' · stock '+fmtA(x.stock)+')</option>'; });
@@ -43007,7 +43072,7 @@ function agwNav(dir){
       if(!agEl('agw-fecha').value){ agToast('La fecha es obligatoria','error'); return; }
     }
     if(s==='campana'){
-      var ok=!!agEl('agw-campana').value;
+      var _vc=agEl('agw-campana').value; var ok=!!_vc && _vc!=='__nueva'; /* v1.8.112 R1 */
       agEl('agw-err-campana').style.display=ok?'none':'block';
       if(!ok) return;
     }
@@ -43464,7 +43529,7 @@ function cab2DelSemen(id){
   save('repro_semen'); cab2Render(); tst('Lote eliminado','info');
 }
 function cab2UsoSemen(lote, animalId, srvId){
-  if(!gateOn()) return false;
+  if(!gateOn()) return null; /* v1.8.112 R3: null=módulo apagado, false=no encontrada */
   var s=arr('repro_semen');
   var x=s.find(function(y){ return String(y.lote||'').toLowerCase()===String(lote||'').toLowerCase().trim(); });
   if(!x) return false;
@@ -43475,6 +43540,29 @@ function cab2UsoSemen(lote, animalId, srvId){
   save('repro_semen'); cab2Render();
   tst('Pajuela descontada de '+x.lote+' (quedan '+x.pajuelas+')'+(x.pajuelas<=5?' ⚠ stock bajo':''), x.pajuelas<=0?'error':'success');
   return true;
+}
+function cab2SemenSelector(){ /* v1.8.112 R3: pajuela = selector del termo (el texto libre NO descuenta stock y ahora avisa) */
+  try{
+    if(!gateOn()) return; var inp=E('repro-srv-semen'); if(!inp) return;
+    var lots=arr('repro_semen').filter(function(x){ return (Number(x.pajuelas)||0)>0; });
+    var old=E('cb2-semen-sel'); if(old&&old.parentNode) old.parentNode.removeChild(old);
+    var oldw=E('cb2-semen-warn'); if(oldw&&oldw.parentNode) oldw.parentNode.removeChild(oldw);
+    if(!lots.length){ inp.style.display=''; return; }
+    var sel=document.createElement('select'); sel.id='cb2-semen-sel';
+    sel.style.cssText='background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;width:100%;margin-bottom:6px';
+    var oo='<option value="">— Elegí del termo (descuenta pajuela) —</option>';
+    lots.forEach(function(x){ var lv=String(x.lote).replace(/"/g,'&quot;'); oo+='<option value="'+lv+'">'+lv+(x.toro?' · '+String(x.toro):'')+' (quedan '+(Number(x.pajuelas)||0)+')</option>'; });
+    oo+='<option value="__otro">✏️ Otro / no está en el termo…</option>';
+    sel.innerHTML=oo;
+    var w=document.createElement('div'); w.id='cb2-semen-warn'; w.style.cssText='font-size:10px;color:var(--amber);margin-top:3px;display:none'; w.textContent='⚠ Texto libre: NO descuenta stock del termo.';
+    inp.parentNode.insertBefore(sel,inp); inp.parentNode.appendChild(w);
+    var cur=(inp.value||'').trim();
+    var hit=lots.find(function(x){ return String(x.lote).toLowerCase()===cur.toLowerCase(); });
+    if(hit){ sel.value=String(hit.lote); inp.style.display='none'; }
+    else if(cur){ sel.value='__otro'; inp.style.display=''; w.style.display='block'; }
+    else { inp.style.display='none'; }
+    sel.onchange=function(){ if(sel.value==='__otro'){ inp.style.display=''; inp.value=''; try{inp.focus();}catch(e){} w.style.display='block'; } else { inp.style.display='none'; inp.value=sel.value; w.style.display='none'; } };
+  }catch(e){}
 }
 function cab2Datalist(){
   try {
@@ -43696,7 +43784,7 @@ try { var eD=E('cb2-te-don-raza'), eR=E('cb2-te-rec-raza'); if(eD) eD.addEventLi
 try {
   if (typeof window.openReproNuevoServicio === 'function' && !window.openReproNuevoServicio.__cb2) {
     var _oSrv = window.openReproNuevoServicio;
-    window.openReproNuevoServicio = function(){ var r=_oSrv.apply(this,arguments); try { cab2Datalist(); } catch(e){} return r; };
+    window.openReproNuevoServicio = function(){ var r=_oSrv.apply(this,arguments); try { cab2Datalist(); cab2SemenSelector(); } catch(e){} return r; }; /* v1.8.112 R3 */
     window.openReproNuevoServicio.__cb2 = true;
   }
 } catch(eW){}
