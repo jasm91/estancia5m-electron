@@ -31616,10 +31616,12 @@ function renderAnimalesLote(){
   var showLotCol = !lotCode;
   // v1.4.76: columna checkbox al inicio + integración con _bulkSelected
   if (typeof window._bulkSelected === 'undefined') window._bulkSelected = {};
-  var colSpan = showLotCol ? 9 : 8;
+  // v1.8.106: columna RFID propia cuando la identidad dual/solo-RFID está activa
+  var _rfCol = (typeof e5mRfidOn === 'function') && e5mRfidOn();
+  var colSpan = (showLotCol ? 9 : 8) + (_rfCol ? 1 : 0);
   var html='<table class="tbl"><thead><tr>'+
     '<th style="width:36px;text-align:center"><input type="checkbox" id="bulk-check-all" onchange="bulkToggleAll(this.checked)" style="cursor:pointer;width:14px;height:14px" title="Seleccionar todos los visibles"></th>'+
-    (showLotCol?'<th>Lote</th>':'')+'<th>ID</th><th>Raza</th><th>Ultimo peso</th><th>Fecha</th><th>GMD calc.</th><th>Pesajes</th><th></th></tr></thead><tbody>';
+    (showLotCol?'<th>Lote</th>':'')+'<th>ID</th>'+(_rfCol?'<th>RFID</th>':'')+'<th>Raza</th><th>Ultimo peso</th><th>Fecha</th><th>GMD calc.</th><th>Pesajes</th><th></th></tr></thead><tbody>';
   filtered.forEach(function(a){
     var aLot = a._lot;
     var ps=a.pesajes||[];
@@ -31637,8 +31639,8 @@ function renderAnimalesLote(){
       (showLotCol?'<td style="font-size:11px;font-weight:600;color:var(--blue)">'+escH(aLot)+'</td>':'')+
       '<td style="font-family:DM Mono,monospace;font-weight:600;color:'+(isNA?'var(--muted)':'var(--amber2)')+'">'+
         a.id+(isNA?'<span style="font-size:9px;background:rgba(255,165,0,.15);color:var(--amber2);padding:1px 5px;border-radius:3px;margin-left:4px">SIN ID</span>':'')+
-        ((a.rfid && typeof e5mRfidOn==='function' && e5mRfidOn())?'<div style="font-size:9px;color:var(--muted);font-weight:400">🔗 '+escH(String(a.rfid))+'</div>':'')+
       '</td>'+
+      (_rfCol?'<td style="font-family:DM Mono,monospace;font-size:11px;color:'+(a.rfid?'var(--text,inherit)':'var(--muted)')+'">'+(a.rfid?('🔗 '+escH(String(a.rfid))):'—')+'</td>':'')+
       '<td><span style="background:var(--sur2);padding:2px 6px;border-radius:4px;font-size:11px">'+( a.raza||"-")+'</span></td>'+
       '<td style="font-weight:600">'+( last?last.peso+" kg":"-")+'</td>'+
       '<td style="color:var(--muted);font-size:11px">'+( last?last.fecha:"-")+'</td>'+
@@ -44091,12 +44093,19 @@ window.swCambiar = function(i){
   var lista = swLista(); var dest = lista[i]; if (!dest || !dest.token) return;
   if (dest.token===swTokenActual()) return;
   var pend = 0; try { pend = (JSON.parse(localStorage.getItem('e5m_pending_renames')||'[]')||[]).length; } catch(e){}
-  var msg = 'Cambiar a la estancia "'+dest.nombre+'".\n\n'+
+  // v1.8.106b (pedido de José): el cambio es DELICADO → exige pegar el token de la estancia
+  // destino como verificación (poseer el token = estar autorizado), no basta el click.
+  var msg = '🔐 Cambiar a la estancia "'+dest.nombre+'".\n\n'+
+    'Para confirmar, pegá el TOKEN de "'+dest.nombre+'":\n\n'+
     '• Se limpia el cache local de la estancia actual (sus datos QUEDAN en el server).\n'+
-    '• La app recarga y baja todo de "'+dest.nombre+'".\n'+
-    (pend?('\n⚠ HAY '+pend+' cambio(s) locales pendientes de sync — esperá el sync verde antes de cambiar.\n'):'')+
-    '\n¿Continuar?';
-  if (!window.confirm(msg)) { swSelectorRender(); return; }
+    '• La app recarga y baja todo de "'+dest.nombre+'".'+
+    (pend?('\n\n⚠ HAY '+pend+' cambio(s) locales pendientes de sync — esperá el sync verde antes de cambiar.'):'');
+  var ingreso = window.prompt(msg, '');
+  if (ingreso === null || ingreso === undefined) { swSelectorRender(); return; } // canceló
+  if (String(ingreso).trim() !== String(dest.token)) {
+    if (typeof toast==='function') toast('Token incorrecto — no se cambió de estancia','error');
+    swSelectorRender(); return;
+  }
   // LIMPIEZA ANTI-CONTAMINACIÓN (lección del incidente de sync): borrar TODO e5m_* salvo prefs de equipo
   var borrar = [];
   for (var k = 0; k < localStorage.length; k++) {
