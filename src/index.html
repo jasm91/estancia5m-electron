@@ -837,8 +837,13 @@ function publishTasksToPWA() {
     </div>
   </div>
 
+  <!-- v1.8.109: reorg a pedido de José — "Operación Principal" pasa a llamarse "Ganadería"
+       (data-sec se conserva para no romper los estados expandido/colapsado guardados);
+       Compras Insumos y Personal bajan a Operación Secundaria; Agricultura deja de ser un
+       botón suelto y se vuelve SECCIÓN propia con las 6 vistas como subpestañas (gate por
+       tenant intacto: agGateApply ahora muestra/oculta la sección entera, mismo id). -->
   <div class="nav-sec" data-sec="operacion-principal">
-    <button class="nav-lbl-btn" onclick="toggleNavSec('operacion-principal')"><span class="nav-lbl">Operación Principal</span><span class="nav-lbl-chevron">▾</span></button>
+    <button class="nav-lbl-btn" onclick="toggleNavSec('operacion-principal')"><span class="nav-lbl">Ganadería</span><span class="nav-lbl-chevron">▾</span></button>
     <div class="nav-sec-body">
     <button class="nav-btn" data-label="Compra Ganado" onclick="showPage('compra-ganado',this)"><span class="nav-icon">🐂</span><span class="nav-text">Compra Ganado</span></button>
     <button class="nav-btn" data-label="Venta Ganado" onclick="showPage('ventas',this)"><span class="nav-icon">🤝</span><span class="nav-text">Venta Ganado</span></button>
@@ -846,16 +851,27 @@ function publishTasksToPWA() {
     <button class="nav-btn" data-label="Rotación" onclick="goToRotacion(this)"><span class="nav-icon">🔄</span><span class="nav-text">Rotación</span></button>
     <button class="nav-btn" data-label="Animales" onclick="goToAnimales(this)"><span class="nav-icon">🐮</span><span class="nav-text">Animales</span></button>
     <button class="nav-btn" data-label="Reproducción" onclick="showPage('reproduccion',this);initReproduccion()"><span class="nav-icon">🧬</span><span class="nav-text">Reproducción</span></button>
-    <button class="nav-btn" data-label="Agricultura" id="nav-agro-btn" style="display:none" onclick="showPage('agro',this);try{agRenderAll()}catch(e){}"><span class="nav-icon">🌾</span><span class="nav-text">Agricultura</span></button>
     <button class="nav-btn" data-label="Sanidad" onclick="showPage('sanidad',this)"><span class="nav-icon">💉</span><span class="nav-text">Sanidad</span></button>
-    <button class="nav-btn" data-label="Compras Insumos" onclick="showPage('compras',this)"><span class="nav-icon">🛒</span><span class="nav-text">Compras Insumos</span></button>
-    <button class="nav-btn" data-label="Personal" onclick="showPage('personal',this)"><span class="nav-icon">👷</span><span class="nav-text">Personal</span></button>
+    </div>
+  </div>
+
+  <div class="nav-sec" data-sec="agricultura" id="nav-agro-btn" style="display:none">
+    <button class="nav-lbl-btn" onclick="toggleNavSec('agricultura')"><span class="nav-lbl">Agricultura</span><span class="nav-lbl-chevron">▾</span></button>
+    <div class="nav-sec-body">
+    <button class="nav-btn" data-label="Agro Dashboard" onclick="showPage('agro',this);try{agShowPage('dashboard')}catch(e){}"><span class="nav-icon">🌾</span><span class="nav-text">Dashboard</span></button>
+    <button class="nav-btn" data-label="Parcelas" onclick="showPage('agro',this);try{agShowPage('parcelas')}catch(e){}"><span class="nav-icon">🗺️</span><span class="nav-text">Parcelas</span></button>
+    <button class="nav-btn" data-label="Campañas" onclick="showPage('agro',this);try{agShowPage('campanas')}catch(e){}"><span class="nav-icon">📅</span><span class="nav-text">Campañas</span></button>
+    <button class="nav-btn" data-label="Labores" onclick="showPage('agro',this);try{agShowPage('labores')}catch(e){}"><span class="nav-icon">🚜</span><span class="nav-text">Labores</span><span class="nav-badge nb-amber" id="ag-nb-labores-side" style="display:none">0</span></button>
+    <button class="nav-btn" data-label="Cosecha" onclick="showPage('agro',this);try{agShowPage('cosecha')}catch(e){}"><span class="nav-icon">🌽</span><span class="nav-text">Cosecha</span></button>
+    <button class="nav-btn" data-label="Costos/ha" onclick="showPage('agro',this);try{agShowPage('costos')}catch(e){}"><span class="nav-icon">💰</span><span class="nav-text">Costos/ha</span></button>
     </div>
   </div>
 
   <div class="nav-sec" data-sec="operacion-secundaria">
     <button class="nav-lbl-btn" onclick="toggleNavSec('operacion-secundaria')"><span class="nav-lbl">Operación Secundaria</span><span class="nav-lbl-chevron">▾</span></button>
     <div class="nav-sec-body">
+    <button class="nav-btn" data-label="Compras Insumos" onclick="showPage('compras',this)"><span class="nav-icon">🛒</span><span class="nav-text">Compras Insumos</span></button>
+    <button class="nav-btn" data-label="Personal" onclick="showPage('personal',this)"><span class="nav-icon">👷</span><span class="nav-text">Personal</span></button>
     <button class="nav-btn" data-label="Eval. Pasto" onclick="showPage('evalpasto',this)"><span class="nav-icon">🌿</span><span class="nav-text">Eval. Pasto</span><span class="nav-badge nb-amber" id="nb-evalpasto" style="display:none">0</span></button>
     <button class="nav-btn" data-label="Consumo de Sal" onclick="goToSal(this)"><span class="nav-icon">🧂</span><span class="nav-text">Consumo de Sal</span></button>
     <button class="nav-btn" data-label="Mantenimiento" onclick="showPage('mantenimiento',this)"><span class="nav-icon">🔧</span><span class="nav-text">Mantenimiento</span></button>
@@ -1931,7 +1947,9 @@ function orMarcajeGo(){
 <div id="page-agro" class="page agx">
   <h1>🌾 Agricultura</h1>
   <div class="sub" id="ag-head-sub">Parcelas, campañas, labores y costos por hectárea — el costo se deriva de las labores.</div>
-  <div class="ag-tabs">
+  <!-- v1.8.109: las vistas ahora se navegan desde el sidebar (sección Agricultura).
+       La barra de tabs interna queda oculta pero intacta (agShowPage la sigue marcando). -->
+  <div class="ag-tabs" style="display:none">
     <button class="ag-tabbtn" data-agv="dashboard" onclick="agShowPage('dashboard',this)">🌾 Dashboard</button>
     <button class="ag-tabbtn active" data-agv="parcelas" onclick="agShowPage('parcelas',this)">🗺️ Parcelas</button>
     <button class="ag-tabbtn" data-agv="campanas" onclick="agShowPage('campanas',this)">📅 Campañas</button>
@@ -31285,14 +31303,19 @@ function getAnimalesDB(){
       }
     }
     // Normalizar: animal_id→id, breed→raza (Railway usa un formato, desktop usa otro)
+    // v1.8.109 FIX CRÍTICO (el 5º mapeo perdido — y el ÚNICO de LECTURA): este normalizador
+    // reconstruía cada animal como {id,raza,pesajes} y le QUITABA rfid/rgn/sexo/etc. a TODO
+    // consumidor (render de Animales, buscador por chip, exportes). El storage tenía los chips
+    // pero nadie los veía. Escapó a la cacería multilínea porque su forma es id/raza (no
+    // animal_id/breed). Ahora PRESERVA todos los campos y solo agrega los alias.
     var normalized={};
     Object.keys(raw).forEach(function(lotCode){
       normalized[lotCode]=(raw[lotCode]||[]).map(function(a){
-        return {
-          id: a.id || a.animal_id || 'N/A',
-          raza: a.raza || a.breed || '',
-          pesajes: a.pesajes || []
-        };
+        var o = Object.assign({}, a); // conserva rfid, rgn, sexo y todo campo futuro (ANIMAL_FIELDS)
+        o.id = a.id || a.animal_id || 'N/A';
+        o.raza = a.raza || a.breed || '';
+        o.pesajes = a.pesajes || [];
+        return o;
       });
     });
     return normalized;
@@ -42641,6 +42664,7 @@ function agRenderDashboard(){
     ex+='<div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--bor)"><span class="pill a">PRÓXIMA</span><div style="flex:1">'+LABOR_TIPOS[l.tipo]+' — '+escA(c?campLabel(d,c):'?')+' <span style="color:var(--muted)">('+agFecha(l.fecha)+')</span></div><button class="btn btn-primary btn-sm" onclick="agEjecutarLabor('+l.id+')">▶ Ejecutar</button></div>'; });
   agEl('agd-excepciones').innerHTML= ex || '<div class="empty">✅ Nada pendiente: sin labores vencidas ni próximas en 7 días.</div>';
   var nb=agEl('ag-nb-labores'); if(nb){ nb.style.display=vencidas.length?'inline-block':'none'; nb.textContent=vencidas.length; }
+  var nbS=agEl('ag-nb-labores-side'); if(nbS){ nbS.style.display=vencidas.length?'inline-block':'none'; nbS.textContent=vencidas.length; } // v1.8.109: badge espejo en el sidebar
 
   var rows=[], max=0;
   d.campanas.forEach(function(c){ if(c.estado==='planificada')return; var ha=campHa(d,c); if(!ha)return;
