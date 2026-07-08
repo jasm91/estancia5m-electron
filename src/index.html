@@ -8781,16 +8781,30 @@ if (!db.pasture_evals) db.pasture_evals = [];
   });
   if (rotacionExistenteRecien) {
     console.warn('[moveLot] Rotación ya creada hace <5s para lote+potrero, omitiendo duplicación');
-  } else {
+  }
+  // v1.8.105 multi-estancia fase 2: rotación hacia potrero de OTRA estancia = TRASLADO marcado
+  var _meTraslado = null;
+  try {
+    if (typeof meActivo === 'function' && meActivo() && typeof meEstanciaDe === 'function') {
+      var _meDe = meEstanciaDe(old), _meA = meEstanciaDe(newPaddock);
+      if (_meDe !== _meA && (_meDe || _meA)) _meTraslado = { de: _meDe || '', a: _meA || '' };
+    }
+  } catch (eMe) {}
+  if (!rotacionExistenteRecien) {
     // Open new occupation
-    db.rotation_history.push({
+    var _rotNueva = {
       id: Date.now(), lot_code: lot.code, potrero: newPaddock, from_potrero: old||'',
       entry_date: localDate(), entry_at: new Date().toISOString(),
       exit_date: null, exit_at: null, days_occupied: 0,
       cabezas: lot.animal_count||0, reason: reason||'', by: 'Desktop'
-    });
+    };
+    if (_meTraslado) _rotNueva.traslado_estancia = _meTraslado; // v1.8.105: queda en el registro (viaja por sync)
+    db.rotation_history.push(_rotNueva);
   }
-  addActivity('Sistema', 'movimiento', lot.code, 'Lote '+(lot.code)+' movido de '+(old)+' a '+(newPaddock)+'. '+(reason)+'');
+  if (_meTraslado) {
+    try { auditLog('update', 'lots', lot.id, 'TRASLADO entre estancias: ' + lot.code + ' · ' + (typeof meNombreDe==='function'?meNombreDe(_meTraslado.de):_meTraslado.de || '(sin estancia)') + ' → ' + (typeof meNombreDe==='function'?meNombreDe(_meTraslado.a):_meTraslado.a || '(sin estancia)') + ' (' + (lot.animal_count||0) + ' cab)', { traslado_estancia: [_meTraslado.de, _meTraslado.a] }); } catch (eA) {}
+  }
+  addActivity('Sistema', 'movimiento', lot.code, 'Lote '+(lot.code)+' movido de '+(old)+' a '+(newPaddock)+'. '+(reason)+(_meTraslado?' [TRASLADO entre estancias]':'')+'');
   // Auto-Kardex
   if (!db.kardex) db.kardex = [];
   db.kardex.push({id:Date.now()+3,lote:lot.code,tipo:'movimiento',fecha:localDate(),cabezas:lot.animal_count||0,precio:0,total:0,desc:'Rotacion: '+(old||'?')+' → '+newPaddock+(reason?' ('+reason+')':''),by:'Desktop',created_at:new Date().toISOString(),auto:true});
@@ -44007,6 +44021,9 @@ window.meEstanciaDe = function(potName){
   var p=pots.find(function(x){ return x && String(x.name||'')===k; });
   return (p && p.estancia) || '';
 };
+// v1.8.105 fase 2: expuestos para moveLot (traslados) y UI
+window.meActivo = meOn;
+window.meNombreDe = function(id){ var e=meEstancias().find(function(x){ return x && x.id===id; }); return (e && e.nombre) || ''; };
 // set {nombrePotrero:true} de la estancia seleccionada
 function mePotSet(sel){
   var out={}; (meP().potreros||[]).forEach(function(p){ if(p && String(p.estancia||'')===sel) out[String(p.name||'')]=true; });
@@ -44046,7 +44063,49 @@ function meWrapRenders(){
     };
     window.renderLotes.__meWrap = true;
   }
+  // v1.8.105 fase 2: la página Animales también filtra (dropdown de lotes por estancia)
+  if (typeof window.renderAnimalesLote==='function' && !window.renderAnimalesLote.__meWrap) {
+    var _ra = window.renderAnimalesLote;
+    window.renderAnimalesLote = function(){
+      var sel = window.meSel();
+      if (!sel) return _ra.apply(this, arguments);
+      var keep = mePotSet(sel);
+      var _lots = db.lots;
+      try {
+        db.lots = (_lots||[]).filter(function(l){ return l && keep[String(l.paddock||'')]; });
+        return _ra.apply(this, arguments);
+      } finally { db.lots = _lots; }
+    };
+    window.renderAnimalesLote.__meWrap = true;
+  }
 }
+
+/* ── v1.8.105 fase 2: mapa — potreros de otras estancias ATENUADOS ──
+   Solo toca opacity/pointerEvents del SVG ya pintado por el módulo del mapa
+   (lee el MISMO JSON de localStorage para mapear data-mp → nombre). */
+function meMapaFiltra(){
+  try {
+    var cv = document.getElementById('mp-canvas'); if (!cv) return;
+    var svg = cv.querySelector('svg'); if (!svg) return;
+    var sel = window.meSel();
+    var keep = sel ? mePotSet(sel) : null;
+    var m = null; try { m = JSON.parse(localStorage.getItem('e5m_mapa_potreros_v1')||'null'); } catch(eJ){}
+    var dim = false;
+    Array.prototype.forEach.call(svg.children, function(node){
+      var tag = String(node.tagName||'').toLowerCase();
+      if (tag === 'polygon') {
+        var i = parseInt(node.getAttribute('data-mp'));
+        var nombre = (m && m.potreros && m.potreros[i]) ? String(m.potreros[i].nombre||'') : '';
+        dim = !!(keep && nombre && !keep[nombre]);
+        node.style.opacity = dim ? '0.13' : '';
+        node.style.pointerEvents = dim ? 'none' : '';
+      } else if (tag === 'text') {
+        node.style.opacity = dim ? '0.13' : '';
+      }
+    });
+  } catch(eM){}
+}
+window.meMapaFiltra = meMapaFiltra;
 
 /* ── Selector en la topbar ── */
 function meSelector(){
@@ -44075,7 +44134,9 @@ function meRefresh(){
   meSelectorRender();
   try { if (typeof renderRotacion==='function') renderRotacion(); } catch(e1){}
   try { if (typeof renderLotes==='function') renderLotes(); } catch(e2){}
+  try { if (typeof renderAnimalesLote==='function') renderAnimalesLote(); } catch(e3){} // v1.8.105
   meCardRender();
+  setTimeout(meMapaFiltra, 150); // v1.8.105: después de que el mapa se re-pinte
 }
 
 /* ── Card de gestión en Config (debajo de la siembra RFID / Módulos) ── */
@@ -44155,7 +44216,7 @@ function meInit(){
   meCardRender();
 }
 if (document.readyState !== 'loading') setTimeout(meInit, 800); else document.addEventListener('DOMContentLoaded', function(){ setTimeout(meInit, 800); });
-document.addEventListener('click', function(){ setTimeout(function(){ meWrapRenders(); meSelectorRender(); meCardRender(); }, 450); });
+document.addEventListener('click', function(){ setTimeout(function(){ meWrapRenders(); meSelectorRender(); meCardRender(); meMapaFiltra(); }, 450); });
 })();
 </script>
 
