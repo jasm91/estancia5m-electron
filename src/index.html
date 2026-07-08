@@ -6957,7 +6957,37 @@ function retryPendingBulkMoves() {
 setInterval(retryPendingBulkMoves, 5 * 60 * 1000);
 
 // Implementación interna: si fromQueue=true, no re-encolar al fallar (evitar loop).
-function _doReplace(tableName, records, fromQueue) {
+// v1.8.115 SYNC V2: fuentes locales por tabla para re-armar el payload tras un pull-merge (retry de 409)
+function _syncV2LocalTable(tableName) {
+  try {
+    switch (tableName) {
+      case 'sales': return db.sales;
+      case 'lots': return db.lots;
+      case 'vet_products': return db.products;
+      case 'treatments': return db.treatments;
+      case 'purchases': return db.purchases;
+      case 'employees': return db.employees;
+      case 'compras_ganado': return db.compras_ganado;
+      case 'bajas': return db.bajas;
+      case 'maquinaria': return db.maquinaria;
+      case 'kardex': return db.kardex;
+      case 'cuentas': return db.cuentas;
+      case 'animals': {
+        var d = getAnimalesDB(), out = {};
+        Object.keys(d).forEach(function(lc){
+          out[lc] = (d[lc]||[]).map(function(a){ return e5mAnimPushFields(a, { animal_id: a.animal_id || a.id || '', breed: a.breed || a.raza || '', pesajes: a.pesajes || [] }); });
+        });
+        return out;
+      }
+      default: return null;
+    }
+  } catch(e) { return null; }
+}
+function _syncV2Base(tableName) {
+  if (window.__SYNC_V2_OFF) return undefined;
+  try { var v = JSON.parse(localStorage.getItem('e5m_table_versions')||'{}'); return v[tableName] || undefined; } catch(e){ return undefined; }
+}
+function _doReplace(tableName, records, fromQueue, retried) {
   if (!navigator.onLine) {
     if (!fromQueue) _replaceQueueEnqueue(tableName, records);
     return Promise.resolve(false);
@@ -6982,10 +7012,29 @@ function _doReplace(tableName, records, fromQueue) {
   return fetch(apiUrl + '/bulk-push', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-    body: JSON.stringify({ table: tableName, records: payloadRecords })
-  }).then(function(r){ return r.json(); })
-  .then(function(d){
+    body: JSON.stringify((function(){ var b = { table: tableName, records: payloadRecords }; var _bv = _syncV2Base(tableName); if (_bv) b.base_version = _bv; return b; })()) // v1.8.115 SYNC V2
+  }).then(function(r){ return r.json().then(function(j){ return { status: r.status, d: j }; }); })
+  .then(function(resp){
+    var d = resp.d || {};
     if (d.ok) { console.log('[Sync] ' + tableName + ': OK'); return true; }
+    // v1.8.115 SYNC V2: el server rechazó porque nuestra copia está vieja → pull, merge y UN reintento
+    if (resp.status === 409 && d.code === 'STALE_BASE' && !retried) {
+      console.warn('[Sync V2] ' + tableName + ': copia vieja (server=' + d.server_version + ') → pull + merge + reintento');
+      return new Promise(function(resolve){
+        try {
+          pullFromRailwayDesktop(false);
+        } catch(ePull){ console.warn('[Sync V2] pull falló:', ePull); }
+        setTimeout(function(){
+          var fresh = _syncV2LocalTable(tableName);
+          if (fresh === null || fresh === undefined) {
+            console.warn('[Sync V2] ' + tableName + ': sin fuente local para re-armar — va a la cola');
+            if (!fromQueue) _replaceQueueEnqueue(tableName, records);
+            resolve(false); return;
+          }
+          _doReplace(tableName, fresh, true, true).then(resolve);
+        }, 4000); // dar tiempo al pull-merge
+      });
+    }
     console.error('[Sync] ' + tableName + ': Error', d.error || d);
     if (!fromQueue) _replaceQueueEnqueue(tableName, records);
     return false;
@@ -7222,6 +7271,7 @@ function pullFromRailwayDesktop(thenPush) {
   fetch(apiUrl + '/sync-pull?include_sold=true', { headers: headers, signal: (function(){ var c=new AbortController(); setTimeout(function(){c.abort();},8000); return c.signal; })() })
     .then(function(r){ return r.json(); })
     .then(function(remote) {
+      try { if (remote && remote._versions) localStorage.setItem('e5m_table_versions', JSON.stringify(remote._versions)); } catch(eV){} // v1.8.115 SYNC V2
       if (!remote || remote.error) {
         if (thenPush) pushToRailway();
         return;
@@ -9629,7 +9679,7 @@ function saveTreatment() {
   if(prod.stock_qty<totalUsed){toast('Stock insuficiente. Disponible: '+prod.stock_qty+' '+prod.unit+'. Necesario: '+totalUsed+' '+prod.unit,'error');return;}
 
   // Descontar stock
-  prod.stock_qty = Math.round((prod.stock_qty - totalUsed)*100)/100;
+  prod.stock_qty = Math.round((prod.stock_qty - totalUsed)*100)/100; prod.stock_updated_at = new Date().toISOString(); /* v1.8.115 SYNC V2: stamp para el merge server-first del stock */
 
   const t = {
     id:db.next_ids.treatment++,
@@ -11796,6 +11846,7 @@ function savePurchase() {
   if (prod) {
     var prevQty = prod.stock_qty;
     prod.stock_qty = Math.round((prod.stock_qty + qty)*100)/100;
+    prod.stock_updated_at = new Date().toISOString(); /* v1.8.115 SYNC V2: stamp para el merge server-first del stock */
     if (prod.stock_qty > prod.stock_min) {
       db.alerts = db.alerts.filter(function(a){
         return !(a.type==='stock_low' && a.title.includes(prod.name) && !a.resolved);
@@ -16432,6 +16483,7 @@ function forcePullFromToken() {
   fetch(apiUrl+'/sync-pull?include_sold=true',{headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'}})
     .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status+' - Token invalido?'); return r.json(); })
     .then(function(d){
+      try { if (d && d._versions) localStorage.setItem('e5m_table_versions', JSON.stringify(d._versions)); } catch(eV){} // v1.8.115 SYNC V2
       if(d.error){ toast('Error: '+d.error,'error'); return; }
       var newDb={
         lots:d.lots||[], products:d.products||[], treatments:d.treatments||[],
@@ -25730,7 +25782,7 @@ function saveAceite() {
     rec.stock_unit = stockInfo.unit;
     var p = db.products.find(function(x){return x.id == stockInfo.product_id;});
     if (p) {
-      p.stock_qty = Math.round((p.stock_qty - stockInfo.qty) * 100) / 100;
+      p.stock_qty = Math.round((p.stock_qty - stockInfo.qty) * 100) / 100; p.stock_updated_at = new Date().toISOString(); /* v1.8.115 SYNC V2: stamp para el merge server-first del stock */
       replaceTableInRailway('vet_products', db.products || []);
     }
   }
@@ -31067,7 +31119,7 @@ function saveSubmodule(type) {
           toast('⚠ Stock insuficiente de '+salProd.name+': disponible '+salProd.stock_qty+' kg', 'error');
           return;
         }
-        salProd.stock_qty = Math.round((salProd.stock_qty - salQty)*100)/100;
+        salProd.stock_qty = Math.round((salProd.stock_qty - salQty)*100)/100; salProd.stock_updated_at = new Date().toISOString(); /* v1.8.115 SYNC V2: stamp para el merge server-first del stock */
         if (salProd.stock_qty <= salProd.stock_min) {
           var existing = db.alerts.find(function(a){return !a.resolved&&a.type==='stock_low'&&a.title.includes(salProd.name);});
           if (!existing) db.alerts.push({id:db.next_ids.alert++,type:'stock_low',severity:'warning',title:'Stock bajo: '+salProd.name,message:'Quedan '+salProd.stock_qty+' kg. Minimo: '+salProd.stock_min+'.',resolved:false,created_at:new Date().toISOString()});
@@ -31155,7 +31207,7 @@ function saveSubmodule(type) {
         if (aliProd.stock_qty < aliQty) {
           if (!confirm('Stock insuficiente de '+aliProd.name+' (disponible: '+aliProd.stock_qty+' '+aliProd.unit+'). ¿Registrar igual?')) return;
         } else {
-          aliProd.stock_qty = Math.round((aliProd.stock_qty - aliQty)*100)/100;
+          aliProd.stock_qty = Math.round((aliProd.stock_qty - aliQty)*100)/100; aliProd.stock_updated_at = new Date().toISOString(); /* v1.8.115 SYNC V2: stamp para el merge server-first del stock */
           if (aliProd.stock_qty <= aliProd.stock_min) {
             var aliExisting = db.alerts.find(function(a){return !a.resolved&&a.type==='stock_low'&&a.title.includes(aliProd.name);});
             if (!aliExisting) db.alerts.push({id:db.next_ids.alert++,type:'stock_low',severity:'warning',title:'Stock bajo: '+aliProd.name,message:'Quedan '+aliProd.stock_qty+' '+aliProd.unit+'. Minimo: '+aliProd.stock_min+'.',resolved:false,created_at:new Date().toISOString()});
