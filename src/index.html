@@ -4778,6 +4778,7 @@ function orMarcajeGo(){
     </select>
     <span style="font-size:11px;color:var(--muted)">RFID habilita: columna chip en marcaje/compra/onboarding, planilla de pesaje por chip y siembra arete↔RFID</span>
   </label>
+  <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-top:8px;cursor:pointer"><input type="checkbox" id="cfg-mod-multiestancia" onchange="cfgModuloToggle('multi_estancia',this)"> 🏡 Multi-estancia (varias propiedades en esta cuenta: potreros por estancia + selector con filtro en Rotación y Lotes)</label>
 </div></div>
 <div class="card" style="margin-bottom:16px"><div class="card-body">
   <div class="card-title" style="margin-bottom:6px">🔎 Tamaño de letra (este equipo)</div>
@@ -43069,6 +43070,8 @@ function cfgModulosRender(){
   if(c) c.checked=!!p.perfil_cabana;
   var r=agEl('cfg-mod-identidad'); // v1.8.103: selector de 3 modos (era checkbox en v1.8.101)
   if(r) r.value=(p.identidad==='dual'||p.identidad==='rfid')?p.identidad:'arete';
+  var me=agEl('cfg-mod-multiestancia'); // v1.8.104
+  if(me) me.checked=!!p.multi_estancia;
 }
 // v1.8.103: modo de identidad por tenant (params.identidad es STRING: arete|dual|rfid)
 function cfgIdentidadSelect(el){
@@ -43969,6 +43972,190 @@ window.rsAplicar = function(){
 function rsInit(){ if (!rsCard()) { setTimeout(rsInit, 900); return; } rsGateApply(); }
 if (document.readyState !== 'loading') setTimeout(rsInit, 700); else document.addEventListener('DOMContentLoaded', function(){ setTimeout(rsInit, 700); });
 document.addEventListener('click', function(){ setTimeout(rsGateApply, 400); });
+})();
+</script>
+
+<script id="multi-estancia-v18104">
+/* ═══════════════════════════════════════════════════════════════
+   v1.8.104 — MULTI-ESTANCIA fase 1 (opción C del diseño, módulo aditivo)
+   La estancia es un AGRUPADOR liviano anclado en POTREROS: cada potrero
+   declara su estancia y los lotes/animales heredan por su potrero.
+   - Datos: params.estancias = [{id,nombre}] + params.potreros[i].estancia
+     (todo en params → sincroniza por el canal existente, CERO whitelist nueva).
+   - Gate por tenant: params.multi_estancia (checkbox en Config → Módulos).
+   - Selector en la topbar (elección POR EQUIPO en localStorage, no sincroniza).
+   - Filtro: wraps encadenados sobre renderRotacion (getParams filtrado durante
+     el render → KPIs y cards salen bien solos) y renderLotes (db.lots filtrado
+     durante el render, restaurado en finally). "Todas" = consolidado = la app
+     de hoy. Preserva wraps previos (__mpWrap del mapa): se envuelve la función
+     VIGENTE, flag __meWrap.
+   - Kill switch: window.__MULTIESTANCIA_OFF = true.
+   Fase 2 (después): filtro en stock/personal/reportes, estancia en PDFs,
+   flag traslado_estancia en movimientos, mapa JSON por estancia, PWA.
+   ═══════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+function el(id){ return document.getElementById(id); }
+function esc(x){ return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+function meP(){ try { return (typeof getParams==='function')?(getParams()||{}):{}; } catch(e){ return {}; } }
+function meOn(){ return !window.__MULTIESTANCIA_OFF && !!meP().multi_estancia; }
+function meEstancias(){ var e=meP().estancias; return Array.isArray(e)?e:[]; }
+window.meSel = function(){ if (!meOn()) return ''; var s=localStorage.getItem('e5m_estancia_sel')||''; return meEstancias().some(function(x){return x&&x.id===s;})?s:''; };
+// estancia de un potrero (por nombre) → id | ''
+window.meEstanciaDe = function(potName){
+  var pots=meP().potreros||[]; var k=String(potName||'');
+  var p=pots.find(function(x){ return x && String(x.name||'')===k; });
+  return (p && p.estancia) || '';
+};
+// set {nombrePotrero:true} de la estancia seleccionada
+function mePotSet(sel){
+  var out={}; (meP().potreros||[]).forEach(function(p){ if(p && String(p.estancia||'')===sel) out[String(p.name||'')]=true; });
+  return out;
+}
+
+/* ── WRAPS de filtro (encadenados, preservan los previos) ── */
+function meWrapRenders(){
+  if (typeof window.renderRotacion==='function' && !window.renderRotacion.__meWrap) {
+    var _rr = window.renderRotacion;
+    window.renderRotacion = function(){
+      var sel = window.meSel();
+      if (!sel) return _rr.apply(this, arguments); // Todas / gate off → tal cual hoy
+      var _gp = window.getParams;
+      try {
+        window.getParams = function(){
+          var p = _gp()||{}; var q = Object.assign({}, p);
+          q.potreros = (p.potreros||[]).filter(function(x){ return x && String(x.estancia||'')===sel; });
+          return q;
+        };
+        return _rr.apply(this, arguments);
+      } finally { window.getParams = _gp; }
+    };
+    window.renderRotacion.__meWrap = true;
+  }
+  if (typeof window.renderLotes==='function' && !window.renderLotes.__meWrap) {
+    var _rl = window.renderLotes;
+    window.renderLotes = function(){
+      var sel = window.meSel();
+      if (!sel) return _rl.apply(this, arguments);
+      var keep = mePotSet(sel);
+      var _lots = db.lots;
+      try {
+        db.lots = (_lots||[]).filter(function(l){ return l && keep[String(l.paddock||'')]; });
+        return _rl.apply(this, arguments);
+      } finally { db.lots = _lots; }
+    };
+    window.renderLotes.__meWrap = true;
+  }
+}
+
+/* ── Selector en la topbar ── */
+function meSelector(){
+  var s = el('me-selector');
+  if (!s) {
+    var host = document.querySelector('.topbar-right'); if (!host) return null;
+    s = document.createElement('select');
+    s.id = 'me-selector';
+    s.style.cssText = 'display:none;background:var(--sur2,#1C2333);border:1px solid var(--bor,#30363D);color:inherit;border-radius:8px;padding:5px 8px;font-size:12px;margin-right:8px;max-width:170px';
+    s.title = 'Estancia (filtra Rotación y Lotes en este equipo)';
+    s.onchange = function(){ localStorage.setItem('e5m_estancia_sel', s.value||''); meRefresh(); };
+    host.insertBefore(s, host.firstChild);
+  }
+  return s;
+}
+function meSelectorRender(){
+  var s = meSelector(); if (!s) return;
+  var ests = meEstancias();
+  if (!meOn() || !ests.length) { s.style.display='none'; return; }
+  var sel = window.meSel();
+  s.innerHTML = '<option value="">🏡 Todas las estancias</option>' +
+    ests.map(function(e){ return '<option value="'+esc(e.id)+'"'+(sel===e.id?' selected':'')+'>🏡 '+esc(e.nombre)+'</option>'; }).join('');
+  s.style.display='';
+}
+function meRefresh(){
+  meSelectorRender();
+  try { if (typeof renderRotacion==='function') renderRotacion(); } catch(e1){}
+  try { if (typeof renderLotes==='function') renderLotes(); } catch(e2){}
+  meCardRender();
+}
+
+/* ── Card de gestión en Config (debajo de la siembra RFID / Módulos) ── */
+function meCard(){
+  if (el('me-card')) return el('me-card');
+  var anchor = el('rs-card') || (el('cfg-mod-identidad') && el('cfg-mod-identidad').closest('.card'));
+  if (!anchor || !anchor.parentElement) return null;
+  var c = document.createElement('div');
+  c.id = 'me-card'; c.className = 'card'; c.style.marginTop = '16px';
+  c.innerHTML = '<div class="card-title" style="margin-bottom:6px">🏡 Estancias (multi-estancia)</div>'+
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Creá las estancias y asignale una a cada potrero. Los lotes y animales heredan la estancia por su potrero. El selector de arriba filtra Rotación y Lotes; "Todas" = consolidado. Sincroniza a todos los equipos.</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">'+
+    '<input id="me-nueva" class="form-input" placeholder="Nombre de la estancia (ej: Chaco Lejos Norte)" style="width:260px;padding:6px 10px;font-size:12.5px">'+
+    '<button class="btn btn-primary btn-sm" onclick="meAgregar()">＋ Agregar estancia</button>'+
+    '<span id="me-status" style="font-size:11.5px;color:var(--muted)"></span></div>'+
+    '<div id="me-lista" style="margin-bottom:12px"></div>'+
+    '<div id="me-potreros"></div>';
+  anchor.parentElement.insertBefore(c, anchor.nextSibling);
+  return c;
+}
+function meCardRender(){
+  var c = meCard(); if (!c) return;
+  c.style.display = meOn() ? '' : 'none';
+  if (!meOn()) return;
+  var p = meP(); var ests = meEstancias(); var pots = p.potreros||[];
+  var porEst = {}; pots.forEach(function(x){ var e=String((x&&x.estancia)||''); porEst[e]=(porEst[e]||0)+1; });
+  var lista = el('me-lista');
+  if (lista) lista.innerHTML = ests.length ? ('<div style="display:flex;gap:8px;flex-wrap:wrap">'+ests.map(function(e){
+    var n = porEst[e.id]||0;
+    return '<span style="background:var(--sur2);border:1px solid var(--bor);border-radius:8px;padding:5px 10px;font-size:12px">🏡 <b>'+esc(e.nombre)+'</b> · '+n+' potrero(s)'+
+      (n===0?' <button onclick="meBorrar(\''+esc(e.id)+'\')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:12px" title="borrar (solo sin potreros)">✕</button>':'')+'</span>';
+  }).join('')+(porEst['']?'<span style="font-size:11.5px;color:var(--amber2);align-self:center">⚠ '+porEst['']+' potrero(s) sin estancia (no aparecen al filtrar)</span>':'')+'</div>') : '<span style="font-size:12px;color:var(--muted)">Sin estancias todavía — agregá la primera arriba.</span>';
+  var pot = el('me-potreros');
+  if (pot) pot.innerHTML = (ests.length && pots.length) ? ('<div style="max-height:240px;overflow-y:auto"><table class="tbl" style="font-size:12px"><thead><tr><th>Potrero</th><th>Estancia</th></tr></thead><tbody>'+
+    pots.map(function(x,i){
+      return '<tr><td style="font-weight:600">'+esc(x.name||'')+'</td><td><select onchange="meAsignar('+i+',this.value)" style="background:var(--sur2);border:1px solid var(--bor);color:inherit;border-radius:6px;padding:4px 8px;font-size:12px">'+
+        '<option value=""'+(!x.estancia?' selected':'')+'>— sin asignar —</option>'+
+        ests.map(function(e){ return '<option value="'+esc(e.id)+'"'+(x.estancia===e.id?' selected':'')+'>'+esc(e.nombre)+'</option>'; }).join('')+
+        '</select></td></tr>';
+    }).join('')+'</tbody></table></div>') : '';
+}
+window.meAgregar = function(){
+  var inp = el('me-nueva'); var nombre = String((inp&&inp.value)||'').trim();
+  if (!nombre) { if(typeof toast==='function') toast('Poné el nombre de la estancia','error'); return; }
+  var p = meP(); var ests = Array.isArray(p.estancias)?p.estancias.slice():[];
+  if (ests.some(function(e){ return e && String(e.nombre||'').toLowerCase()===nombre.toLowerCase(); })) { if(typeof toast==='function') toast('Ya existe una estancia con ese nombre','error'); return; }
+  var max = 0; ests.forEach(function(e){ var n=parseInt(String(e&&e.id||'').replace(/\D/g,''))||0; if(n>max)max=n; });
+  ests.push({ id: 'est'+(max+1), nombre: nombre });
+  p.estancias = ests;
+  try { saveParams(p); } catch(e){}
+  if (inp) inp.value='';
+  var st = el('me-status'); if (st) st.textContent = '✅ Estancia "'+nombre+'" creada — asignale potreros abajo';
+  meRefresh();
+};
+window.meBorrar = function(id){
+  var p = meP(); var ests = Array.isArray(p.estancias)?p.estancias.slice():[];
+  var usados = (p.potreros||[]).some(function(x){ return x && x.estancia===id; });
+  if (usados) { if(typeof toast==='function') toast('Esa estancia tiene potreros asignados — reasignalos primero','error'); return; }
+  p.estancias = ests.filter(function(e){ return !(e && e.id===id); });
+  if (localStorage.getItem('e5m_estancia_sel')===id) localStorage.setItem('e5m_estancia_sel','');
+  try { saveParams(p); } catch(e){}
+  meRefresh();
+};
+window.meAsignar = function(idx, estId){
+  var p = meP(); var pots = p.potreros||[];
+  if (!pots[idx]) return;
+  if (estId) pots[idx].estancia = estId; else delete pots[idx].estancia;
+  try { saveParams(p); } catch(e){}
+  var st = el('me-status'); if (st) st.textContent = '✅ '+(pots[idx].name||'potrero')+' → '+(estId?(meEstancias().find(function(e){return e.id===estId;})||{}).nombre||estId:'sin asignar');
+  meRefresh();
+};
+
+function meInit(){
+  if (!meCard()) { setTimeout(meInit, 900); return; }
+  meWrapRenders();
+  meSelectorRender();
+  meCardRender();
+}
+if (document.readyState !== 'loading') setTimeout(meInit, 800); else document.addEventListener('DOMContentLoaded', function(){ setTimeout(meInit, 800); });
+document.addEventListener('click', function(){ setTimeout(function(){ meWrapRenders(); meSelectorRender(); meCardRender(); }, 450); });
 })();
 </script>
 
