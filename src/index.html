@@ -28753,7 +28753,7 @@ function _devTimeAgo(iso) {
   } catch (e) { return '—'; }
 }
 
-function _devEmpleadoSelect(d) { /* v1.8.117 F2: ¿de quién es este dispositivo? */
+function _devEmpleadoSelect(d) { /* v1.8.118 F2: ¿de quién es este dispositivo? */
   var emps = (db.employees || []).filter(function(e){ return e && (e.name || e.nombre); });
   var opts = '<option value="">— empleado —</option>';
   emps.forEach(function(e){ var nm = e.name || e.nombre; opts += '<option value="' + escH(String(e.id)) + '"' + (String(d.employee_id || '') === String(e.id) ? ' selected' : '') + '>' + escH(nm) + '</option>'; });
@@ -28790,7 +28790,7 @@ function renderDispositivos() {
             '<div style="color:var(--muted);font-size:11px">' + escH(d.token_hint || '') + ' · ' + escH(d.app_type || 'pwa') + ' · últ. vez ' + escH(last) + (d.persona ? ' · 👤 ' + escH(d.persona) : '') + '</div>' +
           '</div>' +
           (revoked ? '' : _devRoleSelect(d)) +
-          (revoked ? '' : _devEmpleadoSelect(d)) + /* v1.8.117 F2: atribución por persona */
+          (revoked ? '' : _devEmpleadoSelect(d)) + /* v1.8.118 F2: atribución por persona */
           (revoked
             ? '<span style="font-size:11px;color:var(--red);font-weight:600">revocado</span>'
             : '<button class="btn btn-ghost" style="padding:6px 12px;font-size:12px;color:var(--red);border-color:rgba(248,81,73,.4)" onclick="revocarDispositivo(' + d.id + ', this)">Revocar</button>') +
