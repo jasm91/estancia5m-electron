@@ -9720,7 +9720,7 @@ function saveTreatment() {
 }
 
 function deleteTreatment(id) {
-  if (!confirm('00bfEliminar esta curacion? El stock NO se restaura.')) return;
+  if (!confirm('¿Eliminar esta curacion? El stock NO se restaura.')) return;
   
   // FIX v1.4.35: audit log para deleteTreatment
   var _delRec_deleteTreatment = (db.treatments || []).find(function(r){ return String(r.id) === String(id); });
@@ -10690,7 +10690,7 @@ function toggleSaleIds(id) {
 }
 
 function deleteSale(id) {
-  if (!confirm('00bfEliminar esta venta?')) return;
+  if (!confirm('¿Eliminar esta venta?')) return;
   
   // FIX v1.4.35: audit log para deleteSale
   var _delRec_deleteSale = (db.sales || []).find(function(r){ return String(r.id) === String(id); });
@@ -12838,7 +12838,7 @@ function toggleAdvance(id) {
 }
 
 function deleteAdvance(id) {
-  if (!confirm('00bfEliminar este adelanto?')) return;
+  if (!confirm('¿Eliminar este adelanto?')) return;
   
   // FIX v1.4.35: audit log para deleteAdvance
   var _delRec_deleteAdvance = (db.advances || []).find(function(r){ return String(r.id) === String(id); });
@@ -12873,7 +12873,7 @@ function deleteEmployee(id) {
 }
 
 function deleteActivity(id) {
-  if (!confirm('00bfEliminar esta actividad?')) return;
+  if (!confirm('¿Eliminar esta actividad?')) return;
   
   // FIX v1.4.35: audit log para deleteActivity
   var _delRec_deleteActivity = (db.activities || []).find(function(r){ return String(r.id) === String(id); });
@@ -28238,7 +28238,7 @@ function pushTableToRailway(tableName, records) {
   }).catch(function(){});
 }
 function deleteMaint(id) {
-  if (!confirm('00bfEliminar este registro?')) return;
+  if (!confirm('¿Eliminar este registro?')) return;
   
   // FIX v1.4.35: audit log para deleteMaint
   var _delRec_deleteMaint = (db.maintenance || []).find(function(r){ return String(r.id) === String(id); });
@@ -28753,6 +28753,22 @@ function _devTimeAgo(iso) {
   } catch (e) { return '—'; }
 }
 
+function _devEmpleadoSelect(d) { /* v1.8.117 F2: ¿de quién es este dispositivo? */
+  var emps = (db.employees || []).filter(function(e){ return e && (e.name || e.nombre); });
+  var opts = '<option value="">— empleado —</option>';
+  emps.forEach(function(e){ var nm = e.name || e.nombre; opts += '<option value="' + escH(String(e.id)) + '"' + (String(d.employee_id || '') === String(e.id) ? ' selected' : '') + '>' + escH(nm) + '</option>'; });
+  return '<select title="Sus registros se atribuyen a esta persona (Inteligencia de Tareas)" style="max-width:130px;font-size:11px;padding:4px 6px;background:var(--sur2);color:var(--text);border:1px solid var(--bor);border-radius:6px" onchange="asignarEmpleadoDispositivo(' + d.id + ', this)">' + opts + '</select>';
+}
+function asignarEmpleadoDispositivo(devId, sel) {
+  var emp = (db.employees || []).find(function(e){ return String(e.id) === String(sel.value); });
+  _devApi('/devices/' + devId + '/employee', { method: 'PATCH', body: JSON.stringify({ employee_id: sel.value || null, employee_name: emp ? (emp.name || emp.nombre || '') : '' }) })
+    .then(function(res){
+      if (res.status === 200) { toast('👤 Registros de este dispositivo se atribuyen a ' + (emp ? (emp.name || emp.nombre) : '(nadie)'), 'success'); renderDispositivos(); }
+      else if (res.status === 404) { toast('El server no tiene v4.21 todavía — actualizalo primero', 'error'); }
+      else { toast('No se pudo asignar: ' + ((res.j && res.j.error) || res.status), 'error'); }
+    })
+    .catch(function(){ toast('Error de conexión', 'error'); });
+}
 function renderDispositivos() {
   var list = document.getElementById('dev-list');
   if (!list) return;
@@ -28774,6 +28790,7 @@ function renderDispositivos() {
             '<div style="color:var(--muted);font-size:11px">' + escH(d.token_hint || '') + ' · ' + escH(d.app_type || 'pwa') + ' · últ. vez ' + escH(last) + (d.persona ? ' · 👤 ' + escH(d.persona) : '') + '</div>' +
           '</div>' +
           (revoked ? '' : _devRoleSelect(d)) +
+          (revoked ? '' : _devEmpleadoSelect(d)) + /* v1.8.117 F2: atribución por persona */
           (revoked
             ? '<span style="font-size:11px;color:var(--red);font-weight:600">revocado</span>'
             : '<button class="btn btn-ghost" style="padding:6px 12px;font-size:12px;color:var(--red);border-color:rgba(248,81,73,.4)" onclick="revocarDispositivo(' + d.id + ', this)">Revocar</button>') +
@@ -30770,7 +30787,7 @@ function savePesaje() {
 }
 
 function deletePesaje(id) {
-  if (!confirm('00bfEliminar este pesaje?')) return;
+  if (!confirm('¿Eliminar este pesaje?')) return;
   trackDeletion(id, 'pesajes');
   db.pesajes = db.pesajes.filter(function(p){ return p.id!==id; });
   saveDB(); renderPesajes();
@@ -31290,7 +31307,7 @@ function renderSubmodule(type) {
 }
 
 function deleteSubmodule(id, type) {
-  if (!confirm('00bfEliminar este registro?')) return;
+  if (!confirm('¿Eliminar este registro?')) return;
   trackDeletion(id, type);
   db[type] = (db[type]||[]).filter(function(r){return r.id!==id;});
   saveDB(); renderSubmodule(type);
