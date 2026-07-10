@@ -656,6 +656,46 @@ function goToSal(navBtn) {
 }
 
 // v1.4.79: toggle collapsable de secciones del sidebar
+// v1.8.121: Reproducción como sección — navega y clickea la sub-pestaña interna real
+function goToRepro(sub, navBtn) {
+  showPage('reproduccion', navBtn);
+  try { initReproduccion(); } catch(e) {}
+  setTimeout(function() {
+    var btn = (sub === 'cabana') ? document.getElementById('repro-tab-cabana-btn')
+      : document.querySelector('#page-reproduccion .tabs .tab-btn[onclick*="repro-tab-' + sub + '"]');
+    if (!btn) btn = document.querySelector('.tab-btn[onclick*="repro-tab-' + sub + '"]');
+    if (btn) btn.click(); // onclick original: switchTab + renders propios de cada sub-pestaña
+  }, 60);
+}
+// v1.8.121: auto-colapso del sidebar tras 45s sin interacción con él.
+// Colapsa todo salvo la sección de la vista activa; persiste igual que toggleNavSec.
+var _navIdleTimer = null;
+var NAV_IDLE_MS = 45000;
+function navAutoCollapse() {
+  document.querySelectorAll('.nav-sec').forEach(function(sec) {
+    if (sec.querySelector('.nav-btn.active')) return;
+    sec.classList.add('collapsed');
+  });
+  try {
+    var collapsed = JSON.parse(localStorage.getItem('e5m_nav_collapsed_secs') || '{}');
+    document.querySelectorAll('.nav-sec').forEach(function(sec) { collapsed[sec.getAttribute('data-sec')] = sec.classList.contains('collapsed'); });
+    localStorage.setItem('e5m_nav_collapsed_secs', JSON.stringify(collapsed));
+  } catch(e) {}
+}
+function navIdleReset() {
+  if (_navIdleTimer) clearTimeout(_navIdleTimer);
+  _navIdleTimer = setTimeout(navAutoCollapse, NAV_IDLE_MS);
+}
+(function initNavAutoCollapse() {
+  function arm() {
+    var sb = document.querySelector('aside.sidebar');
+    if (!sb) return;
+    ['click', 'mousemove', 'wheel', 'touchstart'].forEach(function(ev) { sb.addEventListener(ev, navIdleReset, { passive: true }); });
+    navIdleReset();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', arm, { once: true });
+  else arm();
+})();
 function toggleNavSec(secKey) {
   var sec = document.querySelector('.nav-sec[data-sec="' + secKey + '"]');
   if (!sec) return;
@@ -678,6 +718,7 @@ function toggleNavSec(secKey) {
       saved = {
         'inicio': true,
         'operacion-principal': false,  // expandida por default
+        'reproduccion': true,          // v1.8.121
         'operacion-secundaria': true,
         'reportes': true,
         'equipo': true,
@@ -850,8 +891,22 @@ function publishTasksToPWA() {
     <button class="nav-btn" data-label="Lotes" onclick="goToLotes(this)"><span class="nav-icon">🐄</span><span class="nav-text">Lotes</span><span class="nav-badge nb-green" id="nb-lotes">0</span></button>
     <button class="nav-btn" data-label="Rotación" onclick="goToRotacion(this)"><span class="nav-icon">🔄</span><span class="nav-text">Rotación</span></button>
     <button class="nav-btn" data-label="Animales" onclick="goToAnimales(this)"><span class="nav-icon">🐮</span><span class="nav-text">Animales</span></button>
-    <button class="nav-btn" data-label="Reproducción" onclick="showPage('reproduccion',this);initReproduccion()"><span class="nav-icon">🧬</span><span class="nav-text">Reproducción</span></button>
+    <!-- v1.8.121: Reproducción se movió a su propia sección (abajo) -->
     <button class="nav-btn" data-label="Sanidad" onclick="showPage('sanidad',this)"><span class="nav-icon">💉</span><span class="nav-text">Sanidad</span></button>
+    </div>
+  </div>
+
+  <div class="nav-sec" data-sec="reproduccion">
+    <!-- v1.8.121: Reproducción con sección propia; las sub-pestañas internas suben al sidebar.
+         goToRepro navega a la vista y clickea la sub-pestaña real (conserva renders/gates). -->
+    <button class="nav-lbl-btn" onclick="toggleNavSec('reproduccion')"><span class="nav-lbl">Reproducción</span><span class="nav-lbl-chevron">▾</span></button>
+    <div class="nav-sec-body">
+    <button class="nav-btn" data-label="Servicios" onclick="goToRepro('servicios',this)"><span class="nav-icon">🐂</span><span class="nav-text">Servicios</span></button>
+    <button class="nav-btn" data-label="Partos" onclick="goToRepro('partos',this)"><span class="nav-icon">🍼</span><span class="nav-text">Partos</span></button>
+    <button class="nav-btn" data-label="Indicadores" onclick="goToRepro('indicadores',this)"><span class="nav-icon">📊</span><span class="nav-text">Indicadores</span></button>
+    <button class="nav-btn" data-label="Historial Ternero" onclick="goToRepro('historial',this)"><span class="nav-icon">📜</span><span class="nav-text">Historial Ternero</span></button>
+    <button class="nav-btn" data-label="Inteligencia" onclick="goToRepro('inteligencia',this)"><span class="nav-icon">🧠</span><span class="nav-text">Inteligencia</span></button>
+    <button class="nav-btn" data-label="Cabaña" id="nav-repro-cabana" style="display:none" onclick="goToRepro('cabana',this)"><span class="nav-icon">🏆</span><span class="nav-text">Cabaña</span></button>
     </div>
   </div>
 
@@ -43619,6 +43674,7 @@ function gateOn(){
 }
 function cab2Gate(){
   var b=E('repro-tab-cabana-btn'); if(b) b.style.display=gateOn()?'':'none';
+  var n=document.getElementById('nav-repro-cabana'); if(n) n.style.display=gateOn()?'':'none'; // v1.8.121 item del sidebar
 }
 function fD(iso){ if(!iso)return '—'; var p=String(iso).split('-'); return p.length>=3?(p[2]+'/'+p[1]+'/'+p[0].slice(2)):iso; }
 function dias(a,b){ try { return Math.round((new Date(b)-new Date(a))/86400000); } catch(e){ return null; } }
