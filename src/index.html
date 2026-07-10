@@ -26354,7 +26354,10 @@ var _e5mSesionesData = [];
 // ══════════════════════════════════════════════════
 (function () {
   if (window.__MAPA_OFF) return;
-  var KEY = 'e5m_mapa_potreros_v1', KCOL = 'e5m_mapa_colapsado';
+  // v1.8.119: paquete por ESTANCIA (sufijo del token) — la key global fugaba el mapa entre tenants via switcher/cambio de token
+  var _mapaTenSuf = (function(){ try { var t = String(localStorage.getItem('e5m_api_token')||'').replace(/[^a-zA-Z0-9_-]/g,''); return t ? t.slice(-12) : 'default'; } catch(e){ return 'default'; } })();
+  var KEY = 'e5m_mapa_potreros_v1::' + _mapaTenSuf, KCOL = 'e5m_mapa_colapsado';
+  try { localStorage.removeItem('e5m_mapa_potreros_v1'); } catch(e){} // limpia la key global vieja
   function mpGet() { try { var s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
   function mpEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function mpColapsado() { try { return localStorage.getItem(KCOL) !== '0'; } catch (e) { return true; } }
@@ -28753,7 +28756,7 @@ function _devTimeAgo(iso) {
   } catch (e) { return '—'; }
 }
 
-function _devEmpleadoSelect(d) { /* v1.8.118 F2: ¿de quién es este dispositivo? */
+function _devEmpleadoSelect(d) { /* v1.8.119 F2: ¿de quién es este dispositivo? */
   var emps = (db.employees || []).filter(function(e){ return e && (e.name || e.nombre); });
   var opts = '<option value="">— empleado —</option>';
   emps.forEach(function(e){ var nm = e.name || e.nombre; opts += '<option value="' + escH(String(e.id)) + '"' + (String(d.employee_id || '') === String(e.id) ? ' selected' : '') + '>' + escH(nm) + '</option>'; });
@@ -28790,7 +28793,7 @@ function renderDispositivos() {
             '<div style="color:var(--muted);font-size:11px">' + escH(d.token_hint || '') + ' · ' + escH(d.app_type || 'pwa') + ' · últ. vez ' + escH(last) + (d.persona ? ' · 👤 ' + escH(d.persona) : '') + '</div>' +
           '</div>' +
           (revoked ? '' : _devRoleSelect(d)) +
-          (revoked ? '' : _devEmpleadoSelect(d)) + /* v1.8.118 F2: atribución por persona */
+          (revoked ? '' : _devEmpleadoSelect(d)) + /* v1.8.119 F2: atribución por persona */
           (revoked
             ? '<span style="font-size:11px;color:var(--red);font-weight:600">revocado</span>'
             : '<button class="btn btn-ghost" style="padding:6px 12px;font-size:12px;color:var(--red);border-color:rgba(248,81,73,.4)" onclick="revocarDispositivo(' + d.id + ', this)">Revocar</button>') +
@@ -43393,7 +43396,10 @@ document.addEventListener('click', function(ev){
 // ══════════════════════════════════════════════════
 (function () {
   if (window.__AGRO_OFF) return;
-  var KEY = 'e5m_mapa_parcelas_v1', KCOL = 'e5m_mapa_parcelas_colapsado';
+  // v1.8.119: paquete por ESTANCIA (misma fuga que potreros)
+  var _mapaTenSuf2 = (function(){ try { var t = String(localStorage.getItem('e5m_api_token')||'').replace(/[^a-zA-Z0-9_-]/g,''); return t ? t.slice(-12) : 'default'; } catch(e){ return 'default'; } })();
+  var KEY = 'e5m_mapa_parcelas_v1::' + _mapaTenSuf2, KCOL = 'e5m_mapa_parcelas_colapsado';
+  try { localStorage.removeItem('e5m_mapa_parcelas_v1'); } catch(e){} // limpia la key global vieja
   function mpaGet() { try { var s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
   function mpaEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function mpaOn() {
@@ -44342,7 +44348,8 @@ window.swCambiar = function(i){
   var borrar = [];
   for (var k = 0; k < localStorage.length; k++) {
     var key = localStorage.key(k);
-    if (key && key.indexOf('e5m_') === 0 && PRESERVAR.indexOf(key) < 0) borrar.push(key);
+    if (key && key.indexOf('e5m_') === 0 && PRESERVAR.indexOf(key) < 0
+        && key.indexOf('e5m_mapa_potreros_v1::') !== 0 && key.indexOf('e5m_mapa_parcelas_v1::') !== 0) borrar.push(key); // v1.8.119: los paquetes de mapa son POR estancia y sobreviven al switch
   }
   borrar.forEach(function(key){ try { localStorage.removeItem(key); } catch(e){} });
   localStorage.setItem('e5m_api_token', dest.token);
