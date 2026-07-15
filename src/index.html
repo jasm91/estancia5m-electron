@@ -3360,7 +3360,12 @@ function orMarcajeGo(){
       <div class="pt">🚜 Maquinaria y Equipos</div>
       <div class="ps" id="maq-sub">Registro de activos · Consumo · Mantenimiento</div>
     </div>
-    <button class="btn btn-primary" onclick="openModalMaq()">+ Registrar equipo</button>
+    <div id="maq-cv-btns" style="display:flex;gap:8px">
+      <button class="btn btn-ghost" style="color:var(--green)" onclick="openMaqCompra()">🛒 Comprar</button>
+      <button class="btn btn-ghost" style="color:var(--amber2)" onclick="openMaqVenta()">💰 Vender</button>
+      <button class="btn btn-ghost" style="color:var(--muted)" onclick="openMaqBaja()">🪦 Baja</button>
+      <button class="btn btn-primary" onclick="openModalMaq()">+ Registrar equipo</button>
+    </div>
   </div>
 
   <!-- KPIs -->
@@ -3368,6 +3373,9 @@ function orMarcajeGo(){
 
   <!-- Cards por equipo -->
   <div id="maq-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px"></div>
+
+  <!-- v1.8.122: movimientos de capital (compras/ventas/bajas de equipos) -->
+  <div id="maq-cv-resumen" style="margin-top:20px"></div>
 </div>
 
 <!-- Modal Maquinaria -->
@@ -3426,6 +3434,95 @@ function orMarcajeGo(){
   <div class="form-actions">
     <button class="btn btn-ghost" onclick="closeModal('modal-maquinaria')">Cancelar</button>
     <button class="btn btn-primary" onclick="saveMaq()">Guardar</button>
+  </div>
+</div></div>
+
+
+<!-- v1.8.122: Modales Compra / Venta / Baja de maquinaria -->
+<div class="modal-overlay" id="modal-maq-compra">
+<div class="modal" style="max-width:460px;max-height:90vh;overflow-y:auto">
+  <h2>🛒 Comprar máquina</h2>
+  <div class="form-group"><label class="form-label">Nombre del equipo *</label>
+    <input class="form-input" id="mc-nombre" placeholder="Tractor John Deere 6110"></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <div class="form-group"><label class="form-label">Tipo</label>
+      <select class="form-input" id="mc-tipo">
+        <option value="tractor">🚜 Tractor</option><option value="camioneta">🛻 Camioneta</option>
+        <option value="camion">🚚 Camión</option><option value="generador">⚡ Generador</option>
+        <option value="bomba">💧 Bomba</option><option value="moto">🏍 Moto</option>
+        <option value="implemento">⚙️ Implemento</option><option value="otro">📦 Otro</option>
+      </select></div>
+    <div class="form-group"><label class="form-label">Modelo</label>
+      <input class="form-input" id="mc-modelo" placeholder="6110 J"></div>
+    <div class="form-group"><label class="form-label">Año</label>
+      <input class="form-input" id="mc-anio" type="number" placeholder="2024"></div>
+    <div class="form-group"><label class="form-label">Horómetro / Km</label>
+      <input class="form-input" id="mc-horometro" type="number" placeholder="0"></div>
+    <div class="form-group"><label class="form-label">Fecha de compra *</label>
+      <input class="form-input" id="mc-fecha" type="date"></div>
+    <div class="form-group"><label class="form-label">Precio (Bs.) *</label>
+      <input class="form-input" id="mc-precio" type="number" placeholder="250000"></div>
+    <div class="form-group"><label class="form-label">Proveedor / Vendedor</label>
+      <input class="form-input" id="mc-proveedor" placeholder="Casa importadora"></div>
+    <div class="form-group"><label class="form-label">Estado del pago</label>
+      <select class="form-input" id="mc-status"><option value="paid">Pagado</option><option value="pending">Pendiente</option></select></div>
+  </div>
+  <div class="form-group"><label class="form-label">Notas</label>
+    <input class="form-input" id="mc-notas" placeholder="Factura, garantía, observaciones"></div>
+  <div style="font-size:11px;color:var(--muted);margin:4px 0 10px">La compra se registra automáticamente en <b>Compras & Insumos</b> como <b>INVERSIÓN · Maquinaria · CAPITAL</b>, y el equipo queda en el registro de maquinaria.</div>
+  <div class="form-actions">
+    <button class="btn btn-ghost" onclick="closeModal('modal-maq-compra')">Cancelar</button>
+    <button class="btn btn-primary" onclick="saveMaqCompra()">Registrar compra</button>
+  </div>
+</div></div>
+
+<div class="modal-overlay" id="modal-maq-venta">
+<div class="modal" style="max-width:440px">
+  <h2>💰 Vender máquina</h2>
+  <div class="form-group"><label class="form-label">Máquina *</label>
+    <select class="form-input" id="mv-maq" onchange="maqVentaPreview()"></select></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <div class="form-group"><label class="form-label">Fecha *</label>
+      <input class="form-input" id="mv-fecha" type="date"></div>
+    <div class="form-group"><label class="form-label">Precio de venta (Bs.) *</label>
+      <input class="form-input" id="mv-precio" type="number" placeholder="180000" oninput="maqVentaPreview()"></div>
+    <div class="form-group"><label class="form-label">Comprador *</label>
+      <input class="form-input" id="mv-comprador" placeholder="Nombre / empresa"></div>
+    <div class="form-group"><label class="form-label">Forma de pago</label>
+      <select class="form-input" id="mv-pago">
+        <option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option>
+        <option value="cheque">Cheque</option><option value="permuta">Permuta / parte de pago</option><option value="otro">Otro</option>
+      </select></div>
+  </div>
+  <div id="mv-resultado" style="font-size:12px;margin:2px 0 8px;color:var(--muted)"></div>
+  <div class="form-group"><label class="form-label">Notas</label>
+    <input class="form-input" id="mv-notas" placeholder="Documento de venta, condiciones"></div>
+  <div style="font-size:11px;color:var(--muted);margin:4px 0 10px">La máquina pasa a <b>VENDIDA</b>: conserva todo su historial y deja de aparecer en despachos de diésel y mantenimientos. La venta queda registrada en su ficha y en el resumen de capital.</div>
+  <div class="form-actions">
+    <button class="btn btn-ghost" onclick="closeModal('modal-maq-venta')">Cancelar</button>
+    <button class="btn btn-primary" onclick="saveMaqVenta()">Registrar venta</button>
+  </div>
+</div></div>
+
+<div class="modal-overlay" id="modal-maq-baja">
+<div class="modal" style="max-width:420px">
+  <h2>🪦 Dar de baja (sin venta)</h2>
+  <div class="form-group"><label class="form-label">Máquina *</label>
+    <select class="form-input" id="mb-maq"></select></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <div class="form-group"><label class="form-label">Fecha *</label>
+      <input class="form-input" id="mb-fecha" type="date"></div>
+    <div class="form-group"><label class="form-label">Motivo</label>
+      <select class="form-input" id="mb-motivo">
+        <option value="desuso">Desuso / obsoleta</option><option value="siniestro">Siniestro / accidente</option>
+        <option value="canibalizada">Canibalizada (repuestos)</option><option value="robo">Robo</option><option value="otro">Otro</option>
+      </select></div>
+  </div>
+  <div class="form-group"><label class="form-label">Notas</label>
+    <input class="form-input" id="mb-notas" placeholder="Detalle"></div>
+  <div class="form-actions">
+    <button class="btn btn-ghost" onclick="closeModal('modal-maq-baja')">Cancelar</button>
+    <button class="btn btn-primary" onclick="saveMaqBaja()">Dar de baja</button>
   </div>
 </div></div>
 
@@ -4735,6 +4832,20 @@ function orMarcajeGo(){
         <input type="password" class="form-input" id="cfg-token" placeholder="Tu token secreto de Railway">
         <div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted);margin-top:4px">El mismo que configuraste en las variables de Railway</div>
       </div>
+      <!-- v1.8.124: vinculación por código + migración a token propio -->
+      <div id="dtk-cv-block" style="border-top:1px dashed var(--bor);margin:4px 0 14px;padding-top:12px">
+        <div style="font-size:12.5px;font-weight:700;margin-bottom:8px">🔗 Vincular este equipo con código <span style="color:var(--muted);font-weight:400">(igual que un celular — sin pegar el token)</span></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input class="form-input" id="dtk-code" placeholder="000 000" maxlength="7" style="max-width:140px;font-family:DM Mono,monospace;letter-spacing:2px" onkeydown="if(event.key==='Enter')dtkVincular()">
+          <input class="form-input" id="dtk-name" placeholder="Nombre de este equipo (Ej: Oficina 1)" maxlength="60" style="max-width:280px">
+          <button class="btn btn-primary" onclick="dtkVincular()">🔗 Vincular</button>
+        </div>
+        <div id="dtk-status" style="font-size:11.5px;margin-top:6px;color:var(--muted)"></div>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-ghost" id="dtk-migrar-btn" style="color:var(--blue);font-size:12px;display:none" onclick="dtkMigrar()">🛡 Migrar este equipo a token propio (revocable)</button>
+          <span id="dtk-token-tipo" style="font-size:10.5px"></span>
+        </div>
+      </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="saveServerConfig()" style="flex:1;min-width:200px">💾 Guardar configuracion</button>
         <button class="btn btn-ghost" onclick="testConnection()">🔍 Probar conexion</button>
@@ -4844,8 +4955,9 @@ function orMarcajeGo(){
 
   <!-- Onboarding inicial -->
   
-  <div class="card" style="margin-bottom:16px"><div class="card-body">
-  <div class="card-title" style="margin-bottom:6px">🧩 Módulos de la estancia</div>
+  <div class="card" style="margin-bottom:16px">
+  <div class="card-hd"><div class="card-title">🧩 Módulos de la estancia</div></div>
+  <div class="card-body">
   <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Activan funciones para ESTA estancia y sincronizan a todos sus equipos. Los demás tenants no ven nada.</div>
   <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer"><input type="checkbox" id="cfg-mod-agro" onchange="cfgModuloToggle('modulo_agro',this)"> 🌾 Módulo Agricultura (parcelas, campañas, labores, costos/ha)</label>
   <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer"><input type="checkbox" id="cfg-mod-cabana" onchange="cfgModuloToggle('perfil_cabana',this)"> 🏆 Perfil cabaña (registro RGN/RGD + genealogía en Reproducción)</label>
@@ -4858,8 +4970,9 @@ function orMarcajeGo(){
     <span style="font-size:11px;color:var(--muted)">RFID habilita: columna chip en marcaje/compra/onboarding, planilla de pesaje por chip y siembra arete↔RFID</span>
   </label>
 </div></div>
-<div class="card" style="margin-bottom:16px"><div class="card-body">
-  <div class="card-title" style="margin-bottom:6px">🔎 Tamaño de letra (este equipo)</div>
+<div class="card" style="margin-bottom:16px">
+  <div class="card-hd"><div class="card-title">🔎 Tamaño de letra (este equipo)</div></div>
+  <div class="card-body">
   <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Escala toda la interfaz. Pensado para la gente de campo: arranca en "Grande". Se guarda por equipo.</div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
     <button class="btn btn-ghost btn-sm uisc-btn" data-z="1" onclick="uiScaleSet(1)">Normal (100%)</button>
@@ -4886,8 +4999,9 @@ function orMarcajeGo(){
     </div>
   </div>
 
-  <div class="card" id="mpa-mgr-card" style="margin-bottom:16px;display:none"><div class="card-body">
-  <div class="card-title" style="margin-bottom:6px">🌾 Mapa de parcelas (agrícola)</div>
+  <div class="card" id="mpa-mgr-card" style="margin-bottom:16px;display:none">
+  <div class="card-hd"><div class="card-title">🌾 Mapa de parcelas (agrícola)</div></div>
+  <div class="card-body">
   <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Igual que el mapa de potreros pero del módulo Agricultura: se ve en Agricultura → Parcelas (colapsable). Solo en este equipo.</div>
   <div id="mpa-mgr-empty">
     <button class="btn btn-primary btn-sm" onclick="document.getElementById('mpa-file').click()">📂 Cargar mapa de parcelas…</button>
@@ -24815,7 +24929,7 @@ function renderMaquinaria() {
   var mp = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
 
   // KPIs
-  var totalValor = maqs.reduce(function(s,m){return s+(m.valor||0);},0);
+  var totalValor = maqs.filter(function(m){return m.estado!=='vendida'&&m.estado!=='baja';}).reduce(function(s,m){return s+(m.valor||0);},0); /* v1.8.122: solo activos */
   var operativos = maqs.filter(function(m){return m.estado==='operativo';}).length;
   var enRep = maqs.filter(function(m){return m.estado==='reparacion';}).length;
   var totalDieselMes = 0, totalCostoMes = 0;
@@ -24854,8 +24968,8 @@ function renderMaquinaria() {
   }
   cardsEl.innerHTML = maqs.map(function(m) {
     var icon = TIPO_ICONS[m.tipo] || '📦';
-    var estadoColors = {operativo:'var(--green)',reparacion:'var(--amber2)',fuera_servicio:'var(--red)'};
-    var estadoLabels = {operativo:'Operativo',reparacion:'En reparación',fuera_servicio:'Fuera de servicio'};
+    var estadoColors = {operativo:'var(--green)',reparacion:'var(--amber2)',fuera_servicio:'var(--red)',vendida:'var(--blue)',baja:'var(--muted)'};
+    var estadoLabels = {operativo:'Operativo',reparacion:'En reparación',fuera_servicio:'Fuera de servicio',vendida:'Vendida',baja:'De baja'};
     // Diesel de este equipo
     var mDesp = diesel.filter(function(d){return d.type==='despacho'&&matchMaq(d.vehiculo,m);});
     var mDespMes = mDesp.filter(function(d){return (d.fecha||'').startsWith(mp);});
@@ -24884,6 +24998,8 @@ function renderMaquinaria() {
           '</div>'+
           '<div style="font-size:11px;color:var(--muted);margin-top:2px">'+escH(m.modelo||'')+' '+(m.anio||'')+' · '+escH(m.tipo||'')+(m.horometro?' · '+(m.horometro)+' hrs/km':'')+'</div>'+
           '<div style="font-size:11px;color:var(--blue);margin-top:2px">Valor: Bs. '+(m.valor||0).toLocaleString()+'</div>'+
+          (m.venta?'<div style="font-size:11px;color:var(--green);margin-top:2px">💰 Vendida '+escH(m.venta.fecha||'')+' a '+escH(m.venta.comprador||'')+' por Bs. '+Number(m.venta.precio||0).toLocaleString()+((m.venta.resultado!=null)?' ('+(m.venta.resultado>=0?'+':'')+'Bs. '+Number(m.venta.resultado).toLocaleString()+')':'')+'</div>':'')+
+          (m.baja?'<div style="font-size:11px;color:var(--muted);margin-top:2px">🪦 Baja '+escH(m.baja.fecha||'')+' · '+escH(m.baja.motivo||'')+'</div>':'')+
         '</div>'+
       '</div>'+
       '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--bor);font-size:11px">'+
@@ -24913,7 +25029,7 @@ function getMaqList() { return db.maquinaria || []; }
 function populateMaqSelect(selectId, currentVal) {
   var sel = document.getElementById(selectId);
   if (!sel) return;
-  var maqs = getMaqList();
+  var maqs = getMaqList().filter(function(m){ return m.estado !== 'vendida' && m.estado !== 'baja'; }); /* v1.8.122 */
   // Preserve existing options if no maquinaria registered
   if (!maqs.length) return;
   var curVal = currentVal || sel.value || '';
@@ -26300,14 +26416,16 @@ var _e5mSesionesData = [];
 // ══════════════════════════════════════════════════
 // v1.8.92 CONFIG COLAPSABLE — la pantalla de Configuración quedó muy poblada (12 tarjetas).
 // Cada tarjeta de #page-config con .card-hd + .card-body se pliega clickeando el encabezado.
-// Estado por título en localStorage (default: TODO plegado). Kill switch: __CFG_COLAPSE_OFF.
+// v1.8.123: estado por VISITA (en memoria) — al entrar a Config todo arranca plegado; lo abierto dura solo la visita. Kill switch: __CFG_COLAPSE_OFF.
 // Delegación de eventos → sobrevive a cualquier re-render de los cuerpos (ej. renderDispositivos).
 // ══════════════════════════════════════════════════
 (function () {
   if (window.__CFG_COLAPSE_OFF) return;
   var KEY = 'e5m_cfg_collapsed_v1';
-  function loadSt() { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { return {}; } }
-  function saveSt(s) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {} }
+  try { localStorage.removeItem(KEY); } catch (e) {} /* v1.8.123: se retira la persistencia */
+  var _visitSt = {}; /* v1.8.123: estado SOLO por visita — al reentrar a Config todo arranca plegado */
+  function loadSt() { return _visitSt; }
+  function saveSt(s) { _visitSt = s; }
   function titleOf(card) { var t = card.querySelector('.card-hd .card-title'); return t ? t.textContent.trim() : ''; }
   function cfgCollapseApply() {
     var pg = document.getElementById('page-config'); if (!pg) return;
@@ -26379,7 +26497,7 @@ var _e5mSesionesData = [];
     var hd = ev.target.closest ? ev.target.closest('#page-config .card-hd') : null;
     if (!hd) {
       var nav = ev.target.closest ? ev.target.closest('.nav-btn') : null;
-      if (nav) setTimeout(cfgCollapseApply, 60);
+      if (nav) { _visitSt = {}; setTimeout(cfgCollapseApply, 60); } /* v1.8.123: nueva visita = todo plegado */
       return;
     }
     if (ev.target.closest('button,select,input,a,textarea,label')) return;
@@ -44428,6 +44546,409 @@ if (document.readyState !== 'loading') setTimeout(swInit, 800); else document.ad
 document.addEventListener('click', function(){ setTimeout(function(){ swCardRender(); swSelectorRender(); }, 500); });
 setInterval(swSelectorRender, 5000); // auto-sanado si algo re-renderiza la topbar
 })();
+</script>
+
+<script id="maq-compraventa-v18122">
+// ══════════════════════════════════════════════════════════════════════
+// v1.8.122 — MAQUINARIA: COMPRA / VENTA / BAJA DE EQUIPOS
+// Las máquinas se compran (CAPEX → purchases INVERSION/Maquinaria) y se
+// venden (registro aparte: queda EN la máquina, NO en sales de ganado).
+// La máquina vendida/de baja NO se borra: conserva todo su historial
+// (diésel/aceite/mantenimiento) y desaparece de los selectores activos.
+// Kill switch: window.__MAQ_CV_OFF = true
+// ══════════════════════════════════════════════════════════════════════
+(function(){
+  function off(){ return typeof window !== 'undefined' && window.__MAQ_CV_OFF === true; }
+  function E(id){ return document.getElementById(id); }
+  function maqActivas(){
+    return (db.maquinaria||[]).filter(function(m){ return m.estado !== 'vendida' && m.estado !== 'baja'; });
+  }
+  window.maqActivas = maqActivas;
+
+  // ── gate de botones ──
+  function maqCVGate(){
+    var bar = E('maq-cv-btns');
+    if (bar) bar.style.display = off() ? 'none' : 'flex';
+    var res = E('maq-cv-resumen');
+    if (res && off()) res.innerHTML = '';
+  }
+  window.maqCVGate = maqCVGate;
+
+  function fillMaqSelect(selId){
+    var sel = E(selId); if (!sel) return 0;
+    var act = maqActivas();
+    sel.innerHTML = '<option value="">Seleccionar máquina...</option>';
+    act.forEach(function(m){
+      var o = document.createElement('option');
+      o.value = m.id;
+      o.textContent = (TIPO_ICONS[m.tipo]||'📦') + ' ' + m.nombre + (m.modelo?(' ('+m.modelo+')'):'') + ' · Bs. ' + Number(m.valor||0).toLocaleString();
+      sel.appendChild(o);
+    });
+    return act.length;
+  }
+
+  // ── COMPRA ──
+  window.openMaqCompra = function(){
+    if (off()) return;
+    ['mc-nombre','mc-modelo','mc-anio','mc-horometro','mc-precio','mc-proveedor','mc-notas'].forEach(function(i){ var e=E(i); if(e) e.value=''; });
+    var t=E('mc-tipo'); if(t) t.value='tractor';
+    var s=E('mc-status'); if(s) s.value='paid';
+    var f=E('mc-fecha'); if(f) f.value = new Date().toISOString().slice(0,10);
+    openModal('modal-maq-compra');
+  };
+
+  window.saveMaqCompra = function(){
+    if (off()) return;
+    var nombre = ((E('mc-nombre')||{}).value||'').trim();
+    var precio = parseFloat((E('mc-precio')||{}).value) || 0;
+    var fecha  = (E('mc-fecha')||{}).value || '';
+    if (!nombre) { toast('Ingresa el nombre de la máquina','error'); return; }
+    if (!precio || precio <= 0) { toast('Ingresa el precio de compra','error'); return; }
+    if (!fecha) { toast('Ingresa la fecha de compra','error'); return; }
+    if (typeof validateNotFuture === 'function' && !validateNotFuture(fecha, 'fecha de compra')) return;
+    var modelo = ((E('mc-modelo')||{}).value||'').trim();
+    var proveedor = ((E('mc-proveedor')||{}).value||'').trim();
+    var notas = ((E('mc-notas')||{}).value||'').trim();
+    var nowIso = new Date().toISOString();
+
+    if (!db.maquinaria) db.maquinaria = [];
+    if (!db.purchases) db.purchases = [];
+
+    var maq = {
+      id: 'maq_' + Date.now(),
+      nombre: nombre,
+      tipo: (E('mc-tipo')||{}).value || 'otro',
+      modelo: modelo,
+      anio: parseInt((E('mc-anio')||{}).value) || '',
+      valor: precio,
+      horometro: parseFloat((E('mc-horometro')||{}).value) || 0,
+      estado: 'operativo',
+      notas: notas,
+      compra: { fecha: fecha, precio: precio, proveedor: proveedor },
+      created_at: nowIso
+    };
+    db.maquinaria.push(maq);
+
+    var pur = {
+      id: 'pur_' + (Date.now()+1),
+      desc: '🚜 Compra maquinaria: ' + nombre + (modelo?(' ('+modelo+')'):''),
+      type: 'maquinaria',
+      qty: 1, unit: 'unidad',
+      unit_price: precio, total: precio,
+      supplier: proveedor,
+      date: fecha,
+      status: (E('mc-status')||{}).value || 'paid',
+      notes: notas,
+      cuenta: 'INVERSION', subcuenta: 'Maquinaria', tipo_gasto: 'CAPITAL',
+      maquinaria_id: maq.id,
+      product_id: null, is_otro: true,
+      by: 'Desktop', created_at: nowIso
+    };
+    db.purchases.push(pur);
+
+    saveDB();
+    replaceTableInRailway('maquinaria', db.maquinaria || []);
+    replaceTableInRailway('purchases', db.purchases || []);
+    try { auditLog('create', 'maquinaria', maq.id, 'Compra maquinaria: ' + nombre + ' Bs. ' + precio); } catch(e){}
+    try { auditLog('create', 'purchases', pur.id, _summarizeRecord('purchases', pur)); } catch(e){}
+    closeModal('modal-maq-compra');
+    try { renderMaquinaria(); } catch(e){}
+    try { if (typeof renderCompras === 'function') renderCompras(); } catch(e){}
+    toast('🚜 Máquina comprada: ' + nombre + ' · Bs. ' + precio.toLocaleString() + ' (registrada en compras como INVERSIÓN)','success');
+  };
+
+  // ── VENTA ──
+  window.openMaqVenta = function(){
+    if (off()) return;
+    var n = fillMaqSelect('mv-maq');
+    if (!n) { toast('No hay máquinas activas para vender','error'); return; }
+    ['mv-precio','mv-comprador','mv-notas'].forEach(function(i){ var e=E(i); if(e) e.value=''; });
+    var p=E('mv-pago'); if(p) p.value='transferencia';
+    var f=E('mv-fecha'); if(f) f.value = new Date().toISOString().slice(0,10);
+    var r=E('mv-resultado'); if(r) r.innerHTML='';
+    openModal('modal-maq-venta');
+  };
+
+  window.maqVentaPreview = function(){
+    var r = E('mv-resultado'); if (!r) return;
+    var m = (db.maquinaria||[]).find(function(x){ return x.id === (E('mv-maq')||{}).value; });
+    var precio = parseFloat((E('mv-precio')||{}).value) || 0;
+    if (!m || !precio) { r.innerHTML=''; return; }
+    var base = (m.compra && m.compra.precio) ? m.compra.precio : (m.valor||0);
+    var dif = precio - base;
+    r.innerHTML = 'Valor registrado: Bs. ' + Number(base).toLocaleString() +
+      ' → Resultado: <b style="color:' + (dif>=0?'var(--green)':'var(--red)') + '">' +
+      (dif>=0?'+':'') + 'Bs. ' + dif.toLocaleString() + '</b>';
+  };
+
+  window.saveMaqVenta = function(){
+    if (off()) return;
+    var id = (E('mv-maq')||{}).value;
+    var m = (db.maquinaria||[]).find(function(x){ return x.id === id; });
+    if (!m) { toast('Elegí la máquina a vender','error'); return; }
+    var precio = parseFloat((E('mv-precio')||{}).value) || 0;
+    var comprador = ((E('mv-comprador')||{}).value||'').trim();
+    var fecha = (E('mv-fecha')||{}).value || '';
+    if (!precio || precio <= 0) { toast('Ingresa el precio de venta','error'); return; }
+    if (!comprador) { toast('Ingresa el comprador','error'); return; }
+    if (!fecha) { toast('Ingresa la fecha de venta','error'); return; }
+    if (typeof validateNotFuture === 'function' && !validateNotFuture(fecha, 'fecha de venta')) return;
+    var base = (m.compra && m.compra.precio) ? m.compra.precio : (m.valor||0);
+    var dif = precio - base;
+    if (!confirm('¿Confirmar VENTA?\n\n' + m.nombre + (m.modelo?(' ('+m.modelo+')'):'') +
+        '\nComprador: ' + comprador + '\nPrecio: Bs. ' + precio.toLocaleString() +
+        '\nResultado vs valor registrado: ' + (dif>=0?'+':'') + 'Bs. ' + dif.toLocaleString() +
+        '\n\nLa máquina pasa a estado VENDIDA (conserva su historial) y deja de aparecer en los selectores.')) return;
+    m.estado = 'vendida';
+    m.venta = {
+      fecha: fecha, precio: precio, comprador: comprador,
+      pago: (E('mv-pago')||{}).value || '',
+      notas: ((E('mv-notas')||{}).value||'').trim(),
+      resultado: Math.round(dif*100)/100,
+      registrado: new Date().toISOString()
+    };
+    m.updated_at = new Date().toISOString();
+    saveDB();
+    replaceTableInRailway('maquinaria', db.maquinaria || []);
+    try { auditLog('update', 'maquinaria', m.id, 'VENTA maquinaria: ' + m.nombre + ' a ' + comprador + ' Bs. ' + precio); } catch(e){}
+    closeModal('modal-maq-venta');
+    try { renderMaquinaria(); } catch(e){}
+    toast('💰 ' + m.nombre + ' vendida a ' + comprador + ' por Bs. ' + precio.toLocaleString() + ' (' + (dif>=0?'+':'') + 'Bs. ' + dif.toLocaleString() + ')','success');
+  };
+
+  // ── BAJA sin venta ──
+  window.openMaqBaja = function(){
+    if (off()) return;
+    var n = fillMaqSelect('mb-maq');
+    if (!n) { toast('No hay máquinas activas para dar de baja','error'); return; }
+    var mo=E('mb-motivo'); if(mo) mo.value='desuso';
+    var no=E('mb-notas'); if(no) no.value='';
+    var f=E('mb-fecha'); if(f) f.value = new Date().toISOString().slice(0,10);
+    openModal('modal-maq-baja');
+  };
+
+  window.saveMaqBaja = function(){
+    if (off()) return;
+    var id = (E('mb-maq')||{}).value;
+    var m = (db.maquinaria||[]).find(function(x){ return x.id === id; });
+    if (!m) { toast('Elegí la máquina','error'); return; }
+    var fecha = (E('mb-fecha')||{}).value || '';
+    if (!fecha) { toast('Ingresa la fecha','error'); return; }
+    var motivo = (E('mb-motivo')||{}).value || 'otro';
+    if (!confirm('¿Dar de BAJA ' + m.nombre + ' (' + motivo + ')?\n\nConserva su historial y deja de aparecer en los selectores.')) return;
+    m.estado = 'baja';
+    m.baja = { fecha: fecha, motivo: motivo, notas: ((E('mb-notas')||{}).value||'').trim(), registrado: new Date().toISOString() };
+    m.updated_at = new Date().toISOString();
+    saveDB();
+    replaceTableInRailway('maquinaria', db.maquinaria || []);
+    try { auditLog('update', 'maquinaria', m.id, 'BAJA maquinaria: ' + m.nombre + ' (' + motivo + ')'); } catch(e){}
+    closeModal('modal-maq-baja');
+    try { renderMaquinaria(); } catch(e){}
+    toast('🪦 ' + m.nombre + ' dada de baja (' + motivo + ')','success');
+  };
+
+  // ── RESUMEN: Movimientos de capital ──
+  window.maqCVRender = function(){
+    maqCVGate();
+    var el = E('maq-cv-resumen'); if (!el || off()) return;
+    var compras = (db.purchases||[]).filter(function(p){ return p.type==='maquinaria' && p.maquinaria_id; });
+    var vendidas = (db.maquinaria||[]).filter(function(m){ return m.estado==='vendida' && m.venta; });
+    var bajas = (db.maquinaria||[]).filter(function(m){ return m.estado==='baja'; });
+    if (!compras.length && !vendidas.length && !bajas.length) { el.innerHTML=''; return; }
+    var totC = compras.reduce(function(s,p){ return s+(p.total||0); },0);
+    var totV = vendidas.reduce(function(s,m){ return s+(m.venta.precio||0); },0);
+    var totR = vendidas.reduce(function(s,m){ return s+(m.venta.resultado||0); },0);
+    var rows = [];
+    compras.forEach(function(p){ rows.push({f:p.date||'', t:'🛒 Compra', d:p.desc||'', quien:p.supplier||'', monto:-(p.total||0)}); });
+    vendidas.forEach(function(m){ rows.push({f:m.venta.fecha||'', t:'💰 Venta', d:m.nombre+(m.modelo?(' ('+m.modelo+')'):''), quien:m.venta.comprador||'', monto:m.venta.precio||0, res:m.venta.resultado}); });
+    bajas.forEach(function(m){ rows.push({f:(m.baja&&m.baja.fecha)||'', t:'🪦 Baja', d:m.nombre, quien:(m.baja&&m.baja.motivo)||'', monto:0}); });
+    rows.sort(function(a,b){ return (b.f||'').localeCompare(a.f||''); });
+    el.innerHTML = '<details style="background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:12px 16px">'+
+      '<summary style="cursor:pointer;font-weight:700;font-size:13px">💼 Movimientos de capital — maquinaria '+
+        '<span style="font-weight:400;color:var(--muted);font-size:11px">· invertido Bs. '+Math.round(totC).toLocaleString()+' · vendido Bs. '+Math.round(totV).toLocaleString()+' · resultado ventas <b style="color:'+(totR>=0?'var(--green)':'var(--red)')+'">'+(totR>=0?'+':'')+'Bs. '+Math.round(totR).toLocaleString()+'</b></span></summary>'+
+      '<table style="width:100%;font-size:11px;margin-top:10px;border-collapse:collapse">'+
+      '<tr style="color:var(--muted);text-align:left"><th style="padding:4px">Fecha</th><th>Tipo</th><th>Máquina / Detalle</th><th>Proveedor / Comprador / Motivo</th><th style="text-align:right">Monto</th><th style="text-align:right">Resultado</th></tr>'+
+      rows.map(function(r){
+        return '<tr style="border-top:1px solid var(--bor)"><td style="padding:4px">'+escH(r.f)+'</td><td>'+r.t+'</td><td>'+escH(r.d)+'</td><td>'+escH(r.quien)+'</td>'+
+          '<td style="text-align:right;color:'+(r.monto>=0?'var(--green)':'var(--amber2)')+'">'+(r.monto?((r.monto>0?'+':'')+'Bs. '+Math.round(r.monto).toLocaleString()):'—')+'</td>'+
+          '<td style="text-align:right">'+(r.res!=null?('<b style="color:'+(r.res>=0?'var(--green)':'var(--red)')+'">'+(r.res>=0?'+':'')+'Bs. '+Math.round(r.res).toLocaleString()+'</b>'):'—')+'</td></tr>';
+      }).join('')+'</table></details>';
+  };
+
+  // ── wrap del render original ──
+  if (typeof renderMaquinaria === 'function' && !window.__maqCVWrapped) {
+    window.__maqCVWrapped = true;
+    var _rmBase = renderMaquinaria;
+    window.renderMaquinaria = function(){
+      _rmBase();
+      try { maqCVRender(); } catch(e){}
+    };
+  }
+})();
+
+</script>
+
+<script id="dtk-desktop-v18124">
+// ══════════════════════════════════════════════════════════════════════
+// v1.8.124 — DESKTOP VINCULADO POR CÓDIGO (tokens dtk_ revocables)
+// (A) Vincular este equipo con código de 6 dígitos (como los celulares)
+// (B) Migrar un equipo con token maestro a token propio, con rollback
+// (C) Si el server responde DEVICE_REVOKED → overlay bloqueante (no borra datos)
+// El server ya soporta todo (pair-code/claim/revoke, v4.16+). Kill: __DTK_DESKTOP_OFF
+// ══════════════════════════════════════════════════════════════════════
+(function(){
+  function off(){ return typeof window !== 'undefined' && window.__DTK_DESKTOP_OFF === true; }
+  function E(id){ return document.getElementById(id); }
+  function tok(){ try { return localStorage.getItem('e5m_api_token') || ''; } catch(e){ return ''; } }
+  function esPropio(){ return tok().indexOf('dtk_') === 0; }
+
+  // ── UI refresh (tipo de token + visibilidad del migrar) ──
+  function dtkRefreshUI(){
+    var blk = E('dtk-cv-block'); if (blk) blk.style.display = off() ? 'none' : '';
+    var lbl = E('dtk-token-tipo'), btn = E('dtk-migrar-btn');
+    if (!lbl || !btn) return;
+    if (esPropio()) {
+      btn.style.display = 'none';
+      lbl.textContent = '✅ Este equipo usa token PROPIO (revocable desde Dispositivos: ' + tok().slice(0,8) + '····)';
+      lbl.style.color = 'var(--green)';
+    } else if (tok()) {
+      btn.style.display = '';
+      lbl.textContent = '⚠️ Este equipo usa el token MAESTRO de la estancia (no revocable individualmente)';
+      lbl.style.color = 'var(--amber2)';
+    } else {
+      btn.style.display = 'none';
+      lbl.textContent = '';
+    }
+  }
+  window.dtkRefreshUI = dtkRefreshUI;
+
+  function claimFetch(code, name){
+    return fetch(getApiUrl() + '/devices/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-App-Type': 'desktop' },
+      body: JSON.stringify({ code: code, device_name: name, app_type: 'desktop' })
+    }).then(function(r){ return r.json().then(function(j){ return { status: r.status, j: j }; }).catch(function(){ return { status: r.status, j: {} }; }); });
+  }
+
+  function stat(msg, colorVar){
+    var s = E('dtk-status'); if (!s) return;
+    s.textContent = msg || '';
+    s.style.color = colorVar ? ('var(--'+colorVar+')') : 'var(--muted)';
+  }
+
+  // ── (A) Vincular con código ──
+  window.dtkVincular = function(){
+    if (off()) return;
+    var code = String((E('dtk-code')||{}).value || '').replace(/\s+/g,'');
+    var name = String((E('dtk-name')||{}).value || '').trim();
+    if (!/^\d{6}$/.test(code)) { toast('El código son 6 dígitos','error'); return; }
+    if (!name) { toast('Poné un nombre para este equipo (Ej: Oficina 1)','error'); return; }
+    if (!navigator.onLine) { toast('Necesitás internet para vincular','error'); return; }
+    var previo = tok();
+    if (previo && !confirm('Este equipo YA está conectado a una estancia.\n\nSi el código es de OTRA estancia, cancelá y usá el switcher de estancias (para no mezclar datos).\n\n¿El código es de ESTA misma estancia? Continuar reemplaza el token de este equipo.')) return;
+    stat('Vinculando…');
+    claimFetch(code, name).then(function(res){
+      if (res.status === 200 && res.j && res.j.device_token) {
+        try { localStorage.setItem('e5m_api_token', res.j.device_token); } catch(e){}
+        stat('✅ Vinculado a "' + (res.j.tenant_name||'la estancia') + '" como "' + (res.j.device_name||name) + '" (' + (res.j.cargo||res.j.role||'admin') + '). Recargando…', 'green');
+        toast('Equipo vinculado con token propio','success');
+        try { auditLog('update','config','dtk','Equipo vinculado por código: '+name); } catch(e){}
+        setTimeout(function(){ location.reload(); }, 1400);
+      } else if (res.status === 404) {
+        stat('✕ Código inexistente o vencido — generá uno nuevo desde un equipo admin (Config → Dispositivos)', 'red');
+      } else if (res.status === 429) {
+        stat('✕ Demasiados intentos — esperá un minuto', 'red');
+      } else {
+        stat('✕ ' + ((res.j && res.j.error) || 'No se pudo vincular'), 'red');
+      }
+    }).catch(function(){ stat('✕ Error de conexión', 'red'); });
+  };
+
+  // ── (B) Migrar este equipo a token propio (auto pair-code + claim + verify + swap) ──
+  window.dtkMigrar = function(){
+    if (off()) return;
+    if (esPropio()) { toast('Este equipo ya usa token propio','info'); return; }
+    if (!navigator.onLine) { toast('Necesitás internet para migrar','error'); return; }
+    var name = prompt('Nombre para este equipo (aparece en Dispositivos):', 'Desktop oficina');
+    if (name === null) return;
+    name = String(name).trim() || 'Desktop';
+    if (!confirm('Se migra este equipo a un token PROPIO (revocable individualmente).\n\nEl token maestro deja de usarse acá — guardalo en un lugar seguro, es la llave de la estancia.\n\n¿Continuar?')) return;
+    var maestro = tok();
+    stat('Migrando (1/3): generando código…');
+    _devApi('/devices/pair-code', { method: 'POST', body: JSON.stringify({ device_name: name, app_type: 'desktop', role: 'admin', cargo: 'administrador' }) })
+      .then(function(res){
+        if (!(res.status === 200 && res.j && res.j.code)) { throw new Error((res.j && res.j.error) || 'No se pudo generar el código (¿server < v4.12?)'); }
+        stat('Migrando (2/3): canjeando código…');
+        return claimFetch(res.j.code, name);
+      })
+      .then(function(res){
+        if (!(res.status === 200 && res.j && res.j.device_token)) { throw new Error((res.j && res.j.error) || 'No se pudo canjear el código'); }
+        var nuevo = res.j.device_token;
+        stat('Migrando (3/3): verificando el token nuevo…');
+        return fetch(getApiUrl() + '/devices', { headers: { 'Authorization': 'Bearer ' + nuevo, 'X-App-Type': 'desktop' } })
+          .then(function(r){
+            if (r.status !== 200) { throw new Error('El token nuevo no valida (HTTP ' + r.status + ') — se mantiene el maestro'); }
+            try { localStorage.setItem('e5m_api_token', nuevo); } catch(e){}
+            stat('✅ Migrado: este equipo ahora usa token propio y aparece en Dispositivos como "' + name + '". El maestro ya no se usa acá.', 'green');
+            toast('Equipo migrado a token propio (revocable)','success');
+            try { auditLog('update','config','dtk','Equipo migrado a token propio: '+name); } catch(e){}
+            dtkRefreshUI();
+            try { if (typeof renderDispositivos === 'function') renderDispositivos(); } catch(e){}
+          });
+      })
+      .catch(function(err){
+        try { localStorage.setItem('e5m_api_token', maestro); } catch(e){} // rollback explícito
+        stat('✕ Migración cancelada: ' + (err && err.message || 'error') + ' — este equipo sigue con el token maestro.', 'red');
+        toast('No se migró — se mantiene el token maestro','error');
+      });
+  };
+
+  // ── (C) Overlay de revocado — detecta DEVICE_REVOKED en cualquier respuesta 401 ──
+  function dtkMostrarRevocado(){
+    if (window.__E5M_REVOKED) return;
+    window.__E5M_REVOKED = true; // frena reintentos de mostrar; los datos locales NO se tocan
+    var ov = document.createElement('div');
+    ov.id = 'dtk-revoked-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(6,10,18,.94);display:flex;align-items:center;justify-content:center';
+    ov.innerHTML = '<div style="max-width:460px;background:var(--sur);border:1px solid var(--red);border-radius:14px;padding:28px;text-align:center">'+
+      '<div style="font-size:40px;margin-bottom:10px">🔒</div>'+
+      '<div style="font-size:17px;font-weight:800;margin-bottom:8px">Este equipo fue desvinculado</div>'+
+      '<div style="font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:16px">El administrador revocó el acceso de este equipo. Tus datos locales NO se borraron. Pedile un código de vinculación nuevo y volvé a conectarlo desde Configuración → Servidor API.</div>'+
+      '<div style="display:flex;gap:10px;justify-content:center">'+
+      '<button class="btn btn-primary" onclick="(function(){document.getElementById(\'dtk-revoked-overlay\').remove();window.__E5M_REVOKED=\'ack\';try{showPage(\'config\')}catch(e){}})()">🔗 Ingresar código nuevo</button>'+
+      '</div></div>';
+    (document.body || document.documentElement).appendChild(ov);
+  }
+  window.dtkMostrarRevocado = dtkMostrarRevocado;
+
+  if (!window.__dtkFetchWrapped) {
+    window.__dtkFetchWrapped = true;
+    var _fetch0 = window.fetch;
+    window.fetch = function(){
+      var p = _fetch0.apply(this, arguments);
+      if (off()) return p;
+      return p.then(function(resp){
+        try {
+          if (resp && resp.status === 401 && window.__E5M_REVOKED !== 'ack' && !window.__E5M_REVOKED) {
+            resp.clone().json().then(function(j){
+              if (j && j.code === 'DEVICE_REVOKED') dtkMostrarRevocado();
+            }).catch(function(){});
+          }
+        } catch(e){}
+        return resp;
+      });
+    };
+  }
+
+  // refresco al navegar (mismo patrón que el colapso de Config)
+  document.addEventListener('click', function(ev){
+    var nav = ev.target.closest ? ev.target.closest('.nav-btn') : null;
+    if (nav) setTimeout(dtkRefreshUI, 80);
+  });
+  if (document.readyState !== 'loading') dtkRefreshUI();
+  else document.addEventListener('DOMContentLoaded', dtkRefreshUI);
+})();
+
 </script>
 
 </body>
