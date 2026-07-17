@@ -44605,6 +44605,7 @@ window.swCambiar = function(i){
     var key = localStorage.key(k);
     if (key && key.indexOf('e5m_') === 0 && PRESERVAR.indexOf(key) < 0
         && key.indexOf('e5m_mapa_potreros_v1::') !== 0 && key.indexOf('e5m_mapa_parcelas_v1::') !== 0) borrar.push(key); // v1.8.119: los paquetes de mapa son POR estancia y sobreviven al switch
+    if (key && (key === 'estancia5m_v1' || key === 'apiToken' || key === 'apiUrl')) borrar.push(key); /* v1.8.129b FIX CONTAMINACIÓN: la base principal NO empieza con e5m_ y sobrevivía al switch → se mezclaba con el tenant nuevo */
   }
   borrar.forEach(function(key){ try { localStorage.removeItem(key); } catch(e){} });
   localStorage.setItem('e5m_api_token', dest.token);
@@ -45621,6 +45622,45 @@ if (document.readyState==='loading') document.addEventListener('DOMContentLoaded
 setTimeout(instalar, 3000); /* por si algún handler se define tarde */
 })();
 </script>
-<script>window.__E5M_BUILD='1.8.129 build 20260717-1610 (borrado-real v4.29)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
+<script id="tenant-fp-v18129b">
+/* ═══ v1.8.129b HUELLA DE TENANT (anti-contaminación al cambiar de estancia) ═══
+   Si el token cambió respecto del que escribió la base local (por switcher con
+   bug, consola, restore, lo que sea), la base local es de OTRA estancia:
+   se descarta TODO el caché local y se recarga para pullear limpio del server.
+   (Caso real 17-07: switch La Esperanza→César mezcló las dos estancias.)
+   Kill switch: window.__TENANTFP_OFF = true */
+(function(){
+if (window.__TENANTFP_OFF === true) return;
+var FPKEY = 'e5m_tenant_fp';
+function fpDe(tok){ try { return String(tok||'').slice(-10); } catch(e){ return ''; } }
+try {
+  var tok = localStorage.getItem('e5m_api_token') || '';
+  if (!tok) return;
+  var fpActual = fpDe(tok);
+  var fpGuardada = localStorage.getItem(FPKEY) || '';
+  var hayBase = !!localStorage.getItem('estancia5m_v1');
+  if (fpGuardada && fpGuardada !== fpActual && hayBase) {
+    console.warn('[tenant-fp] ⚠ La base local es de OTRA estancia (fp ' + fpGuardada + ' ≠ ' + fpActual + ') — descartando caché local para evitar contaminación');
+    var PRESERVAR_FP = [FPKEY, 'e5m_api_url', 'e5m_api_token', 'e5m_font_scale', 'e5m_gemini_key', 'e5m_agro_key',
+      'e5m_auto_backup_enabled', 'e5m_auto_backup_freq', 'e5m_device_label', 'e5m_operator', 'e5m_nav_collapsed_secs', 'e5m_estancias_v1'];
+    var borrar = [];
+    for (var k = 0; k < localStorage.length; k++) {
+      var key = localStorage.key(k);
+      if (!key) continue;
+      if (PRESERVAR_FP.indexOf(key) >= 0) continue;
+      if (key.indexOf('e5m_mapa_potreros_v1::') === 0 || key.indexOf('e5m_mapa_parcelas_v1::') === 0) continue;
+      if (key.indexOf('e5m_') === 0 || key.indexOf('estancia5m') === 0 || key === 'apiToken' || key === 'apiUrl') borrar.push(key);
+    }
+    borrar.forEach(function(key){ try { localStorage.removeItem(key); } catch(e){} });
+    localStorage.setItem(FPKEY, fpActual);
+    try { alert('Este equipo tenía datos locales de OTRA estancia.\n\nSe limpiaron para evitar mezclar datos — la app va a recargar y bajar los datos correctos del servidor.'); } catch(e){}
+    location.reload();
+    return;
+  }
+  localStorage.setItem(FPKEY, fpActual);
+} catch(e) { console.warn('[tenant-fp] error no fatal:', e && e.message); }
+})();
+</script>
+<script>window.__E5M_BUILD='1.8.130 build 20260717-1700 (borrado-real + huella tenant)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
 </body>
 </html>
