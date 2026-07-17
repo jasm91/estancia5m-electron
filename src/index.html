@@ -901,12 +901,12 @@ function publishTasksToPWA() {
          goToRepro navega a la vista y clickea la sub-pestaña real (conserva renders/gates). -->
     <button class="nav-lbl-btn" onclick="toggleNavSec('reproduccion')"><span class="nav-lbl">Reproducción</span><span class="nav-lbl-chevron">▾</span></button>
     <div class="nav-sec-body">
+    <button class="nav-btn" data-label="Cabaña" id="nav-repro-cabana" style="display:none" onclick="goToRepro('cabana',this)"><span class="nav-icon">🏆</span><span class="nav-text">Cabaña</span></button>
     <button class="nav-btn" data-label="Servicios" onclick="goToRepro('servicios',this)"><span class="nav-icon">🐂</span><span class="nav-text">Servicios</span></button>
     <button class="nav-btn" data-label="Partos" onclick="goToRepro('partos',this)"><span class="nav-icon">🍼</span><span class="nav-text">Partos</span></button>
     <button class="nav-btn" data-label="Indicadores" onclick="goToRepro('indicadores',this)"><span class="nav-icon">📊</span><span class="nav-text">Indicadores</span></button>
     <button class="nav-btn" data-label="Historial Ternero" onclick="goToRepro('historial',this)"><span class="nav-icon">📜</span><span class="nav-text">Historial Ternero</span></button>
     <button class="nav-btn" data-label="Inteligencia" onclick="goToRepro('inteligencia',this)"><span class="nav-icon">🧠</span><span class="nav-text">Inteligencia</span></button>
-    <button class="nav-btn" data-label="Cabaña" id="nav-repro-cabana" style="display:none" onclick="goToRepro('cabana',this)"><span class="nav-icon">🏆</span><span class="nav-text">Cabaña</span></button>
     </div>
   </div>
 
@@ -2112,12 +2112,12 @@ function orMarcajeGo(){
 
   <!-- Tabs Servicios / Partos / Indicadores / Historial / Inteligencia -->
   <div class="tabs">
+    <button class="tab-btn" id="repro-tab-cabana-btn" style="display:none" onclick="switchTab('repro',this,'repro-tab-cabana');try{cab2Render()}catch(e){}">🏆 Cabaña</button>
     <button class="tab-btn active" onclick="switchTab('repro',this,'repro-tab-servicios')">🐂 Servicios</button>
     <button class="tab-btn" onclick="switchTab('repro',this,'repro-tab-partos')">🍼 Partos</button>
     <button class="tab-btn" onclick="switchTab('repro',this,'repro-tab-indicadores')">📊 Indicadores</button>
     <button class="tab-btn" onclick="switchTab('repro',this,'repro-tab-historial')">📜 Historial Ternero</button>
     <button class="tab-btn" onclick="switchTab('repro',this,'repro-tab-inteligencia')">🧠 Inteligencia</button>
-      <button class="tab-btn" id="repro-tab-cabana-btn" style="display:none" onclick="switchTab('repro',this,'repro-tab-cabana');try{cab2Render()}catch(e){}">🏆 Cabaña</button>
   </div>
 
   <!-- ═══ SUB-TAB SERVICIOS ═══ -->
@@ -2136,10 +2136,11 @@ function orMarcajeGo(){
     <div style="border-top:1px solid var(--bor);margin-top:10px;padding-top:10px">
       <div style="font-size:12px;font-weight:700;margin-bottom:6px" id="cb2-sem-ftitle">➕ Ingreso de pajuelas</div>
       <input type="hidden" id="cb2-sem-id">
-      <div style="display:grid;grid-template-columns:1.2fr 1.2fr 1fr 1fr;gap:8px;margin-bottom:8px">
+      <div style="display:grid;grid-template-columns:1.2fr 1.2fr 1fr 1fr 1fr;gap:8px;margin-bottom:8px">
         <div><label class="form-label">Lote / código *</label><input class="form-input" id="cb2-sem-lote" placeholder="FIV REM 1274"></div>
         <div><label class="form-label">Toro *</label><input class="form-input" id="cb2-sem-toro" placeholder="REM 1274"></div>
         <div><label class="form-label">RGN toro</label><input class="form-input" id="cb2-sem-rgn"></div>
+        <div><label class="form-label">RGD toro</label><input class="form-input" id="cb2-sem-rgd"></div>
         <div><label class="form-label">Raza</label><input class="form-input" id="cb2-sem-raza" placeholder="Nelore"></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:8px;margin-bottom:8px">
@@ -2158,15 +2159,24 @@ function orMarcajeGo(){
     <table class="tbl" style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="color:var(--muted);font-size:11px;text-align:left"><th style="padding:5px">Fecha</th><th style="padding:5px">Donadora</th><th style="padding:5px">Receptora</th><th style="padding:5px">Toro/semen</th><th style="padding:5px">Estado</th><th></th></tr></thead><tbody id="cb2-te-tbody"></tbody></table>
     <div style="border-top:1px solid var(--bor);margin-top:10px;padding-top:10px">
       <div style="font-size:12px;font-weight:700;margin-bottom:6px">➕ Nueva transferencia</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:8px">
-        <div><label class="form-label">Fecha *</label><input class="form-input" type="date" id="cb2-te-fecha"></div>
+      <div style="display:grid;grid-template-columns:0.8fr 1fr 1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+        <div><label class="form-label">Tipo</label><select class="form-input" id="cb2-te-tipo"><option value="TE">TE</option><option value="FIV">FIV</option></select></div>
+        <div><label class="form-label">Fecha implante *</label><input class="form-input" type="date" id="cb2-te-fecha"></div>
         <div><label class="form-label">Donadora *</label><input class="form-input" id="cb2-te-don" placeholder="arete"></div>
         <div><label class="form-label">Raza donadora</label><input class="form-input" id="cb2-te-don-raza" placeholder="Nelore"></div>
         <div><label class="form-label">Toro / semen</label><input class="form-input" id="cb2-te-toro"></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:8px;margin-bottom:8px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+        <div><label class="form-label">Fecha OPU (aspiración)</label><input class="form-input" type="date" id="cb2-te-opu"></div>
+        <div><label class="form-label">Fecha FIV</label><input class="form-input" type="date" id="cb2-te-fiv"></div>
+        <div><label class="form-label">Dosis usadas</label><input class="form-input" type="number" min="0" id="cb2-te-dosis"></div>
+        <div><label class="form-label">Emb. congelados</label><input class="form-input" type="number" min="0" id="cb2-te-emb-c"></div>
+        <div><label class="form-label">Emb. viables / stock</label><div style="display:flex;gap:4px"><input class="form-input" type="number" min="0" id="cb2-te-emb-v" placeholder="viab."><input class="form-input" type="number" min="0" id="cb2-te-emb-s" placeholder="stock"></div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:8px">
         <div><label class="form-label">Receptora *</label><input class="form-input" id="cb2-te-rec" placeholder="arete"></div>
         <div><label class="form-label">Raza receptora</label><input class="form-input" id="cb2-te-rec-raza" placeholder="criolla"></div>
+        <div><label class="form-label">Vet. responsable</label><input class="form-input" id="cb2-te-vet" placeholder="firma la planilla"></div>
         <div><label class="form-label">Notas</label><input class="form-input" id="cb2-te-notas"></div>
       </div>
       <div id="cb2-te-warn" class="warn" style="display:none;font-size:12px;color:var(--amber2);margin-bottom:6px">⚠ RGNRC: la receptora debería ser de raza DISTINTA a la donadora.</div>
@@ -2188,18 +2198,50 @@ function orMarcajeGo(){
 
   <div class="card"><div class="card-body">
     <div class="card-title" style="margin-bottom:8px">📤 Export ASOCEBU (planillas RGNRC)</div>
+
+    <!-- v1.8.125: cabecera del criador (va en todas las planillas oficiales) -->
+    <details id="aso-criador-blk" style="margin-bottom:12px;border:1px solid var(--bor);border-radius:8px;padding:8px 12px">
+      <summary style="cursor:pointer;font-size:12.5px;font-weight:700">🪪 Datos del criador (cabecera de las planillas)</summary>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-top:10px">
+        <div><label class="form-label">Criador</label><input class="form-input" id="aso-criador" placeholder="Nombre del socio"></div>
+        <div><label class="form-label">Código ASOCEBU</label><input class="form-input" id="aso-codigo"></div>
+        <div><label class="form-label">Cabaña</label><input class="form-input" id="aso-cabana"></div>
+        <div><label class="form-label">Serie (SUI)</label><input class="form-input" id="aso-serie" placeholder="Ej: JSM"></div>
+        <div><label class="form-label">Categoría</label><select class="form-input" id="aso-categoria"><option value="PO">PO — Puro de Origen</option><option value="LA">LA — Libro Abierto</option><option value="RZ">RZ — Receptoras cebuinas</option><option value="SR">SR — Sin registro</option><option value="MEST">MEST — Mestiza</option></select></div>
+        <div><label class="form-label">Departamento</label><input class="form-input" id="aso-depto" placeholder="Santa Cruz"></div>
+        <div><label class="form-label">Provincia</label><input class="form-input" id="aso-prov"></div>
+      </div>
+      <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="asoSaveCriador()">💾 Guardar datos del criador</button>
+    </details>
+
     <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-bottom:10px">
       <div><label class="form-label">Desde</label><input class="form-input" type="date" id="cb2-ex-ini"></div>
       <div><label class="form-label">Hasta</label><input class="form-input" type="date" id="cb2-ex-fin"></div>
       <button class="btn btn-ghost btn-sm" onclick="cab2Validar()">🔍 Pre-chequeo RGNRC</button>
     </div>
-    <div id="cb2-val" style="font-size:12.5px;margin-bottom:10px;color:var(--muted)">Corré el pre-chequeo antes de exportar: gestación MN 275–305d, IA/TE ≤315d, IEP ≥296d, receptora≠donadora, RGN de madre.</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-ghost btn-sm" onclick="cab2Export('servicios')">Servicios MN/IA <span id="cb2-n-srv"></span></button>
+    <div id="cb2-val" style="font-size:12.5px;margin-bottom:10px;color:var(--muted)">Corré el pre-chequeo antes de exportar: gestación MN 275–305d, IA/TE ≤315d, IEP ≥296d, receptora≠donadora, RGN de madre, prematuros, nombres, plazo TE.</div>
+
+    <div style="font-size:11px;color:var(--muted);margin-bottom:4px">CSV (datos crudos, respaldo):</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <button class="btn btn-ghost btn-sm" onclick="cab2Export('servicios')">Servicios IA + MN <span id="cb2-n-srv"></span></button>
       <button class="btn btn-ghost btn-sm" onclick="cab2Export('cdn')">Nacimientos CDN <span id="cb2-n-cdn"></span></button>
       <button class="btn btn-ghost btn-sm" onclick="cab2Export('te')">TE / FIV <span id="cb2-n-te"></span></button>
+      <button class="btn btn-ghost btn-sm" onclick="cab2Export('cdm')">Muertes CDM</button>
+      <button class="btn btn-ghost btn-sm" onclick="cab2Export('adt')">Transferencias ADT</button>
+      <button class="btn btn-ghost btn-sm" onclick="asoCDPExport()">📊 CDP pesos padrón (205/365/550)</button>
     </div>
-    <div style="font-size:11px;color:var(--muted);margin-top:8px">Muertes y transferencias de propiedad: export desde Bajas/Ventas (backlog). Colecta de semen: registrar como ingreso en el inventario.</div>
+    <div id="cb2-planillas">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">📄 Planilla oficial .xls (layout ASOCEBU, lista para revisar y presentar):</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" onclick="asoPlanilla('cdn')">Planilla CDN</button>
+        <button class="btn btn-primary btn-sm" onclick="asoPlanilla('ia')">Planilla IA</button>
+        <button class="btn btn-primary btn-sm" onclick="asoPlanilla('mn')">Planilla MN</button>
+        <button class="btn btn-primary btn-sm" onclick="asoPlanilla('fiv')">Formulario FIV</button>
+        <button class="btn btn-primary btn-sm" onclick="asoPlanilla('cdm')">Planilla CDM</button>
+        <button class="btn btn-primary btn-sm" onclick="asoPlanilla('adt')">Planilla ADT</button>
+      </div>
+    </div>
+    <div id="cb2-plazos"></div>
   </div></div>
 </div>
 
@@ -2678,6 +2720,13 @@ function orMarcajeGo(){
             <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Toro (opcional)</label>
             <input type="text" id="repro-srv-toro" placeholder="Toro Brasil-12 o caravana" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;width:100%">
             <div style="font-size:10.5px;color:var(--muted);margin-top:4px;line-height:1.4">Si hay varios toros sueltos y no se sabe cuál, dejar vacío</div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin:8px 0 4px">Modalidad (RGNRC)</label>
+            <select id="repro-srv-monta-tipo" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;width:100%">
+              <option value="natural">Natural (a campo — validez 1 año)</option>
+              <option value="controlada">Controlada (fecha exacta)</option>
+            </select>
+            <label style="font-size:11px;color:var(--muted);display:block;margin:8px 0 4px">Hasta (salida del toro — opcional, para monta a campo)</label>
+            <input type="date" id="repro-srv-hasta" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;width:100%">
           </div>
         </div>
       </div>
@@ -7506,6 +7555,7 @@ function pullFromRailwayDesktop(thenPush) {
             if (k.indexOf('lots:') === 0) serverDeletedLotIds[k.substring(5)] = true;
           });
         } catch(e) {}
+        try { if (window.e5mTombstonesPull) window.e5mTombstonesPull(remote); } catch(eTS) {} /* v1.8.129 */
         var localDeleted = getDeletedIds('lots');
 
         // Paso 1: actualizar lotes existentes (local Y server) con reglas server-wins
@@ -27260,7 +27310,8 @@ var _NEXTID_MAP = {
   sale:'sales', product:'products', alert:'alerts', treatment:'treatments',
   lot:'lots', partos:'partos', pesaje:'pesajes', maint:'maintenance',
   diesel:'diesel', trace:'trace_records', activity:'activities',
-  employee:'employees', advance:'advances', purchase:'purchases'
+  employee:'employees', advance:'advances', purchase:'purchases',
+  agua:'agua', sal:'sal', conteo:'conteo', alimento:'alimento', aceite:'aceite', lluvias:'lluvias' /* v1.8.128d: submódulos faltaban en el blindaje → colisión de ids (bug QA 17-07) */
 };
 function reconcileNextIds() {
   try {
@@ -31291,7 +31342,8 @@ function saveSubmodule(type) {
   if (!validateNotFuture(date, 'fecha del registro')) return;
 
   if (!db[cfg.table]) db[cfg.table] = [];
-  if (!db.next_ids[type]) db.next_ids[type] = 1;
+  var _maxSub = (db[type]||[]).reduce(function(m,r){ var n=parseInt(r&&r.id,10); return (!isNaN(n)&&n>m)?n:m; },0);
+  if (!db.next_ids[type] || db.next_ids[type] <= _maxSub) db.next_ids[type] = _maxSub + 1; /* v1.8.128d anti-colisión */
 
   var record = { id: db.next_ids[type]++, lot_code: lot, date: date, obs: obs, by: by, created_at: new Date().toISOString(), retroactive: isRetroactive };
 
@@ -31601,7 +31653,7 @@ function getAnimalesDB(){
 // - LOCAL: markers del cliente; NO se pushean, se arrastran del local.
 // Kill switch: window.__ANIMAL_FIELDS_OFF = true (vuelve al recorte viejo).
 // ════════════════════════════════════════════════════════════════
-window.E5M_ANIMAL_FIELDS_SYNC = ['sexo','parto_id','rfid','rgn','rgd','serie_sui','tatuaje'];
+window.E5M_ANIMAL_FIELDS_SYNC = ['sexo','parto_id','rfid','rgn','rgd','serie_sui','tatuaje','nombre_pedigri','color','or_pais']; /* v1.8.127 A2 */
 window.E5M_ANIMAL_FIELDS_LOCAL = ['id_updated_at','_needs_id','_colision_de'];
 window.e5mAnimPushFields = function(src, out){
   if (window.__ANIMAL_FIELDS_OFF) return out;
@@ -39742,6 +39794,7 @@ function openReproNuevoServicio() {
   document.getElementById('repro-srv-tipo').value = 'IA';
   document.getElementById('repro-srv-date').value = new Date().toISOString().slice(0, 10);
   document.getElementById('repro-srv-animal').value = '';
+  var _hEl = document.getElementById('repro-srv-hasta'); if (_hEl) _hEl.value = ''; /* v1.8.125 */
   document.getElementById('repro-srv-lote').value = '';
   document.getElementById('repro-srv-semen').value = '';
   document.getElementById('repro-srv-technician').value = '';
@@ -39836,6 +39889,11 @@ function saveReproServicio() {
     record.toro_id = toro || null;
     record.semen_lote = null;
     record.technician = null;
+    var _hastaEl = document.getElementById('repro-srv-hasta'); /* v1.8.125: rango de monta a campo (planilla MN) */
+    record.date_hasta = (_hastaEl && _hastaEl.value) || null;
+    var _mtEl = document.getElementById('repro-srv-monta-tipo'); /* A2: natural vs controlada (Produz N/C) */
+    record.monta_tipo = (_mtEl && _mtEl.value) || 'natural';
+    if (record.date_hasta && record.date_hasta < record.date) { alert('La fecha "hasta" no puede ser anterior al servicio'); return; }
   }
 
   // Persistir en db
@@ -42625,8 +42683,13 @@ function renderReproInteligencia() {
       <div id="rc-form" style="display:none">
         <div id="rc-animal-info" style="background:var(--sur2);border:1px solid var(--bor);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px"></div>
         <div class="form-row">
+          <div class="form-group"><label class="form-label">Nombre de pedigrí (CDN, máx 20)</label><input class="form-input" id="rc-nombre" maxlength="20" placeholder="Ej: JSM Diamante"></div>
+          <div class="form-group"><label class="form-label">Color / pelaje (catálogo ABCZ)</label><input class="form-input" id="rc-color" list="aso-pelajes-dl" placeholder="Ej: BR — Branca"><datalist id="aso-pelajes-dl"></datalist></div>
+        </div>
+        <div class="form-row">
           <div class="form-group"><label class="form-label">RGN (reg. de nacimiento)</label><input class="form-input" id="rc-rgn" placeholder="Ej: 123456"></div>
           <div class="form-group"><label class="form-label">RGD (reg. definitivo)</label><input class="form-input" id="rc-rgd" placeholder="≥20 meses"></div>
+          <div class="form-group"><label class="form-label">OR — código país de origen</label><input class="form-input" id="rc-orpais" type="number" list="aso-paises-dl" placeholder="solo importados"><datalist id="aso-paises-dl"></datalist></div>
         </div>
         <div class="form-row">
           <div class="form-group"><label class="form-label">Serie del criador (SUI)</label><input class="form-input" id="rc-serie" placeholder="Ej: JSM"></div>
@@ -42789,6 +42852,13 @@ window.reproCabanaElegir = function(id,lot){
   rEl('rc-form').style.display='';
   rEl('rc-animal-info').innerHTML='<b>'+id+'</b> · lote '+lot+(a.raza||a.breed?(' · '+(a.raza||a.breed)):'')+(a.sexo?(' · '+a.sexo):'');
   rEl('rc-rgn').value=a.rgn||''; rEl('rc-rgd').value=a.rgd||'';
+  if(rEl('rc-nombre')) rEl('rc-nombre').value=a.nombre_pedigri||''; if(rEl('rc-color')) rEl('rc-color').value=a.color||'';
+  if(rEl('rc-orpais')) rEl('rc-orpais').value=(a.or_pais!=null?a.or_pais:'');
+  try { if (typeof asoPoblarPelajes==='function') asoPoblarPelajes(); } catch(e){}
+  try {
+    var _nx = (typeof asoProximoRGN==='function') ? asoProximoRGN() : null;
+    if (_nx && rEl('rc-rgn') && !rEl('rc-rgn').value) rEl('rc-rgn').placeholder = 'sugerido: ' + _nx;
+  } catch(e){}
   rEl('rc-serie').value=a.serie_sui||''; rEl('rc-tatuaje').value=a.tatuaje||'';
   rEl('rc-arbol').style.display='none';
 };
@@ -42798,6 +42868,9 @@ window.saveReproCabana = function(){
   var all=rcAll(), a=(all[lot]||[]).find(function(x){return String(x.animal_id||x.id||'')===String(id);});
   if(!a){ rToast('Animal no encontrado','error'); return; }
   a.rgn=(rEl('rc-rgn').value||'').trim();
+  if(rEl('rc-nombre')) a.nombre_pedigri=(rEl('rc-nombre').value||'').trim().slice(0,20);
+  if(rEl('rc-color')) a.color=(rEl('rc-color').value||'').trim();
+  if(rEl('rc-orpais')) a.or_pais=parseInt(rEl('rc-orpais').value)||null;
   a.rgd=(rEl('rc-rgd').value||'').trim();
   a.serie_sui=(rEl('rc-serie').value||'').trim();
   a.tatuaje=(rEl('rc-tatuaje').value||'').trim();
@@ -43798,7 +43871,7 @@ function fD(iso){ if(!iso)return '—'; var p=String(iso).split('-'); return p.l
 function dias(a,b){ try { return Math.round((new Date(b)-new Date(a))/86400000); } catch(e){ return null; } }
 
 /* ═══ SEMEN ═══ */
-function cab2SemenReset(){ ['cb2-sem-id','cb2-sem-lote','cb2-sem-toro','cb2-sem-rgn','cb2-sem-raza','cb2-sem-paj','cb2-sem-termo','cb2-sem-notas'].forEach(function(i){ var el=E(i); if(el) el.value=''; }); var t=E('cb2-sem-ftitle'); if(t) t.textContent='➕ Ingreso de pajuelas'; }
+function cab2SemenReset(){ ['cb2-sem-id','cb2-sem-lote','cb2-sem-toro','cb2-sem-rgn','cb2-sem-rgd','cb2-sem-raza','cb2-sem-paj','cb2-sem-termo','cb2-sem-notas'].forEach(function(i){ var el=E(i); if(el) el.value=''; }); var t=E('cb2-sem-ftitle'); if(t) t.textContent='➕ Ingreso de pajuelas'; }
 function cab2SaveSemen(){
   var s=arr('repro_semen');
   var id=E('cb2-sem-id').value, lote=E('cb2-sem-lote').value.trim(), toro=E('cb2-sem-toro').value.trim();
@@ -43806,7 +43879,7 @@ function cab2SaveSemen(){
   if(!lote||!toro||isNaN(paj)||paj<0){ tst('Lote, toro y pajuelas son obligatorios','error'); return; }
   var dup=s.some(function(x){ return String(x.lote).toLowerCase()===lote.toLowerCase() && String(x.id)!==String(id); });
   if(dup){ tst('Ya existe ese lote de semen','error'); return; }
-  var data={ lote:lote, toro:toro, rgn_toro:E('cb2-sem-rgn').value.trim(), raza:E('cb2-sem-raza').value.trim(), pajuelas:paj, termo:E('cb2-sem-termo').value.trim(), notas:E('cb2-sem-notas').value.trim(), updated_at:new Date().toISOString() };
+  var data={ lote:lote, toro:toro, rgn_toro:E('cb2-sem-rgn').value.trim(), rgd_toro:(E('cb2-sem-rgd')||{value:''}).value.trim(), raza:E('cb2-sem-raza').value.trim(), pajuelas:paj, termo:E('cb2-sem-termo').value.trim(), notas:E('cb2-sem-notas').value.trim(), updated_at:new Date().toISOString() };
   if(id){ var x=s.find(function(y){return String(y.id)===String(id);}); Object.assign(x,data); }
   else { data.id=nid(s); data.usos=[]; data.created_at=data.updated_at; s.push(data); }
   save('repro_semen'); cab2SemenReset(); cab2Render(); tst('Semen guardado: '+lote,'success');
@@ -43814,7 +43887,7 @@ function cab2SaveSemen(){
 function cab2EditSemen(id){
   var x=arr('repro_semen').find(function(y){return String(y.id)===String(id);}); if(!x)return;
   E('cb2-sem-id').value=x.id; E('cb2-sem-lote').value=x.lote; E('cb2-sem-toro').value=x.toro;
-  E('cb2-sem-rgn').value=x.rgn_toro||''; E('cb2-sem-raza').value=x.raza||''; E('cb2-sem-paj').value=x.pajuelas;
+  E('cb2-sem-rgn').value=x.rgn_toro||''; if(E('cb2-sem-rgd')) E('cb2-sem-rgd').value=x.rgd_toro||''; E('cb2-sem-raza').value=x.raza||''; E('cb2-sem-paj').value=x.pajuelas;
   E('cb2-sem-termo').value=x.termo||''; E('cb2-sem-notas').value=x.notas||'';
   E('cb2-sem-ftitle').textContent='✏️ Editar: '+x.lote;
 }
@@ -43879,10 +43952,24 @@ function cab2SaveTE(){
   var t=arr('repro_te');
   var fecha=E('cb2-te-fecha').value, don=E('cb2-te-don').value.trim(), rec=E('cb2-te-rec').value.trim();
   if(!fecha||!don||!rec){ tst('Fecha, donadora y receptora son obligatorias','error'); return; }
-  t.push({ id:nid(t), fecha:fecha, donadora_id:don, raza_donadora:E('cb2-te-don-raza').value.trim(), toro:E('cb2-te-toro').value.trim(), receptora_id:rec, raza_receptora:E('cb2-te-rec-raza').value.trim(), estado:'transferido', notas:E('cb2-te-notas').value.trim(), created_at:new Date().toISOString() });
+  /* v1.8.125: TE/FIV ampliado nivel formulario oficial */
+  var _tipo=(E('cb2-te-tipo')||{value:'TE'}).value||'TE';
+  var _opu=(E('cb2-te-opu')||{value:''}).value, _fiv=(E('cb2-te-fiv')||{value:''}).value;
+  if(_opu&&_opu>fecha){ tst('La OPU no puede ser posterior al implante','error'); return; }
+  if(_fiv&&_opu&&_fiv<_opu){ tst('La FIV no puede ser anterior a la OPU','error'); return; }
+  var _toro=E('cb2-te-toro').value.trim();
+  t.push({ id:nid(t), tipo:_tipo, fecha:fecha, fecha_opu:_opu||null, fecha_fiv:_fiv||null,
+    donadora_id:don, raza_donadora:E('cb2-te-don-raza').value.trim(), toro:_toro,
+    ac:don+'×'+(_toro||'?'),
+    dosis:parseFloat((E('cb2-te-dosis')||{value:''}).value)||null,
+    emb_congelados:parseInt((E('cb2-te-emb-c')||{value:''}).value)||null,
+    emb_viables:parseInt((E('cb2-te-emb-v')||{value:''}).value)||null,
+    emb_stock:parseInt((E('cb2-te-emb-s')||{value:''}).value)||null,
+    vet:(E('cb2-te-vet')||{value:''}).value.trim(),
+    receptora_id:rec, raza_receptora:E('cb2-te-rec-raza').value.trim(), estado:'transferido', notas:E('cb2-te-notas').value.trim(), created_at:new Date().toISOString() });
   save('repro_te');
-  ['cb2-te-fecha','cb2-te-don','cb2-te-don-raza','cb2-te-toro','cb2-te-rec','cb2-te-rec-raza','cb2-te-notas'].forEach(function(i){ E(i).value=''; });
-  cab2Render(); tst('Transferencia registrada','success');
+  ['cb2-te-fecha','cb2-te-don','cb2-te-don-raza','cb2-te-toro','cb2-te-rec','cb2-te-rec-raza','cb2-te-notas','cb2-te-opu','cb2-te-fiv','cb2-te-dosis','cb2-te-emb-c','cb2-te-emb-v','cb2-te-emb-s','cb2-te-vet'].forEach(function(i){ var el=E(i); if(el) el.value=''; });
+  cab2Render(); tst((_tipo==='FIV'?'FIV':'Transferencia')+' registrada','success');
 }
 function cab2TEEstado(id, estado){
   var x=arr('repro_te').find(function(y){return String(y.id)===String(id);}); if(!x)return;
@@ -43943,7 +44030,7 @@ function cab2Rango(){
 }
 function cab2Eventos(){
   var r=cab2Rango(), ini=r[0], fin=r[1];
-  var srv=((dbOk()&&db.reproductive_services)||[]).filter(function(s){ return s.date&&s.date>=ini&&s.date<=fin&&(s.tipo_servicio==='MN'||s.tipo_servicio==='IA'); });
+  var srv=((dbOk()&&db.reproductive_services)||[]).filter(function(s){ return s.date&&s.date>=ini&&s.date<=fin&&(s.tipo_servicio==='MN'||s.tipo_servicio==='monta'||s.tipo_servicio==='IA'); });
   var par=((dbOk()&&db.partos)||[]).filter(function(p){ return p.date&&p.date>=ini&&p.date<=fin; });
   var te=arr('repro_te').filter(function(t){ return t.fecha&&t.fecha>=ini&&t.fecha<=fin; });
   return { srv:srv, par:par, te:te, ini:ini, fin:fin };
@@ -43955,7 +44042,7 @@ function cab2Validar(){
     if(!p.servicio_id) return;
     var s=srvAll.find(function(x){return String(x.id)===String(p.servicio_id);}); if(!s||!s.date) return;
     var g=dias(s.date,p.date); if(g==null) return;
-    if(s.tipo_servicio==='MN'&&(g<275||g>305)) add('err','Gestación MN de '+g+'d (275–305) — cría '+(p.cria_id||'?')+' madre '+(p.madre_id||'?'));
+    if((s.tipo_servicio==='MN'||s.tipo_servicio==='monta')&&(g<275||g>305)) add('err','Gestación MN de '+g+'d (275–305) — cría '+(p.cria_id||'?')+' madre '+(p.madre_id||'?'));
     if((s.tipo_servicio==='IA'||s.tipo_servicio==='TE')&&g>315) add('err','Gestación '+s.tipo_servicio+' de '+g+'d (máx 315) — cría '+(p.cria_id||'?'));
   });
   var porMadre={};
@@ -43968,6 +44055,7 @@ function cab2Validar(){
     if(t.raza_donadora&&t.raza_receptora&&t.raza_donadora.trim().toLowerCase()===t.raza_receptora.trim().toLowerCase()) add('warn','TE con receptora de la MISMA raza que la donadora ('+t.receptora_id+')');
   });
   ev.par.forEach(function(p){ if(p.madre_id&&!rgnDe(p.madre_id)) add('warn','Madre '+p.madre_id+' sin RGN — completar en Registro cabaña'); });
+  try { if (typeof asoValidarExtra==='function') asoValidarExtra(ev, add); } catch(e){} /* v1.8.125 */
   var el=E('cb2-val'); if(!el) return out;
   if(!out.length) el.innerHTML='<span style="color:var(--green)">✅ Sin observaciones RGNRC en el período '+fD(ev.ini)+' – '+fD(ev.fin)+' ('+ev.srv.length+' servicios, '+ev.par.length+' nacimientos, '+ev.te.length+' TE).</span>';
   else el.innerHTML=out.map(function(x){ return '<div style="margin:2px 0;color:'+(x.n==='err'?'var(--red)':'var(--amber2)')+'">'+(x.n==='err'?'✕':'⚠')+' '+esc(x.m)+'</div>'; }).join('');
@@ -43982,30 +44070,12 @@ function csvDl(nombre, head, rows){
   setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },400);
 }
 function cab2Export(tipo){
+  /* v1.8.125: delega en el módulo ASOCEBU (builders compartidos con las planillas oficiales) */
   var ev=cab2Eventos(), serie=serieDe();
   var errs=cab2Validar().filter(function(x){return x.n==='err';});
-  if(errs.length && !confirm('Hay '+errs.length+' error(es) RGNRC en el período. ¿Exportar igual?')) return;
-  if(tipo==='servicios'){
-    if(!ev.srv.length){ tst('Sin servicios MN/IA en el período','info'); return; }
-    csvDl('asocebu_servicios_'+ev.ini+'_'+ev.fin+'.csv',
-      ['serie_criador','tipo_servicio','fecha','vaca_id','vaca_rgn','toro_o_semen','rgn_toro','tecnico','lote'],
-      ev.srv.map(function(s){ var sem=arr('repro_semen').find(function(x){return x.lote===s.semen_lote;});
-        return [serie,s.tipo_servicio,s.date,s.animal_id,rgnDe(s.animal_id),s.toro_id||s.semen_lote||'',sem?sem.rgn_toro:'',s.technician||'',s.lot_code||'']; }));
-  } else if(tipo==='cdn'){
-    if(!ev.par.length){ tst('Sin nacimientos en el período','info'); return; }
-    var srvAll=(dbOk()&&db.reproductive_services)||[];
-    csvDl('asocebu_nacimientos_cdn_'+ev.ini+'_'+ev.fin+'.csv',
-      ['serie_criador','fecha_nacimiento','cria_id','sexo','peso_nacer','madre_id','madre_rgn','padre_o_semen','tipo_concepcion','tatuaje_cria'],
-      ev.par.map(function(p){ var s=p.servicio_id?srvAll.find(function(x){return String(x.id)===String(p.servicio_id);}):null;
-        var tat=''; try { var all=getAnimalesDB()||{}; var ks=Object.keys(all); for(var i=0;i<ks.length;i++){ var a=(all[ks[i]]||[]).find(function(x){return String(x.animal_id||x.id||'')===String(p.cria_id);}); if(a){ tat=a.tatuaje||''; break; } } } catch(e){}
-        return [serie,p.date,p.cria_id||'',p.sexo||'',p.peso!=null?p.peso:'',p.madre_id||'',rgnDe(p.madre_id),p.padre_id||(s?(s.toro_id||s.semen_lote||''):''),s?s.tipo_servicio:'MN',tat]; }));
-  } else if(tipo==='te'){
-    if(!ev.te.length){ tst('Sin TE/FIV en el período','info'); return; }
-    csvDl('asocebu_te_fiv_'+ev.ini+'_'+ev.fin+'.csv',
-      ['serie_criador','fecha_te','donadora_id','donadora_rgn','raza_donadora','toro_o_semen','receptora_id','raza_receptora','estado','cria_id'],
-      ev.te.map(function(t){ return [serie,t.fecha,t.donadora_id,rgnDe(t.donadora_id),t.raza_donadora||'',t.toro||'',t.receptora_id,t.raza_receptora||'',t.estado,t.cria_id||'']; }));
-  }
-  tst('Export ASOCEBU generado','success');
+  if (errs.length && !confirm('Hay '+errs.length+' error(es) RGNRC en el período. ¿Exportar igual?')) return;
+  if (typeof asoExportCsv==='function') { asoExportCsv(tipo, ev, serie); return; }
+  tst('Módulo ASOCEBU no cargado','error');
 }
 
 /* ═══ RENDER ═══ */
@@ -44086,6 +44156,16 @@ try {
 function cab2Init(){ cab2Gate(); }
 if (document.readyState !== 'loading') cab2Init(); else document.addEventListener('DOMContentLoaded', cab2Init);
 document.addEventListener('click', function(ev){ var b=ev.target && ev.target.closest && ev.target.closest('.nav-btn'); if(b) setTimeout(cab2Gate, 150); });
+
+/* v1.8.128b: PUENTE — el módulo asocebu (IIFE aparte) necesita estos helpers privados.
+   Descubierto en prueba real: ReferenceError tst is not defined (los stubs del banco lo tapaban). */
+window.__cab2 = { tst:tst, arr:arr, dbOk:dbOk, dias:dias, fD:fD, esc:esc, hoy:hoy, csvDl:csvDl, serieDe:serieDe, rgnDe:rgnDe, cab2Eventos:cab2Eventos, save:save, nid:nid };
+var _cab2RenderBase = cab2Render;
+cab2Render = function(){
+  _cab2RenderBase();
+  try { if (window.asoAfterRender) window.asoAfterRender(); } catch(e){}
+};
+window.cab2Render = cab2Render; /* v1.8.128c re-export: el onclick de la pestaña llama window.cab2Render, que se exporto ANTES del puente */
 })();
 </script>
 
@@ -44951,5 +45031,596 @@ setInterval(swSelectorRender, 5000); // auto-sanado si algo re-renderiza la topb
 
 </script>
 
+<script id="asocebu-v18125">
+// ══════════════════════════════════════════════════════════════════════
+// v1.8.125 — EXPORT ASOCEBU NIVEL PLANILLA OFICIAL (Fases A–E del roadmap)
+// A: cabecera criador + CDN completo (nombre/color/RGD/receptora) + fix monta
+// B: CDS split IA/MN agrupado por reproductor + rango de monta + RGD
+// C: TE/FIV ampliado (OPU/FIV, dosis, embriones, vet, plazo 15d)
+// D: planillas .xls con layout oficial + card de plazos RGNRC
+// E: CDP pesos padrón 205/365/550 (PC = P ± G×N, ventanas oficiales)
+// Todo dentro de la pestaña Cabaña (gate perfil_cabana). Kill: __ASOCEBU_OFF
+// (el kill apaga planillas/plazos/validaciones extra; el CSV básico sigue)
+// ══════════════════════════════════════════════════════════════════════
+(function(){
+  function off(){ return typeof window!=='undefined' && window.__ASOCEBU_OFF===true; }
+  function $a(id){ return document.getElementById(id); }
+  /* v1.8.128b: helpers del bloque cabaña vía puente __cab2 (fallback a globals para el banco de tests) */
+  function _C(n){ var c=window.__cab2||{}; if(typeof c[n]==='function') return c[n]; if(typeof window[n]==='function') return window[n]; return null; }
+  var tst=function(m,t){ var f=_C('tst'); if(f) return f(m,t); try{ if(typeof window.toast==='function') window.toast(m,t); }catch(e){} };
+  var arr=function(k){ var f=_C('arr'); if(f) return f(k); try{ return (db&&db[k])||[]; }catch(e){ return []; } };
+  var dbOk=function(){ var f=_C('dbOk'); if(f) return f(); try{ return typeof db!=='undefined'&&!!db; }catch(e){ return false; } };
+  var dias=function(a,b){ var f=_C('dias'); if(f) return f(a,b); try{ return Math.round((new Date(b)-new Date(a))/86400000); }catch(e){ return null; } };
+  var fD=function(x){ var f=_C('fD'); return f?f(x):(x||'—'); };
+  var esc=function(s){ var f=_C('esc'); return f?f(s):String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); };
+  var hoy=function(){ var f=_C('hoy'); return f?f():new Date().toISOString().slice(0,10); };
+  var csvDl=function(n,h,r){ var f=_C('csvDl'); if(f) return f(n,h,r); };
+  var serieDe=function(){ var f=_C('serieDe'); return f?f():''; };
+  var cab2Eventos=function(){ var f=_C('cab2Eventos'); return f?f():{srv:[],par:[],te:[],ini:'',fin:''}; };
+  function P(){ try { return (typeof getParams==='function'?getParams():{})||{}; } catch(e){ return {}; } }
+  function cab(){ var p=P(); return p.asocebu||{}; }
+
+  // ── Fase A: datos del criador (cabecera de todas las planillas) ──
+  window.asoFillCriador = function(){
+    var c=cab(), p=P();
+    var map={ 'aso-criador':c.criador, 'aso-codigo':c.codigo, 'aso-cabana':c.cabana, 'aso-serie':(p.serie_sui||p.serie||''), 'aso-depto':c.departamento, 'aso-prov':c.provincia };
+    Object.keys(map).forEach(function(id){ var e=$a(id); if(e && !e.value) e.value=map[id]||''; });
+    var cat=$a('aso-categoria'); if(cat && c.categoria) cat.value=c.categoria;
+  };
+  window.asoSaveCriador = function(){
+    var p=P();
+    p.asocebu={
+      criador:($a('aso-criador')||{}).value||'', codigo:($a('aso-codigo')||{}).value||'',
+      cabana:($a('aso-cabana')||{}).value||'', categoria:($a('aso-categoria')||{}).value||'PO',
+      departamento:($a('aso-depto')||{}).value||'', provincia:($a('aso-prov')||{}).value||''
+    };
+    var serie=(($a('aso-serie')||{}).value||'').trim();
+    if(serie) p.serie_sui=serie;
+    p.updated_at=new Date().toISOString();
+    try { lsSetParamsJSON('e5m_params', p); } catch(e){}
+    try { if (typeof saveDB==='function') saveDB(); } catch(e2){}
+    tst('Datos del criador guardados (van en la cabecera de todas las planillas)','success');
+  };
+
+  // ── helpers de datos ──
+var ASO_PELAJES=['AM — Amarela','AMAL — Amarela Alaranjada','AMCH — Amarela Chitada','AMGA — Amarela Gargantilha','AMMA — Amarela Malhada','BR — Branca','BR-PI — Branco Pintado','CA — Castanha','CHAM — Chitada De Amarelo','CHCL — Chita Clara','CHCZ — Chitada De Cinza','CHVM — Chitada De Vermelho','CT — Castanho','CT-PI — Castanho Pintado','CZ — Cinza','CZ-AV — Cinza Avermelhado','CZ-GA — Cinza Gargantilha','CZ-PI — Cinza Pintado','CZ-VM — Cinza Vermelha','CZAM — Cinza Amarela','CZAV — Cinza Avermelhada','CZCH — Cinza Chitada','CZCL — Cinza Clara','CZEC — Cinza Escura','CZGA — Cinza Gargantilha','CZVM — Cinza Vermelha','ERRO — Nao Cadastrada','MN — Manchada','MOCL — Moura Clara','MOEC — Moura Escura','MOVM — Moura De Vermelho','PI-PR — Pintado De Preto','PI-VM — Pintado De Vermelho','PIAM — Pintada De Amarelo','PIPR — Pintada De  Preto','PIVM — Pintada De Vermelho','PR — Preta','PR-PI — Preto Pintado','PRMA — Preta Malhada','ROCL — Rosilha Clara','VM — Vermelha','VMCH — Vermelha Chitada','VMGA — Vermelha Gargantilha','VMMA — Vermelha Malhada'];
+  /* ⚠ CÓDIGOS ASUMIDOS provisionalmente (17-07-2026) — reemplazar cuando ASOCEBU
+     pase la tabla oficial. Editar SOLO acá; el resto del módulo los toma de esta lista. */
+  var ASO_PAISES=[[1,'Bolivia'],[2,'Brasil'],[3,'Argentina'],[4,'Paraguay'],[5,'Estados Unidos'],[6,'Colombia'],[9,'Otro']];
+  window.asoPoblarPelajes = function(){
+    var dl=document.getElementById('aso-pelajes-dl');
+    if(dl&&!dl.childNodes.length) ASO_PELAJES.forEach(function(p){ var o=document.createElement('option'); o.value=p; dl.appendChild(o); });
+    var dp=document.getElementById('aso-paises-dl');
+    if(dp&&!dp.childNodes.length) ASO_PAISES.forEach(function(p){ var o=document.createElement('option'); o.value=p[0]; o.label=p[0]+' — '+p[1]+' (provisional)'; dp.appendChild(o); });
+  };
+  /* A2-6: correlativo RGN — sugiere el próximo número de la serie del criador */
+  window.asoProximoRGN = function(){
+    try {
+      var p=P(), serie=String(p.serie_sui||'').trim().toLowerCase();
+      var max=0, all=(typeof getAnimalesDB==='function')?(getAnimalesDB()||{}):{};
+      Object.keys(all).forEach(function(k){ (all[k]||[]).forEach(function(a){
+        if(!a||!a.rgn) return;
+        if(serie && String(a.serie_sui||'').trim().toLowerCase()!==serie) return;
+        var n=parseInt(String(a.rgn).replace(/\D/g,''),10);
+        if(isFinite(n)&&n>max) max=n;
+      }); });
+      return max>0?(max+1):null;
+    } catch(e){ return null; }
+  };
+  window.asoTipo = function(s){ var t=(s&&s.tipo_servicio)||''; return t==='monta'?'MN':t; };
+  function animalInfo(animalId){
+    var out={rgn:'',rgd:'',nombre:'',color:'',tatuaje:''};
+    if(!animalId) return out;
+    try {
+      var all=(typeof getAnimalesDB==='function')?(getAnimalesDB()||{}):{};
+      var ks=Object.keys(all);
+      for(var i=0;i<ks.length;i++){
+        var a=(all[ks[i]]||[]).find(function(x){return String(x.animal_id||x.id||'')===String(animalId);});
+        if(a){ out.rgn=a.rgn||''; out.rgd=a.rgd||''; out.nombre=a.nombre_pedigri||''; out.color=a.color||''; out.tatuaje=a.tatuaje||''; out.or_pais=(a.or_pais!=null?a.or_pais:''); break; }
+      }
+    } catch(e){}
+    return out;
+  }
+  window.asoAnimalInfo = animalInfo;
+  function semenDe(lote){ return arr('repro_semen').find(function(x){return x.lote===lote;})||null; }
+  function teDeServicio(srvId){ return arr('repro_te').find(function(t){return String(t.servicio_id||'')===String(srvId);})||null; }
+  function mesTxt(iso){ var M=['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']; var p=String(iso||'').split('-'); return p.length>=2?(M[parseInt(p[1],10)]||p[1])+' '+p[0]:''; }
+
+  // ── builders compartidos (CSV y planilla usan los mismos datos) ──
+  window.asoDataCDN = function(ev){
+    var srvAll=(dbOk()&&db.reproductive_services)||[];
+    return ev.par.map(function(p){
+      var s=p.servicio_id?srvAll.find(function(x){return String(x.id)===String(p.servicio_id);}):null;
+      var cria=animalInfo(p.cria_id), madre=animalInfo(p.madre_id);
+      var padreId=p.padre_id||(s?(s.toro_id||s.semen_lote||''):'');
+      var padre=animalInfo(padreId);
+      var sem=s&&s.semen_lote?semenDe(s.semen_lote):null;
+      var te=s?teDeServicio(s.id):null;
+      return {
+        nombre:cria.nombre, rgn_cria:cria.rgn, sexo:p.sexo||'', color:cria.color,
+        fecha:p.date||'', peso:(p.peso!=null?p.peso:''),
+        padre_nombre:padreId, padre_rgd:padre.rgd||(sem?(sem.rgd_toro||''):''),
+        recp:te?(te.receptora_id||''):'',
+        madre_rgn:madre.rgn, madre_rgd:madre.rgd, madre_id:p.madre_id||'',
+        tipo:s?((s.tipo_servicio==='TE'&&te&&te.tipo==='FIV')?'FIV':asoTipo(s)):'MN',
+        cria_id:p.cria_id||'', tatuaje:cria.tatuaje
+      };
+    });
+  };
+  window.asoDataSrv = function(ev){
+    var g={ia:{},mn:{}};
+    ev.srv.forEach(function(s){
+      var t=asoTipo(s);
+      var vaca=animalInfo(s.animal_id);
+      var fila={ animal_id:s.animal_id, rgn:vaca.rgn, rgd:vaca.rgd, or_pais:(vaca.or_pais!=null?vaca.or_pais:''), fecha:s.date||'', obs:s.notes||'', hasta:s.date_hasta||'', monta_tipo:s.monta_tipo||'' };
+      if(t==='IA'){
+        var sem=s.semen_lote?semenDe(s.semen_lote):null;
+        var key=(s.semen_lote||s.toro_id||'?')+'·'+String(s.date||'').slice(0,7);
+        if(!g.ia[key]) g.ia[key]={ reproductor:(sem?(sem.toro||s.semen_lote):s.semen_lote||s.toro_id||''), rgd:(sem?(sem.rgd_toro||''):''), mes:mesTxt(s.date), anio:String(s.date||'').slice(0,4), filas:[] };
+        g.ia[key].filas.push(fila);
+      } else if(t==='MN'){
+        var toro=s.toro_id||'(sin identificar)';
+        var toroInfo=animalInfo(s.toro_id);
+        if(!g.mn[toro]) g.mn[toro]={ toro:toro, rgd:toroInfo.rgd||'', desde:s.date||'', hasta:s.date_hasta||s.date||'', filas:[] };
+        var gr=g.mn[toro];
+        if(s.date && (!gr.desde || s.date<gr.desde)) gr.desde=s.date;
+        var h=s.date_hasta||s.date; if(h && h>gr.hasta) gr.hasta=h;
+        gr.filas.push(fila);
+      }
+    });
+    return { ia:Object.keys(g.ia).map(function(k){return g.ia[k];}), mn:Object.keys(g.mn).map(function(k){return g.mn[k];}) };
+  };
+  /* CDM: comunicación de muerte (Art. 115 — hasta fin del mes siguiente, con causa) */
+  window.asoDataCDM = function(ev){
+    var bj=((dbOk()&&db.bajas)||[]).filter(function(x){ var f=x.fecha||x.date; return f&&f>=ev.ini&&f<=ev.fin; });
+    return bj.map(function(x){
+      var inf=animalInfo(x.animal_id);
+      return { fecha:x.fecha||x.date||'', animal_id:x.animal_id||'', rgn:inf.rgn, rgd:inf.rgd, nombre:inf.nombre,
+        causa:(x.causa==='otro'&&x.obs)?x.obs:(x.causa||x.obs||''), lote:x.lot_code||'', peso:(x.ultimo_peso!=null?x.ultimo_peso:'') };
+    });
+  };
+  /* ADT: autorización de transferencia (Art. 120 — venta de animales REGISTRADOS) */
+  window.asoDataADT = function(ev){
+    var vs=((dbOk()&&db.sales)||[]).filter(function(s){ return s.date&&s.date>=ev.ini&&s.date<=ev.fin; });
+    var filas=[];
+    vs.forEach(function(s){
+      (s.animal_ids||[]).forEach(function(aid){
+        var inf=animalInfo(aid);
+        if(!inf.rgn&&!inf.rgd) return; /* solo registrados: la ADT aplica a animales con registro */
+        filas.push({ fecha:s.date||'', animal_id:aid, rgn:inf.rgn, rgd:inf.rgd, nombre:inf.nombre, adquirente:s.buyer||'', factura:s.invoice||'' });
+      });
+    });
+    return filas;
+  };
+  window.asoDataTE = function(ev){
+    return ev.te.map(function(t){
+      var don=animalInfo(t.donadora_id);
+      return {
+        tipo:t.tipo||'TE', ac:t.ac||((t.donadora_id||'')+'×'+(t.toro||'')),
+        fecha_opu:t.fecha_opu||'', fecha_fiv:t.fecha_fiv||'', fecha_impl:t.fecha||'',
+        donadora:t.donadora_id||'', donadora_rgd:don.rgd||don.rgn||'', raza_don:t.raza_donadora||'',
+        toro:t.toro||'', toro_rgd:t.rgd_toro||'',
+        dosis:(t.dosis!=null?t.dosis:''), emb_cong:(t.emb_congelados!=null?t.emb_congelados:''),
+        emb_viables:(t.emb_viables!=null?t.emb_viables:''), emb_stock:(t.emb_stock!=null?t.emb_stock:''),
+        receptora:t.receptora_id||'', raza_rec:t.raza_receptora||'', estado:t.estado||'', vet:t.vet||'', cria:t.cria_id||''
+      };
+    });
+  };
+
+  // ── CSVs (reemplazan a los del cab2Export original; siempre activos) ──
+  window.asoExportCsv = function(tipo, ev, serie){
+    if(tipo==='servicios'){
+      var d=asoDataSrv(ev);
+      if(!d.ia.length && !d.mn.length){ tst('Sin servicios MN/IA en el período','info'); return; }
+      if(d.ia.length){
+        var rowsIA=[]; d.ia.forEach(function(gr){ gr.filas.forEach(function(f){ rowsIA.push([serie, gr.reproductor, gr.rgd, gr.mes+' '+gr.anio, f.animal_id, f.rgn, f.rgd, f.or_pais, f.fecha, f.obs]); }); });
+        csvDl('asocebu_cds_ia_'+ev.ini+'_'+ev.fin+'.csv', ['serie_criador','reproductor','rgd_reproductor','planilla_mes','matriz_id','matriz_rgn','matriz_rgd','or','fecha_ia','observacion'], rowsIA);
+      }
+      if(d.mn.length){
+        var rowsMN=[]; d.mn.forEach(function(gr){ gr.filas.forEach(function(f){ rowsMN.push([serie, gr.toro, gr.rgd, gr.desde, gr.hasta, f.animal_id, f.rgn, f.rgd, f.or_pais, f.fecha, f.obs]); }); });
+        csvDl('asocebu_cds_mn_'+ev.ini+'_'+ev.fin+'.csv', ['serie_criador','toro','rgd_toro','desde','hasta','vaca_id','vaca_rgn','vaca_rgd','or','fecha_servicio','observacion'], rowsMN);
+      }
+      tst('Export CDS generado: '+d.ia.length+' planilla(s) IA · '+d.mn.length+' de MN','success');
+    } else if(tipo==='cdn'){
+      var rows=asoDataCDN(ev);
+      if(!rows.length){ tst('Sin nacimientos en el período','info'); return; }
+      csvDl('asocebu_nacimientos_cdn_'+ev.ini+'_'+ev.fin+'.csv',
+        ['serie_criador','nombre_ternero','rgn_ternero','sexo','color','fecha_nacimiento','peso_nacer','padre_nombre','padre_rgd','receptora','madre_id','madre_rgn','madre_rgd','tipo_concepcion','tatuaje','cria_id'],
+        rows.map(function(r){ return [serie,r.nombre,r.rgn_cria,r.sexo,r.color,r.fecha,r.peso,r.padre_nombre,r.padre_rgd,r.recp,r.madre_id,r.madre_rgn,r.madre_rgd,r.tipo,r.tatuaje,r.cria_id]; }));
+      tst('Export CDN generado ('+rows.length+' nacimientos)','success');
+    } else if(tipo==='cdm'){
+      var rc=asoDataCDM(ev);
+      if(!rc.length){ tst('Sin bajas en el período','info'); return; }
+      csvDl('asocebu_cdm_muertes_'+ev.ini+'_'+ev.fin+'.csv',
+        ['serie_criador','fecha_muerte','animal_id','rgn','rgd','nombre','causa','lote','ultimo_peso'],
+        rc.map(function(r){ return [serie,r.fecha,r.animal_id,r.rgn,r.rgd,r.nombre,r.causa,r.lote,r.peso]; }));
+      tst('Export CDM generado ('+rc.length+' bajas)','success');
+    } else if(tipo==='adt'){
+      var ra=asoDataADT(ev);
+      if(!ra.length){ tst('Sin ventas de animales REGISTRADOS en el período (la ADT solo aplica a animales con RGN/RGD)','info'); return; }
+      csvDl('asocebu_adt_transferencias_'+ev.ini+'_'+ev.fin+'.csv',
+        ['serie_criador','fecha_venta','animal_id','rgn','rgd','nombre','adquirente','factura'],
+        ra.map(function(r){ return [serie,r.fecha,r.animal_id,r.rgn,r.rgd,r.nombre,r.adquirente,r.factura]; }));
+      tst('Export ADT generado ('+ra.length+' animales)','success');
+    } else if(tipo==='te'){
+      var rt=asoDataTE(ev);
+      if(!rt.length){ tst('Sin TE/FIV en el período','info'); return; }
+      csvDl('asocebu_te_fiv_'+ev.ini+'_'+ev.fin+'.csv',
+        ['serie_criador','tipo','acasalamiento','fecha_opu','fecha_fiv','fecha_implante','donadora','donadora_rgd','raza_donadora','toro','toro_rgd','dosis','emb_congelados','emb_viables','emb_stock','receptora','raza_receptora','estado','veterinario','cria'],
+        rt.map(function(r){ return [serie,r.tipo,r.ac,r.fecha_opu,r.fecha_fiv,r.fecha_impl,r.donadora,r.donadora_rgd,r.raza_don,r.toro,r.toro_rgd,r.dosis,r.emb_cong,r.emb_viables,r.emb_stock,r.receptora,r.raza_rec,r.estado,r.vet,r.cria]; }));
+      tst('Export TE/FIV generado ('+rt.length+')','success');
+    }
+  };
+
+  // ── validaciones extra RGNRC (Fase A/C) — se inyectan en cab2Validar ──
+  window.asoValidarExtra = function(ev, add){
+    if(off()) return;
+    var srvAll=(dbOk()&&db.reproductive_services)||[];
+    ev.par.forEach(function(p){
+      var inf=animalInfo(p.cria_id);
+      if(inf.nombre && inf.nombre.length>20) add('warn','Nombre "'+inf.nombre+'" supera 20 caracteres (Art. 67) — cría '+(p.cria_id||'?'));
+      if(p.servicio_id){
+        var s=srvAll.find(function(x){return String(x.id)===String(p.servicio_id);});
+        if(s&&s.date){ var g=dias(s.date,p.date); if(g!=null&&g<210) add('err','Parto prematuro de '+g+'d (mín 210, Art. 78) — cría '+(p.cria_id||'?')); }
+      }
+    });
+    ev.te.forEach(function(t){
+      if(t.fecha&&t.created_at){
+        var demora=dias(t.fecha, String(t.created_at).slice(0,10));
+        if(demora!=null&&demora>15) add('warn','TE de '+fD(t.fecha)+' registrada '+demora+'d después (plazo RGNRC: 15d) — receptora '+(t.receptora_id||'?'));
+      }
+      if((t.tipo||'TE')==='FIV' && !t.ac) add('warn','FIV sin código de acasalamiento (si no se identifica, RGNRC exige ADN) — receptora '+(t.receptora_id||'?'));
+    });
+    var c=cab();
+    if(!c.criador||!c.codigo) add('warn','Faltan datos del criador (nombre/código ASOCEBU) — completar en 🪪 Datos del criador');
+  };
+
+  // ── Fase D: planillas .xls con layout oficial ──
+  function xlsDl(nombre, bodyHtml){
+    var html='<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><style>td,th{font-family:Arial;font-size:11px;border:1px solid #999;padding:3px}th{background:#eee}.hd{border:none;font-weight:bold;text-align:center}.lbl{border:none;font-weight:bold}</style></head><body>'+bodyHtml+'</body></html>';
+    var blob=new Blob(['﻿'+html],{type:'application/vnd.ms-excel'});
+    var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=nombre;
+    (document.body||document.documentElement).appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },400);
+  }
+  function cabTop(titulo, sub){
+    var c=cab(), p=P();
+    return '<table style="width:100%"><tr><td class="hd" colspan="8">MINISTERIO DE AGRICULTURA, GANADERIA Y DESARROLLO RURAL</td></tr>'+
+      '<tr><td class="hd" colspan="8">A S O C E B U — ASOCIACION BOLIVIANA DE CRIADORES DE CEBU</td></tr>'+
+      '<tr><td class="hd" colspan="8">'+esc(titulo)+(sub?('<br>'+esc(sub)):'')+'</td></tr>'+
+      '<tr><td class="lbl">RAZA:</td><td class="hd"></td><td class="lbl">CATEGORÍA:</td><td class="hd">'+esc(c.categoria||'PO')+'</td><td class="lbl">CRIADOR:</td><td class="hd">'+esc(c.criador||'')+'</td><td class="lbl">CÓDIGO:</td><td class="hd">'+esc(c.codigo||'')+'</td></tr>'+
+      '<tr><td class="lbl">CABAÑA:</td><td class="hd">'+esc(c.cabana||'')+'</td><td class="lbl">SERIE:</td><td class="hd">'+esc(p.serie_sui||'')+'</td><td class="lbl">DEPARTAMENTO:</td><td class="hd">'+esc(c.departamento||'')+'</td><td class="lbl">PROVINCIA:</td><td class="hd">'+esc(c.provincia||'')+'</td></tr></table><br>';
+  }
+  function pie(){
+    return '<br><table style="width:100%"><tr><td class="lbl">Fecha envío: ____ / ____ / ______</td><td class="lbl" style="text-align:right">Firma del criador: ______________________</td><td class="lbl" style="text-align:right">Sello de Recepción ASOCEBU</td></tr></table>';
+  }
+  function pad(rows,n,cols){ var out=rows.slice(); while(out.length<n) out.push(new Array(cols).fill('')); return out; }
+  window.asoPlanilla = function(tipo){
+    if(off()){ tst('Planillas apagadas (__ASOCEBU_OFF)','info'); return; }
+    var ev=cab2Eventos();
+    if(tipo==='cdn'){
+      var rows=asoDataCDN(ev);
+      if(!rows.length){ tst('Sin nacimientos en el período','info'); return; }
+      for(var pg=0; pg*15<rows.length; pg++){
+        var chunk=pad(rows.slice(pg*15,(pg+1)*15).map(function(r){ return [r.nombre,r.rgn_cria,r.sexo,r.color,fD(r.fecha),r.peso,r.padre_nombre,r.padre_rgd,r.recp,r.madre_rgn,r.madre_rgd,r.tipo]; }),15,12);
+        var h='<tr><th>Nº</th><th colspan="6">T E R N E R O</th><th>Control Asocebu</th><th colspan="2">P A D R E</th><th colspan="3">M A D R E</th></tr>'+
+          '<tr><th></th><th>Nombre</th><th>RGN</th><th>Sexo</th><th>Color</th><th>Fecha Nac.</th><th>Peso</th><th>(uso interno)</th><th>Nombre</th><th>RGD</th><th>Recp</th><th>RGN</th><th>RGD · CDS(IA/MN/TE/FIV)</th></tr>';
+        var body=chunk.map(function(r,i){ return '<tr><td>'+(i+1)+'</td>'+r.slice(0,6).map(function(v){return '<td>'+esc(v)+'</td>';}).join('')+'<td></td>'+r.slice(6,8).map(function(v){return '<td>'+esc(v)+'</td>';}).join('')+'<td>'+esc(r[8])+'</td><td>'+esc(r[9])+'</td><td>'+esc(r[10])+' · '+esc(r[11])+'</td></tr>'; }).join('');
+        xlsDl('PLANILLA_CDN_'+ev.ini+'_'+ev.fin+(pg?'_p'+(pg+1):'')+'.xls', cabTop('COMUNICACIÓN DE NACIMIENTO','CDN')+'<table>'+h+body+'</table>'+pie());
+      }
+      tst('Planilla(s) CDN generadas — abrir en Excel y revisar antes de presentar','success');
+    } else if(tipo==='ia'||tipo==='mn'){
+      var d=asoDataSrv(ev), grupos=(tipo==='ia'?d.ia:d.mn);
+      if(!grupos.length){ tst('Sin servicios '+tipo.toUpperCase()+' en el período','info'); return; }
+      grupos.forEach(function(gr,gi){
+        var intro = tipo==='ia'
+          ? '<p>Comunico que durante el mes de <b>'+esc(gr.mes)+'</b> del <b>'+esc(gr.anio)+'</b>, fueron inseminadas con semen del reproductor <b>'+esc(gr.reproductor)+'</b> — RGD: <b>'+esc(gr.rgd)+'</b> · OR: ____, las vacas abajo mencionadas:</p>'
+          : '<p>Comunico que a partir del <b>'+fD(gr.desde)+'</b> fueron colocadas para servicio las vacas abajo mencionadas, hasta el <b>'+fD(gr.hasta)+'</b>.</p>';
+        var filas=pad(gr.filas.map(function(f){ return [f.rgn,f.rgd,(f.or_pais!=null?f.or_pais:''),fD(f.fecha),f.obs]; }),20,5);
+        var h='<tr><th>Nº</th><th>'+(tipo==='ia'?'MATRIZ RGN':'SERIE/CÓDIGO RGN')+'</th><th>RGD</th><th>OR</th><th>'+(tipo==='ia'?'FECHA IA':'DÍA/MES')+'</th><th>OBSERVACIÓN</th></tr>';
+        var body=filas.map(function(r,i){ return '<tr><td>'+(i+1)+'</td>'+r.map(function(v){return '<td>'+esc(v)+'</td>';}).join('')+'</tr>'; }).join('');
+        var pieToro = tipo==='mn' ? '<p class="lbl">Para ser cubiertas por el Toro: <b>'+esc(gr.toro)+'</b> — RGD: <b>'+esc(gr.rgd)+'</b></p>' : '';
+        xlsDl('PLANILLA_CDS_'+tipo.toUpperCase()+'_'+ev.ini+'_'+ev.fin+'_'+(gi+1)+'.xls', cabTop('COMUNICACIÓN DE SERVICIO', tipo==='ia'?'INSEMINACIÓN ARTIFICIAL':'MONTA NATURAL')+intro+'<table>'+h+body+'</table>'+pieToro+pie());
+      });
+      tst(grupos.length+' planilla(s) '+tipo.toUpperCase()+' generadas (una por reproductor)','success');
+    } else if(tipo==='cdm'){
+      var rc=asoDataCDM(ev);
+      if(!rc.length){ tst('Sin bajas en el período','info'); return; }
+      for(var pgc=0; pgc*20<rc.length; pgc++){
+        var chc=pad(rc.slice(pgc*20,(pgc+1)*20).map(function(r){ return [r.animal_id,r.rgn,r.rgd,r.nombre,fD(r.fecha),r.causa,r.lote]; }),20,7);
+        var hc='<tr><th>Nº</th><th>Serie/Código</th><th>RGN</th><th>RGD</th><th>Nombre</th><th>Fecha muerte</th><th>Causa</th><th>Lote</th></tr>';
+        var bc=chc.map(function(r,i){ return '<tr><td>'+(i+1)+'</td>'+r.map(function(v){return '<td>'+esc(v)+'</td>';}).join('')+'</tr>'; }).join('');
+        xlsDl('PLANILLA_CDM_'+ev.ini+'_'+ev.fin+(pgc?'_p'+(pgc+1):'')+'.xls',
+          cabTop('COMUNICACIÓN DE MUERTE','CDM — formato provisional (validar con ASOCEBU)')+'<table>'+hc+bc+'</table>'+pie());
+      }
+      tst('Planilla(s) CDM generadas — Art. 115: presentar hasta fin del mes siguiente','success');
+    } else if(tipo==='adt'){
+      var ra=asoDataADT(ev);
+      if(!ra.length){ tst('Sin ventas de animales registrados en el período','info'); return; }
+      for(var pga=0; pga*20<ra.length; pga++){
+        var cha=pad(ra.slice(pga*20,(pga+1)*20).map(function(r){ return [r.animal_id,r.rgn,r.rgd,r.nombre,fD(r.fecha),r.adquirente,r.factura]; }),20,7);
+        var ha='<tr><th>Nº</th><th>Serie/Código</th><th>RGN</th><th>RGD</th><th>Nombre</th><th>Fecha</th><th>Adquirente</th><th>Factura</th></tr>';
+        var ba=cha.map(function(r,i){ return '<tr><td>'+(i+1)+'</td>'+r.map(function(v){return '<td>'+esc(v)+'</td>';}).join('')+'</tr>'; }).join('');
+        xlsDl('PLANILLA_ADT_'+ev.ini+'_'+ev.fin+(pga?'_p'+(pga+1):'')+'.xls',
+          cabTop('AUTORIZACIÓN DE TRANSFERENCIA','ADT — formato provisional (validar con ASOCEBU) · los certificados acompañan la comunicación (Art. 120)')+'<table>'+ha+ba+'</table>'+pie());
+      }
+      tst('Planilla(s) ADT generadas','success');
+    } else if(tipo==='fiv'){
+      var rt=asoDataTE(ev);
+      if(!rt.length){ tst('Sin TE/FIV en el período','info'); return; }
+      var h1='<tr><th>AC</th><th colspan="2">REPRODUCTOR (Toro · RGD)</th><th>DOSIS USADAS</th><th colspan="2">DONADORA (Vaca · RGD)</th><th>EMB. CONGELADOS TRANSF.</th><th>EMB. VIABLES</th><th>STOCK A TRANSFERIR</th></tr>';
+      var b1=pad(rt.map(function(r){ return [r.ac,r.toro,r.toro_rgd,r.dosis,r.donadora,r.donadora_rgd,r.emb_cong,r.emb_viables,r.emb_stock]; }),10,9)
+        .map(function(r,i){ return '<tr><td>'+esc(r[0]||(i+1))+'</td>'+r.slice(1).map(function(v){return '<td>'+esc(v)+'</td>';}).join('')+'</tr>'; }).join('');
+      var h2='<tr><th>AC</th><th>RECEPTORA</th><th>FECHA IMPLANTE</th><th>ESTADO</th></tr>';
+      var b2=rt.map(function(r){ return '<tr><td>'+esc(r.ac)+'</td><td>'+esc(r.receptora)+'</td><td>'+fD(r.fecha_impl)+'</td><td>'+esc(r.estado)+'</td></tr>'; }).join('');
+      var fechas='<p class="lbl">FECHA DE ASPIRACIÓN DE OVOCITOS (OPU): '+(rt[0].fecha_opu?fD(rt[0].fecha_opu):'____/____/____')+' · FECHA DE FIV: '+(rt[0].fecha_fiv?fD(rt[0].fecha_fiv):'____/____/____')+'</p>';
+      var vet='<br><p class="lbl">NOMBRE DEL TÉCNICO: '+esc(rt[0].vet||'____________________')+' · FIRMA MÉDICO VETERINARIO: ______________ <i>(el documento solo tiene validez con la firma)</i></p>';
+      xlsDl('FORMULARIO_FIV_'+ev.ini+'_'+ev.fin+'.xls', cabTop('FORMULARIO DE FIV / TRANSFERENCIA DE EMBRIONES','')+fechas+'<table>'+h1+b1+'</table><br><p class="lbl">RECEPTORAS (acasalamiento identificado = columna AC obligatoria)</p><table>'+h2+b2+'</table>'+vet+pie());
+      tst('Formulario FIV generado','success');
+    }
+  };
+
+  // ── Fase D2: plazos RGNRC (Art. 72/95: vencen el último día del mes siguiente) ──
+  window.asoPlazosRender = function(){
+    var el=$a('cb2-plazos'); if(!el) return;
+    if(off()){ el.innerHTML=''; return; }
+    var hoyS=hoy(), Y=parseInt(hoyS.slice(0,4),10), M=parseInt(hoyS.slice(5,7),10);
+    var prevIni=(M===1?(Y-1)+'-12':Y+'-'+String(M-1).padStart(2,'0'))+'-01';
+    var prevFin=(M===1?(Y-1)+'-12-31':Y+'-'+String(M-1).padStart(2,'0')+'-31');
+    var finMes=new Date(Y, M, 0).getDate();
+    var quedan=finMes-parseInt(hoyS.slice(8,10),10);
+    var srv=((dbOk()&&db.reproductive_services)||[]).filter(function(s){ return s.date&&s.date>=prevIni&&s.date<=prevFin&&(s.tipo_servicio==='MN'||s.tipo_servicio==='monta'||s.tipo_servicio==='IA'); }).length;
+    var par=((dbOk()&&db.partos)||[]).filter(function(p){ return p.date&&p.date>=prevIni&&p.date<=prevFin; }).length;
+    var muertes=((dbOk()&&db.bajas)||[]).filter(function(x){ var f=x.fecha||x.date; return f&&f>=prevIni&&f<=prevFin; }).length;
+    var teTarde=arr('repro_te').filter(function(t){ if(!t.fecha) return false; var d=dias(t.fecha,hoyS); return d!=null&&d>=10&&d<=15&&t.estado==='transferido'; }).length;
+    if(!srv&&!par&&!teTarde){ el.innerHTML=''; return; }
+    var color=quedan<=5?'var(--red)':'var(--amber2)';
+    el.innerHTML='<div style="border:1px solid '+color+';border-radius:8px;padding:8px 12px;font-size:12px;margin-top:10px">'+
+      '⏰ <b>Plazos RGNRC:</b> las comunicaciones del mes pasado vencen a fin de mes (quedan <b style="color:'+color+'">'+quedan+' días</b>). Pendientes de ese mes: '+
+      '<b>'+srv+'</b> servicios · <b>'+par+'</b> nacimientos · <b>'+muertes+'</b> muertes (CDM)'+(teTarde?(' · <b style="color:var(--red)">'+teTarde+' TE cerca del límite de 15 días</b>'):'')+
+      '. Exportá y presentá las planillas de arriba.</div>';
+  };
+
+  // ── Fase E: CDP pesos padrón 205/365/550 (PC = P ± G×N) ──
+  window.asoCDPcalc = function(){
+    var partos=(dbOk()&&db.partos)||[], pes=(dbOk()&&db.pesajes)||[];
+    var EDADES=[{d:205,lo:155,hi:255},{d:365,lo:315,hi:415},{d:550,lo:500,hi:600}];
+    var out=[];
+    partos.forEach(function(p){
+      if(!p.cria_id||!p.date) return;
+      var mios=pes.filter(function(w){ return String(w.animal_id||'')===String(p.cria_id)&&w.date&&(w.peso!=null); })
+        .map(function(w){ return { edad:dias(p.date,w.date), peso:Number(w.peso) }; })
+        .filter(function(w){ return w.edad!=null&&w.edad>=0; })
+        .sort(function(a,b){ return a.edad-b.edad; });
+      if(!mios.length) return;
+      var fila={ animal:p.cria_id, nac:p.date, peso_nac:(p.peso!=null?Number(p.peso):null), pesajes:mios.length };
+      EDADES.forEach(function(E){
+        var enVentana=mios.filter(function(w){ return w.edad>=E.lo&&w.edad<=E.hi; });
+        if(!enVentana.length){ fila['p'+E.d]=null; return; }
+        var base=enVentana.reduce(function(best,w){ return Math.abs(w.edad-E.d)<Math.abs(best.edad-E.d)?w:best; },enVentana[0]);
+        var antes=null, despues=null;
+        mios.forEach(function(w){ if(w.edad<E.d&&(!antes||w.edad>antes.edad)) antes=w; if(w.edad>=E.d&&(!despues||w.edad<despues.edad)) despues=w; });
+        var G=null;
+        if(antes&&despues&&despues.edad!==antes.edad) G=(despues.peso-antes.peso)/(despues.edad-antes.edad);
+        var pc;
+        if(G!=null) pc=base.peso+G*(E.d-base.edad);
+        else pc=base.peso; // sin par de pesajes alrededor: PC = peso base (mejor aproximación disponible)
+        fila['p'+E.d]=Math.round(pc*10)/10;
+        if(fila.peso_nac!=null) fila['gpd'+E.d]=Math.round((pc-fila.peso_nac)/E.d*1000)/1000;
+      });
+      if(fila.p205!=null&&fila.p365!=null) fila.gmd365=Math.round((fila.p365-fila.p205)/160*1000)/1000;
+      if(fila.p365!=null&&fila.p550!=null) fila.gmd550=Math.round((fila.p550-fila.p365)/185*1000)/1000;
+      if(fila.p205!=null||fila.p365!=null||fila.p550!=null) out.push(fila);
+    });
+    return out;
+  };
+  window.asoCDPExport = function(){
+    if(off()){ tst('CDP apagado (__ASOCEBU_OFF)','info'); return; }
+    var rows=asoCDPcalc();
+    if(!rows.length){ tst('Sin crías con pesajes en ventanas CDP (205±50 / 365±50 / 550±50 días)','info'); return; }
+    /* A2-4: plausibilidad con rangos oficiales ABCZ (205: 100-250 kg · 365: 180-400 · 550: 200-500) */
+    var RANGOS={p205:[100,250],p365:[180,400],p550:[200,500]};
+    var fueraRango=0;
+    rows.forEach(function(r){
+      var obs=[];
+      Object.keys(RANGOS).forEach(function(k){ if(r[k]!=null && (r[k]<RANGOS[k][0]||r[k]>RANGOS[k][1])) obs.push(k.toUpperCase()+' fuera de rango ('+RANGOS[k][0]+'-'+RANGOS[k][1]+')'); });
+      r._obs=obs.join(' · '); if(obs.length) fueraRango++;
+    });
+    if(fueraRango) tst('⚠ '+fueraRango+' animal(es) con peso padrón fuera del rango plausible ABCZ — revisar antes de presentar','info');
+    csvDl('asocebu_cdp_pesos_padron_'+hoy()+'.csv',
+      ['animal','nacimiento','peso_nacer','pesajes','P205','GPD205','P365','GPD365','GMD205-365','P550','GPD550','GMD365-550','observacion_plausibilidad'],
+      rows.map(function(r){ return [r.animal,r.nac,(r.peso_nac!=null?r.peso_nac:''),r.pesajes,(r.p205!=null?r.p205:''),(r.gpd205!=null?r.gpd205:''),(r.p365!=null?r.p365:''),(r.gpd365!=null?r.gpd365:''),(r.gmd365!=null?r.gmd365:''),(r.p550!=null?r.p550:''),(r.gpd550!=null?r.gpd550:''),(r.gmd550!=null?r.gmd550:''),r._obs||'']; }));
+    tst('CDP exportado: '+rows.length+' animales con pesos padrón (fórmula PC = P ± G×N)','success');
+  };
+
+  // ── A2b: cards de Cabaña COLAPSABLES (patrón Config: por visita, default plegado) ──
+  var _asoClpsSt = {};
+  function asoColapsables(){
+    if (off()) return;
+    var tab = document.getElementById('repro-tab-cabana'); if (!tab) return;
+    var st = document.getElementById('aso-clps-css');
+    if (!st){
+      st = document.createElement('style'); st.id = 'aso-clps-css';
+      st.textContent = '#repro-tab-cabana .card.aso-clps .card-body > *:not(.card-title){display:none!important}' +
+        '#repro-tab-cabana .card .card-title{cursor:pointer;user-select:none}' +
+        '#repro-tab-cabana .aso-clps-ch{float:right;color:var(--muted);font-size:13px;transition:transform .18s}' +
+        '#repro-tab-cabana .card:not(.aso-clps) .aso-clps-ch{transform:rotate(90deg)}';
+      (document.head||document.documentElement).appendChild(st);
+    }
+    tab.querySelectorAll('.card').forEach(function(card){
+      var tt = card.querySelector('.card-title'); if (!tt) return;
+      if (!card.classList.contains('aso-clps-ready')){
+        card.classList.add('aso-clps-ready');
+        tt.title = 'Click para plegar/desplegar';
+        var ch = document.createElement('span'); ch.className='aso-clps-ch'; ch.textContent='▸';
+        tt.appendChild(ch);
+        tt.addEventListener('click', function(ev){
+          if (ev.target.closest && ev.target.closest('button,select,input,a,textarea,label')) return;
+          var abierto = !card.classList.contains('aso-clps');
+          card.classList.toggle('aso-clps', abierto);
+          _asoClpsSt[tt.textContent.slice(0,30)] = abierto;
+        });
+      }
+      var k = tt.textContent.slice(0,30);
+      var plegada = (k in _asoClpsSt) ? !!_asoClpsSt[k] : true;
+      card.classList.toggle('aso-clps', plegada);
+    });
+  }
+  window.asoColapsables = asoColapsables;
+  document.addEventListener('click', function(ev){
+    var nav = ev.target.closest ? ev.target.closest('.nav-btn') : null;
+    if (nav) _asoClpsSt = {};
+  });
+
+  // ── hook post-render (lo invoca cab2Render vía el puente) ──
+  window.asoAfterRender = function(){
+    try { asoFillCriador(); } catch(e){}
+    try { asoPlazosRender(); } catch(e2){}
+    try { asoColapsables(); } catch(e3){}
+    var blk=$a('aso-criador-blk'); if(blk) blk.style.display=off()?'none':'';
+    var pls=$a('cb2-planillas'); if(pls) pls.style.display=off()?'none':'';
+  };
+})();
+
+</script>
+
+<script id="del-real-v18129">
+/* ═══ v1.8.129 BORRADO REAL (server v4.29+) ═══
+   Los X de tablas append ahora llaman DELETE /api/registro/:tabla/:id (atómico,
+   con tombstone server-side) además del borrado local. Antes solo borraban local
+   y el merge v4.27 los resucitaba desde el server ("registros inmortales").
+   + Cola offline con reintento. + El pull aplica tombstones del server a las
+   tablas append locales. + Dedupe local por id al arranque (espejo del server).
+   Kill switch: window.__DELREAL_OFF = true */
+(function(){
+'use strict';
+var off = function(){ return window.__DELREAL_OFF === true; };
+var TABLAS_SRV = {agua:1,sal:1,conteo:1,partos:1,alimento:1,purchases:1,advances:1,maintenance:1,diesel:1,lluvias:1,pesajes:1,bajas:1,treatments:1,sales:1,rotation_history:1,animal_movements:1,pasture_evals:1,agro_labores:1,vet_products:1};
+var QKEY='e5m_del_queue';
+function qGet(){ try { return JSON.parse(localStorage.getItem(QKEY)||'[]'); } catch(e){ return []; } }
+function qSet(a){ try { localStorage.setItem(QKEY, JSON.stringify(a.slice(-200))); } catch(e){} }
+function urlBase(){ return (typeof getApiUrl==='function') ? getApiUrl() : (localStorage.getItem('e5m_api_url')||'https://estancia5m-api-production.up.railway.app/api'); }
+
+window.e5mDelRegistroSrv = function(tabla, id){
+  if (off() || !TABLAS_SRV[tabla] || id==null) return;
+  var token = localStorage.getItem('e5m_api_token')||'';
+  if (!token) return;
+  fetch(urlBase()+'/registro/'+encodeURIComponent(tabla)+'/'+encodeURIComponent(String(id)), {
+    method:'DELETE', headers:{ 'Authorization':'Bearer '+token, 'X-App-Type':'desktop', 'X-App-Version':(window.__E5M_BUILD||'1.8.129') }
+  }).then(function(r){
+    if (r.ok) { console.log('[del-real] '+tabla+':'+id+' borrado en server (tombstone)'); return; }
+    if (r.status===400) { console.warn('[del-real] '+tabla+' no permitida en server — descartado'); return; }
+    throw new Error('HTTP '+r.status);
+  }).catch(function(e){
+    var q=qGet(); q.push({t:tabla,i:String(id),ts:Date.now()}); qSet(q);
+    console.warn('[del-real] '+tabla+':'+id+' encolado para reintento ('+(e&&e.message)+') — cola:'+q.length);
+  });
+};
+
+window.e5mDelQueueFlush = function(){
+  if (off()) return;
+  var q=qGet(); if(!q.length) return;
+  var token=localStorage.getItem('e5m_api_token')||''; if(!token) return;
+  console.log('[del-real] reintentando '+q.length+' borrado(s) pendientes');
+  var resto=[];
+  var next=function(idx){
+    if(idx>=q.length){ qSet(resto); return; }
+    var it=q[idx];
+    fetch(urlBase()+'/registro/'+encodeURIComponent(it.t)+'/'+encodeURIComponent(it.i), {
+      method:'DELETE', headers:{ 'Authorization':'Bearer '+token, 'X-App-Type':'desktop' }
+    }).then(function(r){ if(!r.ok && r.status!==400) resto.push(it); next(idx+1); })
+      .catch(function(){ resto.push(it); next(idx+1); });
+  };
+  next(0);
+};
+setTimeout(window.e5mDelQueueFlush, 7000);
+setInterval(window.e5mDelQueueFlush, 5*60*1000);
+window.addEventListener('online', function(){ setTimeout(window.e5mDelQueueFlush, 2000); });
+
+/* pull: aplicar tombstones del server a tablas append locales (mata fantasmas de otros clientes) */
+window.e5mTombstonesPull = function(remote){
+  if (off() || !remote) return;
+  var dmap = remote._deleted_ids || remote.deleted_ids || {};
+  if (!dmap || typeof dmap!=='object') return;
+  var cambios=0;
+  Object.keys(TABLAS_SRV).forEach(function(t){
+    var local = (t==='vet_products') ? (db&&db.products) : (db&&db[t]);
+    if (!Array.isArray(local) || !local.length) return;
+    var srvT = t;
+    var filtrado = local.filter(function(r){ return !(r && r.id!=null && dmap[srvT+':'+String(r.id)]); });
+    if (filtrado.length !== local.length) {
+      cambios += (local.length - filtrado.length);
+      if (t==='vet_products') db.products = filtrado; else db[t] = filtrado;
+    }
+  });
+  if (cambios) { console.log('[del-real] pull aplicó '+cambios+' tombstone(s) del server'); try{ saveDB(); }catch(e){} }
+};
+
+/* dedupe local por id (espejo del server v4.29): gana updated_at/created_at más nuevo */
+window.e5mDedupeLocal = function(){
+  if (off() || typeof db==='undefined' || !db) return 0;
+  var total=0;
+  var ts=function(x){ var t=new Date((x&&(x.updated_at||x.created_at))||0).getTime(); return isFinite(t)?t:0; };
+  Object.keys(TABLAS_SRV).forEach(function(t){
+    var arr = (t==='vet_products') ? db.products : db[t];
+    if (!Array.isArray(arr) || arr.length<2) return;
+    var by={}, orden=[], dups=0;
+    arr.forEach(function(r){
+      if (!r || r.id==null) { orden.push({k:null,r:r}); return; }
+      var k=String(r.id);
+      if (by[k]===undefined) { by[k]=orden.length; orden.push({k:k,r:r}); }
+      else { dups++; if (ts(r)>=ts(orden[by[k]].r)) orden[by[k]].r=r; }
+    });
+    if (dups) {
+      var limpio=orden.map(function(o){return o.r;});
+      if (t==='vet_products') db.products=limpio; else db[t]=limpio;
+      total+=dups;
+      console.log('[del-real] dedupe local '+t+': '+dups+' duplicado(s) de id fusionados');
+    }
+  });
+  if (total) { try{ saveDB(); }catch(e){} }
+  return total;
+};
+setTimeout(function(){ try{ window.e5mDedupeLocal(); }catch(e){} }, 6000);
+
+/* wraps: llamar al server DESPUÉS de que el handler original borró de verdad
+   (si el usuario canceló el confirm, la tabla no cambió y no se llama) */
+function wrapDel(fnName, tablaLocal, tablaSrv, idArg){
+  var o = window[fnName];
+  if (typeof o!=='function' || o.__v129) return;
+  var w = function(){
+    var args = arguments;
+    var tl = (typeof tablaLocal==='function') ? tablaLocal.apply(null,args) : tablaLocal;
+    var tsv = (typeof tablaSrv==='function') ? tablaSrv.apply(null,args) : tablaSrv;
+    var arr = (db && db[tl]) || [];
+    var antes = arr.length;
+    var ret = o.apply(this, args);
+    try {
+      var despues = ((db && db[tl]) || []).length;
+      if (despues < antes) window.e5mDelRegistroSrv(tsv, args[idArg||0]);
+    } catch(e){}
+    return ret;
+  };
+  w.__v129 = true;
+  window[fnName] = w;
+}
+function instalar(){
+  wrapDel('deleteSubmodule', function(id,type){return type;}, function(id,type){return type;}, 0);
+  wrapDel('deletePurchase','purchases','purchases',0);
+  wrapDel('deleteAdvance','advances','advances',0);
+  wrapDel('deleteMaint','maintenance','maintenance',0);
+  wrapDel('deleteDiesel','diesel','diesel',0);
+  wrapDel('deleteLluvia','lluvias','lluvias',0);
+  wrapDel('deletePesaje','pesajes','pesajes',0);
+  wrapDel('deleteBaja','bajas','bajas',0);
+  wrapDel('deleteTreatment','treatments','treatments',0);
+  wrapDel('deleteSale','sales','sales',0);
+  wrapDel('deleteProduct','products','vet_products',0);
+}
+if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', instalar); else instalar();
+setTimeout(instalar, 3000); /* por si algún handler se define tarde */
+})();
+</script>
+<script>window.__E5M_BUILD='1.8.129 build 20260717-1610 (borrado-real v4.29)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
 </body>
 </html>
