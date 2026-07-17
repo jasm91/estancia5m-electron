@@ -11509,6 +11509,15 @@ function saveSale() {
   }
 
   var sale={id:db.next_ids.sale++,lot_code:lot_code,buyer:buyer,type:(document.getElementById('sale-type')||{}).value||'frigorifico',price_per_kg:price,date:date,invoice:(document.getElementById('sale-invoice')||{}).value||'',trace_req:(document.getElementById('sale-trace')||{}).checked||false,notes:'',scope:scope,discount_pct:discountPct,created_at:new Date().toISOString()};
+  /* v1.8.131: congelar el ORIGEN de cada animal vendido (nota de marcaje del kardex)
+     ANTES de sacarlos — permite atribución exacta por proveedor en el reporte */
+  try {
+    if (scope==='individual' && Array.isArray(_saleSelectedAnimals) && _saleSelectedAnimals.length && typeof _rpKardexOrigen==='function') {
+      var _kxs = _rpKardexOrigen(); sale.animal_origins = {};
+      _saleSelectedAnimals.forEach(function(aid){ var inf = _kxs.porAnimal[String(aid).toLowerCase()]; if (inf && inf.origen && inf.origen !== '(sin origen)') sale.animal_origins[String(aid)] = inf.origen; });
+      if (!Object.keys(sale.animal_origins).length) delete sale.animal_origins;
+    }
+  } catch(eOrig){}
   var saleLot = isMultiLot ? null : db.lots.find(function(l){return l.code===lot_code;});
   var animalesDB=getAnimalesDB();
 
@@ -23354,9 +23363,34 @@ function exportKardexEstancia() {
 // Solo cuenta ciclos CERRADOS (lotes vendidos); las cabezas aún en engorde se muestran como dato aparte.
 // ============================================================
 
+// v1.8.131: composición REAL del kardex por lote y por animal (nota "Marcaje desde CUAR-X").
+// Es la verdad física: quién está vivo, en qué lote, y de qué compra vino.
+function _rpKardexOrigen() {
+  var porLote = {}, porAnimal = {};
+  var adb = (typeof getAnimalesDB === 'function') ? (getAnimalesDB() || {}) : {};
+  Object.keys(adb).forEach(function(code){
+    (adb[code] || []).forEach(function(a){
+      if (!a) return;
+      var origen = '';
+      (a.pesajes || []).forEach(function(pj){
+        var nm = String((pj && pj.nota) || '').match(/Marcaje desde\s+(.+)/i);
+        if (nm && !origen) origen = nm[1].trim();
+      });
+      if (!porLote[code]) porLote[code] = { total: 0, porOrigen: {} };
+      porLote[code].total++;
+      var ko = origen ? origen.toUpperCase() : '(sin origen)';
+      porLote[code].porOrigen[ko] = (porLote[code].porOrigen[ko] || 0) + 1;
+      var aid = String(a.animal_id || a.id || '');
+      if (aid) porAnimal[aid.toLowerCase()] = { lote: code, origen: ko };
+    });
+  });
+  return { porLote: porLote, porAnimal: porAnimal };
+}
+
 function _rpBuildData() {
   var compras = db.compras_ganado || [];
   var ventas = db.sales || [];
+  var _kx = (typeof _rpKardexOrigen === 'function') ? _rpKardexOrigen() : { porLote: {}, porAnimal: {} }; /* v1.8.131 */
 
   // Agrupar por proveedor
   var porProv = {};
@@ -23408,9 +23442,17 @@ function _rpBuildData() {
     return found || c;
   }
 
+  // v1.8.131: mapa "código de compra/cuarentena" → proveedor (para leer el kardex real)
+  var _provPorOrigen = {};
+  compras.forEach(function(c){
+    var prov0 = (c.proveedor || c.cuarentena_origen || '').trim() || '(sin proveedor)';
+    if (c.lot_code) _provPorOrigen[String(c.lot_code).trim().toUpperCase()] = prov0;
+  });
+
   var aportesPorLote = {}; // code -> total cabs aportadas, y por proveedor
   Object.keys(porProv).forEach(function(prov){
     porProv[prov].compras.forEach(function(c){
+      if (Array.isArray(c.animales) && c.animales.length) return; /* v1.8.131: compras NOMINALES (animales con nombre, ej. cabaña) van por presencia real, no por prorrateo de lote */
       var cabs = parseInt(c.animal_count || c.cabezas || 0) || 0;
       if (cabs <= 0) return;
       // destinos de esta compra: lot_code y lote_destinos (normalizados al nombre real)
@@ -23459,22 +23501,32 @@ function _rpBuildData() {
     p.cabsVendidas = 0; p.kgVendidos = 0; p.ingresoVenta = 0; p.cabsEnEngorde = 0;
   });
 
+  // v1.8.131: ventas con origen congelado al vender → atribución EXACTA por animal;
+  // se excluyen del prorrateo por lote para no contarlas dos veces.
+  var _ventasExactas = ventas.filter(function(v){ return v && v.animal_origins && Object.keys(v.animal_origins).length; });
+  var _ventasProrrateo = ventas.filter(function(v){ return !(v && v.animal_origins && Object.keys(v.animal_origins).length); });
+
   (db.lots || []).forEach(function(lot){
     if (!lot.code) return;
     var fracMap = fraccionLoteProv[lot.code];
-    if (!fracMap) return; // este lote no proviene de ninguna compra rastreable
     var st = String(lot.status || '').toLowerCase();
     var esVendido = (st === 'vendido' || st === 'sold');
     var esVivo = (st !== 'fusionado' && st !== 'merged' && st !== 'marcado' && st !== 'marcado_completo' && st !== 'inactivo' && !esVendido);
 
+    // v1.8.131: composición REAL del kardex (nota "Marcaje desde CUAR-X") — verdad física,
+    // independiente del linaje por nombre (que se rompe al reusar nombres de tropa entre años).
+    var _comp = _kx.porLote[lot.code];
+    var _conOrigen = _comp ? (_comp.total - (_comp.porOrigen['(sin origen)'] || 0)) : 0;
+    var _usaKardex = _comp && _comp.total > 0 && (_conOrigen / _comp.total) >= 0.6;
+
     if (esVendido) {
+      if (!fracMap) return; // lote vendido sin linaje rastreable
       // sumar ventas del lote (totales) una sola vez
       var lotCabs = 0, lotKg = 0, lotIngreso = 0;
-      ventas.forEach(function(v){
+      _ventasProrrateo.forEach(function(v){
         var a = (typeof _ahAtribuirVentaALote === 'function') ? _ahAtribuirVentaALote(v, lot.code) : null;
         if (a && a.cabs > 0) { lotCabs += a.cabs; lotKg += a.kg; lotIngreso += a.ingreso; }
       });
-      // repartir entre proveedores según su fracción
       Object.keys(fracMap).forEach(function(prov){
         if (!porProv[prov]) return;
         var f = fracMap[prov];
@@ -23482,13 +23534,64 @@ function _rpBuildData() {
         porProv[prov].kgVendidos   += lotKg * f;
         porProv[prov].ingresoVenta += lotIngreso * f;
       });
-    } else if (esVivo) {
+    } else if (esVivo && _usaKardex) {
+      // atribución por origen real del kardex (NO depende de fracMap → cubre enfermería/movidos)
+      Object.keys(_comp.porOrigen).forEach(function(orig){
+        if (orig === '(sin origen)') return;
+        var prov2 = _provPorOrigen[orig];
+        if (prov2 && porProv[prov2]) porProv[prov2].cabsEnEngorde += _comp.porOrigen[orig];
+      });
+    } else if (esVivo && fracMap) {
+      // sin kardex utilizable → prorrateo por fracción de compra (comportamiento previo)
       var lotCabsVivas = parseInt(lot.animal_count || 0) || 0;
       Object.keys(fracMap).forEach(function(prov){
         if (!porProv[prov]) return;
         porProv[prov].cabsEnEngorde += lotCabsVivas * fracMap[prov];
       });
     }
+  });
+
+  // v1.8.131: atribución EXACTA de ventas con origen congelado
+  _ventasExactas.forEach(function(v){
+    var ids = Object.keys(v.animal_origins);
+    var nCab = (Array.isArray(v.animal_ids) && v.animal_ids.length) || ids.length;
+    var ingCab = nCab > 0 ? ((parseFloat(v.total || 0) || 0) / nCab) : 0;
+    var kgCab = nCab > 0 ? ((parseFloat(v.total_kg || v.kg || 0) || 0) / nCab) : 0;
+    ids.forEach(function(aid){
+      var prov2 = _provPorOrigen[String(v.animal_origins[aid]).trim().toUpperCase()];
+      if (prov2 && porProv[prov2]) {
+        porProv[prov2].cabsVendidas += 1;
+        porProv[prov2].ingresoVenta += ingCab;
+        porProv[prov2].kgVendidos += kgCab;
+      }
+    });
+  });
+
+  // v1.8.131: compras NOMINALES (cabaña) — presencia real: viva=en engorde,
+  // en una venta=vendida, en bajas=ninguna. Mata el falso "NELORÍ vendió 2".
+  var _ventaPorId = {};
+  ventas.forEach(function(v){
+    var ids = Array.isArray(v.animal_ids) ? v.animal_ids : [];
+    if (!ids.length) return;
+    var ing = (parseFloat(v.total || 0) || 0) / ids.length;
+    var kgv = (parseFloat(v.total_kg || v.kg || 0) || 0) / ids.length;
+    ids.forEach(function(aid){ _ventaPorId[String(aid).toLowerCase()] = { ing: ing, kg: kgv }; });
+  });
+  var _bajaIds = {};
+  (db.bajas || []).forEach(function(b){ if (b && b.animal_id != null) _bajaIds[String(b.animal_id).toLowerCase()] = true; });
+  Object.keys(porProv).forEach(function(prov){
+    var p = porProv[prov];
+    p.compras.forEach(function(c){
+      if (!(Array.isArray(c.animales) && c.animales.length)) return;
+      c.animales.forEach(function(an){
+        var aid = String((an && an.id) || '').toLowerCase();
+        if (!aid) return;
+        if (_kx.porAnimal[aid]) { p.cabsEnEngorde += 1; }
+        else if (_ventaPorId[aid]) { p.cabsVendidas += 1; p.ingresoVenta += _ventaPorId[aid].ing; p.kgVendidos += _ventaPorId[aid].kg; }
+        else if (_bajaIds[aid]) { /* baja: ni vendida ni en engorde */ }
+        /* sin rastro: conservador, no se atribuye venta */
+      });
+    });
   });
 
   // Paso 4: calcular costos y métricas derivadas por proveedor
@@ -25067,11 +25170,19 @@ function renderMaquinaria() {
 }
 
 function matchMaq(text, maq) {
+  // v1.8.131: igualdad EXACTA (normalizada), NO substring. Antes "t.includes(n)||n.includes(t)"
+  // cruzaba historiales: "Tractor" (vendida) ⊂ "TRACTOR TEST" (nueva) → arrastraba TODO. Bug real 17-07.
   if (!text || !maq) return false;
-  var t = (text||'').toLowerCase();
-  var n = (maq.nombre||'').toLowerCase();
-  var mod = (maq.modelo||'').toLowerCase();
-  return t === n || t === mod || t.includes(n) || n.includes(t) || (mod && (t.includes(mod) || mod.includes(t)));
+  var norm = function(x){ return String(x==null?'':x).trim().toLowerCase().replace(/\s+/g,' '); };
+  var t = norm(text), nn = norm(maq.nombre), mod = norm(maq.modelo);
+  return (nn && t === nn) || (mod && t === mod);
+}
+// v1.8.131: match por ID de equipo (los registros nuevos estampan maq_id → 100% inequívoco).
+// Cae al texto exacto solo si el registro es viejo (sin maq_id).
+function matchMaqRec(rec, maq, textFallback) {
+  if (!rec || !maq) return false;
+  if (rec.maq_id != null && maq.id != null) return String(rec.maq_id) === String(maq.id);
+  return matchMaq(textFallback, maq);
 }
 
 function getMaqList() { return db.maquinaria || []; }
@@ -25233,16 +25344,16 @@ function viewMaqHistorial(maqId) {
   var maint = db.maintenance || [];
 
   var items = [];
-  diesel.filter(function(d){return d.type==='despacho'&&matchMaq(d.vehiculo,maq);}).forEach(function(d){
+  diesel.filter(function(d){return d.type==='despacho'&&matchMaqRec(d,maq,d.vehiculo);}).forEach(function(d){
     items.push({date:d.created_at||d.fecha,icon:'⛽',color:'var(--amber2)',title:'Despacho: '+(parseFloat(d.litros)||0)+' L',sub:d.obs||''});
   });
   diesel.filter(function(d){return d.type==='recarga'&&matchMaq(d.proveedor,maq);}).forEach(function(d){
     items.push({date:d.created_at||d.fecha,icon:'🔄',color:'var(--green)',title:'Recarga: '+(parseFloat(d.litros)||0)+' L — Bs.'+(d.total||0),sub:d.proveedor||''});
   });
-  aceite.filter(function(a){return matchMaq(a.vehiculo||a.equipo,maq);}).forEach(function(a){
+  aceite.filter(function(a){return matchMaqRec(a,maq,a.vehiculo||a.equipo);}).forEach(function(a){
     items.push({date:a.created_at||a.fecha,icon:'🛢',color:'var(--blue)',title:'Cambio aceite'+(a.tipo?' — '+a.tipo:''),sub:(a.kmhr?a.kmhr+' hrs/km':'')+(a.costo?' Bs.'+a.costo:'')});
   });
-  maint.filter(function(r){return matchMaq(r.equipo||r.title||r.desc,maq);}).forEach(function(r){
+  maint.filter(function(r){return matchMaqRec(r,maq,(r.equipo||''));}).forEach(function(r){
     items.push({date:r.created_at||r.date,icon:'🔧',color:'var(--red)',title:(r.title||r.desc||'Mantenimiento'),sub:(r.cost?'Bs.'+r.cost:'')+(r.status?' — '+r.status:'')});
   });
   items.sort(function(a,b){return (b.date||'').localeCompare(a.date||'');});
@@ -25868,6 +25979,7 @@ function saveDiesel() {
     var _vOtro=document.getElementById('diesel-vehiculo-otro');
     rec.vehiculo=(_vOtro&&_vOtro.style.display!=='none')?(_vOtro.value||'').trim():((document.getElementById('diesel-vehiculo')||{}).value||'').trim();
     if(!rec.vehiculo){toast('Ingresa el vehiculo/equipo','error');return;}
+    try { var _mq=(db.maquinaria||[]).find(function(m){return matchMaq(rec.vehiculo,m);}); if(_mq) rec.maq_id=_mq.id; } catch(e){} /* v1.8.131: link inequívoco */
     tank.current_level=Math.round((tank.current_level-litros)*10)/10;
     if(tank.current_level<0) tank.current_level=0;
   }
@@ -25996,6 +26108,7 @@ function saveAceite() {
   if(!db.aceite) db.aceite=[];
   if(!db.inventory_counts) db.inventory_counts=[];
   var rec = {id:Date.now(),fecha:fecha,vehiculo:vehiculo,kmhr:kmhr,tipo:tipo,costo:costo,obs:obs,by:'Desktop',created_at:new Date().toISOString()};
+  try { var _mqA=(db.maquinaria||[]).find(function(m){return matchMaq(vehiculo,m);}); if(_mqA) rec.maq_id=_mqA.id; } catch(e){} /* v1.8.131 */
   if (stockInfo) {
     rec.stock_product_id = stockInfo.product_id;
     rec.stock_product = stockInfo.product_name;
@@ -45661,6 +45774,6 @@ try {
 } catch(e) { console.warn('[tenant-fp] error no fatal:', e && e.message); }
 })();
 </script>
-<script>window.__E5M_BUILD='1.8.130 build 20260717-1700 (borrado-real + huella tenant)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
+<script>window.__E5M_BUILD='1.8.131 build 20260717-1930 (atribucion + maquinaria historial)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
 </body>
 </html>
