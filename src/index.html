@@ -25184,6 +25184,24 @@ function matchMaqRec(rec, maq, textFallback) {
   if (rec.maq_id != null && maq.id != null) return String(rec.maq_id) === String(maq.id);
   return matchMaq(textFallback, maq);
 }
+// v1.8.131b: PISO DE FECHA — un equipo no puede tener historial ANTERIOR a su ingreso a la
+// flota. Resuelve el caso "nombre viejo == modelo nuevo" (ej. máquina "Frontier" vendida vs
+// "Nissan Frontier" nueva con modelo "Frontier"): los registros de la vieja NO se cuelan en
+// la nueva. Solo aplica a registros SIN maq_id (los linkeados por id son inequívocos).
+function _maqFloorTs(maq) {
+  var d = (maq && (maq.fecha_compra || maq.compra_fecha || maq.fecha || maq.created_at)) || '';
+  var t = d ? new Date(d).getTime() : 0;
+  return isFinite(t) ? t : 0;
+}
+function matchMaqHist(rec, maq, textFallback) {
+  if (!matchMaqRec(rec, maq, textFallback)) return false;
+  if (rec && rec.maq_id != null) return true; // link explícito → sin piso de fecha
+  var floor = _maqFloorTs(maq);
+  if (!floor) return true; // el equipo no tiene fecha de ingreso → no podemos filtrar
+  var rd = (rec && (rec.created_at || rec.date || rec.fecha)) || '';
+  var rt = rd ? new Date(rd).getTime() : 0;
+  return !isFinite(rt) || rt === 0 || rt >= floor; // registro anterior al ingreso = de otro equipo
+}
 
 function getMaqList() { return db.maquinaria || []; }
 
@@ -25344,16 +25362,16 @@ function viewMaqHistorial(maqId) {
   var maint = db.maintenance || [];
 
   var items = [];
-  diesel.filter(function(d){return d.type==='despacho'&&matchMaqRec(d,maq,d.vehiculo);}).forEach(function(d){
+  diesel.filter(function(d){return d.type==='despacho'&&matchMaqHist(d,maq,d.vehiculo);}).forEach(function(d){
     items.push({date:d.created_at||d.fecha,icon:'⛽',color:'var(--amber2)',title:'Despacho: '+(parseFloat(d.litros)||0)+' L',sub:d.obs||''});
   });
   diesel.filter(function(d){return d.type==='recarga'&&matchMaq(d.proveedor,maq);}).forEach(function(d){
     items.push({date:d.created_at||d.fecha,icon:'🔄',color:'var(--green)',title:'Recarga: '+(parseFloat(d.litros)||0)+' L — Bs.'+(d.total||0),sub:d.proveedor||''});
   });
-  aceite.filter(function(a){return matchMaqRec(a,maq,a.vehiculo||a.equipo);}).forEach(function(a){
+  aceite.filter(function(a){return matchMaqHist(a,maq,a.vehiculo||a.equipo);}).forEach(function(a){
     items.push({date:a.created_at||a.fecha,icon:'🛢',color:'var(--blue)',title:'Cambio aceite'+(a.tipo?' — '+a.tipo:''),sub:(a.kmhr?a.kmhr+' hrs/km':'')+(a.costo?' Bs.'+a.costo:'')});
   });
-  maint.filter(function(r){return matchMaqRec(r,maq,(r.equipo||''));}).forEach(function(r){
+  maint.filter(function(r){return matchMaqHist(r,maq,(r.equipo||''));}).forEach(function(r){
     items.push({date:r.created_at||r.date,icon:'🔧',color:'var(--red)',title:(r.title||r.desc||'Mantenimiento'),sub:(r.cost?'Bs.'+r.cost:'')+(r.status?' — '+r.status:'')});
   });
   items.sort(function(a,b){return (b.date||'').localeCompare(a.date||'');});
@@ -45774,6 +45792,6 @@ try {
 } catch(e) { console.warn('[tenant-fp] error no fatal:', e && e.message); }
 })();
 </script>
-<script>window.__E5M_BUILD='1.8.131 build 20260717-1930 (atribucion + maquinaria historial)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
+<script>window.__E5M_BUILD='1.8.132 build 20260718-1105 (maquinaria historial: piso de fecha)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
 </body>
 </html>
