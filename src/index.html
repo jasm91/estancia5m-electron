@@ -34969,10 +34969,20 @@ function renderReporteCREA() {
   };
   // Distribuir db.purchases del periodo por categoría según subcuenta
   var purchByCat = { sanidad:0, combustible:0, personal:0, mantenimiento:0, alimento:0, admin:0, otros:0 };
+  var inversionMaquinaria = 0; // v1.8.134: CAPEX (compra de maquinaria/equipos) — NO es costo operativo del kg
   (db.purchases || []).forEach(function(p) {
     if ((p.date || '') < desdeStr) return;
-    var subKey = String(p.subcuenta || '').toLowerCase().trim();
-    var cat = sub2cat[subKey] || 'otros';
+    // v1.8.134: las compras de CAPITAL/INVERSIÓN (ej. camioneta, tractor) se amortizan en años,
+    // no son costo de producir el kilo de este año. Van a un bucket de inversión aparte
+    // (igual que la compra de ganado en inversionCompras) → salen del costo operativo del header.
+    var _cta = String(p.cuenta || '').toUpperCase().trim();
+    var _tg  = String(p.tipo_gasto || '').toUpperCase().trim();
+    var _sub = String(p.subcuenta || '').toLowerCase().trim();
+    if (p.type === 'maquinaria' || _cta === 'INVERSION' || _cta === 'INVERSIÓN' || _tg === 'CAPITAL' || _sub === 'maquinaria') {
+      inversionMaquinaria += (parseFloat(p.total) || 0);
+      return;
+    }
+    var cat = sub2cat[_sub] || 'otros';
     purchByCat[cat] += (parseFloat(p.total) || 0);
   });
 
@@ -35059,7 +35069,7 @@ function renderReporteCREA() {
   }).reduce(function(s, r) { return s + (parseFloat(r.monto) || 0); }, 0);
 
   var gastDirectos = gastSanidad + gastPersonal + gastAdelantos + gastDiesel + costoMermaDiesel + gastAceite + gastMaint + gastCompras + gastAlimento + mermaVet + gastManuales;
-  var gastTotales = gastDirectos + gastoAdmin + gastoEstructura + inversionCompras;
+  var gastTotales = gastDirectos + gastoAdmin + gastoEstructura + inversionCompras + inversionMaquinaria; /* v1.8.134: +CAPEX maquinaria en el total (no en el operativo) */
 
   // INDICADORES PRODUCTIVOS
   var prodCarne = ha > 0 ? Math.round(produccionCREA / ha * 10) / 10 : 0;
@@ -35104,6 +35114,7 @@ function renderReporteCREA() {
   // El topbar muestra Cabezas + Valor rodeo siempre, y Costo/kg desde acá.
   window._lastCREAKPIs = {
     costoOperativoKg: costoOperativoKg,
+    inversionMaquinaria: inversionMaquinaria,
     prodCarne: prodCarne,
     cargaAnimal: cargaAnimal,
     resultOp: resultOp,
@@ -45820,6 +45831,6 @@ try {
 } catch(e) { console.warn('[tenant-fp] error no fatal:', e && e.message); }
 })();
 </script>
-<script>window.__E5M_BUILD='1.8.133 build 20260718-1230 (anti-resurreccion animals/aceite/maq + nombre equipo)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
+<script>window.__E5M_BUILD='1.8.134 build 20260718-1330 (CAPEX maquinaria fuera del costo operativo)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
 </body>
 </html>
