@@ -506,7 +506,7 @@ function renderActividadLote() {
         (safeSub?'<div style="color:var(--muted);margin-top:2px">'+safeSub+'</div>':'')+
         '<div style="color:var(--muted);font-size:10px;margin-top:3px">'+
           ((r.lot||r.lote)?'<span style="color:var(--amber2);background:rgba(212,160,23,.08);padding:1px 6px;border-radius:3px;margin-right:6px">'+r.lot+'</span>':'')+
-          (function(){var src=r.by||r.empleado||'';var sc={Desktop:'#6366F1',Campo:'#22C55E',Auto:'#9CA3AF'};var c=sc[src]||(src.indexOf('WhatsApp')===0?'#25D366':'#9CA3AF');return src?'<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:'+c+';color:#fff;font-weight:600;margin-right:4px">'+escH(src)+'</span>':'';})()+ fmtDT(r.created_at||r.date||'')+
+          e5mOrigenBadge(r)+' '+ fmtDT(r.created_at||r.date||'')+
         '</div>'+
       '</div>';
     el.appendChild(row);
@@ -7913,6 +7913,17 @@ function pullFromRailwayDesktop(thenPush) {
           });
           merged[lc]=_out;
         });
+        // v1.8.133: filtrar animales tumbados (no revivir borrados desde el server ni otros equipos)
+        try {
+          var _delAnim = JSON.parse(localStorage.getItem('e5m_deleted_ids')||'{}');
+          var _remA=0;
+          Object.keys(merged).forEach(function(lc){
+            var arr=merged[lc]; if(!Array.isArray(arr)) return;
+            var keep=arr.filter(function(a){ var id=String((a&&(a.animal_id||a.id))||''); if(id && _delAnim['animal:'+id]){ _remA++; return false; } return true; });
+            if(keep.length!==arr.length) merged[lc]=keep;
+          });
+          if(_remA) console.log('[Sync] '+_remA+' animal(es) tumbado(s) filtrados del merge (anti-resurrección)');
+        } catch(eDA){}
         localStorage.setItem('e5m_animals', JSON.stringify(merged));
         var totalMerged = Object.values(merged).reduce(function(s, a){ return s + (a ? a.length : 0); }, 0);
         console.log('[Sync] Animals OK: ' + Object.keys(merged).length + ' lots, ' + totalMerged + ' animals (server-wins)');
@@ -15724,7 +15735,7 @@ function renderActividades() {
         (safeSub?'<div style="color:var(--muted);margin-top:2px">'+safeSub+'</div>':'')+
         '<div style="color:var(--muted);font-size:10px;margin-top:3px">'+
           (r.lot?'<span style="color:var(--amber2);background:rgba(212,160,23,.08);padding:1px 6px;border-radius:3px;margin-right:6px">'+r.lot+'</span>':'')+
-          (function(){var src=r.by||'';var sc={Desktop:'#6366F1',Campo:'#22C55E',Auto:'#9CA3AF'};var c=sc[src]||(src.indexOf('WhatsApp')===0?'#25D366':'#9CA3AF');return src?'<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:'+c+';color:#fff;font-weight:600;margin-right:4px">'+escH(src)+'</span>':'';})()+ fmtDT(r.created_at||r.date||r.fecha||'')+
+          e5mOrigenBadge(r)+' '+ fmtDT(r.created_at||r.date||r.fecha||'')+
         '</div>'+
       '</div>';
     // Botón "Ver detalle"
@@ -25169,6 +25180,27 @@ function renderMaquinaria() {
   }).join('');
 }
 
+// v1.8.133: ORIGEN LEGIBLE del registro para el badge. Universal en todas las funciones.
+// Prioridad: nombre del equipo vinculado (_author.device_name, lo stampa el server para dtk_)
+// → empleado (_author.employee_name) → nombre local del equipo (_device) → campo 'by' inferido.
+function e5mOrigenInfo(r){
+  var a = r && r._author;
+  if (a && a.device_name) return { label:String(a.device_name), kind:'device' };
+  if (a && a.employee_name) return { label:String(a.employee_name), kind:'emp' };
+  if (r && r._device) return { label:String(r._device), kind:'device' };
+  var by = (r && r.by) || '';
+  if (!by && r && r.source==='whatsapp') return { label:'WhatsApp', kind:'wa' };
+  if (!by && r && r.source==='pwa') return { label:'Campo', kind:'campo' };
+  if (!by) by = 'Desktop';
+  var kind = (by==='Desktop')?'device':(by.indexOf('WhatsApp')===0?'wa':(by==='Campo'?'campo':(by==='Auto'?'auto':'emp')));
+  return { label:(by.indexOf('WhatsApp')===0?'WhatsApp':by), kind:kind };
+}
+function e5mOrigenColor(kind){ return ({device:'#6366F1',campo:'#22C55E',emp:'#0EA5E9',wa:'#25D366',auto:'#9CA3AF'})[kind] || '#9CA3AF'; }
+function e5mOrigenBadge(r){
+  var o = e5mOrigenInfo(r); if(!o.label) return '';
+  return '<span style="font-size:9px;padding:2px 7px;border-radius:3px;background:'+e5mOrigenColor(o.kind)+';color:#fff;font-weight:600;letter-spacing:.04em">'+escH(o.label)+'</span>';
+}
+
 function matchMaq(text, maq) {
   // v1.8.131: igualdad EXACTA (normalizada), NO substring. Antes "t.includes(n)||n.includes(t)"
   // cruzaba historiales: "Tractor" (vendida) ⊂ "TRACTOR TEST" (nueva) → arrastraba TODO. Bug real 17-07.
@@ -25500,18 +25532,8 @@ function renderDieselDesktop() {
         }
         else { typeLabel = '⛽ Despacho'; typeColor = 'var(--blue)'; litrosSign = '-'; }
 
-        // v1.4.88: badge de origen (Desktop / WhatsApp / PWA / Auto)
-        // Patrón consistente con Sanidad / Kardex
-        var src = r.by || '';
-        // Inferir origen si no viene explícito
-        if (!src && r.source === 'whatsapp') src = 'WhatsApp';
-        if (!src && r.source === 'pwa') src = 'Campo';
-        if (!src) src = 'Desktop';  // default histórico
-        var srcColors = { Desktop:'#6366F1', Campo:'#22C55E', Auto:'#9CA3AF' };
-        var srcColor = srcColors[src] || (src.indexOf('WhatsApp') === 0 ? '#25D366' : '#9CA3AF');
-        // Label corto en el badge (WhatsApp ###### → WhatsApp)
-        var srcShort = src.indexOf('WhatsApp') === 0 ? 'WhatsApp' : src;
-        var srcBadge = '<span style="font-size:9px;padding:2px 7px;border-radius:3px;background:'+srcColor+';color:#fff;font-weight:600;letter-spacing:.04em">'+escH(srcShort)+'</span>';
+        // v1.8.133: badge de origen unificado — muestra el NOMBRE del equipo vinculado
+        var srcBadge = e5mOrigenBadge(r);
 
         var tr = document.createElement('tr');
         tr.style.cursor = 'pointer';
@@ -25986,7 +26008,7 @@ function saveDiesel() {
   if(!db.diesel) db.diesel=[];
   if(!db.next_ids) db.next_ids={};
   if(!db.next_ids.diesel) db.next_ids.diesel=1;
-  var rec={id:db.next_ids.diesel++,type:type,tank_id:tankId,fecha:fecha,litros:litros,obs:obs,by:'Desktop',created_at:new Date().toISOString()};
+  var rec={id:db.next_ids.diesel++,type:type,tank_id:tankId,fecha:fecha,litros:litros,obs:obs,by:'Desktop',_device:(typeof _getDeviceLabel==='function'?_getDeviceLabel():'Desktop'),created_at:new Date().toISOString()};
   if(type==='recarga'){
     rec.precio=parseFloat((document.getElementById('diesel-precio')||{}).value)||0;
     rec.total=Math.round(litros*rec.precio*100)/100;
@@ -26125,7 +26147,7 @@ function saveAceite() {
 
   if(!db.aceite) db.aceite=[];
   if(!db.inventory_counts) db.inventory_counts=[];
-  var rec = {id:Date.now(),fecha:fecha,vehiculo:vehiculo,kmhr:kmhr,tipo:tipo,costo:costo,obs:obs,by:'Desktop',created_at:new Date().toISOString()};
+  var rec = {id:Date.now(),fecha:fecha,vehiculo:vehiculo,kmhr:kmhr,tipo:tipo,costo:costo,obs:obs,by:'Desktop',_device:(typeof _getDeviceLabel==='function'?_getDeviceLabel():'Desktop'),created_at:new Date().toISOString()};
   try { var _mqA=(db.maquinaria||[]).find(function(m){return matchMaq(vehiculo,m);}); if(_mqA) rec.maq_id=_mqA.id; } catch(e){} /* v1.8.131 */
   if (stockInfo) {
     rec.stock_product_id = stockInfo.product_id;
@@ -33690,7 +33712,9 @@ function verHistorialAnimal(animalId,lotCode){
 function deleteAnimal(animalId,lotCode){
   if(!confirm("Eliminar animal "+animalId+"?")) return;
   var all=getAnimalesDB();
-  if(all[lotCode]){all[lotCode]=all[lotCode].filter(function(a){return String(a.animal_id||a.id||'')!==String(animalId);});saveAnimalesDB(all);var lot=(db.lots||[]).find(function(l){return l.code===lotCode;});if(lot)lot.animal_count=all[lotCode].length;saveDB();renderAnimalesLote();toast("Animal "+animalId+" eliminado","success");}  /* v1.8.75: matchear por animal_id||id (las crías de parto no tienen .id) */
+  if(all[lotCode]){all[lotCode]=all[lotCode].filter(function(a){return String(a.animal_id||a.id||'')!==String(animalId);});saveAnimalesDB(all);var lot=(db.lots||[]).find(function(l){return l.code===lotCode;});if(lot)lot.animal_count=all[lotCode].length;saveDB();
+    try { trackDeletion(animalId, 'animal'); } catch(e){} /* v1.8.133: tombstone anti-resurrección (caso Aurora JSN 04) */
+    renderAnimalesLote();toast("Animal "+animalId+" eliminado","success");}  /* v1.8.75: matchear por animal_id||id (las crías de parto no tienen .id) */
 }
 
 function filterAnimalSelect(text) {
@@ -45062,6 +45086,7 @@ setInterval(swSelectorRender, 5000); // auto-sanado si algo re-renderiza la topb
     claimFetch(code, name).then(function(res){
       if (res.status === 200 && res.j && res.j.device_token) {
         try { localStorage.setItem('e5m_api_token', res.j.device_token); } catch(e){}
+        try { localStorage.setItem('e5m_device_label', res.j.device_name || name); } catch(e){} /* v1.8.133: el badge de origen muestra este nombre */
         stat('✅ Vinculado a "' + (res.j.tenant_name||'la estancia') + '" como "' + (res.j.device_name||name) + '" (' + (res.j.cargo||res.j.role||'admin') + '). Recargando…', 'green');
         toast('Equipo vinculado con token propio','success');
         try { auditLog('update','config','dtk','Equipo vinculado por código: '+name); } catch(e){}
@@ -45101,6 +45126,7 @@ setInterval(swSelectorRender, 5000); // auto-sanado si algo re-renderiza la topb
           .then(function(r){
             if (r.status !== 200) { throw new Error('El token nuevo no valida (HTTP ' + r.status + ') — se mantiene el maestro'); }
             try { localStorage.setItem('e5m_api_token', nuevo); } catch(e){}
+            try { localStorage.setItem('e5m_device_label', name); } catch(e){} /* v1.8.133 */
             stat('✅ Migrado: este equipo ahora usa token propio y aparece en Dispositivos como "' + name + '". El maestro ya no se usa acá.', 'green');
             toast('Equipo migrado a token propio (revocable)','success');
             try { auditLog('update','config','dtk','Equipo migrado a token propio: '+name); } catch(e){}
@@ -45627,7 +45653,7 @@ var ASO_PELAJES=['AM — Amarela','AMAL — Amarela Alaranjada','AMCH — Amarel
 (function(){
 'use strict';
 var off = function(){ return window.__DELREAL_OFF === true; };
-var TABLAS_SRV = {agua:1,sal:1,conteo:1,partos:1,alimento:1,purchases:1,advances:1,maintenance:1,diesel:1,lluvias:1,pesajes:1,bajas:1,treatments:1,sales:1,rotation_history:1,animal_movements:1,pasture_evals:1,agro_labores:1,vet_products:1};
+var TABLAS_SRV = {agua:1,sal:1,conteo:1,partos:1,alimento:1,purchases:1,advances:1,maintenance:1,diesel:1,lluvias:1,pesajes:1,bajas:1,treatments:1,sales:1,rotation_history:1,animal_movements:1,pasture_evals:1,agro_labores:1,vet_products:1,aceite:1,maquinaria:1}; /* v1.8.133: +aceite +maquinaria */
 var QKEY='e5m_del_queue';
 function qGet(){ try { return JSON.parse(localStorage.getItem(QKEY)||'[]'); } catch(e){ return []; } }
 function qSet(a){ try { localStorage.setItem(QKEY, JSON.stringify(a.slice(-200))); } catch(e){} }
@@ -45748,6 +45774,8 @@ function instalar(){
   wrapDel('deleteTreatment','treatments','treatments',0);
   wrapDel('deleteSale','sales','sales',0);
   wrapDel('deleteProduct','products','vet_products',0);
+  wrapDel('deleteAceite','aceite','aceite',0);   /* v1.8.133 */
+  wrapDel('deleteMaq','maquinaria','maquinaria',0); /* v1.8.133 */
 }
 if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', instalar); else instalar();
 setTimeout(instalar, 3000); /* por si algún handler se define tarde */
@@ -45792,6 +45820,6 @@ try {
 } catch(e) { console.warn('[tenant-fp] error no fatal:', e && e.message); }
 })();
 </script>
-<script>window.__E5M_BUILD='1.8.132 build 20260718-1105 (maquinaria historial: piso de fecha)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
+<script>window.__E5M_BUILD='1.8.133 build 20260718-1230 (anti-resurreccion animals/aceite/maq + nombre equipo)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
 </body>
 </html>
