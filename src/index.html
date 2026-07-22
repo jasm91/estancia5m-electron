@@ -23512,10 +23512,21 @@ function _rpBuildData() {
     p.cabsVendidas = 0; p.kgVendidos = 0; p.ingresoVenta = 0; p.cabsEnEngorde = 0;
   });
 
-  // v1.8.131: ventas con origen congelado al vender → atribución EXACTA por animal;
-  // se excluyen del prorrateo por lote para no contarlas dos veces.
-  var _ventasExactas = ventas.filter(function(v){ return v && v.animal_origins && Object.keys(v.animal_origins).length; });
-  var _ventasProrrateo = ventas.filter(function(v){ return !(v && v.animal_origins && Object.keys(v.animal_origins).length); });
+  // v1.8.135: asignación MANUAL (sale._prov_asig = {lote:proveedor}) tiene MÁXIMA prioridad.
+  function _tieneAsig(v){ return v && v._prov_asig && typeof v._prov_asig==='object' && Object.keys(v._prov_asig).length; }
+  var _ventasManual = ventas.filter(_tieneAsig);
+  // v1.8.131: ventas con origen congelado al vender → atribución EXACTA por animal.
+  var _ventasExactas = ventas.filter(function(v){ return !_tieneAsig(v) && v && v.animal_origins && Object.keys(v.animal_origins).length; });
+  var _ventasProrrateo = ventas.filter(function(v){ return !_tieneAsig(v) && !(v && v.animal_origins && Object.keys(v.animal_origins).length); });
+
+  // v1.8.135: atribución MANUAL por lote (pisa la automática)
+  _ventasManual.forEach(function(v){
+    Object.keys(v._prov_asig).forEach(function(lc){
+      var prov = v._prov_asig[lc]; if (!prov || !porProv[prov]) return;
+      var a = (typeof _ahAtribuirVentaALote === 'function') ? _ahAtribuirVentaALote(v, lc) : null;
+      if (a && a.cabs > 0) { porProv[prov].cabsVendidas += a.cabs; porProv[prov].kgVendidos += (a.kg||0); porProv[prov].ingresoVenta += (a.ingreso||0); }
+    });
+  });
 
   (db.lots || []).forEach(function(lot){
     if (!lot.code) return;
@@ -23659,6 +23670,103 @@ function _rpBuildData() {
   return arr;
 }
 
+// v1.8.135: asignación manual de ventas a proveedores
+function _rpProveedores(){
+  var set={}, out=[];
+  (db.compras_ganado||[]).forEach(function(c){ var p=(c.proveedor||c.cuarentena_origen||'').trim(); if(p && !set[p]){ set[p]=1; out.push(p); } });
+  return out.sort();
+}
+function _rpLotesDeVenta(v){
+  var l=[];
+  if (Array.isArray(v.lot_codes) && v.lot_codes.length) l=v.lot_codes.map(function(x){return String(x).trim();});
+  else if (typeof v.lot_code==='string' && v.lot_code.indexOf(',')>=0) l=v.lot_code.split(',').map(function(x){return String(x).trim();});
+  else if (v.lot_code) l=[String(v.lot_code).trim()];
+  // dedupe
+  var seen={}, r=[]; l.forEach(function(x){ if(x && !seen[x]){ seen[x]=1; r.push(x); } });
+  return r;
+}
+function _rpVentaCarnePostBaja(v){ return /🪦|post-baja|post baja/i.test(String(v.notes||'')); }
+window.rpAsignarVenta = function(saleId, lote, prov){
+  var s=(db.sales||[]).find(function(x){ return String(x.id)===String(saleId); }); if(!s) return;
+  if(!s._prov_asig || typeof s._prov_asig!=='object') s._prov_asig={};
+  if(prov) s._prov_asig[lote]=prov; else delete s._prov_asig[lote];
+  if(!Object.keys(s._prov_asig).length) delete s._prov_asig;
+  s.updated_at=new Date().toISOString();
+  try{ saveDB(); }catch(e){}
+  try{ replaceTableInRailway('sales', db.sales||[]); }catch(e){}
+  try{ auditLog('update','sales',saleId,'Venta asignada: '+lote+' → '+(prov||'(sin asignar)')); }catch(e){}
+  renderRentabilidadProveedor();
+};
+function _rpPendientesHtml(){
+  var provs=_rpProveedores();
+  var ventas=(db.sales||[]).filter(function(v){ return !_rpVentaCarnePostBaja(v); });
+  // solo ventas con al menos un lote con cabezas atribuibles
+  var rows=[];
+  ventas.forEach(function(v){
+    var lotes=_rpLotesDeVenta(v);
+    var porLote=[]; var totalCab=0;
+    lotes.forEach(function(lc){
+      var a=(typeof _ahAtribuirVentaALote==='function')?_ahAtribuirVentaALote(v,lc):null;
+      if(a && a.cabs>0){ porLote.push({lote:lc, cabs:a.cabs, kg:a.kg||0}); totalCab+=a.cabs; }
+    });
+    if(!porLote.length) return;
+    var asig=(v._prov_asig&&typeof v._prov_asig==='object')?v._prov_asig:{};
+    var completas=porLote.filter(function(pl){ return asig[pl.lote]; }).length;
+    var full = completas===porLote.length;
+    rows.push({v:v, porLote:porLote, totalCab:totalCab, asig:asig, full:full, mixta:porLote.length>1});
+  });
+  var pend=rows.filter(function(r){ return !r.full; });
+  var listas=rows.filter(function(r){ return r.full; });
+  function opts(sel){ var o='<option value="">Elegir proveedor…</option>'; provs.forEach(function(p){ o+='<option value="'+escH(p)+'"'+(String(p)===String(sel)?' selected':'')+'>'+escH(p)+'</option>'; }); return o; }
+  function selHtml(saleId, lote, sel, warn){
+    return '<select onchange="rpAsignarVenta(\''+String(saleId).replace(/'/g,"")+'\',\''+String(lote).replace(/'/g,"")+'\',this.value)" style="flex:1;background:var(--bg2,#0d1117);color:var(--text);border:1px solid '+(warn?'#d4a017':'var(--bor)')+';border-radius:8px;padding:6px 10px;font-size:12px">'+opts(sel)+'</select>';
+  }
+  function rowHtml(r){
+    var v=r.v; var buyer=escH(v.buyer||'(sin comprador)'); var fecha=escH(String(v.date||'').slice(0,10));
+    var total='Bs '+Math.round(parseFloat(v.total||0)).toLocaleString();
+    var borde = r.full?'#21402b':(r.mixta?'#d4a017':'var(--bor)');
+    var bg = r.full?'rgba(63,185,80,.05)':(r.mixta?'rgba(212,160,23,.05)':'transparent');
+    var s='<div style="border:1px solid '+borde+';border-radius:10px;padding:12px;margin-bottom:10px;background:'+bg+'">';
+    s+='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:'+(r.mixta?'4px':'10px')+'">';
+    s+='<div><div style="display:flex;align-items:center;gap:6px"><span style="font-size:13px;color:var(--text);font-weight:600">'+buyer+'</span>'+(r.mixta?'<span style="font-size:10px;color:#f0b429;border:1px solid #7d5a00;padding:1px 6px;border-radius:8px">venta mixta · '+r.porLote.length+' lotes</span>':'')+(r.full?'<span style="font-size:10px;color:#3fb950">✓</span>':'')+'</div>';
+    s+='<div style="font-size:11px;color:var(--muted);margin-top:2px">'+fecha+(r.mixta?'':' · '+escH(r.porLote[0].lote))+' · '+r.totalCab+' cab</div></div>';
+    s+='<div style="font-family:DM Mono,monospace;font-size:14px;color:#d4a017;white-space:nowrap">'+total+'</div></div>';
+    if(r.mixta){
+      s+='<div style="font-size:11px;color:var(--muted);margin:8px 0 6px">Asigná cada lote a su proveedor:</div>';
+      r.porLote.forEach(function(pl){
+        var warn=!r.asig[pl.lote];
+        s+='<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid rgba(48,54,61,.5)">';
+        s+='<div style="min-width:120px"><span style="font-size:12px;color:var(--text)">'+escH(pl.lote)+'</span><div style="font-size:10px;color:var(--muted)">'+pl.cabs+' cab · '+Math.round(pl.kg).toLocaleString()+' kg</div></div>';
+        s+=selHtml(v.id, pl.lote, r.asig[pl.lote]||'', warn);
+        if(warn) s+='<span title="lote sin asignar" style="color:#f0b429;font-size:14px">⚠</span>';
+        s+='</div>';
+      });
+    } else {
+      var pl0=r.porLote[0];
+      s+='<div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:var(--muted);min-width:56px">Proveedor</span>'+selHtml(v.id, pl0.lote, r.asig[pl0.lote]||'', !r.asig[pl0.lote])+'</div>';
+    }
+    s+='</div>';
+    return s;
+  }
+  function seccion(titulo, icon, count, chipColor, rowsArr, abierto, vacio){
+    var d='<details '+(abierto?'open ':'')+'style="background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:0;margin-bottom:12px;overflow:hidden">';
+    d+='<summary style="list-style:none;cursor:pointer;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;user-select:none">';
+    d+='<span style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:var(--muted);transition:transform .15s" class="rp-caret">▸</span><span style="font-size:15px">'+icon+'</span><span style="font-size:13px;font-weight:700;color:var(--text)">'+titulo+'</span><span style="font-size:11px;color:var(--text);background:'+chipColor+';padding:2px 8px;border-radius:10px">'+count+'</span></span>';
+    d+='</summary>';
+    d+='<div style="padding:0 16px 14px">';
+    if(!rowsArr.length){ d+='<div style="text-align:center;padding:14px;color:var(--muted);font-size:12px">'+vacio+'</div>'; }
+    rowsArr.forEach(function(r){ d+=rowHtml(r); });
+    d+='</div></details>';
+    return d;
+  }
+  var h='';
+  h+='<style>details[open] .rp-caret{transform:rotate(90deg)}summary::-webkit-details-marker{display:none}</style>';
+  h+=seccion('Ventas pendientes de asignar', '📋', pend.length, '#7d5a00', pend, true, 'No hay ventas pendientes — todas están asignadas. ✓');
+  h+=seccion('Ventas asignadas', '✅', listas.length, '#21402b', listas, false, 'Todavía no asignaste ninguna venta.');
+  h+='<div style="font-size:11px;color:var(--muted);margin:2px 0 14px">ℹ Lo que asignás acá pisa la atribución automática. Los lotes sin asignar quedan en amarillo.</div>';
+  return h;
+}
+
 function renderRentabilidadProveedor() {
   var resumen = document.getElementById('rp-resumen');
   var lista = document.getElementById('rp-lista');
@@ -23702,6 +23810,7 @@ function renderRentabilidadProveedor() {
 
   // Ranking de proveedores
   var html = '';
+  try { html += _rpPendientesHtml(); } catch(ePend){ console.warn('[rp] pendientes', ePend); } /* v1.8.135 */
   data.forEach(function(p, idx) {
     var tieneVentas = p.cabsVendidas > 0;
     var resultColor = p.resultado >= 0 ? '#3fb950' : '#f85149';
@@ -45831,6 +45940,6 @@ try {
 } catch(e) { console.warn('[tenant-fp] error no fatal:', e && e.message); }
 })();
 </script>
-<script>window.__E5M_BUILD='1.8.134 build 20260718-1330 (CAPEX maquinaria fuera del costo operativo)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
+<script>window.__E5M_BUILD='1.8.135 build 20260718-1540 (asignacion ventas - menus colapsables)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
 </body>
 </html>

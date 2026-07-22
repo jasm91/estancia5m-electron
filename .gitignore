@@ -4,3 +4,4 @@ dist/
 .DS_Store
 .DS_Store
 src/index.html.bak-*
+n8n.dump
