@@ -20644,6 +20644,9 @@ function _ahCalcularIndirectos(lot, ventas, compras) {
     mantGeneral: 0, mantGeneral_total: 0,
     compras: 0, compras_total: 0,
     maquinaria: 0, maquinaria_total: 0,
+    aceite: 0, aceite_total: 0,
+    sanidadInd: 0, sanidadInd_total: 0,
+    cuentasMan: 0, cuentasMan_total: 0,
     total: 0,
     cabDiasLote: 0, cabDiasTotal: 0,
     fraccionPct: 0,
@@ -20651,20 +20654,33 @@ function _ahCalcularIndirectos(lot, ventas, compras) {
   };
 
   // ── 1. Determinar período del lote ──
-  var fechaEntrada = null;
-  if (Array.isArray(compras) && compras.length > 0) {
-    compras.forEach(function(c) {
-      var f = c.date || c.fecha;
-      if (f && (!fechaEntrada || f < fechaEntrada)) fechaEntrada = f;
-    });
+  function _cuarActual(lc) {
+    var aDB = (typeof getAnimalesDB === 'function') ? (getAnimalesDB() || {}) : {};
+    var set = {};
+    (aDB[lc] || []).forEach(function(a) { (a.pesajes || []).forEach(function(p) { var m = String(p.nota || '').match(/CUAR-\d+/i); if (m) set[m[0].toUpperCase()] = 1; }); });
+    return set;
   }
-  if (!fechaEntrada) fechaEntrada = lot.entry_date;
+  function _fechaEntCiclo(lc, comprasLc, entryDate) {
+    var cuar = _cuarActual(lc), tieneCuar = Object.keys(cuar).length > 0;
+    var piso = (!tieneCuar && entryDate) ? new Date(new Date(entryDate).getTime() - 90*86400000).toISOString().slice(0,10) : null;
+    var fe = null;
+    (comprasLc || []).forEach(function(c) {
+      var f = c.date || c.fecha; if (!f) return;
+      if (tieneCuar) { if (!cuar[String(c.lot_code || '').toUpperCase()]) return; }
+      else if (piso && String(f).slice(0,10) < piso) return;
+      if (!fe || f < fe) fe = f;
+    });
+    if (!fe) fe = entryDate;
+    return fe;
+  }
+  var fechaEntrada = _fechaEntCiclo(lot.code, compras, lot.entry_date);
 
+  var _estVend = (String(lot.status||'').toLowerCase()==='vendido' || String(lot.status||'').toLowerCase()==='sold');
   var fechaEgreso = null;
-  if (Array.isArray(ventas) && ventas.length > 0) {
+  if (_estVend && Array.isArray(ventas) && ventas.length > 0) {
     ventas.forEach(function(v) {
       var f = v.date || v.fecha;
-      if (f && (!fechaEgreso || f > fechaEgreso)) fechaEgreso = f;
+      if (f && (!fechaEntrada || String(f).slice(0,10) >= String(fechaEntrada).slice(0,10)) && (!fechaEgreso || f > fechaEgreso)) fechaEgreso = f;
     });
   }
   if (!fechaEgreso) fechaEgreso = today();
@@ -20706,7 +20722,9 @@ function _ahCalcularIndirectos(lot, ventas, compras) {
   // ── 3. Cabezas-días totales del rebaño en el mismo período ──
   var cabDiasTotal = 0;
   (db.lots || []).forEach(function(l) {
-    var lotEntry = l.entry_date ? new Date(l.entry_date) : dInicio;
+    var _cEnt = (db.compras_ganado || []).filter(function(c){ return c.lot_code === l.code || (Array.isArray(c.lote_destinos) && c.lote_destinos.indexOf(l.code) >= 0); });
+    var _entL = _fechaEntCiclo(l.code, _cEnt, l.entry_date);
+    var lotEntry = _entL ? new Date(String(_entL).slice(0,10)) : dInicio;
     var lotExit = dFin;
     if (l.status === 'vendido' || l.status === 'sold') {
       var ultVenta = null;
@@ -20824,12 +20842,16 @@ function _ahCalcularIndirectos(lot, ventas, compras) {
     var enPeriodo = _estaEnPeriodo(p.date || p.fecha || p.created_at);
     var sinLote = !p.lot_code || p.lot_code === '';
     if (enPeriodo && sinLote) {
+      var _cta = String(p.cuenta || '').toUpperCase().trim();
+      var _tg  = String(p.tipo_gasto || '').toUpperCase().trim();
+      var _sub = String(p.subcuenta || '').toLowerCase().trim();
+      if (p.type === 'maquinaria' || _cta === 'INVERSION' || _cta === 'INVERSI\u00d3N' || _tg === 'CAPITAL' || _sub === 'maquinaria') return;
       var monto = parseFloat(p.total || p.precio_total || p.cost || 0) || 0;
-      if (_esAlimento(p)) {
-        result.alimento_total += monto;
-      } else {
-        result.compras_total += monto;
-      }
+      if (_esAlimento(p)) { result.alimento_total += monto; }
+      else if (/combustible|diesel|di\u00e9sel|gasolina|nafta|lubricante/.test(_sub)) { result.diesel_total += monto; }
+      else if (/mantenimiento|repuesto/.test(_sub)) { result.mantGeneral_total += monto; }
+      else if (/personal|sueldo|aguinaldo|beneficio|comida|v\u00edveres|viveres/.test(_sub)) { result.sueldos_total += monto; }
+      else { result.compras_total += monto; }
     }
   });
 
@@ -20841,6 +20863,30 @@ function _ahCalcularIndirectos(lot, ventas, compras) {
     }
   });
 
+  // v1.8.147: aceite (lubricantes de maquinaria) — prorrateado
+  (db.aceite || []).forEach(function(a) {
+    if (_estaEnPeriodo(a.date || a.fecha || a.created_at)) result.aceite_total += parseFloat(a.total || a.costo || 0) || 0;
+  });
+  // v1.8.147: sanidad SIN lote (tratamientos de la estancia no atribuidos a un lote) — prorrateada
+  (db.treatments || []).forEach(function(t) {
+    if (t.lot_code) return;
+    if (!_estaEnPeriodo(t.applied_at || t.date || t.fecha || t.created_at)) return;
+    var c = parseFloat(t.cost || 0);
+    if (!(c > 0)) { var prod = (db.products || []).find(function(p){ return p.id === t.product_id || p.name === t.product_name; }); var uc = prod ? parseFloat(prod.unit_cost || prod.cost || 0) : 0; if (uc > 0) c = (parseFloat(t.count || t.quantity || 0) || 0) * uc; }
+    result.sanidadInd_total += c || 0;
+  });
+  // v1.8.147: gastos manuales de Contabilidad (db.cuentas: COSTOS / GASTO ADMINISTRATIVO) — prorrateados
+  (db.cuentas || []).forEach(function(r) {
+    if (!r || !r.fecha) return;
+    var cu = String(r.cuenta || '').toUpperCase().trim();
+    if (cu === 'INVERSIONES') cu = 'INVERSI\u00d3N';
+    if (cu === 'GASTOS') cu = 'GASTO ADMINISTRATIVO';
+    if (cu !== 'COSTOS' && cu !== 'GASTO ADMINISTRATIVO') return;
+    if (!_estaEnPeriodo(r.fecha)) return;
+    if (/^(compra-|trat-|diesel-|sueldo-|maint-|adv-|aceite-|cg-|venta-)/.test(String(r.id || ''))) return; // excluir derivados
+    result.cuentasMan_total += parseFloat(r.monto || 0) || 0;
+  });
+
   // ── 5. Aplicar fracción a cada categoría ──
   result.sueldos     = result.sueldos_total     * fraccion;
   result.diesel      = result.diesel_total      * fraccion;
@@ -20848,7 +20894,10 @@ function _ahCalcularIndirectos(lot, ventas, compras) {
   result.mantGeneral = result.mantGeneral_total * fraccion;
   result.compras     = result.compras_total     * fraccion;
   result.maquinaria  = result.maquinaria_total  * fraccion;
-  result.total = result.sueldos + result.diesel + result.alimento + result.mantGeneral + result.compras;
+  result.aceite      = result.aceite_total      * fraccion;
+  result.sanidadInd  = result.sanidadInd_total  * fraccion;
+  result.cuentasMan  = result.cuentasMan_total  * fraccion;
+  result.total = result.sueldos + result.diesel + result.alimento + result.mantGeneral + result.compras + result.aceite + result.sanidadInd + result.cuentasMan;
 
   return result;
 }
@@ -45940,6 +45989,687 @@ try {
 } catch(e) { console.warn('[tenant-fp] error no fatal:', e && e.message); }
 })();
 </script>
-<script>window.__E5M_BUILD='1.8.135 build 20260718-1540 (asignacion ventas - menus colapsables)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
+<script>window.__E5M_BUILD='1.8.147 (costo/kg completo: +aceite +sanidad sin lote +cuentas manuales, periodo cuarentena)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
+
+
+<!-- ══════════════════════════════════════════════════════════════
+     v1.8.136 — EMBUDO REPRODUCTIVO (tacto → destete) con mermas por etapa.
+     Aditivo. Datos: db.reproductive_services + db.partos (ya existen).
+     Se pinta en Reproducción → Indicadores, bajo los KPIs, y respeta el
+     filtro de período. Kill switch: window.__REPRO_EMBUDO_OFF = true.
+     ══════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  // ── Cálculo puro (testeable): cascada entoradas→preñadas→nacidos→destetados
+  window._reproEmbudoData = function(periodoMeses){
+    var _db = (typeof db!=='undefined' && db) ? db : {};
+    var rs = Array.isArray(_db.reproductive_services) ? _db.reproductive_services : [];
+    var pa = Array.isArray(_db.partos) ? _db.partos : [];
+    var cutoff = null;
+    if (periodoMeses){ var n=new Date(); cutoff=new Date(n.getFullYear(), n.getMonth()-periodoMeses, n.getDate()); }
+    function inP(d){ if(!cutoff) return true; if(!d) return false; return new Date(d) >= cutoff; }
+    var serv = rs.filter(function(r){ return inP(r.date); });
+    var partos = pa.filter(function(p){ return inP(p.date); });
+
+    // 1) Entoradas = vacas servidas ÚNICAS (por animal_id; si no hay id, cuenta servicios)
+    var setServ = {}; serv.forEach(function(r){ if(r.animal_id) setServ[r.animal_id]=1; });
+    var entoradas = Object.keys(setServ).length || serv.length;
+    // 2) Preñadas = vacas ÚNICAS con result 'preñada' (o total si sin id)
+    var setPren = {}, prenTot=0;
+    serv.forEach(function(r){ if(r.result==='preñada'){ prenTot++; if(r.animal_id) setPren[r.animal_id]=1; } });
+    var prenadas = Object.keys(setPren).length || prenTot;
+    var vacias = serv.filter(function(r){ return r.result==='vacia'; }).length;
+    var pendientes = serv.filter(function(r){ return !r.result || r.result==='pendiente'; }).length;
+    // 3) Nacidos vivos = partos − (muertos/abortos)
+    var nacidosTot = partos.length;
+    var mortinatos = partos.filter(function(p){ var e=String(p.estado||'').toLowerCase(); return e.indexOf('muert')>=0 || e==='aborto'; }).length;
+    var nacidosVivos = nacidosTot - mortinatos;
+    // 4) Destetados = partos con destete_fecha (excluye muertos)
+    var destetados = partos.filter(function(p){ return p.destete_fecha && String(p.estado||'').toLowerCase().indexOf('muert')<0; }).length;
+
+    function pct(a,b){ return (b>0) ? Math.round(a/b*1000)/10 : null; }
+    var stages = [
+      { key:'entoradas',  label:'Entoradas / servidas', icon:'🐄', n:entoradas,    sub: serv.length+' servicios' },
+      { key:'prenadas',   label:'Preñadas',             icon:'🤰', n:prenadas,     sub: vacias+' vacías · '+pendientes+' sin dx' },
+      { key:'nacidos',    label:'Nacidos vivos',        icon:'🐮', n:nacidosVivos, sub: (mortinatos? (mortinatos+' mortinatos/abortos'):'sin mortinatos') },
+      { key:'destetados', label:'Destetados',           icon:'🍼', n:destetados,   sub: (nacidosVivos>destetados? ((nacidosVivos-destetados)+' sin destetar aún'):'todos destetados') }
+    ];
+    for (var i=1;i<stages.length;i++){
+      var prev=stages[i-1].n, cur=stages[i].n;
+      stages[i].mermaCab = prev - cur;               // + = merma, − = ganancia por desfase temporal
+      stages[i].pctPrev  = pct(cur, prev);           // retención vs etapa anterior
+    }
+    stages[0].mermaCab = 0; stages[0].pctPrev = 100;
+    return {
+      stages: stages,
+      entoradas: entoradas, prenadas: prenadas, nacidosVivos: nacidosVivos,
+      mortinatos: mortinatos, destetados: destetados, vacias: vacias, pendientes: pendientes,
+      desteteSobreEntoradas: pct(destetados, entoradas),
+      prenezSobreEntoradas: pct(prenadas, entoradas),
+      tieneServicios: serv.length>0, tienePartos: partos.length>0
+    };
+  };
+
+  // ── Render de la cascada
+  window._reproRenderEmbudo = function(periodoMeses){
+    if (window.__REPRO_EMBUDO_OFF) return;
+    var box = document.getElementById('repro-embudo-card');
+    if (!box) return;
+    var d = window._reproEmbudoData(periodoMeses);
+    if (!d.tieneServicios && !d.tienePartos){
+      box.innerHTML = '';
+      return;
+    }
+    var max = d.stages[0].n || 1;
+    var colores = { entoradas:'#58a6ff', prenadas:'#bc8cff', nacidos:'#3fb950', destetados:'#d4a017' };
+    function barra(s){
+      var w = Math.max(4, Math.round((s.n / max) * 100));
+      var col = colores[s.key] || '#58a6ff';
+      var mermaHtml = '';
+      if (s.key !== 'entoradas'){
+        if (s.mermaCab > 0){
+          mermaHtml = '<span style="font-size:11px;color:#f85149">▼ '+s.mermaCab+' cab'+(s.pctPrev!=null?(' · '+s.pctPrev+'% retención'):'')+'</span>';
+        } else if (s.mermaCab < 0){
+          mermaHtml = '<span style="font-size:11px;color:var(--muted)" title="Por el desfase temporal (servicios y partos ocurren con ~9 meses de diferencia) esta etapa tiene más registros que la anterior en el período elegido.">▲ '+Math.abs(s.mermaCab)+' cab (desfase temporal)</span>';
+        } else {
+          mermaHtml = '<span style="font-size:11px;color:var(--green)">sin merma</span>';
+        }
+      }
+      return '<div style="margin-bottom:12px">'+
+        '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">'+
+          '<span style="font-size:12.5px;color:var(--text)"><span style="opacity:.9">'+s.icon+'</span> '+s.label+'</span>'+
+          '<span style="display:flex;gap:10px;align-items:baseline"><b style="font-size:16px;color:var(--text)">'+s.n+'</b>'+mermaHtml+'</span>'+
+        '</div>'+
+        '<div style="height:22px;background:rgba(255,255,255,.05);border-radius:6px;overflow:hidden">'+
+          '<div style="height:100%;width:'+w+'%;background:'+col+';opacity:.85;border-radius:6px;min-width:2px;transition:width .35s"></div>'+
+        '</div>'+
+        (s.sub? '<div style="font-size:10.5px;color:var(--muted);margin-top:3px">'+s.sub+'</div>':'')+
+      '</div>';
+    }
+    var headline = (d.desteteSobreEntoradas!=null)
+      ? ('<b style="color:#d4a017">'+d.desteteSobreEntoradas+'%</b> de destete sobre entoradas')
+      : ((d.prenezSobreEntoradas!=null)? ('<b style="color:#bc8cff">'+d.prenezSobreEntoradas+'%</b> de preñez sobre entoradas · sin destetes aún') : 'Cargá servicios y partos para ver el embudo');
+    box.innerHTML =
+      '<div class="card" style="margin-bottom:14px">'+
+        '<div class="card-hd" style="display:flex;justify-content:space-between;align-items:center">'+
+          '<div class="card-title">🫗 Embudo reproductivo — del tacto al destete</div>'+
+          '<div style="font-size:10.5px;color:var(--muted)">el % de destete sobre entoradas define el negocio</div>'+
+        '</div>'+
+        '<div class="card-body">'+
+          d.stages.map(barra).join('')+
+          '<div style="border-top:1px solid var(--bor);margin-top:6px;padding-top:10px;font-size:12.5px;color:var(--text)">📊 '+headline+'</div>'+
+          '<div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.4">ℹ Cascada indicativa: cada etapa cuenta los registros del período elegido. Servicios y partos ocurren con ~9 meses de diferencia, así que las mermas entre preñez y nacimiento son orientativas; elegí "Todo el historial" para la foto estable de todo el rodeo.</div>'+
+        '</div>'+
+      '</div>';
+  };
+
+  // ── Enganche: pintar el embudo cada vez que se renderizan los Indicadores
+  function hook(){
+    if (window.__REPRO_EMBUDO_OFF) return;
+    var orig = window.renderReproIndicadores;
+    if (typeof orig !== 'function' || orig.__embudo) return;
+    window.renderReproIndicadores = function(){
+      var r = orig.apply(this, arguments);
+      try {
+        var pel = document.getElementById('repro-ind-filter-periodo');
+        var pm = pel ? (parseInt(pel.value,10)||0) : 12;
+        window._reproRenderEmbudo(pm);
+      } catch(e){}
+      return r;
+    };
+    window.renderReproIndicadores.__embudo = true;
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', hook);
+  else hook();
+})();
+</script>
+
+
+
+<!-- ══════════════════════════════════════════════════════════════
+     v1.8.137 — RENTABILIDAD PROYECTADA por lote activo.
+     Bajo la Proyección de peso en Análisis Lote. Reusa peso objetivo y
+     GMD editables; agrega precio Bs/kg y costo operativo Bs/cab/día.
+     Los inputs se crean UNA vez (shell) y solo se recalculan los
+     resultados en cada tecla → no pierden foco. Kill: __PROY_ECON_OFF.
+     ══════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  window._loteProyEcon = function(p){
+    p = p || {};
+    var cab        = Math.max(0, parseInt(p.cab,10)||0);
+    var pesoProm   = Math.max(0, parseFloat(p.pesoProm)||0);
+    var target     = Math.max(0, parseFloat(p.target)||0);
+    var gmd        = parseFloat(p.gmd)||0;
+    var precioKg   = parseFloat(p.precioKg)||0;
+    var costoOpDia = parseFloat(p.costoOpCabDia)||0;
+    var costoCompra= parseFloat(p.costoCompra)||0;
+    var diasIng    = Math.max(0, parseInt(p.diasDesdeIngreso,10)||0);
+    var pesoIngreso= (p.pesoIngreso!=null)? parseFloat(p.pesoIngreso) : null;
+    var faltaKg = Math.max(0, target - pesoProm);
+    var diasAlObj = (gmd>0) ? Math.ceil(faltaKg/gmd) : null;
+    var diasTot = diasIng + (diasAlObj||0);
+    var fechaCierre = (diasAlObj!=null) ? new Date(Date.now()+diasAlObj*86400000).toISOString().slice(0,10) : null;
+    var kgActual = cab * pesoProm, kgObjetivo = cab * target;
+    var basePeso = (pesoIngreso!=null && pesoIngreso>0) ? pesoIngreso : pesoProm;
+    var kgGanados = Math.max(0, cab * (target - basePeso));
+    var ingresoProy = kgObjetivo * precioKg;
+    var costoOp = costoOpDia * cab * diasTot;
+    var costoTotal = costoCompra + costoOp;
+    var margen = ingresoProy - costoTotal;
+    var roiPct = (costoTotal>0) ? Math.round(margen/costoTotal*1000)/10 : null;
+    var costoKgGanado = (kgGanados>0) ? Math.round(costoTotal/kgGanados*100)/100 : null;
+    var margenPorCab = (cab>0) ? Math.round(margen/cab) : null;
+    return {
+      cab:cab, pesoProm:Math.round(pesoProm), target:Math.round(target), gmd:gmd,
+      faltaKg:Math.round(faltaKg), diasAlObjetivo:diasAlObj, diasTotales:diasTot, fechaCierre:fechaCierre,
+      kgActual:Math.round(kgActual), kgObjetivo:Math.round(kgObjetivo), kgGanados:Math.round(kgGanados),
+      ingresoProy:Math.round(ingresoProy), costoCompra:Math.round(costoCompra), costoOperativo:Math.round(costoOp),
+      costoTotal:Math.round(costoTotal), margen:Math.round(margen), margenPorCab:margenPorCab,
+      roiPct:roiPct, costoKgGanado:costoKgGanado,
+      suficiente:(cab>0 && pesoProm>0 && target>0 && precioKg>0)
+    };
+  };
+
+  function _peGetRp(){ try{ return (typeof getRp==='function')?getRp():{}; }catch(e){ return {}; } }
+  function _peMoneda(){ var rp=_peGetRp(); return rp.moneda||'Bs'; }
+  function _peFmt(n){ try{ return (n==null)?'—':Number(n).toLocaleString('es-BO'); }catch(e){ return String(n); } }
+  function _peCostoCompra(lot, cab){
+    try{
+      var db2=(typeof db!=='undefined')?db:{}; var compras=db2.compras_ganado||[];
+      var compra=null;
+      if(lot.cost_origin && lot.cost_origin.compra_id) compra=compras.find(function(c){return c.id===lot.cost_origin.compra_id;});
+      if(!compra) compra=compras.find(function(c){ return c.lot_code===lot.code || (Array.isArray(c.lote_destinos)&&c.lote_destinos.indexOf(lot.code)>=0); });
+      if(!compra) return 0;
+      var cabs=parseInt(compra.animal_count||compra.cabezas||0)||0;
+      var total=parseFloat(compra.total||0)||0;
+      var cpc=cabs>0?total/cabs:0;
+      return Math.round(cpc*cab);
+    }catch(e){ return 0; }
+  }
+
+  window._peCtx = null;
+
+  // Crea el shell (inputs fijos) 1 sola vez; después solo recalcula resultados
+  window._alRenderProyeccionEconomica = function(lot, animales){
+    if (window.__PROY_ECON_OFF) return;
+    if (!lot) return;
+    var anchor = document.getElementById('al-proy-summary');
+    if (!anchor) return;
+    window._peCtx = { lot: lot, animales: animales || [] };
+    var box = document.getElementById('al-proy-econ');
+    if (!box){ box=document.createElement('div'); box.id='al-proy-econ'; box.style.marginTop='14px'; anchor.parentNode.insertBefore(box, anchor.nextSibling); }
+    var needShell = !document.getElementById('al-proy-econ-results');
+    if (needShell){
+      var rp=_peGetRp(), mon=_peMoneda();
+      var precioDef = rp.precio_objetivo || rp.precio_frigorifico || 6.5;
+      var costoOpDef = rp.costo_op_cab_dia || 3;
+      var inputStyle='width:80px;background:var(--bg2,#0d1117);color:var(--text);border:1px solid var(--bor);border-radius:6px;padding:4px 8px;font-size:12px';
+      box.innerHTML =
+        '<div class="card">'+
+          '<div class="card-hd" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">'+
+            '<div class="card-title">💰 Rentabilidad proyectada al cierre</div>'+
+            '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">'+
+              '<label style="font-size:11px;color:var(--muted)">Precio '+mon+'/kg vivo <input id="al-proy-precio" type="number" inputmode="decimal" step="0.1" value="'+precioDef+'" oninput="_peUpdateResults()" style="'+inputStyle+'"></label>'+
+              '<label style="font-size:11px;color:var(--muted)">Costo op. '+mon+'/cab/día <input id="al-proy-costoop" type="number" inputmode="decimal" step="0.1" value="'+costoOpDef+'" oninput="_peUpdateResults()" style="'+inputStyle+'"></label>'+
+            '</div>'+
+          '</div>'+
+          '<div class="card-body"><div id="al-proy-econ-results"></div></div>'+
+        '</div>';
+    }
+    window._peUpdateResults();
+  };
+
+  // Solo recalcula y actualiza los RESULTADOS (no toca los inputs → no pierden foco)
+  window._peUpdateResults = function(){
+    try{
+      var ctx=window._peCtx; if(!ctx||!ctx.lot) return;
+      var resEl=document.getElementById('al-proy-econ-results'); if(!resEl) return;
+      var lot=ctx.lot, animales=ctx.animales||[];
+      var rp=_peGetRp(), mon=_peMoneda();
+      var precioDef = rp.precio_objetivo || rp.precio_frigorifico || 6.5;
+      var costoOpDef = rp.costo_op_cab_dia || 3;
+      var cab = animales.length ? animales.length : (parseInt(lot.animal_count,10)||0);
+      var pesosAct=animales.filter(function(a){return a.pesoActual;}).map(function(a){return a.pesoActual;});
+      var pesoProm=pesosAct.length ? (pesosAct.reduce(function(s,x){return s+x;},0)/pesosAct.length) : (parseFloat(lot.avg_weight)||0);
+      var targetEl=document.getElementById('al-faena-target'), gmdEl=document.getElementById('al-faena-gmd');
+      var precioEl=document.getElementById('al-proy-precio'), costoOpEl=document.getElementById('al-proy-costoop');
+      var target=targetEl&&targetEl.value?parseFloat(targetEl.value):0;
+      var gmd=gmdEl&&gmdEl.value?parseFloat(gmdEl.value):0;
+      var precio=precioEl&&precioEl.value!==''?parseFloat(precioEl.value):precioDef;
+      var costoOp=costoOpEl&&costoOpEl.value!==''?parseFloat(costoOpEl.value):costoOpDef;
+      var diasIng=lot.entry_date?Math.max(0,Math.round((Date.now()-new Date(lot.entry_date).getTime())/86400000)):0;
+      var pesosIni=animales.filter(function(a){return a.pesoInicial||a.pesoPrimero;}).map(function(a){return a.pesoInicial||a.pesoPrimero;});
+      var pesoIngreso=pesosIni.length?(pesosIni.reduce(function(s,x){return s+x;},0)/pesosIni.length):null;
+      var costoCompra=_peCostoCompra(lot, cab);
+      var r=window._loteProyEcon({ cab:cab, pesoProm:pesoProm, target:target, gmd:gmd, precioKg:precio,
+        costoOpCabDia:costoOp, costoCompra:costoCompra, diasDesdeIngreso:diasIng, pesoIngreso:pesoIngreso });
+      if(!r.suficiente){ resEl.innerHTML='<div style="color:var(--muted);font-size:12px;padding:8px 0">Faltan datos para proyectar (cabezas, peso promedio, peso objetivo y precio). Cargá pesajes y el precio de referencia.</div>'; return; }
+      var margenColor=(r.margen>=0)?'var(--green)':'var(--red)';
+      var roiColor=(r.roiPct==null)?'var(--muted)':((r.roiPct>=0)?'var(--green)':'var(--red)');
+      function kpi(label,val,sub,color){
+        return '<div style="background:var(--sur2,#161b22);border:1px solid var(--bor);border-radius:8px;padding:10px 12px">'+
+          '<div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">'+label+'</div>'+
+          '<div style="font-size:19px;font-weight:600;margin-top:3px;color:'+(color||'var(--text)')+'">'+val+'</div>'+
+          (sub?'<div style="font-size:10px;color:var(--muted);margin-top:2px">'+sub+'</div>':'')+'</div>';
+      }
+      resEl.innerHTML =
+        '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px">'+
+          kpi('Margen estimado', mon+' '+_peFmt(r.margen), (r.margenPorCab!=null?(mon+' '+_peFmt(r.margenPorCab)+'/cab'):''), margenColor)+
+          kpi('ROI estimado', (r.roiPct!=null?(r.roiPct+'%'):'—'), 'sobre costo total', roiColor)+
+          kpi('Costo/kg ganado', (r.costoKgGanado!=null?(mon+' '+r.costoKgGanado):'—'), (r.kgGanados?(_peFmt(r.kgGanados)+' kg a ganar'):''), 'var(--text)')+
+          kpi('Cierre estimado', (r.diasAlObjetivo!=null?('~'+r.diasAlObjetivo+' días'):'—'), (r.fechaCierre||''), 'var(--amber)')+
+        '</div>'+
+        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:12px">'+
+          '<div style="padding:8px 10px;background:rgba(63,185,80,.06);border-radius:8px"><span style="color:var(--muted)">Ingreso proyectado</span><br><b>'+mon+' '+_peFmt(r.ingresoProy)+'</b><br><span style="font-size:10px;color:var(--muted)">'+_peFmt(r.kgObjetivo)+' kg × '+precio+'</span></div>'+
+          '<div style="padding:8px 10px;background:rgba(248,81,73,.05);border-radius:8px"><span style="color:var(--muted)">Costo compra vigente</span><br><b>'+mon+' '+_peFmt(r.costoCompra)+'</b></div>'+
+          '<div style="padding:8px 10px;background:rgba(248,81,73,.05);border-radius:8px"><span style="color:var(--muted)">Costo operativo proy.</span><br><b>'+mon+' '+_peFmt(r.costoOperativo)+'</b><br><span style="font-size:10px;color:var(--muted)">'+costoOp+'/cab/día × '+r.diasTotales+' días</span></div>'+
+        '</div>'+
+        '<div style="font-size:10px;color:var(--muted);margin-top:10px;line-height:1.4">ℹ Estimación al peso objetivo con la GMD y el precio de arriba. El costo operativo es un prorrateo editable (no incluye prorrateo automático de estructura/admin del CREA); la compra vigente sale de la compra de origen del lote. Ajustá precio y costo op. para simular escenarios.</div>';
+    }catch(e){}
+  };
+
+  function hook(){
+    if (window.__PROY_ECON_OFF) return;
+    var orig = window.renderAnalisisLote;
+    if (typeof orig!=='function' || orig.__proyecon) return;
+    window.renderAnalisisLote = function(){
+      var r = orig.apply(this, arguments);
+      try{
+        var sel=document.getElementById('al-lot-select');
+        if(sel && sel.value){
+          var lot=((typeof db!=='undefined'&&db.lots)||[]).find(function(l){return l.code===sel.value;});
+          if(lot) window._alRenderProyeccionEconomica(lot, window._alAnimalesData||[]);
+        }
+      }catch(e){}
+      return r;
+    };
+    window.renderAnalisisLote.__proyecon = true;
+  }
+  if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', hook);
+  else hook();
+})();
+</script>
+
+
+
+<!-- ══════════════════════════════════════════════════════════════
+     v1.8.138 — DASHBOARD AGRICULTURA (rico). Agrega bajo el dashboard
+     agro actual: KPIs (margen, rinde, avance, insumos en alerta),
+     MARGEN por campaña (benchmark) y COBERTURA de insumos (días).
+     Reusa campCosto/campIngreso/campHa. Aditivo. Kill: __AGRO_RICO_OFF.
+     ══════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  function _f(n){ try{ return (typeof fmtA==='function')?fmtA(n):Number(n).toLocaleString('es-BO'); }catch(e){ return String(n); } }
+  function _cLabel(d,c){ try{ return (typeof campLabel==='function')?campLabel(d,c):(c.cultivo||('Campaña '+c.id)); }catch(e){ return 'Campaña'; } }
+  function _cHa(d,c){ try{ return (typeof campHa==='function')?campHa(d,c):0; }catch(e){ return 0; } }
+  function _cCosto(d,cid){ try{ return (typeof campCosto==='function')?campCosto(d,cid).total:0; }catch(e){ return 0; } }
+  function _cIngreso(d,cid){ try{ return (typeof campIngreso==='function')?campIngreso(d,cid):0; }catch(e){ return 0; } }
+
+  // ── Datos ricos (agregación; testeable con helpers stub)
+  window._agRicoData = function(d){
+    d = d || {}; var camp=d.campanas||[], lab=d.labores||[], ins=d.insumos||[];
+    // Benchmark de margen por campaña (no planificadas, con ha)
+    var bench=[];
+    camp.forEach(function(c){
+      if(c.estado==='planificada') return;
+      var ha=_cHa(d,c); if(!ha) return;
+      var ingreso=_cIngreso(d,c.id), costo=_cCosto(d,c.id);
+      var margen=ingreso-costo;
+      // rinde kg/ha (de labores cosecha de la campaña)
+      var kg=0; lab.forEach(function(l){ if(String(l.campana_id)===String(c.id)&&l.estado==='ejecutada'&&l.tipo==='cosecha'&&l.cosecha) kg+=Number(l.cosecha.kg)||0; });
+      bench.push({ label:_cLabel(d,c), ha:ha, ingreso:ingreso, costo:costo, margen:margen,
+        margenHa: Math.round(margen/ha), rindeHa: kg>0?Math.round(kg/ha):null, tieneCosecha: kg>0 });
+    });
+    bench.sort(function(a,b){ return b.margenHa-a.margenHa; });
+    // KPIs
+    var margenTot=bench.reduce(function(s,x){return s+x.margen;},0);
+    var conRinde=bench.filter(function(x){return x.rindeHa!=null;});
+    var rindeProm=conRinde.length? Math.round(conRinde.reduce(function(s,x){return s+x.rindeHa;},0)/conRinde.length):null;
+    var totLab=lab.length, ejec=lab.filter(function(l){return l.estado==='ejecutada';}).length;
+    var avancePct= totLab? Math.round(ejec/totLab*100):null;
+    // Cobertura de insumos: consumo/día del total consumido en labores ejecutadas / días del rango
+    var consumo={}, fechas=[];
+    lab.forEach(function(l){ if(l.estado!=='ejecutada') return; if(l.fecha) fechas.push(l.fecha);
+      (l.insumos||[]).forEach(function(r){ var q=Number(r.total!=null?r.total:(r.cant_total!=null?r.cant_total:(r.cantidad||0)))||0; if(!q) return;
+        var k=String(r.insumo_id); consumo[k]=(consumo[k]||0)+q; }); });
+    fechas.sort();
+    var diasRango = (fechas.length>=2)? Math.max(1, Math.round((new Date(fechas[fechas.length-1])-new Date(fechas[0]))/86400000)) : (fechas.length===1?30:0);
+    var cobertura=[];
+    ins.forEach(function(i){
+      var cons=consumo[String(i.id)]||0;
+      var consDia = (diasRango>0 && cons>0)? cons/diasRango : 0;
+      var stock=Number(i.stock)||0;
+      var dias = (consDia>0)? Math.floor(stock/consDia) : null;
+      var estado = (consDia<=0)? 'sin_uso' : (dias<=7?'critico':(dias<=15?'bajo':'ok'));
+      cobertura.push({ nombre:i.nombre, unidad:i.unidad, stock:stock, consumoDia: consDia>0?Math.round(consDia*100)/100:0, diasRestantes:dias, estado:estado });
+    });
+    // orden: crítico/bajo primero
+    var rank={critico:0,bajo:1,ok:2,sin_uso:3};
+    cobertura.sort(function(a,b){ return (rank[a.estado]-rank[b.estado]) || ((a.diasRestantes==null?9e9:a.diasRestantes)-(b.diasRestantes==null?9e9:b.diasRestantes)); });
+    var enAlerta = cobertura.filter(function(x){return x.estado==='critico'||x.estado==='bajo';}).length;
+    return { benchmark:bench, cobertura:cobertura, kpis:{ margenTot:margenTot, rindeProm:rindeProm, avancePct:avancePct, insumosAlerta:enAlerta } };
+  };
+
+  // ── Render
+  window.agRenderDashboardRico = function(){
+    if (window.__AGRO_RICO_OFF) return;
+    var view=document.getElementById('ag-view-dashboard'); if(!view) return;
+    if(typeof agGetDB!=='function') return;
+    var d=agGetDB();
+    var box=document.getElementById('agd-rico');
+    if(!box){ box=document.createElement('div'); box.id='agd-rico'; box.style.marginTop='16px'; view.appendChild(box); }
+    var r=window._agRicoData(d);
+    var k=r.kpis;
+    function kpi(icon,label,val,sub,color){
+      return '<div class="card"><div class="k">'+icon+' '+label+'</div><div class="v" style="color:'+(color||'var(--text)')+'">'+val+'</div><div class="s">'+(sub||'')+'</div></div>';
+    }
+    var margenColor = k.margenTot>=0?'var(--green)':'var(--red)';
+    var kpisHtml='<div class="cards" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px">'+
+      kpi('💰','Margen (ingreso − costo)','Bs '+_f(k.margenTot),'campañas con cosecha',margenColor)+
+      kpi('🌾','Rinde promedio',(k.rindeProm!=null?(_f(k.rindeProm)+' kg/ha'):'—'),'de campañas cosechadas','var(--text)')+
+      kpi('✅','Avance de labores',(k.avancePct!=null?(k.avancePct+'%'):'—'),'ejecutadas / total','var(--amber)')+
+      kpi('📦','Insumos en alerta',String(k.insumosAlerta),'stock bajo o crítico',(k.insumosAlerta>0?'var(--red)':'var(--green)'))+
+    '</div>';
+    // benchmark margen/ha
+    var maxAbs=1; r.benchmark.forEach(function(b){ maxAbs=Math.max(maxAbs,Math.abs(b.margenHa)); });
+    var benchHtml='';
+    if(r.benchmark.length){
+      benchHtml='<div class="card" style="margin-bottom:14px"><div class="card-hd"><div class="card-title">📊 Margen por campaña (Bs/ha)</div></div><div class="card-body">'+
+        r.benchmark.map(function(b){ var w=Math.max(2,Math.abs(b.margenHa)/maxAbs*100); var col=b.margenHa>=0?'#3fb950':'#f85149';
+          return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'+
+            '<div style="width:150px;font-size:12px;color:var(--text)">'+b.label+(b.rindeHa!=null?(' <span style="color:var(--muted);font-size:10px">'+_f(b.rindeHa)+' kg/ha</span>'):'')+'</div>'+
+            '<div style="flex:1;height:18px;background:rgba(255,255,255,.05);border-radius:5px;overflow:hidden"><div style="height:100%;width:'+w+'%;background:'+col+';opacity:.85;border-radius:5px"></div></div>'+
+            '<div style="width:110px;text-align:right;font-size:12px;font-weight:600;color:'+col+'">Bs '+_f(b.margenHa)+'/ha</div></div>';
+        }).join('')+
+        '<div style="font-size:10px;color:var(--muted);margin-top:6px">Ingreso de cosecha − costo de labores, por hectárea. Verde = gana, rojo = pierde.</div></div>';
+    }
+    // cobertura de insumos
+    var cobHtml='';
+    if(r.cobertura.length){
+      function pill(e){ if(e==='critico')return '<span style="background:rgba(248,81,73,.15);color:#f85149;font-size:10px;padding:2px 7px;border-radius:8px">crítico</span>';
+        if(e==='bajo')return '<span style="background:rgba(212,160,23,.15);color:#d4a017;font-size:10px;padding:2px 7px;border-radius:8px">bajo</span>';
+        if(e==='ok')return '<span style="background:rgba(63,185,80,.12);color:#3fb950;font-size:10px;padding:2px 7px;border-radius:8px">ok</span>';
+        return '<span style="color:var(--muted);font-size:10px">sin uso</span>'; }
+      cobHtml='<div class="card"><div class="card-hd"><div class="card-title">📦 Cobertura de insumos</div></div><div class="card-body" style="padding:0">'+
+        '<table class="tbl" style="width:100%"><thead><tr><th>Insumo</th><th class="num">Stock</th><th class="num">Consumo/día</th><th class="num">Días restantes</th><th>Estado</th></tr></thead><tbody>'+
+        r.cobertura.map(function(c){ return '<tr><td>'+c.nombre+'</td><td class="num">'+_f(c.stock,1)+' '+(c.unidad||'')+'</td><td class="num">'+(c.consumoDia>0?_f(c.consumoDia,2):'—')+'</td><td class="num">'+(c.diasRestantes!=null?c.diasRestantes:'—')+'</td><td>'+pill(c.estado)+'</td></tr>'; }).join('')+
+        '</tbody></table></div><div style="font-size:10px;color:var(--muted);padding:8px 12px">Consumo/día estimado de las labores ejecutadas. Crítico ≤7 días · bajo ≤15 días.</div></div>';
+    }
+    box.innerHTML = kpisHtml + benchHtml + cobHtml;
+  };
+
+  // ── Enganche a agRenderDashboard
+  function hook(){
+    if (window.__AGRO_RICO_OFF) return;
+    var orig = window.agRenderDashboard;
+    if (typeof orig!=='function' || orig.__rico) return;
+    window.agRenderDashboard = function(){
+      var r = orig.apply(this, arguments);
+      try{ window.agRenderDashboardRico(); }catch(e){}
+      return r;
+    };
+    window.agRenderDashboard.__rico = true;
+  }
+  if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', hook);
+  else hook();
+})();
+</script>
+
+
+
+<!-- ══════════════════════════════════════════════════════════════
+     v1.8.139 — COSTO/KG PRODUCIDO (directos + indirectos prorrateados).
+     Reusa el motor del Análisis Histórico (_ahCalcularIndirectos): por
+     lote = (sanidad + mantenimiento del lote + indirectos prorrateados
+     por cab-días) ÷ engorde (Σ peso_actual − peso_ingreso). Excluye la
+     compra de ganado. Se muestra en Análisis por Lote y reemplaza el
+     COSTO/KG del header por la versión global. Kill: __COSTOKG_OFF.
+     ══════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  function _ckProducts(){ return (typeof db!=='undefined'&&db&&db.products)?db.products:[]; }
+  function _ckComprasLote(code){ return ((typeof db!=='undefined'&&db.compras_ganado)||[]).filter(function(c){ return c.lot_code===code || (Array.isArray(c.lote_destinos)&&c.lote_destinos.indexOf(code)>=0); }); }
+  function _ckVentasLote(code){ return ((typeof db!=='undefined'&&db.sales)||[]).filter(function(s){
+    if(s.lot_code===code) return true;
+    if(Array.isArray(s.lot_codes)&&s.lot_codes.indexOf(code)>=0) return true;
+    if(Array.isArray(s.items)) return s.items.some(function(i){return i.lot_code===code;});
+    return false; }); }
+
+  // Costos DIRECTOS del lote (misma lógica que _ahRenderCostos): sanidad + mantenimiento
+  function _ckDirectos(code){
+    var products=_ckProducts();
+    var treatments=((typeof db!=='undefined'&&db.treatments)||[]).filter(function(t){return t.lot_code===code;});
+    var mant=((typeof db!=='undefined'&&db.mantenimientos)||[]).filter(function(m){return m.lot_code===code;});
+    var costoSan=0;
+    treatments.forEach(function(t){
+      var c=parseFloat(t.cost||0); if(c>0){ costoSan+=c; return; }
+      var prod=products.find(function(p){return p.id===t.product_id||p.name===t.product_name;});
+      var uc=prod?parseFloat(prod.unit_cost||prod.cost||0):0;
+      if(uc>0){ var q=parseFloat(t.count||t.quantity||0)||0; costoSan+=q*uc; }
+    });
+    var costoMant=0;
+    mant.forEach(function(m){
+      if(Array.isArray(m.stock_items)){ m.stock_items.forEach(function(si){
+        var prod=products.find(function(p){return p.id===si.product_id||p.name===si.product_name;});
+        var c=prod?parseFloat(prod.unit_cost||prod.cost||0):0; var q=parseFloat(si.quantity||si.count||0)||0; costoMant+=q*c;
+      }); } else { costoMant+=parseFloat(m.total||m.costo||0)||0; }
+    });
+    return { sanidad:costoSan, mantenimiento:costoMant, total:costoSan+costoMant };
+  }
+
+  // Engorde del lote = Σ (peso_actual − peso_ingreso) de animales con ≥2 pesajes.
+  // REGLA: solo cuentan animales con ≥2 pesajes (sin 2do pesaje no hay engorde medible).
+  function _ckEngorde(lot){
+    try{
+      var animDB=(typeof getAnimalesDB==='function')?(getAnimalesDB()||{}):{};
+      var anims=animDB[lot.code]||[];
+      var kg=0, nMedibles=0, nTotal=0;
+      anims.forEach(function(a){
+        nTotal++;
+        var st=(typeof _alCalcAnimalStats==='function')?_alCalcAnimalStats(a, lot.entry_date):null;
+        if(st && st.nPesajes>=2){
+          nMedibles++;
+          var d=(st.deltaTotal!=null)?st.deltaTotal:((st.pesoActual!=null&&st.pesoIngreso!=null)?(st.pesoActual-st.pesoIngreso):0);
+          kg+=Math.max(0,d);
+        }
+      });
+      return { kg:Math.round(kg), nMedibles:nMedibles, nTotal:nTotal };
+    }catch(e){ return { kg:0, nMedibles:0, nTotal:0 }; }
+  }
+
+  // GMD estimada para lotes sin 2º pesaje: 1) categoría/raza del lote (rp.categorias.gmd_objetivo)
+  // 2) promedio del rp (gmd_default) 3) promedio de industria (0.7 kg/d, engorde a pasto).
+  function _ckGmdEstimada(lot, rp){
+    var cat=String((lot&&(lot.category||lot.categoria))||'').toLowerCase().trim();
+    var cats=(rp&&Array.isArray(rp.categorias))?rp.categorias:[];
+    var hit=cats.find(function(c){ var n=String((c.name||c.nombre)||'').toLowerCase().trim(); return n && (n===cat || (cat && cat.indexOf(n)>=0) || (n && n.indexOf(cat)>=0 && cat)); });
+    if(hit){ var g=parseFloat(hit.gmd_objetivo!=null?hit.gmd_objetivo:hit.gmd); if(g>0) return { gmd:g, fuente:'categoría '+(hit.name||hit.nombre) }; }
+    var gd=parseFloat(rp&&rp.gmd_default); if(gd>0) return { gmd:gd, fuente:'promedio del rodeo' };
+    return { gmd:0.7, fuente:'promedio de industria' };
+  }
+
+  // Costo/kg producido del lote (público)
+  window._lotCostoKgProducido = function(lot){
+    if(!lot) return null;
+    var dir=_ckDirectos(lot.code);
+    var indT=0;
+    try{ if(typeof _ahCalcularIndirectos==='function'){ var ind=_ahCalcularIndirectos(lot, _ckVentasLote(lot.code), _ckComprasLote(lot.code)); indT=(ind&&ind.total)||0; } }catch(e){}
+    var costoOperativo=dir.total+indT;
+    var eng=_ckEngorde(lot);
+    var engorde=eng.kg;
+    // REGLA: costo/kg REAL solo si hay ≥1 animal con 2+ pesajes y engorde > 0
+    var costoKg=(eng.nMedibles>0 && engorde>0)? Math.round(costoOperativo/engorde*100)/100 : null;
+    // ESPERADO: engorde estimado con GMD (cab × GMD × días) para cuando no hay 2º pesaje
+    var rp=(function(){ try{ return (typeof getRp==='function')?getRp():{}; }catch(e){ return {}; } })();
+    var ge=_ckGmdEstimada(lot, rp);
+    var gmd=ge.gmd;
+    var cab=eng.nTotal || parseInt(lot.animal_count,10) || 0;
+    var dias=lot.entry_date? Math.max(0, Math.round((Date.now()-new Date(lot.entry_date).getTime())/86400000)) : 0;
+    var engordeEsp=Math.round(cab*gmd*dias);
+    var costoKgEsp=(engordeEsp>0)? Math.round(costoOperativo/engordeEsp*100)/100 : null;
+    return { directos:Math.round(dir.total), indirectos:Math.round(indT), costoOperativo:Math.round(costoOperativo),
+      engorde:engorde, costoKg:costoKg, nMedibles:eng.nMedibles, nTotal:eng.nTotal,
+      gmdEsperada:gmd, gmdFuente:ge.fuente, diasDesdeIngreso:dias, engordeEsperado:engordeEsp, costoKgEsperado:costoKgEsp };
+  };
+
+  // Global (header): Σ costo operativo de lotes activos ÷ Σ engorde. Memoizado 5s.
+  var _gCache=null, _gAt=0;
+  window._globalCostoKgProducido = function(force){
+    if(!force && _gCache!=null && (Date.now()-_gAt)<5000) return _gCache;
+    try{
+      var lots=((typeof db!=='undefined'&&db.lots)||[]).filter(function(l){
+        if(!l) return false; var st=String(l.status||'activo').toLowerCase();
+        return !(st==='sold'||st==='vendido'||st==='fusionado'||st==='merged'||st==='marcado'||st==='marcado_completo'||st==='inactivo');
+      });
+      var totCosto=0, totEng=0;
+      lots.forEach(function(l){ var r=window._lotCostoKgProducido(l); if(r){ totCosto+=r.costoOperativo; totEng+=r.engorde; } });
+      var v=(totEng>0)? Math.round(totCosto/totEng*100)/100 : null;
+      _gCache={ costoKg:v, totalCosto:Math.round(totCosto), totalEngorde:Math.round(totEng) }; _gAt=Date.now();
+      return _gCache;
+    }catch(e){ return { costoKg:null }; }
+  };
+
+  // ── Render en Análisis por Lote (card propia, después de la proyección) ──
+  window._alRenderCostoKg = function(lot){
+    if(window.__COSTOKG_OFF) return;
+    if(!lot) return;
+    var anchor=document.getElementById('al-proy-summary'); if(!anchor) return;
+    var box=document.getElementById('al-costokg');
+    if(!box){ box=document.createElement('div'); box.id='al-costokg'; box.style.marginTop='14px'; anchor.parentNode.insertBefore(box, anchor.nextSibling); }
+    var mon=(function(){ try{ var rp=(typeof getRp==='function')?getRp():{}; return rp.moneda||'Bs'; }catch(e){ return 'Bs'; } })();
+    var r=window._lotCostoKgProducido(lot);
+    function f(n){ try{ return Number(n).toLocaleString('es-BO'); }catch(e){ return String(n); } }
+    function _cell(label,val,sub,color){ return '<div style="background:var(--sur2,#161b22);border:1px solid var(--bor);border-radius:8px;padding:10px 12px"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">'+label+'</div><div style="font-size:18px;font-weight:600;margin-top:3px;color:'+(color||'var(--text)')+'">'+val+'</div>'+(sub?'<div style="font-size:10px;color:var(--muted);margin-top:2px">'+sub+'</div>':'')+'</div>'; }
+    if(!r || r.costoKg==null){
+      var conUno=(r?(r.nTotal-r.nMedibles):0);
+      var regla = (r && r.nMedibles>0)
+        ? 'Los animales con 2 pesajes aún no registran ganancia, así que el costo/kg real no es representativo todavía.'
+        : ('Se necesitan ≥2 pesajes por animal para el costo/kg REAL'+((r&&r.nTotal)?(' ('+conUno+' de '+r.nTotal+' tienen un solo pesaje)'):'')+'.');
+      if(r && r.costoKgEsperado!=null){
+        box.innerHTML=
+          '<div class="card"><div class="card-hd" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="card-title">📉 Costo/kg producido — ESPERADO (estimado)</div><button onclick="_costoKgExportPDF(\''+String(lot.code).replace(/\x27/g,"")+'\')" style="font-size:11px;padding:4px 10px;background:transparent;color:var(--text);border:1px solid var(--bor);border-radius:6px;cursor:pointer">⬇ PDF</button></div>'+
+          '<div class="card-body">'+
+            '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">'+
+              _cell('Costo/kg esperado', mon+' '+r.costoKgEsperado, 'GMD '+r.gmdEsperada+' kg/d ('+r.gmdFuente+')', 'var(--amber)')+
+              _cell('Engorde esperado', f(r.engordeEsperado)+' kg', r.diasDesdeIngreso+' días × GMD × cab', 'var(--text)')+
+              _cell('Costo directo', mon+' '+f(r.directos), 'sanidad + mant.', 'var(--text)')+
+              _cell('Costo indirecto', mon+' '+f(r.indirectos), 'prorrateado', 'var(--text)')+
+            '</div>'+
+            '<div style="font-size:10px;color:var(--muted);margin-top:10px;line-height:1.4">ℹ '+regla+' Este número es una <b>estimación</b>: usa engorde proyectado (cabezas × GMD × días), no medido. Cargá un 2º pesaje para el costo/kg real.</div>'+
+          '</div></div>';
+      } else {
+        box.innerHTML='<div class="card"><div class="card-hd"><div class="card-title">📉 Costo/kg producido (a hoy)</div></div><div class="card-body"><div style="color:var(--muted);font-size:12px;line-height:1.5"><b>Regla:</b> '+regla+' Con un solo pesaje el número se aleja mucho de la realidad; cargá un 2º pesaje para verlo.</div></div></div>';
+      }
+      return;
+    }
+    box.innerHTML=
+      '<div class="card"><div class="card-hd" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="card-title">📉 Costo/kg producido — a hoy (directos + indirectos prorrateados)</div><button onclick="_costoKgExportPDF(\''+String(lot.code).replace(/\x27/g,"")+'\')" style="font-size:11px;padding:4px 10px;background:transparent;color:var(--text);border:1px solid var(--bor);border-radius:6px;cursor:pointer">⬇ PDF</button></div>'+
+      '<div class="card-body">'+
+        '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">'+
+          '<div style="background:var(--sur2,#161b22);border:1px solid var(--bor);border-radius:8px;padding:10px 12px"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Costo/kg producido</div><div style="font-size:20px;font-weight:700;color:var(--amber);margin-top:3px">'+mon+' '+r.costoKg+'</div></div>'+
+          '<div style="background:var(--sur2,#161b22);border:1px solid var(--bor);border-radius:8px;padding:10px 12px"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Engorde acumulado</div><div style="font-size:20px;font-weight:600;margin-top:3px">'+f(r.engorde)+' kg</div></div>'+
+          '<div style="background:var(--sur2,#161b22);border:1px solid var(--bor);border-radius:8px;padding:10px 12px"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Costo directo</div><div style="font-size:16px;font-weight:600;margin-top:3px">'+mon+' '+f(r.directos)+'</div><div style="font-size:10px;color:var(--muted)">sanidad + mantenimiento</div></div>'+
+          '<div style="background:var(--sur2,#161b22);border:1px solid var(--bor);border-radius:8px;padding:10px 12px"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Costo indirecto</div><div style="font-size:16px;font-weight:600;margin-top:3px">'+mon+' '+f(r.indirectos)+'</div><div style="font-size:10px;color:var(--muted)">prorrateado por cab-días</div></div>'+
+        '</div>'+
+        '<div style="font-size:10px;color:var(--muted);margin-top:10px;line-height:1.4">ℹ Mismo motor que el Análisis Histórico: directos (sanidad + mantenimiento del lote) + indirectos (sueldos, diesel, alimento, mant. general, compras, maquinaria) prorrateados por cabezas-días. Excluye la compra de ganado. Dividido por el engorde real (peso actual − peso de ingreso).</div>'+
+      '</div></div>';
+  };
+
+  // ── Export PDF del desglose (auditable, revisable a mano) ──
+  window._costoKgExportPDF = function(lotCode){
+    try{
+      var lot = ((typeof db!=='undefined'&&db.lots)||[]).find(function(l){return l.code===lotCode;});
+      if(!lot){ return; }
+      var rp=(function(){ try{ return (typeof getRp==='function')?getRp():{}; }catch(e){ return {}; } })();
+      var mon = rp.moneda||'Bs';
+      var estancia = rp.nombre_estancia || 'EstanciaPro';
+      var dir = _ckDirectos(lotCode);
+      var ind = (typeof _ahCalcularIndirectos==='function') ? _ahCalcularIndirectos(lot, _ckVentasLote(lotCode), _ckComprasLote(lotCode)) : {};
+      var r = window._lotCostoKgProducido(lot);
+      function fn(n){ try{ return Number(Math.round(n)).toLocaleString('es-BO'); }catch(e){ return String(n); } }
+      function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+      var fra = (ind.fraccionPct!=null)? ind.fraccionPct.toFixed(2) : '—';
+      var esReal = (r.costoKg!=null);
+      var engTxt = esReal
+        ? ('REAL — '+fn(r.engorde)+' kg (de '+r.nMedibles+' animales con 2+ pesajes)')
+        : ('ESPERADO — '+fn(r.engordeEsperado)+' kg = '+r.nTotal+' cab × GMD '+r.gmdEsperada+' ('+esc(r.gmdFuente)+') × '+r.diasDesdeIngreso+' días');
+      var ckg = esReal ? r.costoKg : r.costoKgEsperado;
+      function fila(cat, poolTot, asignado){ return '<tr><td>'+esc(cat)+'</td><td class="r">'+mon+' '+fn(poolTot)+'</td><td class="r">'+fra+'%</td><td class="r"><b>'+mon+' '+fn(asignado)+'</b></td></tr>'; }
+      var hoy = new Date().toISOString().slice(0,10);
+      var html =
+        '<!doctype html><html><head><meta charset="utf-8"><title>Costo por kg — '+esc(lotCode)+'</title>'+
+        '<style>body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:28px;font-size:13px}h1{font-size:19px;margin:0 0 2px}h2{font-size:14px;border-bottom:2px solid #333;padding-bottom:3px;margin:20px 0 8px}.sub{color:#666;font-size:12px;margin-bottom:14px}table{width:100%;border-collapse:collapse;margin:6px 0}th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}th{background:#f0f0f0}.r{text-align:right}.tot{background:#fbfbe8;font-weight:bold}.big{font-size:22px;font-weight:bold;color:#0a6b2e}.note{color:#666;font-size:11px;margin-top:16px;line-height:1.5}@media print{body{margin:12px}}</style></head><body>'+
+        '<h1>Desglose de Costo por kg producido</h1>'+
+        '<div class="sub">'+esc(estancia)+' · Lote <b>'+esc(lotCode)+'</b>'+(lot.category?(' · '+esc(lot.category)):'')+' · Emitido '+hoy+'</div>'+
+        '<h2>1. Período del cálculo (prorrateo)</h2>'+
+        '<table><tr><td>Ingreso del lote</td><td class="r">'+esc(lot.entry_date||'—')+'</td></tr>'+
+        '<tr><td>Cabezas-días del lote</td><td class="r">'+fn(ind.cabDiasLote||0)+'</td></tr>'+
+        '<tr><td>Cabezas-días del rebaño</td><td class="r">'+fn(ind.cabDiasTotal||0)+'</td></tr>'+
+        '<tr class="tot"><td>Fracción del lote</td><td class="r">'+fra+'%</td></tr></table>'+
+        '<h2>2. Costos directos (atribuidos al lote)</h2>'+
+        '<table><tr><th>Concepto</th><th class="r">'+mon+'</th></tr>'+
+        '<tr><td>Sanidad (tratamientos del lote)</td><td class="r">'+mon+' '+fn(dir.sanidad)+'</td></tr>'+
+        '<tr><td>Mantenimiento del lote</td><td class="r">'+mon+' '+fn(dir.mantenimiento)+'</td></tr>'+
+        '<tr class="tot"><td>Subtotal directos</td><td class="r">'+mon+' '+fn(dir.total)+'</td></tr></table>'+
+        '<h2>3. Costos indirectos (pool de la estancia × fracción)</h2>'+
+        '<table><tr><th>Categoría</th><th class="r">Pool total</th><th class="r">Fracción</th><th class="r">Asignado al lote</th></tr>'+
+        fila('Sueldos / personal', ind.sueldos_total||0, ind.sueldos||0)+
+        fila('Diesel / combustible', ind.diesel_total||0, ind.diesel||0)+
+        fila('Alimento / sal', ind.alimento_total||0, ind.alimento||0)+
+        fila('Mantenimiento general', ind.mantGeneral_total||0, ind.mantGeneral||0)+
+        fila('Compras / otros (incl. intereses)', ind.compras_total||0, ind.compras||0)+
+        '<tr class="tot"><td colspan="3">Subtotal indirectos</td><td class="r">'+mon+' '+fn(ind.total||0)+'</td></tr></table>'+
+        '<div class="sub">Excluidos del costo operativo: compra de ganado y CAPEX (maquinaria/inversión).</div>'+
+        '<h2>4. Resultado</h2>'+
+        '<table><tr class="tot"><td>Costo operativo (directos + indirectos)</td><td class="r">'+mon+' '+fn(r.costoOperativo)+'</td></tr>'+
+        '<tr><td>Engorde (kg producidos)</td><td class="r">'+engTxt+'</td></tr></table>'+
+        '<p class="big">Costo/kg '+(esReal?'':'esperado')+' = '+mon+' '+ckg+' / kg</p>'+
+        '<div class="note">Este desglose es auditable: si algún costo está mal clasificado (ej. una compra que debería ser inversión, o un gasto de otro lote), corregilo en Contabilidad → Cuentas/Subcuentas y volvé a generar. Indirectos prorrateados por cabezas-días. Costo/kg esperado usa engorde estimado (GMD) cuando el lote no tiene 2+ pesajes.</div>'+
+        '</body></html>';
+      var win = window.open('', '_blank', 'width=920,height=760');
+      if(!win){ if(typeof toast==='function') toast('Permití las ventanas emergentes para exportar el PDF','error'); return; }
+      win.document.write(html); win.document.close(); win.focus();
+      setTimeout(function(){ try{ win.print(); }catch(e){} }, 400);
+    }catch(e){ try{ if(typeof toast==='function') toast('No se pudo generar el PDF: '+e.message,'error'); }catch(e2){} }
+  };
+
+  // ── Enganches ──
+  function hookAL(){
+    if(window.__COSTOKG_OFF) return;
+    var orig=window.renderAnalisisLote;
+    if(typeof orig!=='function'||orig.__costokg) return;
+    window.renderAnalisisLote=function(){
+      var r=orig.apply(this,arguments);
+      if(window.__COSTOKG_OFF) return r;
+      try{ var sel=document.getElementById('al-lot-select'); if(sel&&sel.value){ var lot=((typeof db!=='undefined'&&db.lots)||[]).find(function(l){return l.code===sel.value;}); if(lot) window._alRenderCostoKg(lot); } }catch(e){}
+      return r;
+    };
+    window.renderAnalisisLote.__costokg=true;
+  }
+  function hookTopbar(){
+    if(window.__COSTOKG_OFF) return;
+    var orig=window.renderTopbarSummary;
+    if(typeof orig!=='function'||orig.__costokg) return;
+    window.renderTopbarSummary=function(){
+      var r=orig.apply(this,arguments);
+      if(window.__COSTOKG_OFF) return r;
+      try{
+        // v1.8.140: OCULTAR el Costo/kg del header. El denominador (engorde) no es confiable con
+        // datos de pesaje único, y el valor del CREA no convence. Se muestra por lote donde hay engorde.
+        var el=document.getElementById('tbs-costo');
+        if(el && el.parentElement) el.parentElement.style.display='none';
+      }catch(e){}
+      return r;
+    };
+    window.renderTopbarSummary.__costokg=true;
+  }
+  function hook(){ hookAL(); hookTopbar(); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', hook);
+  else hook();
+})();
+</script>
+
 </body>
 </html>
