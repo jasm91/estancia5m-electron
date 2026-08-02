@@ -2226,19 +2226,29 @@ function orMarcajeGo(){
       <button class="btn btn-ghost btn-sm" onclick="cab2Export('servicios')">Servicios IA + MN <span id="cb2-n-srv"></span></button>
       <button class="btn btn-ghost btn-sm" onclick="cab2Export('cdn')">Nacimientos CDN <span id="cb2-n-cdn"></span></button>
       <button class="btn btn-ghost btn-sm" onclick="cab2Export('te')">TE / FIV <span id="cb2-n-te"></span></button>
-      <button class="btn btn-ghost btn-sm" onclick="cab2Export('cdm')">Muertes CDM</button>
-      <button class="btn btn-ghost btn-sm" onclick="cab2Export('adt')">Transferencias ADT</button>
-      <button class="btn btn-ghost btn-sm" onclick="asoCDPExport()">📊 CDP pesos padrón (205/365/550)</button>
+      <button class="btn btn-ghost btn-sm" onclick="cab2Export('cdm')" title="CDM = Comunicación de Muerte">Muertes CDM</button>
+      <button class="btn btn-ghost btn-sm" onclick="cab2Export('adt')" title="ADT = Autorización de Transferencia">Transferencias ADT</button>
+      <button class="btn btn-ghost btn-sm" onclick="asoCDPExport()" title="CDP = Control de Pesos padrón (a 205, 365 y 550 días)">📊 CDP pesos padrón (205/365/550)</button>
     </div>
     <div id="cb2-planillas">
       <div style="font-size:11px;color:var(--muted);margin-bottom:4px">📄 Planilla oficial .xls (layout ASOCEBU, lista para revisar y presentar):</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-primary btn-sm" onclick="asoPlanilla('cdn')">Planilla CDN</button>
-        <button class="btn btn-primary btn-sm" onclick="asoPlanilla('ia')">Planilla IA</button>
-        <button class="btn btn-primary btn-sm" onclick="asoPlanilla('mn')">Planilla MN</button>
-        <button class="btn btn-primary btn-sm" onclick="asoPlanilla('fiv')">Formulario FIV</button>
-        <button class="btn btn-primary btn-sm" onclick="asoPlanilla('cdm')">Planilla CDM</button>
-        <button class="btn btn-primary btn-sm" onclick="asoPlanilla('adt')">Planilla ADT</button>
+        <button class="btn btn-primary btn-sm" onclick="asoPlanilla('cdn')" title="CDN = Comunicación de Nacimiento">Planilla CDN</button>
+        <button class="btn btn-primary btn-sm" onclick="asoPlanilla('ia')" title="CDS-IA = Comunicación de Servicio — Inseminación Artificial">Planilla IA</button>
+        <button class="btn btn-primary btn-sm" onclick="asoPlanilla('mn')" title="CDS-MN = Comunicación de Servicio — Monta Natural">Planilla MN</button>
+        <button class="btn btn-primary btn-sm" onclick="asoPlanilla('fiv')" title="FIV = Formulario de Fecundación In Vitro / Transferencia de Embriones">Formulario FIV</button>
+        <button class="btn btn-primary btn-sm" onclick="asoPlanilla('cdm')" title="CDM = Comunicación de Muerte">Planilla CDM</button>
+        <button class="btn btn-primary btn-sm" onclick="asoPlanilla('adt')" title="ADT = Autorización de Transferencia (Art. 120)">Planilla ADT</button>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.7"><!-- v1.8.148: leyenda de siglas (pedido José 27-07) -->
+        ℹ️ <b>Siglas:</b>
+        <b>CDN</b> Comunicación de Nacimiento &nbsp;·&nbsp;
+        <b>IA / MN</b> Comunicación de Servicio (Inseminación Artificial / Monta Natural) &nbsp;·&nbsp;
+        <b>FIV</b> Formulario de Fecundación In Vitro / Transferencia de Embriones &nbsp;·&nbsp;
+        <b>CDM</b> Comunicación de Muerte &nbsp;·&nbsp;
+        <b>ADT</b> Autorización de Transferencia &nbsp;·&nbsp;
+        <b>CDP</b> Control de Pesos padrón (205/365/550 días) &nbsp;·&nbsp;
+        <b>RGNRC</b> Registro Genealógico Nacional de Razas Cebuinas (ASOCEBU)
       </div>
     </div>
     <div id="cb2-plazos"></div>
@@ -43906,6 +43916,799 @@ document.addEventListener('click', function(ev){
   var b = ev.target && ev.target.closest && ev.target.closest('.nav-btn');
   if (b) setTimeout(function(){ agGateApply(); cfgModulosRender(); }, 120);
 });
+/*__AGM_START__*/
+// ══════════════════════════════════════════════════════════════════════════
+// v1.8.149 MEJORAS AGRO (aditivo, todo por DOM — pedidos José 28/29-07):
+//  A) Wizard de labor con catálogos canónicos: responsable = selector de
+//     PERSONAL (patrón assignee de Tareas), máquina = selector de MAQUINARIA
+//     con horómetro, diésel = TANQUES visibles con nivel + costo AUTOMÁTICO
+//     (litros × Bs/L de la última recarga) + genera el DESPACHO del tanque.
+//     SIN campos de mano de obra (la gente es de planilla — su costo llega
+//     por el prorrateo de planilla del análisis de centros de costos).
+//  B) Subpestaña STOCK AGRO (reemplaza el botón "Insumos agro" de Labores).
+//  C) Subpestaña SERVICIOS EXTERNOS: terceros de baja frecuencia, costo
+//     prorrateable en N campañas a criterio del usuario, con saldo PENDIENTE
+//     visible. Datos = agro_labores con tipo:'servicio_ext' (campana_id null
+//     + asignaciones[{campana_id,monto,fecha}]) → SERVER SIN CAMBIOS.
+//  D) Subpestaña MAQUINARIA: flujo simple (actividad + persona + máquina +
+//     combustible del tanque compartido) → costo DIRECTO a UNA campaña.
+//     Datos = agro_labores con tipo:'maquinaria'.
+// Kill switch: window.__AGRO_MEJORAS_OFF = true (todo vuelve a v1.8.148).
+// ══════════════════════════════════════════════════════════════════════════
+(function () {
+  'use strict';
+  if (window.__AGRO_MEJORAS_OFF) { try { console.log('[agro-mejoras] OFF por kill switch'); } catch (e) {} return; }
+
+  /* ═══ tipos nuevos (LABOR_TIPOS es el mapa global de etiquetas) ═══ */
+  try {
+    LABOR_TIPOS.maquinaria = '⚙️ Trabajo de maquinaria';
+    LABOR_TIPOS.servicio_ext = '🤝 Servicio externo';
+  } catch (e) {}
+
+  /* ═══════════════ HELPERS PUROS (testeables) ═══════════════ */
+  function agmUltRecargaBs(tankId) {
+    /* Bs/L automático: última recarga con precio del tanque; sin recarga propia → última global */
+    var recs = ((window.db && db.diesel) || []).filter(function (r) {
+      if (!r) return false;
+      var esRec = (r.type === 'recarga') || (!!r.proveedor && !r.vehiculo);
+      return esRec && (parseFloat(r.precio) || 0) > 0;
+    }).sort(function (a, b) { return String(b.fecha || '').localeCompare(String(a.fecha || '')); });
+    var propia = tankId != null ? recs.find(function (r) { return String(r.tank_id) === String(tankId); }) : null;
+    var r = propia || recs[0];
+    return r ? (parseFloat(r.precio) || 0) : 0;
+  }
+  function agmTanquesDiesel() {
+    var tanks = (typeof getDieselTanks === 'function') ? getDieselTanks() : [];
+    return (tanks || []).filter(function (t) { return !(/gasolina|bidon|bidón/i.test(String(t && t.name || ''))); });
+  }
+  function agmEmpleados() {
+    return ((window.db && db.employees) || []).filter(function (e) { return e && e.active; })
+      .map(function (e) { return String(e.name || '').trim(); }).filter(Boolean)
+      .filter(function (n, i, a) { return a.indexOf(n) === i; }).sort();
+  }
+  function agmMaquinas() {
+    return ((window.db && db.maquinaria) || []).filter(function (m) {
+      return m && (m.nombre || m.name) && !/vendid/i.test(String(m.estado || ''));
+    });
+  }
+  /* servicios externos */
+  function agmServicios(d) { return (d.labores || []).filter(function (l) { return l && l.tipo === 'servicio_ext'; }); }
+  function agmServAsignado(s) {
+    var t = 0; ((s && s.asignaciones) || []).forEach(function (a) { t += Number(a.monto) || 0; });
+    return Math.round(t * 100) / 100;
+  }
+  function agmServPendiente(s) { return Math.round(((Number(s && s.monto) || 0) - agmServAsignado(s)) * 100) / 100; }
+  function agmServAsignadoCampana(d, cid) {
+    var t = 0;
+    agmServicios(d).forEach(function (s) {
+      (s.asignaciones || []).forEach(function (a) { if (String(a.campana_id) === String(cid)) t += Number(a.monto) || 0; });
+    });
+    return Math.round(t * 100) / 100;
+  }
+  function agmSugerenciaCuota(s) {
+    var pend = agmServPendiente(s); if (pend <= 0) return 0;
+    var n = Math.max(1, parseInt(s.plan_n, 10) || 1);
+    var cuota = Math.round((Number(s.monto) || 0) / n * 100) / 100;
+    return Math.min(pend, cuota || pend);
+  }
+  /* despacho de tanque generado por una labor/trabajo (el costo va en la LABOR — acá inventario) */
+  function agmCrearDespacho(opts) {
+    if (!opts || !(parseFloat(opts.litros) > 0) || opts.tank_id == null) return null;
+    var tanks = getDieselTanks();
+    var tank = (typeof getTankById === 'function') ? getTankById(tanks, opts.tank_id)
+      : tanks.find(function (t) { return String(t.id) === String(opts.tank_id); });
+    if (!tank) return null;
+    if (!db.diesel) db.diesel = [];
+    if (!db.next_ids) db.next_ids = {};
+    if (!db.next_ids.diesel) db.next_ids.diesel = 1;
+    var litros = parseFloat(opts.litros) || 0;
+    var rec = {
+      id: db.next_ids.diesel++, type: 'despacho', tank_id: tank.id,
+      fecha: opts.fecha || (typeof agHoy === 'function' ? agHoy() : ''),
+      litros: litros, precio: 0, total: 0,
+      vehiculo: opts.vehiculo || 'Labor agro',
+      obs: opts.obs || 'Labor agro',
+      by: 'Desktop', created_at: new Date().toISOString()
+    };
+    if (opts.maq_id != null) rec.maq_id = opts.maq_id;
+    tank.current_level = Math.round((tank.current_level - litros) * 10) / 10;
+    if (tank.current_level < 0) tank.current_level = 0;
+    db.diesel.push(rec);
+    try { saveDieselTanks(tanks); } catch (e) {}
+    try { if (typeof replaceTableInRailway === 'function') replaceTableInRailway('diesel', db.diesel); } catch (e) {}
+    return rec;
+  }
+  function agmNivelTanque(tankId) {
+    var t = agmTanquesDiesel().find(function (x) { return String(x.id) === String(tankId); });
+    return t ? (Number(t.current_level) || 0) : 0;
+  }
+
+  /* ═══════════════ OVERRIDES DE COSTEO ═══════════════ */
+  var _laborCosto0 = laborCosto;
+  laborCosto = function (l) {
+    if (l && l.tipo === 'servicio_ext') {
+      var m = Number(l.monto) || 0;
+      return { ins: 0, diesel: 0, mo: 0, maq: 0, serv: m, total: m };
+    }
+    var c = _laborCosto0(l); c.serv = 0; return c;
+  };
+  var _campCosto0 = campCosto;
+  campCosto = function (d, cid) {
+    var t = _campCosto0(d, cid);
+    t.serv = agmServAsignadoCampana(d, cid);
+    t.total = Math.round((t.total + t.serv) * 100) / 100;
+    return t;
+  };
+
+  /* ═══════════════ OVERRIDE: agRenderLabores (excluye servicios; muestra maquinaria) ═══════════════ */
+  agRenderLabores = function () {
+    var d = agGetDB(), f = (agEl('agl-filter') || {}).value || '', html = '';
+    if (!agEl('agl-tbody')) return;
+    d.labores.slice().sort(function (a, b) { return (b.fecha || '').localeCompare(a.fecha || ''); }).forEach(function (l) {
+      if (l.tipo === 'servicio_ext') return; /* viven en su subpestaña */
+      if (f && l.estado !== f) return;
+      var c = agById(d.campanas, l.campana_id), cost = laborCosto(l);
+      var ins = (l.insumos || []).map(function (r) { var i = agById(d.insumos, r.insumo_id); return i ? (i.nombre + ' ' + r.dosis + ' ' + i.unidad + '/ha') : ''; }).join(', ');
+      if (l.tipo === 'cosecha' && l.cosecha) ins = fmtA(l.cosecha.kg) + ' kg · ' + (l.cosecha.hum || '—') + '% hum';
+      if (l.tipo === 'maquinaria' && !ins) ins = (l.notas || '—');
+      var acts = '';
+      if (l.estado === 'planificada') acts += '<button class="btn btn-primary btn-sm" onclick="agEjecutarLabor(' + l.id + ')">▶ Ejecutar</button> ';
+      acts += '<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agDelLabor(' + l.id + ')">🗑</button>';
+      html += '<tr><td>' + agFecha(l.fecha) + '</td><td>' + (LABOR_TIPOS[l.tipo] || l.tipo) + '</td><td>' + escA(c ? campLabel(d, c) : '?') + '</td><td style="font-size:12px;color:var(--muted)">' + escA(ins || '—') + '</td><td>' + escA(l.resp || '—') + '</td><td class="num">' + fmtA(cost.total) + '</td><td>' + (l.estado === 'ejecutada' ? '<span class="pill g">Ejecutada</span>' : '<span class="pill a">Planificada</span>') + '</td><td style="white-space:nowrap">' + acts + '</td></tr>';
+    });
+    agEl('agl-tbody').innerHTML = html || '<tr><td colspan="8" class="empty">' + (d.labores.length ? 'Sin labores con ese filtro.' : 'Aún no hay labores. Registrá la primera con “+ Registrar labor”.') + '</td></tr>';
+  };
+
+  /* ═══════════════ OVERRIDE: agRenderCostos (+columna Serv.Ext) ═══════════════ */
+  agRenderCostos = function () {
+    var d = agGetDB(), html = '', T = { ha: 0, ins: 0, diesel: 0, mo: 0, maq: 0, serv: 0, total: 0, ing: 0 };
+    if (!agEl('agk-tbody')) return;
+    d.campanas.forEach(function (c) {
+      var cost = campCosto(d, c.id); if (!cost.n && !cost.serv && c.estado === 'planificada') return;
+      var ha = campHa(d, c), ing = campIngreso(d, c.id), mg = ing - cost.total;
+      T.ha += ha; T.ins += cost.ins; T.diesel += cost.diesel; T.mo += cost.mo; T.maq += cost.maq; T.serv += (cost.serv || 0); T.total += cost.total; T.ing += ing;
+      html += '<tr><td>' + escA(campLabel(d, c)) + ' ' + (c.estado === 'en_curso' ? '<span class="pill g">en curso</span>' : '') + '</td><td class="num">' + fmtA(ha, 1) + '</td><td class="num">' + fmtA(cost.ins) + '</td><td class="num">' + fmtA(cost.diesel) + '</td><td class="num">' + fmtA(cost.mo) + '</td><td class="num">' + fmtA(cost.maq) + '</td><td class="num">' + fmtA(cost.serv || 0) + '</td><td class="num"><b>' + fmtA(cost.total) + '</b></td><td class="num"><b>' + (ha ? fmtA(cost.total / ha) : '—') + '</b></td><td class="num">' + fmtA(ing) + '</td><td class="num" style="color:' + (mg >= 0 ? 'var(--green)' : 'var(--red)') + '"><b>' + fmtA(mg) + '</b></td><td class="num">' + (ha ? fmtA(mg / ha) : '—') + '</td></tr>';
+    });
+    agEl('agk-tbody').innerHTML = html || '<tr><td colspan="12" class="empty">Sin datos aún.</td></tr>';
+    var mgT = T.ing - T.total;
+    agEl('agk-tfoot').innerHTML = html ? ('<tr style="font-weight:800;border-top:2px solid var(--bor)"><td>TOTAL</td><td class="num">' + fmtA(T.ha, 1) + '</td><td class="num">' + fmtA(T.ins) + '</td><td class="num">' + fmtA(T.diesel) + '</td><td class="num">' + fmtA(T.mo) + '</td><td class="num">' + fmtA(T.maq) + '</td><td class="num">' + fmtA(T.serv) + '</td><td class="num">' + fmtA(T.total) + '</td><td class="num">' + (T.ha ? fmtA(T.total / T.ha) : '—') + '</td><td class="num">' + fmtA(T.ing) + '</td><td class="num" style="color:' + (mgT >= 0 ? 'var(--green)' : 'var(--red)') + '">' + fmtA(mgT) + '</td><td class="num">' + (T.ha ? fmtA(mgT / T.ha) : '—') + '</td></tr>') : '';
+  };
+
+  /* ═══════════════ WIZARD: valores canónicos ═══════════════ */
+  function agmRespVal(prefix) {
+    var sel = agEl(prefix); if (!sel) return '';
+    if (sel.tagName !== 'SELECT') return (sel.value || '').trim();
+    if (sel.value === '__otra') { var o = agEl(prefix + '-otra'); return o ? (o.value || '').trim() : ''; }
+    return (sel.value || '').trim();
+  }
+  var AGMW = { tank: null }; /* estado diésel del wizard */
+
+  var _agwBuildLabor0 = agwBuildLabor;
+  agwBuildLabor = function (r) {
+    var data = _agwBuildLabor0(r);
+    data.resp = agmRespVal('agw-resp');
+    data.maquina = agmRespVal('agw-maquina');
+    data.mo_h = 0; data.mo_bs = 0; /* planilla: la mano de obra NO se carga por labor */
+    if (data.maquina) {
+      var mq = agmMaquinas().find(function (m) { return String(m.nombre || m.name).trim() === data.maquina; });
+      if (mq) data.maq_id = mq.id;
+    }
+    if (AGMW.tank && AGMW.tank !== 'none' && data.diesel > 0) data.diesel_tank_id = AGMW.tank;
+    return data;
+  };
+
+  var _agwFinish0 = agwFinish;
+  agwFinish = function () {
+    /* validación de tanque antes de delegar */
+    var litros = parseFloat((agEl('agw-diesel') || {}).value) || 0;
+    if (litros > 0 && AGMW.tank && AGMW.tank !== 'none') {
+      var nivel = agmNivelTanque(AGMW.tank);
+      if (litros > nivel) { agToast('El tanque tiene ' + fmtA(nivel, 1) + ' L — no alcanza para ' + fmtA(litros, 1) + ' L', 'error'); return; }
+    }
+    if (litros > 0 && !AGMW.tank) AGMW.tank = 'none'; /* sin elección explícita = surtidor */
+    var d = agGetDB();
+    var antes = d.labores.length;
+    var wasExec = !!AGW.execId;
+    _agwFinish0();
+    /* si la labor quedó EJECUTADA con litros de un tanque → despacho (una sola vez) */
+    var creoNueva = d.labores.length > antes;
+    if (!(creoNueva || wasExec)) return; /* no guardó (validación falló) */
+    var l = wasExec ? agById(d.labores, AGW.execId) : d.labores[d.labores.length - 1];
+    if (!l || l.estado !== 'ejecutada') return;
+    if (l._despacho_id != null) return; /* idempotente */
+    if ((Number(l.diesel) || 0) > 0 && AGMW.tank && AGMW.tank !== 'none') {
+      var c = agById(d.campanas, l.campana_id);
+      var rec = agmCrearDespacho({
+        tank_id: AGMW.tank, litros: l.diesel, fecha: l.fecha,
+        vehiculo: l.maquina || 'Labor agro', maq_id: l.maq_id,
+        obs: 'Labor agro: ' + (LABOR_TIPOS[l.tipo] || l.tipo) + (c ? ' — ' + campLabel(d, c) : '')
+      });
+      if (rec) {
+        l._despacho_id = rec.id; l.updated_at = new Date().toISOString();
+        agSaveDB();
+        agToast('⛽ Despacho generado: ' + fmtA(l.diesel, 1) + ' L del tanque (quedan ' + fmtA(agmNivelTanque(AGMW.tank), 1) + ' L)', 'info');
+      }
+    }
+    AGMW.tank = null;
+  };
+
+  var _agwOpen0 = agwOpen;
+  agwOpen = function (execId, mode, tipoPreset) {
+    _agwOpen0(execId, mode, tipoPreset);
+    try { agmWizardPopular(); } catch (e) { console.warn('[agro-mejoras] wizard', e); }
+  };
+
+  function agmSelectFill(sel, nombres, placeholder, current) {
+    if (!sel) return;
+    var opts = '<option value="">' + placeholder + '</option>';
+    if (current && nombres.indexOf(current) < 0) opts += '<option value="' + escA(current) + '">' + escA(current) + ' (histórico)</option>';
+    nombres.forEach(function (n) { opts += '<option value="' + escA(n) + '">' + escA(n) + '</option>'; });
+    opts += '<option value="__otra">Otro…</option>';
+    sel.innerHTML = opts;
+    sel.value = current || '';
+    if (current && sel.value !== current) sel.value = '';
+  }
+  function agmWizardPopular() {
+    var d = agGetDB();
+    var lab = AGW.execId ? agById(d.labores, AGW.execId) : null;
+    /* responsable = PERSONAL (mismo catálogo que el assignee de Tareas) */
+    agmSelectFill(agEl('agw-resp'), agmEmpleados(), '— Responsable —', lab ? (lab.resp || '') : '');
+    var ro = agEl('agw-resp-otra'); if (ro) { ro.style.display = 'none'; ro.value = ''; }
+    /* máquina = catálogo MAQUINARIA con horómetro */
+    var maqs = agmMaquinas();
+    var msel = agEl('agw-maquina');
+    if (msel) {
+      var cur = lab ? (lab.maquina || '') : '';
+      var opts = '<option value="">— Sin máquina —</option>';
+      var tiene = false;
+      maqs.forEach(function (m) {
+        var n = String(m.nombre || m.name).trim(); if (n === cur) tiene = true;
+        opts += '<option value="' + escA(n) + '">' + escA(n) + (m.horometro ? ' · ' + fmtA(m.horometro) + ' hs' : '') + '</option>';
+      });
+      if (cur && !tiene) opts += '<option value="' + escA(cur) + '">' + escA(cur) + ' (histórico)</option>';
+      opts += '<option value="__otra">Otra…</option>';
+      msel.innerHTML = opts; msel.value = cur || '';
+      var mo = agEl('agw-maquina-otra'); if (mo) { mo.style.display = 'none'; mo.value = ''; }
+    }
+    /* diésel: tanques visibles + costo automático */
+    AGMW.tank = null;
+    var tanks = agmTanquesDiesel();
+    if (tanks.length === 1) AGMW.tank = tanks[0].id; /* un solo tanque → preseleccionado */
+    agmRenderTankButtons('agw-tanques', AGMW, function () { agmWizDieselInfo(); });
+    var bs = agEl('agw-diesel-bs'); if (bs) { bs.readOnly = true; }
+    agmWizDieselInfo();
+  }
+  function agmRenderTankButtons(hostId, state, onPick) {
+    var host = agEl(hostId); if (!host) return;
+    var tanks = agmTanquesDiesel();
+    var html = '';
+    tanks.forEach(function (t) {
+      var on = state.tank != null && String(state.tank) === String(t.id);
+      html += '<button type="button" class="agm-tank' + (on ? ' on' : '') + '" data-tk="' + escA(t.id) + '">⛽ ' + escA(t.name || t.id) + '<span>' + fmtA(t.current_level || 0, 1) + ' L</span></button>';
+    });
+    html += '<button type="button" class="agm-tank' + (state.tank === 'none' ? ' on' : '') + '" data-tk="none">Surtidor<span>sin tanque</span></button>';
+    host.innerHTML = html;
+    host.querySelectorAll('.agm-tank').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var v = b.getAttribute('data-tk');
+        state.tank = (state.tank === v) ? null : v; /* toggle */
+        agmRenderTankButtons(hostId, state, onPick);
+        if (onPick) onPick();
+      });
+    });
+  }
+  function agmWizDieselInfo() {
+    var info = agEl('agw-diesel-info'); if (!info) return;
+    var litros = parseFloat((agEl('agw-diesel') || {}).value) || 0;
+    var bsEl = agEl('agw-diesel-bs');
+    var bs = 0;
+    if (AGMW.tank && AGMW.tank !== 'none') bs = agmUltRecargaBs(AGMW.tank);
+    else bs = agmUltRecargaBs(null);
+    if (bsEl) { bsEl.value = bs ? bs : ''; bsEl.readOnly = (AGMW.tank && AGMW.tank !== 'none'); }
+    if (!litros) { info.innerHTML = AGMW.tank && AGMW.tank !== 'none' ? 'El despacho descuenta del tanque al guardar.' : ''; return; }
+    var manual = bsEl && !bsEl.readOnly ? (parseFloat(bsEl.value) || 0) : bs;
+    var usado = (AGMW.tank && AGMW.tank !== 'none') ? bs : manual;
+    var txt = '';
+    if (AGMW.tank && AGMW.tank !== 'none') {
+      var nivel = agmNivelTanque(AGMW.tank);
+      if (litros > nivel) txt += '<span style="color:var(--red)">⚠ El tanque tiene ' + fmtA(nivel, 1) + ' L</span> · ';
+    }
+    txt += usado > 0
+      ? ('Costo automático: ' + fmtA(litros, 1) + ' L × Bs ' + fmtA(usado, 2) + '/L = <b>Bs ' + fmtA(litros * usado) + '</b>')
+      : 'Sin recargas con precio registradas — el diésel queda en Bs 0.';
+    info.innerHTML = txt;
+  }
+
+  /* transformación del DOM del wizard (inputs → selects, sin M.O., tanques) */
+  function agmTransformWizard() {
+    var inp = agEl('agw-resp');
+    if (inp && inp.tagName !== 'SELECT') {
+      var sel = document.createElement('select');
+      sel.className = 'form-input'; sel.id = 'agw-resp';
+      inp.id = 'agw-resp-otra'; inp.placeholder = 'Nombre del responsable'; inp.style.display = 'none'; inp.style.marginTop = '6px';
+      inp.parentNode.insertBefore(sel, inp);
+      sel.addEventListener('change', function () { agEl('agw-resp-otra').style.display = sel.value === '__otra' ? 'block' : 'none'; });
+    }
+    var minp = agEl('agw-maquina');
+    if (minp && minp.tagName !== 'SELECT') {
+      var msel = document.createElement('select');
+      msel.className = 'form-input'; msel.id = 'agw-maquina';
+      minp.id = 'agw-maquina-otra'; minp.placeholder = 'Nombre de la máquina'; minp.style.display = 'none'; minp.style.marginTop = '6px';
+      minp.parentNode.insertBefore(msel, minp);
+      msel.addEventListener('change', function () {
+        agEl('agw-maquina-otra').style.display = msel.value === '__otra' ? 'block' : 'none';
+        agmWizDieselInfo();
+      });
+    }
+    /* mano de obra: fuera (planilla) */
+    var moh = agEl('agw-mo-h');
+    if (moh) {
+      var row = moh.closest('.frow');
+      if (row && !agEl('agm-mo-nota')) {
+        row.style.display = 'none';
+        var nota = document.createElement('div');
+        nota.id = 'agm-mo-nota';
+        nota.style.cssText = 'font-size:11.5px;color:var(--muted);margin:2px 0 8px';
+        nota.textContent = '👷 La mano de obra propia no se carga por labor: va por PLANILLA (se prorratea por centros de costos).';
+        row.parentNode.insertBefore(nota, row.nextSibling);
+      }
+    }
+    /* diésel: tanques + costo auto */
+    var dieselInp = agEl('agw-diesel');
+    if (dieselInp && !agEl('agw-tanques')) {
+      var frow = dieselInp.closest('.frow');
+      var lbl = document.createElement('div');
+      lbl.innerHTML = '<label class="form-label">⛽ Diésel — ¿de qué tanque sale?</label><div id="agw-tanques" class="agm-tanks"></div>';
+      frow.parentNode.insertBefore(lbl, frow);
+      var info = document.createElement('div');
+      info.id = 'agw-diesel-info';
+      info.style.cssText = 'font-size:12px;color:var(--muted);margin:2px 0 8px;line-height:1.6';
+      frow.parentNode.insertBefore(info, frow.nextSibling);
+      dieselInp.addEventListener('input', agmWizDieselInfo);
+      var bs = agEl('agw-diesel-bs');
+      if (bs) {
+        bs.readOnly = true;
+        var bsl = bs.closest('div') ? bs.closest('div').querySelector('.form-label') : null;
+        if (bsl) bsl.textContent = 'Costo diésel (Bs/l) — automático';
+      }
+    }
+    /* rótulo del paso */
+    document.querySelectorAll('#agw-body .agw-step[data-step="recursos"] > .form-label').forEach(function (l) {
+      l.textContent = 'Maquinaria y combustible (la mano de obra va por planilla)';
+    });
+  }
+
+  /* ═══════════════ SIDEBAR + VISTAS NUEVAS ═══════════════ */
+  function agmNavBtn(label, icon, view) {
+    var b = document.createElement('button');
+    b.className = 'nav-btn'; b.setAttribute('data-label', label);
+    b.innerHTML = '<span class="nav-icon">' + icon + '</span><span class="nav-text">' + label + '</span>';
+    b.addEventListener('click', function () {
+      try { showPage('agro', b); } catch (e) {}
+      try { agShowPage(view); } catch (e) {}
+    });
+    return b;
+  }
+  function agmSidebar() {
+    var body = document.querySelector('#nav-agro-btn .nav-sec-body');
+    if (!body || document.querySelector('#nav-agro-btn [data-label="Servicios Externos"]')) return;
+    var btns = body.querySelectorAll('.nav-btn');
+    var cosecha = null, costos = null;
+    btns.forEach(function (b) {
+      var t = (b.getAttribute('data-label') || '');
+      if (t === 'Cosecha') cosecha = b;
+      if (t === 'Costos/ha') costos = b;
+    });
+    var sx = agmNavBtn('Servicios Externos', '🤝', 'servext');
+    var mq = agmNavBtn('Maquinaria', '⚙️', 'maqagro');
+    var sk = agmNavBtn('Stock Agro', '🧪', 'stockagro');
+    if (cosecha) { body.insertBefore(sx, cosecha); body.insertBefore(mq, cosecha); } else { body.appendChild(sx); body.appendChild(mq); }
+    if (costos) body.insertBefore(sk, costos); else body.appendChild(sk);
+  }
+  function agmCss() {
+    if (document.getElementById('agm-css')) return;
+    var st = document.createElement('style'); st.id = 'agm-css';
+    st.textContent =
+      '.agm-tanks{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 10px}' +
+      '.agm-tank{display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:var(--sur2,#21262d);border:1px solid var(--bor);border-radius:10px;padding:9px 14px;color:var(--text,#e6edf3);cursor:pointer;font-family:inherit;font-size:13px;font-weight:600}' +
+      '.agm-tank span{font-size:11px;color:var(--muted);font-weight:400}' +
+      '.agm-tank.on{border-color:var(--green,#3fb950);background:rgba(63,185,80,.12)}' +
+      '.agm-pend{font-weight:800;color:var(--amber2,#e3b341)}' +
+      '.agm-ok{color:var(--green)}' +
+      '.agm-asig-row{font-size:12px;color:var(--muted);padding:2px 0}';
+    document.head.appendChild(st);
+  }
+  function agmVistas() {
+    var pg = agEl('page-agro');
+    if (!pg || agEl('ag-view-servext')) return;
+    var wrap = document.createElement('div');
+    wrap.innerHTML =
+      /* ── SERVICIOS EXTERNOS ── */
+      '<div id="ag-view-servext" class="ag-view">' +
+      '<div class="sub">Servicios de TERCEROS de baja frecuencia (desmonte, nivelación, encalado…). El costo se PRORRATEA en las campañas que elijas — siempre se ve cuánto queda pendiente de asignar.</div>' +
+      '<div class="toolbar"><button class="btn btn-primary" onclick="agmOpenServicio()">➕ Registrar servicio externo</button></div>' +
+      '<div class="cards" id="agsx-cards"></div>' +
+      '<div class="panel"><table class="tbl"><thead><tr><th>Fecha</th><th>Proveedor</th><th>Concepto</th><th class="num">Monto (Bs)</th><th class="num">Asignado</th><th class="num">Pendiente</th><th>Plan</th><th>Campañas asignadas</th><th></th></tr></thead><tbody id="agsx-tbody"></tbody></table></div>' +
+      '</div>' +
+      /* ── MAQUINARIA AGRO ── */
+      '<div id="ag-view-maqagro" class="ag-view">' +
+      '<div class="sub">Trabajos de maquinaria con flujo simple: qué se hizo, quién, cuánto combustible (del tanque COMPARTIDO con ganadería — el costo se aplica donde se consume) → costo DIRECTO a la campaña elegida. Distinto de Servicios Externos (esos se prorratean).</div>' +
+      '<div class="toolbar"><button class="btn btn-primary" onclick="agmOpenTrabajo()">➕ Registrar trabajo de maquinaria</button></div>' +
+      '<div class="panel"><table class="tbl"><thead><tr><th>Fecha</th><th>Actividad</th><th>Campaña</th><th>Responsable</th><th>Máquina</th><th class="num">Horas</th><th class="num">Diésel (L)</th><th class="num">Costo (Bs)</th><th></th></tr></thead><tbody id="agmq-tbody"></tbody></table></div>' +
+      '</div>' +
+      /* ── STOCK AGRO ── */
+      '<div id="ag-view-stockagro" class="ag-view">' +
+      '<div class="sub">Stock agrícola APARTE del ganadero/veterinario. Las labores descuentan de acá. (Prepara la separación de flujos del bot y la PWA agro.)</div>' +
+      '<div class="toolbar"><button class="btn btn-primary" onclick="agOpenInsumos()">🧪 Gestionar catálogo (altas / recargas)</button></div>' +
+      '<div class="cards" id="agsk-cards"></div>' +
+      '<div class="panel"><h3>Catálogo</h3><table class="tbl"><thead><tr><th>Insumo</th><th>Unidad</th><th class="num">Costo Bs/u</th><th class="num">Stock</th><th class="num">Valor (Bs)</th><th></th></tr></thead><tbody id="agsk-tbody"></tbody></table></div>' +
+      '<div class="panel"><h3>Movimientos (salidas por labores)</h3><table class="tbl"><thead><tr><th>Fecha</th><th>Insumo</th><th>Labor</th><th>Campaña</th><th class="num">Cantidad</th><th class="num">Costo (Bs)</th></tr></thead><tbody id="agsk-mov-tbody"></tbody></table></div>' +
+      '</div>';
+    while (wrap.firstChild) pg.appendChild(wrap.firstChild);
+  }
+  function agmModales() {
+    if (agEl('ag-modal-servext')) return;
+    var wrap = document.createElement('div');
+    wrap.innerHTML =
+      /* modal servicio externo */
+      '<div class="modal-overlay agx" id="ag-modal-servext"><div class="modal" style="max-width:520px">' +
+      '<h2 id="agsx-m-title">🤝 Servicio externo</h2>' +
+      '<div class="m-sub">Trabajo de terceros. Después lo asignás a campañas por partes.</div>' +
+      '<input type="hidden" id="agsx-id">' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+      '<div><label class="form-label">Fecha *</label><input class="form-input" id="agsx-fecha" type="date"></div>' +
+      '<div><label class="form-label">Proveedor / tercero *</label><input class="form-input" id="agsx-proveedor" placeholder="Ej: Empresa Nivelaciones SRL"></div>' +
+      '</div>' +
+      '<div><label class="form-label">Concepto *</label><input class="form-input" id="agsx-concepto" placeholder="Ej: Nivelación y curvas de nivel parcela AG-1"></div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+      '<div><label class="form-label">Monto total (Bs) *</label><input class="form-input" id="agsx-monto" type="number" min="0" step="0.01"></div>' +
+      '<div><label class="form-label">Prorratear en (campañas)</label><input class="form-input" id="agsx-n" type="number" min="1" step="1" value="3"></div>' +
+      '</div>' +
+      '<div><label class="form-label">Notas</label><textarea class="form-input" id="agsx-notas" rows="2"></textarea></div>' +
+      '<div class="m-foot"><button class="btn btn-ghost" onclick="agCloseModal(\'ag-modal-servext\')">Cancelar</button><button class="btn btn-primary" onclick="agmSaveServicio()">Guardar</button></div>' +
+      '</div></div>' +
+      /* modal asignación */
+      '<div class="modal-overlay agx" id="ag-modal-servasig"><div class="modal" style="max-width:460px">' +
+      '<h2>📌 Asignar a campaña</h2>' +
+      '<div class="m-sub" id="agsxa-sub"></div>' +
+      '<input type="hidden" id="agsxa-servid">' +
+      '<div><label class="form-label">Campaña *</label><select class="form-input" id="agsxa-campana"></select></div>' +
+      '<div><label class="form-label">Monto a aplicar (Bs) *</label><input class="form-input" id="agsxa-monto" type="number" min="0" step="0.01"></div>' +
+      '<div id="agsxa-hint" style="font-size:12px;color:var(--muted);margin-top:6px"></div>' +
+      '<div class="m-foot"><button class="btn btn-ghost" onclick="agCloseModal(\'ag-modal-servasig\')">Cancelar</button><button class="btn btn-primary" onclick="agmAsignar()">Asignar</button></div>' +
+      '</div></div>' +
+      /* modal trabajo de maquinaria */
+      '<div class="modal-overlay agx" id="ag-modal-maqagro"><div class="modal" style="max-width:560px">' +
+      '<h2>⚙️ Trabajo de maquinaria</h2>' +
+      '<div class="m-sub">Flujo simple: actividad + quién + combustible del tanque → costo directo a la campaña.</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+      '<div><label class="form-label">Fecha *</label><input class="form-input" id="agmq-fecha" type="date"></div>' +
+      '<div><label class="form-label">Actividad *</label><input class="form-input" id="agmq-act" placeholder="Ej: Rastreada / nivelado / transporte"></div>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+      '<div><label class="form-label">Responsable</label><select class="form-input" id="agmq-resp"></select><input class="form-input" id="agmq-resp-otra" style="display:none;margin-top:6px" placeholder="Nombre"></div>' +
+      '<div><label class="form-label">Máquina *</label><select class="form-input" id="agmq-maquina"></select><input class="form-input" id="agmq-maquina-otra" style="display:none;margin-top:6px" placeholder="Nombre de la máquina"></div>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+      '<div><label class="form-label">Horas máquina</label><input class="form-input" id="agmq-hmaq" type="number" min="0" step="0.5"></div>' +
+      '<div><label class="form-label">Campaña (costo directo) *</label><select class="form-input" id="agmq-campana"></select></div>' +
+      '</div>' +
+      '<label class="form-label">⛽ Diésel — ¿de qué tanque sale?</label><div id="agmq-tanques" class="agm-tanks"></div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+      '<div><label class="form-label">Litros</label><input class="form-input" id="agmq-litros" type="number" min="0"></div>' +
+      '<div><label class="form-label">Costo (automático)</label><div id="agmq-costo" style="padding:10px 2px;font-weight:700"></div></div>' +
+      '</div>' +
+      '<div><label class="form-label">Notas</label><textarea class="form-input" id="agmq-notas" rows="2"></textarea></div>' +
+      '<div class="m-foot"><button class="btn btn-ghost" onclick="agCloseModal(\'ag-modal-maqagro\')">Cancelar</button><button class="btn btn-primary" onclick="agmSaveTrabajo()">Guardar trabajo</button></div>' +
+      '</div></div>';
+    while (wrap.firstChild) document.body.appendChild(wrap.firstChild);
+  }
+  function agmCostosThead() {
+    var thead = document.querySelector('#ag-view-costos table thead tr');
+    if (!thead || thead.children.length !== 11) return; /* ya tocado u otra versión */
+    var th = document.createElement('th'); th.className = 'num'; th.textContent = 'Serv.Ext';
+    thead.insertBefore(th, thead.children[6]); /* después de Maq. */
+    var notas = document.querySelector('#ag-view-costos .panel:last-child div');
+    if (notas) notas.innerHTML += '<br>· "Serv.Ext" = cuotas de Servicios Externos asignadas a la campaña (prorrateo).<br>· El diésel sale de los tanques (despacho automático al registrar la labor) con costo Bs/L de la última recarga.<br>· La mano de obra propia va por planilla (no por labor).';
+    /* ocultar el botón viejo de Insumos agro (ahora subpestaña Stock Agro) */
+    document.querySelectorAll('#ag-view-labores .toolbar button').forEach(function (b) {
+      if (/Insumos agro/.test(b.textContent)) b.style.display = 'none';
+    });
+  }
+
+  /* ═══════════════ SERVICIOS EXTERNOS: lógica ═══════════════ */
+  window.agmOpenServicio = function (id) {
+    var d = agGetDB();
+    agEl('agsx-id').value = id || '';
+    agEl('agsx-m-title').textContent = id ? '✏️ Editar servicio externo' : '🤝 Servicio externo';
+    var s = id ? agById(d.labores, id) : null;
+    agEl('agsx-fecha').value = s ? (s.fecha || '') : agHoy();
+    agEl('agsx-proveedor').value = s ? (s.proveedor || '') : '';
+    agEl('agsx-concepto').value = s ? (s.concepto || '') : '';
+    agEl('agsx-monto').value = s ? (s.monto || '') : '';
+    agEl('agsx-n').value = s ? (s.plan_n || 3) : 3;
+    agEl('agsx-notas').value = s ? (s.notas || '') : '';
+    window.agOpenModal('ag-modal-servext');
+  };
+  window.agmSaveServicio = function () {
+    var d = agGetDB();
+    var id = agEl('agsx-id').value;
+    var fecha = agEl('agsx-fecha').value;
+    var prov = (agEl('agsx-proveedor').value || '').trim();
+    var conc = (agEl('agsx-concepto').value || '').trim();
+    var monto = parseFloat(agEl('agsx-monto').value);
+    var n = Math.max(1, parseInt(agEl('agsx-n').value, 10) || 1);
+    if (!fecha || !prov || !conc || !(monto > 0)) { agToast('Fecha, proveedor, concepto y monto son obligatorios', 'error'); return; }
+    if (typeof validateNotFuture === 'function' && !validateNotFuture(fecha, 'fecha del servicio')) return;
+    var now = new Date().toISOString();
+    if (id) {
+      var s = agById(d.labores, id); if (!s) return;
+      var asig = agmServAsignado(s);
+      if (monto < asig) { agToast('El monto no puede ser menor a lo ya asignado (Bs ' + fmtA(asig) + ')', 'error'); return; }
+      s.fecha = fecha; s.proveedor = prov; s.concepto = conc; s.monto = monto; s.plan_n = n;
+      s.notas = (agEl('agsx-notas').value || '').trim(); s.updated_at = now;
+    } else {
+      d.labores.push({
+        id: agNextId(d.labores), tipo: 'servicio_ext', estado: 'ejecutada', campana_id: null,
+        fecha: fecha, proveedor: prov, concepto: conc, monto: monto, plan_n: n,
+        asignaciones: [], notas: (agEl('agsx-notas').value || '').trim(),
+        resp: prov, insumos: [], mo_h: 0, mo_bs: 0, hmaq: 0, diesel: 0, diesel_bs: 0,
+        created_at: now, updated_at: now
+      });
+    }
+    agSaveDB(); window.agCloseModal('ag-modal-servext'); agRenderAll();
+    agToast('Servicio externo guardado: ' + conc + ' (Bs ' + fmtA(monto) + ')', 'success');
+  };
+  window.agmOpenAsignar = function (servId) {
+    var d = agGetDB(), s = agById(d.labores, servId); if (!s) return;
+    agEl('agsxa-servid').value = servId;
+    var pend = agmServPendiente(s);
+    agEl('agsxa-sub').innerHTML = escA(s.concepto || '') + ' — Bs ' + fmtA(s.monto) + ' · <span class="agm-pend">pendiente Bs ' + fmtA(pend) + '</span>';
+    var sel = agEl('agsxa-campana');
+    sel.innerHTML = '<option value="">— Campaña —</option>';
+    d.campanas.slice().sort(function (a, b) { return String(b.anio || '').localeCompare(String(a.anio || '')); }).forEach(function (c) {
+      var o = document.createElement('option'); o.value = c.id; o.textContent = campLabel(d, c) + ' (' + fmtA(campHa(d, c), 1) + ' ha, ' + (c.estado || '') + ')';
+      sel.appendChild(o);
+    });
+    agEl('agsxa-monto').value = agmSugerenciaCuota(s) || '';
+    agEl('agsxa-hint').innerHTML = 'Sugerencia: monto ÷ ' + (s.plan_n || 1) + ' campañas = Bs ' + fmtA((Number(s.monto) || 0) / Math.max(1, s.plan_n || 1)) + '. Podés aplicar el monto que decidas (hasta el pendiente).';
+    window.agOpenModal('ag-modal-servasig');
+  };
+  window.agmAsignar = function () {
+    var d = agGetDB();
+    var s = agById(d.labores, agEl('agsxa-servid').value); if (!s) return;
+    var cid = agEl('agsxa-campana').value;
+    var monto = parseFloat(agEl('agsxa-monto').value);
+    if (!cid) { agToast('Elegí la campaña', 'error'); return; }
+    if (!(monto > 0)) { agToast('Monto inválido', 'error'); return; }
+    var pend = agmServPendiente(s);
+    if (monto > pend + 0.001) { agToast('Excede el pendiente (Bs ' + fmtA(pend) + ')', 'error'); return; }
+    if (!Array.isArray(s.asignaciones)) s.asignaciones = [];
+    s.asignaciones.push({ campana_id: isNaN(Number(cid)) ? cid : Number(cid), monto: Math.round(monto * 100) / 100, fecha: agHoy() });
+    s.updated_at = new Date().toISOString();
+    agSaveDB(); window.agCloseModal('ag-modal-servasig'); agRenderAll();
+    var c = agById(d.campanas, cid);
+    agToast('Bs ' + fmtA(monto) + ' asignados a ' + (c ? campLabel(d, c) : '?') + ' — pendiente Bs ' + fmtA(agmServPendiente(s)), 'success');
+  };
+  window.agmQuitarAsignacion = function (servId, idx) {
+    var d = agGetDB(), s = agById(d.labores, servId); if (!s || !s.asignaciones || !s.asignaciones[idx]) return;
+    var a = s.asignaciones[idx], c = agById(d.campanas, a.campana_id);
+    if (!confirm('¿Quitar la cuota de Bs ' + fmtA(a.monto) + ' asignada a ' + (c ? campLabel(d, c) : '?') + '? Vuelve al pendiente.')) return;
+    s.asignaciones.splice(idx, 1);
+    s.updated_at = new Date().toISOString();
+    agSaveDB(); agRenderAll();
+  };
+  window.agmDelServicio = function (id) {
+    var d = agGetDB(), s = agById(d.labores, id); if (!s) return;
+    var asig = agmServAsignado(s);
+    if (!confirm('¿Eliminar el servicio "' + (s.concepto || '') + '"' + (asig ? ' con Bs ' + fmtA(asig) + ' ya asignados a campañas' : '') + '?')) return;
+    db.agro_labores = db.agro_labores.filter(function (x) { return String(x.id) !== String(id); });
+    agSaveDB(); agRenderAll(); agToast('Servicio eliminado', 'info');
+  };
+  function agmRenderServExt() {
+    var d = agGetDB();
+    var tb = agEl('agsx-tbody'); if (!tb) return;
+    var servs = agmServicios(d).slice().sort(function (a, b) { return (b.fecha || '').localeCompare(a.fecha || ''); });
+    var Tm = 0, Ta = 0, html = '';
+    servs.forEach(function (s) {
+      var asig = agmServAsignado(s), pend = agmServPendiente(s);
+      Tm += Number(s.monto) || 0; Ta += asig;
+      var chips = (s.asignaciones || []).map(function (a, i) {
+        var c = agById(d.campanas, a.campana_id);
+        return '<div class="agm-asig-row">' + escA(c ? campLabel(d, c) : '?') + ': <b>Bs ' + fmtA(a.monto) + '</b> (' + agFecha(a.fecha) + ') <a href="#" onclick="agmQuitarAsignacion(' + JSON.stringify(String(s.id)) + ',' + i + ');return false" style="color:var(--red)">✕</a></div>';
+      }).join('') || '<span style="color:var(--muted);font-size:12px">— sin asignar —</span>';
+      html += '<tr><td>' + agFecha(s.fecha) + '</td><td>' + escA(s.proveedor || '—') + '</td><td>' + escA(s.concepto || '—') + '</td>' +
+        '<td class="num">' + fmtA(s.monto) + '</td><td class="num">' + fmtA(asig) + '</td>' +
+        '<td class="num">' + (pend > 0 ? '<span class="agm-pend">' + fmtA(pend) + '</span>' : '<span class="agm-ok">0 ✓</span>') + '</td>' +
+        '<td>' + (s.plan_n || 1) + ' camp.</td><td>' + chips + '</td>' +
+        '<td style="white-space:nowrap">' +
+        (pend > 0 ? '<button class="btn btn-primary btn-sm" onclick="agmOpenAsignar(' + JSON.stringify(String(s.id)) + ')">📌 Asignar</button> ' : '') +
+        '<button class="btn btn-ghost btn-sm" onclick="agmOpenServicio(' + JSON.stringify(String(s.id)) + ')">✏️</button> ' +
+        '<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agmDelServicio(' + JSON.stringify(String(s.id)) + ')">🗑</button></td></tr>';
+    });
+    tb.innerHTML = html || '<tr><td colspan="9" class="empty">Sin servicios externos. Registrá el primero (desmonte, nivelación, encalado…).</td></tr>';
+    var cards = agEl('agsx-cards');
+    if (cards) cards.innerHTML =
+      '<div class="card"><div class="k">🤝 Servicios</div><div class="v">' + servs.length + '</div><div class="s">Bs ' + fmtA(Tm) + ' contratados</div></div>' +
+      '<div class="card"><div class="k">📌 Asignado a campañas</div><div class="v">Bs ' + fmtA(Ta) + '</div><div class="s">entra a Costos/ha como Serv.Ext</div></div>' +
+      '<div class="card"><div class="k">⏳ Pendiente de asignar</div><div class="v" style="color:' + ((Tm - Ta) > 0.001 ? 'var(--amber2)' : 'var(--green)') + '">Bs ' + fmtA(Tm - Ta) + '</div><div class="s">' + ((Tm - Ta) > 0.001 ? 'todavía no cargado a ninguna campaña' : 'todo asignado ✓') + '</div></div>';
+  }
+
+  /* ═══════════════ MAQUINARIA AGRO: lógica ═══════════════ */
+  var AGMQ = { tank: null };
+  window.agmOpenTrabajo = function () {
+    var d = agGetDB();
+    if (!d.campanas.length) { agToast('Primero creá una campaña (Agricultura → Campañas)', 'error'); return; }
+    agEl('agmq-fecha').value = agHoy();
+    agEl('agmq-act').value = ''; agEl('agmq-hmaq').value = '';
+    agEl('agmq-litros').value = ''; agEl('agmq-notas').value = '';
+    agmSelectFill(agEl('agmq-resp'), agmEmpleados(), '— Responsable —', '');
+    var ro = agEl('agmq-resp-otra'); if (ro) { ro.style.display = 'none'; ro.value = ''; }
+    agEl('agmq-resp').onchange = function () { agEl('agmq-resp-otra').style.display = this.value === '__otra' ? 'block' : 'none'; };
+    var msel = agEl('agmq-maquina');
+    var opts = '<option value="">— Máquina —</option>';
+    agmMaquinas().forEach(function (m) {
+      var n = String(m.nombre || m.name).trim();
+      opts += '<option value="' + escA(n) + '">' + escA(n) + (m.horometro ? ' · ' + fmtA(m.horometro) + ' hs' : '') + '</option>';
+    });
+    opts += '<option value="__otra">Otra…</option>';
+    msel.innerHTML = opts; msel.value = '';
+    msel.onchange = function () { agEl('agmq-maquina-otra').style.display = this.value === '__otra' ? 'block' : 'none'; };
+    var mo = agEl('agmq-maquina-otra'); if (mo) { mo.style.display = 'none'; mo.value = ''; }
+    var csel = agEl('agmq-campana');
+    csel.innerHTML = '<option value="">— Campaña —</option>';
+    d.campanas.forEach(function (c) {
+      if (c.estado === 'cosechada') return;
+      var o = document.createElement('option'); o.value = c.id; o.textContent = campLabel(d, c) + ' (' + fmtA(campHa(d, c), 1) + ' ha)';
+      csel.appendChild(o);
+    });
+    AGMQ.tank = null;
+    var tanks = agmTanquesDiesel(); if (tanks.length === 1) AGMQ.tank = tanks[0].id;
+    agmRenderTankButtons('agmq-tanques', AGMQ, agmTrabCosto);
+    agEl('agmq-litros').oninput = agmTrabCosto;
+    agmTrabCosto();
+    window.agOpenModal('ag-modal-maqagro');
+  };
+  function agmTrabCosto() {
+    var out = agEl('agmq-costo'); if (!out) return;
+    var litros = parseFloat((agEl('agmq-litros') || {}).value) || 0;
+    var hmaq = parseFloat((agEl('agmq-hmaq') || {}).value) || 0;
+    var bs = agmUltRecargaBs(AGMQ.tank !== 'none' ? AGMQ.tank : null);
+    var diesel = litros * bs;
+    var maq = hmaq * (typeof AG_TARIFA_MAQ_BS_H !== 'undefined' ? AG_TARIFA_MAQ_BS_H : 0);
+    var warn = '';
+    if (AGMQ.tank && AGMQ.tank !== 'none' && litros > agmNivelTanque(AGMQ.tank)) warn = ' <span style="color:var(--red)">⚠ supera el tanque</span>';
+    out.innerHTML = (litros || hmaq) ? ('Bs ' + fmtA(diesel + maq) + ' <span style="font-weight:400;color:var(--muted);font-size:11px">(⛽ ' + fmtA(diesel) + (bs ? ' a Bs ' + fmtA(bs, 2) + '/L' : '') + (hmaq ? ' + maq ' + fmtA(maq) : '') + ')</span>' + warn) : '—';
+  }
+  window.agmSaveTrabajo = function () {
+    var d = agGetDB();
+    var fecha = agEl('agmq-fecha').value;
+    var act = (agEl('agmq-act').value || '').trim();
+    var cid = agEl('agmq-campana').value;
+    var maquina = agmRespVal('agmq-maquina');
+    var resp = agmRespVal('agmq-resp');
+    var hmaq = parseFloat(agEl('agmq-hmaq').value) || 0;
+    var litros = parseFloat(agEl('agmq-litros').value) || 0;
+    if (!fecha || !act || !cid || !maquina) { agToast('Fecha, actividad, máquina y campaña son obligatorios', 'error'); return; }
+    if (typeof validateNotFuture === 'function' && !validateNotFuture(fecha, 'fecha del trabajo')) return;
+    if (litros > 0 && AGMQ.tank && AGMQ.tank !== 'none' && litros > agmNivelTanque(AGMQ.tank)) {
+      agToast('El tanque tiene ' + fmtA(agmNivelTanque(AGMQ.tank), 1) + ' L — no alcanza', 'error'); return;
+    }
+    var bs = (litros > 0) ? agmUltRecargaBs(AGMQ.tank && AGMQ.tank !== 'none' ? AGMQ.tank : null) : 0;
+    var now = new Date().toISOString();
+    var l = {
+      id: agNextId(d.labores), tipo: 'maquinaria', estado: 'ejecutada',
+      campana_id: isNaN(Number(cid)) ? cid : Number(cid),
+      fecha: fecha, resp: resp, maquina: maquina, hmaq: hmaq,
+      diesel: litros, diesel_bs: bs, mo_h: 0, mo_bs: 0,
+      notas: act + ((agEl('agmq-notas').value || '').trim() ? ' — ' + (agEl('agmq-notas').value || '').trim() : ''),
+      insumos: [], created_at: now, updated_at: now
+    };
+    var mq = agmMaquinas().find(function (m) { return String(m.nombre || m.name).trim() === maquina; });
+    if (mq) l.maq_id = mq.id;
+    d.labores.push(l);
+    var c = agById(d.campanas, l.campana_id);
+    if (c && c.estado === 'planificada') c.estado = 'en_curso';
+    if (litros > 0 && AGMQ.tank && AGMQ.tank !== 'none') {
+      var rec = agmCrearDespacho({
+        tank_id: AGMQ.tank, litros: litros, fecha: fecha, vehiculo: maquina, maq_id: l.maq_id,
+        obs: 'Trabajo de maquinaria agro: ' + act + (c ? ' — ' + campLabel(d, c) : '')
+      });
+      if (rec) l._despacho_id = rec.id;
+    }
+    agSaveDB(); window.agCloseModal('ag-modal-maqagro'); agRenderAll();
+    var cost = laborCosto(l);
+    agToast('⚙️ Trabajo registrado: ' + act + ' → ' + (c ? campLabel(d, c) : '') + ' · Bs ' + fmtA(cost.total), 'success');
+    AGMQ.tank = null;
+  };
+  function agmRenderMaqAgro() {
+    var d = agGetDB();
+    var tb = agEl('agmq-tbody'); if (!tb) return;
+    var rows = d.labores.filter(function (l) { return l.tipo === 'maquinaria'; })
+      .sort(function (a, b) { return (b.fecha || '').localeCompare(a.fecha || ''); });
+    var html = '';
+    rows.forEach(function (l) {
+      var c = agById(d.campanas, l.campana_id), cost = laborCosto(l);
+      html += '<tr><td>' + agFecha(l.fecha) + '</td><td>' + escA(l.notas || '—') + '</td><td>' + escA(c ? campLabel(d, c) : '?') + '</td><td>' + escA(l.resp || '—') + '</td><td>' + escA(l.maquina || '—') + '</td><td class="num">' + fmtA(l.hmaq, 1) + '</td><td class="num">' + fmtA(l.diesel, 1) + '</td><td class="num">' + fmtA(cost.total) + '</td>' +
+        '<td><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agDelLabor(' + JSON.stringify(String(l.id)) + ')">🗑</button></td></tr>';
+    });
+    tb.innerHTML = html || '<tr><td colspan="9" class="empty">Sin trabajos de maquinaria. El primero se registra con el botón de arriba.</td></tr>';
+  }
+
+  /* ═══════════════ STOCK AGRO: render ═══════════════ */
+  function agmRenderStockAgro() {
+    var d = agGetDB();
+    var tb = agEl('agsk-tbody'); if (!tb) return;
+    var html = '', valorT = 0, enCero = 0;
+    d.insumos.slice().sort(function (a, b) { return String(a.nombre || '').localeCompare(String(b.nombre || '')); }).forEach(function (i) {
+      var valor = (Number(i.stock) || 0) * (Number(i.costo) || 0); valorT += valor;
+      var low = (Number(i.stock) || 0) <= 0; if (low) enCero++;
+      html += '<tr><td>' + escA(i.nombre) + '</td><td>' + escA(i.unidad) + '</td><td class="num">' + fmtA(i.costo, 2) + '</td>' +
+        '<td class="num" style="' + (low ? 'color:var(--red);font-weight:700' : '') + '">' + fmtA(i.stock, 1) + '</td>' +
+        '<td class="num">' + fmtA(valor) + '</td>' +
+        '<td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="agOpenInsumos();agEditInsumo(' + JSON.stringify(String(i.id)) + ')">✏️</button></td></tr>';
+    });
+    tb.innerHTML = html || '<tr><td colspan="6" class="empty">Sin insumos agro. Cargá el primero con "Gestionar catálogo".</td></tr>';
+    var cards = agEl('agsk-cards');
+    if (cards) cards.innerHTML =
+      '<div class="card"><div class="k">🧪 Insumos</div><div class="v">' + d.insumos.length + '</div><div class="s">' + enCero + ' en cero</div></div>' +
+      '<div class="card"><div class="k">💵 Valor del stock</div><div class="v">Bs ' + fmtA(valorT) + '</div><div class="s">stock × costo</div></div>';
+    /* movimientos: salidas por labores ejecutadas */
+    var mtb = agEl('agsk-mov-tbody'); if (!mtb) return;
+    var movs = [];
+    d.labores.forEach(function (l) {
+      if (l.estado !== 'ejecutada' || l.tipo === 'servicio_ext') return;
+      (l.insumos || []).forEach(function (r) {
+        var i = agById(d.insumos, r.insumo_id);
+        movs.push({ fecha: l.fecha, insumo: i ? i.nombre : ('#' + r.insumo_id), unidad: i ? i.unidad : '', labor: (LABOR_TIPOS[l.tipo] || l.tipo), campana_id: l.campana_id, total: r.total, costo: r.costo });
+      });
+    });
+    movs.sort(function (a, b) { return String(b.fecha || '').localeCompare(String(a.fecha || '')); });
+    var mhtml = '';
+    movs.slice(0, 120).forEach(function (m) {
+      var c = agById(d.campanas, m.campana_id);
+      mhtml += '<tr><td>' + agFecha(m.fecha) + '</td><td>' + escA(m.insumo) + '</td><td>' + m.labor + '</td><td>' + escA(c ? campLabel(d, c) : '—') + '</td><td class="num">−' + fmtA(m.total, 1) + ' ' + escA(m.unidad) + '</td><td class="num">' + fmtA(m.costo) + '</td></tr>';
+    });
+    mtb.innerHTML = mhtml || '<tr><td colspan="6" class="empty">Sin movimientos todavía (las labores ejecutadas con insumos aparecen acá).</td></tr>';
+  }
+
+  /* ═══════════════ agRenderAll wrap + BOOT ═══════════════ */
+  var _agRenderAll0 = agRenderAll;
+  agRenderAll = function () {
+    _agRenderAll0();
+    try { agmRenderServExt(); } catch (e) {}
+    try { agmRenderMaqAgro(); } catch (e) {}
+    try { agmRenderStockAgro(); } catch (e) {}
+  };
+
+  /* export para tests */
+  window.__agm = {
+    ultRecargaBs: agmUltRecargaBs, tanquesDiesel: agmTanquesDiesel, empleados: agmEmpleados,
+    maquinas: agmMaquinas, servicios: agmServicios, servAsignado: agmServAsignado,
+    servPendiente: agmServPendiente, servAsignadoCampana: agmServAsignadoCampana,
+    sugerenciaCuota: agmSugerenciaCuota, crearDespacho: agmCrearDespacho, nivelTanque: agmNivelTanque,
+    renderServExt: agmRenderServExt, renderMaqAgro: agmRenderMaqAgro, renderStockAgro: agmRenderStockAgro
+  };
+
+  /* re-export: los onclick inline usan window.* y el IIFE los exportó ANTES de estas reasignaciones */
+  window.agRenderAll = agRenderAll; window.agRenderLabores = agRenderLabores; window.agwOpen = agwOpen;
+
+  function agmBoot() {
+    try { agmCss(); } catch (e) {}
+    try { agmSidebar(); } catch (e) {}
+    try { agmVistas(); } catch (e) {}
+    try { agmModales(); } catch (e) {}
+    try { agmCostosThead(); } catch (e) {}
+    try { agmTransformWizard(); } catch (e) {}
+    try { console.log('%c[agro-mejoras v1.8.149] wizard canónico + Stock Agro + Servicios Externos + Maquinaria agro', 'color:#3fb950;font-weight:bold'); } catch (e) {}
+  }
+  if (typeof document !== 'undefined' && document.getElementById) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', agmBoot);
+    else agmBoot();
+  }
+})();
+
+/*__AGM_END__*/
 })();
 </script>
 
@@ -45989,7 +46792,7 @@ try {
 } catch(e) { console.warn('[tenant-fp] error no fatal:', e && e.message); }
 })();
 </script>
-<script>window.__E5M_BUILD='1.8.147 (costo/kg completo: +aceite +sanidad sin lote +cuentas manuales, periodo cuarentena)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
+<script>window.__E5M_BUILD='1.8.150 (agro: wizard canonico + Stock Agro + Servicios Externos + Maquinaria agro)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
 
 
 <!-- ══════════════════════════════════════════════════════════════
