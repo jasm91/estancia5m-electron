@@ -7500,6 +7500,7 @@ function pullFromRailwayDesktop(thenPush) {
     .then(function(r){ return r.json(); })
     .then(function(remote) {
       try { if (remote && remote._versions) localStorage.setItem('e5m_table_versions', JSON.stringify(remote._versions)); } catch(eV){} // v1.8.115 SYNC V2
+      try { if (remote && remote.tc_bcb && remote.tc_bcb.valor) { localStorage.setItem('e5m_tc_bcb', JSON.stringify(remote.tc_bcb)); if (typeof window.tcBcbRender === 'function') window.tcBcbRender(); } } catch(eTc){} /* v1.8.151: TC oficial BCB servido por server v4.42 */
       if (!remote || remote.error) {
         if (thenPush) pushToRailway();
         return;
@@ -44706,6 +44707,342 @@ document.addEventListener('click', function(ev){
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', agmBoot);
     else agmBoot();
   }
+
+/*__AGCAL_START__*/
+  /* ════════════════════════════════════════════════════════════════════
+     v1.8.151 — CALENDARIO DE ACTIVIDADES POR CAMPAÑA (diseño cerrado 11-08)
+     - Plantilla GENERAL (seed = planilla real de Chaco Lejos: 8 alarmas con
+       offset desde siembra + actividades sin fecha por etapa + hitos sin costo)
+       en estancia_params.agro_plantillas. Editable.
+     - "📅 Generar plan" crea labores PLANIFICADAS (las de siempre, ▶ Ejecutar)
+       con fecha = siembra_plan + offset; las sin offset quedan sin fecha (no vencen).
+     - Vista 📅 Calendario: semáforo vencidas/próximas/sin fecha/hechas + % cumplimiento.
+     - Tachado rápido ✔ (queda "⚠ faltan costos" si con_costo) o ▶ Ejecutar completo.
+     - Siembra corrida: al editar siembra_plan NO se recalcula solo — se PREGUNTA.
+     - Kill switch: window.__AGCAL_OFF = true
+     ════════════════════════════════════════════════════════════════════ */
+  var AGCAL_SEED = [
+    { tipo: 'fertilizacion', nombre: 'Boleado de KCL + pasar rolo faca', offset_dias: -90, con_costo: true },
+    { tipo: 'fumigada',      nombre: 'Barbecho químico',                 offset_dias: -50, con_costo: true },
+    { tipo: 'otra',          nombre: 'Tratamiento de semilla',           etapa: 'pre-siembra', con_costo: true },
+    { tipo: 'siembra',       nombre: 'Siembra',                          offset_dias: 0,   con_costo: true },
+    { tipo: 'fumigada',      nombre: 'Herbicida post-emergente + insecticida', offset_dias: 7, con_costo: true },
+    { tipo: 'fumigada',      nombre: 'Aplicación insecticida',           offset_dias: 15,  con_costo: true },
+    { tipo: 'fertilizacion', nombre: 'Boleado de urea',                  offset_dias: 17,  con_costo: true },
+    { tipo: 'fertilizacion', nombre: 'Segunda boleada de urea',          offset_dias: 20,  con_costo: true },
+    { tipo: 'fumigada',      nombre: 'Fungicida + insecticida',          offset_dias: 25,  con_costo: true },
+    { tipo: 'otra',          nombre: 'Verificar emergencia (recorrida)', etapa: 'post-siembra', con_costo: false },
+    { tipo: 'cosecha',       nombre: 'Cosecha',                          etapa: 'cosecha', con_costo: true }
+  ];
+  function agcalOff() { try { return window.__AGCAL_OFF === true; } catch (e) { return false; } }
+  function agcalParams() {
+    try { var p = JSON.parse(localStorage.getItem('e5m_params') || '{}'); return (p && typeof p === 'object') ? p : {}; } catch (e) { return {}; }
+  }
+  function agcalSaveParams(p) {
+    try {
+      p.updated_at = new Date().toISOString();
+      localStorage.setItem('e5m_params', JSON.stringify(p));
+      try { if (typeof pushToRailway === 'function') pushToRailway(); } catch (e2) {}
+    } catch (e) {}
+  }
+  function agcalPlantilla() { /* devuelve la plantilla general, sembrándola si no existe */
+    var p = agcalParams();
+    if (!Array.isArray(p.agro_plantillas) || !p.agro_plantillas.length) {
+      p.agro_plantillas = [{ id: 1, nombre: 'General (planilla Chaco Lejos)', cultivo: '*', actividades: AGCAL_SEED.map(function (a, i) { return Object.assign({ id: i + 1 }, a); }) }];
+      agcalSaveParams(p);
+    }
+    return p.agro_plantillas[0];
+  }
+  function agcalAddDias(iso, dias) {
+    if (!iso) return '';
+    var d = new Date(String(iso).slice(0, 10) + 'T12:00:00');
+    if (isNaN(d.getTime())) return '';
+    d.setDate(d.getDate() + Number(dias || 0));
+    return d.toISOString().slice(0, 10);
+  }
+  function agcalPlanDe(d, campId) { /* labores generadas por plantilla para esa campaña */
+    return d.labores.filter(function (l) { return l && l.plan_origen === 'plantilla' && String(l.campana_id) === String(campId); });
+  }
+  function agcalGenerar(campId) {
+    if (agcalOff()) return { creadas: 0, error: 'off' };
+    var d = agGetDB(), c = agById(d.campanas, campId);
+    if (!c) { agToast('Elegí una campaña', 'error'); return { creadas: 0, error: 'sin campaña' }; }
+    if (!c.siembra_plan) { agToast('La campaña no tiene fecha de siembra planificada — editala primero (✏️) y poné la fecha', 'error'); return { creadas: 0, error: 'sin siembra_plan' }; }
+    var ya = agcalPlanDe(d, campId);
+    if (ya.length) { agToast('Esta campaña ya tiene su plan generado (' + ya.length + ' actividades). Borrá esas labores si querés regenerar.', 'info'); return { creadas: 0, error: 'ya generado' }; }
+    var tpl = agcalPlantilla(), creadas = 0, ahora = new Date().toISOString();
+    (tpl.actividades || []).forEach(function (a) {
+      var l = {
+        id: agNextId(d.labores), tipo: a.tipo || 'otra', nombre: a.nombre || '',
+        campana_id: c.id, estado: 'planificada',
+        fecha: (a.offset_dias != null) ? agcalAddDias(c.siembra_plan, a.offset_dias) : '',
+        offset_dias: (a.offset_dias != null) ? a.offset_dias : null,
+        etapa: a.etapa || '', con_costo: a.con_costo !== false,
+        plan_origen: 'plantilla', insumos: [],
+        created_at: ahora, updated_at: ahora
+      };
+      d.labores.push(l); creadas++;
+    });
+    agSaveDB();
+    agToast('📅 Plan generado: ' + creadas + ' actividades (ancladas a siembra ' + agFecha(c.siembra_plan) + ')', 'success');
+    try { agRenderAll(); } catch (e) {}
+    return { creadas: creadas };
+  }
+  function agcalRecalcular(campId, nuevaSiembra) { /* recorre SOLO pendientes con offset */
+    var d = agGetDB(), n = 0;
+    agcalPlanDe(d, campId).forEach(function (l) {
+      if (l.estado === 'planificada' && l.offset_dias != null) { l.fecha = agcalAddDias(nuevaSiembra, l.offset_dias); l.updated_at = new Date().toISOString(); n++; }
+    });
+    if (n) agSaveDB();
+    return n;
+  }
+  function agcalTachar(idLabor) {
+    var d = agGetDB(), l = agById(d.labores, idLabor);
+    if (!l || l.estado !== 'planificada') return;
+    var msg = (l.con_costo !== false)
+      ? '¿Marcar "' + (l.nombre || l.tipo) + '" como HECHA sin registrar costos?\n\nQueda con el aviso "⚠ faltan costos" — después se completa con ▶ Ejecutar o desde la PWA.'
+      : '¿Marcar "' + (l.nombre || l.tipo) + '" como hecha?';
+    if (!confirm(msg)) return;
+    l.estado = 'ejecutada'; l.fecha = agHoy(); l.tachado_rapido = true; l.updated_at = new Date().toISOString();
+    agSaveDB(); try { agRenderAll(); } catch (e) {}
+    agToast('✔ ' + (l.nombre || l.tipo) + ' tachada' + (l.con_costo !== false ? ' — ⚠ faltan costos' : ''), 'success');
+  }
+  function agcalEstado(d, campId) { /* resumen puro, testeable */
+    var plan = agcalPlanDe(d, campId), hoy = agHoy();
+    var hechas = plan.filter(function (l) { return l.estado === 'ejecutada'; });
+    var pend = plan.filter(function (l) { return l.estado === 'planificada'; });
+    var venc = pend.filter(function (l) { return l.fecha && String(l.fecha).slice(0, 10) < hoy; });
+    var prox = pend.filter(function (l) { return l.fecha && String(l.fecha).slice(0, 10) >= hoy; }).sort(function (a, b) { return String(a.fecha).localeCompare(String(b.fecha)); });
+    var sinF = pend.filter(function (l) { return !l.fecha; });
+    var sinCostos = hechas.filter(function (l) { return l.tachado_rapido && l.con_costo !== false && !(l.insumos || []).length && !l.hmaq && !l.diesel_l; });
+    return { total: plan.length, hechas: hechas, vencidas: venc, proximas: prox, sinFecha: sinF, sinCostos: sinCostos,
+      pct: plan.length ? Math.round(hechas.length * 100 / plan.length) : 0 };
+  }
+  /* ── UI ── */
+  function agcalCss() {
+    if (document.getElementById('agcal-css')) return;
+    var st = document.createElement('style'); st.id = 'agcal-css';
+    st.textContent =
+      '.agcal-bar{height:9px;border-radius:6px;background:var(--sur2,#21262d);overflow:hidden;display:flex;margin:6px 0 2px}' +
+      '.agcal-bar i{display:block;height:100%;transition:width .4s ease}' +
+      '.agcal-row td{transition:opacity .3s}' +
+      '.agcal-sec{font-size:11px;font-weight:800;letter-spacing:.05em;color:var(--muted)}' +
+      '.agcal-venc{color:var(--red,#f85149);font-weight:700}' +
+      '.agcal-prox{color:var(--amber2,#e3b341);font-weight:600}' +
+      '.agcal-chip{display:inline-block;border:1px solid var(--bor);border-radius:14px;padding:1px 9px;font-size:11px;color:var(--muted)}';
+    document.head.appendChild(st);
+  }
+  function agcalSidebar() {
+    var body = document.querySelector('#nav-agro-btn .nav-sec-body');
+    if (!body || document.querySelector('#nav-agro-btn [data-label="Calendario"]')) return;
+    var cal = agmNavBtn('Calendario', '📅', 'agcal');
+    var first = body.querySelector('.nav-btn');
+    if (first && first.nextSibling) body.insertBefore(cal, first.nextSibling); else body.appendChild(cal);
+  }
+  function agcalVista() {
+    var pg = agEl('page-agro');
+    if (!pg || agEl('ag-view-agcal')) return;
+    var wrap = document.createElement('div');
+    wrap.innerHTML =
+      '<div id="ag-view-agcal" class="ag-view">' +
+      '<div class="sub">Lista predefinida de actividades por campaña (plantilla de la estancia). Las que tienen plazo se anclan a la fecha de siembra; las demás se tachan cuando tocan. ✔ = hecha rápida (sin costos, se completan después) · ▶ = registrar completo.</div>' +
+      '<div class="toolbar" style="flex-wrap:wrap;gap:8px">' +
+      '<select class="form-input" id="agcal-camp" style="max-width:340px" onchange="agcalRender()"></select>' +
+      '<button class="btn btn-primary" onclick="agcalGenerarBtn()">📅 Generar plan</button>' +
+      '<button class="btn btn-ghost" onclick="agcalOpenPlantilla()">🧩 Plantilla</button>' +
+      '</div>' +
+      '<div class="panel" id="agcal-resumen" style="padding:12px 16px"></div>' +
+      '<div class="panel"><table class="tbl"><thead><tr><th></th><th>Actividad</th><th>Plazo</th><th>Fecha</th><th>Tipo</th><th class="num">Costo (Bs)</th><th></th></tr></thead><tbody id="agcal-tbody"></tbody></table></div>' +
+      '</div>' +
+      /* modal plantilla */
+      '<div class="modal" id="ag-modal-plantilla"><div class="modal-box" style="max-width:720px">' +
+      '<h3>🧩 Plantilla de actividades (general — vale para cualquier cultivo)</h3>' +
+      '<div class="sub" style="margin:4px 0 10px">Plazo en días desde la siembra (negativo = antes). Sin plazo → actividad por etapa que nunca vence. "Costo" = al tacharla rápido queda marcada "⚠ faltan costos".</div>' +
+      '<div style="max-height:46vh;overflow-y:auto"><table class="tbl"><thead><tr><th>Actividad</th><th>Tipo</th><th class="num">Plazo (días)</th><th>Etapa</th><th>Costo</th><th></th></tr></thead><tbody id="agcal-tpl-tbody"></tbody></table></div>' +
+      '<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="agcalTplAdd()">➕ Agregar actividad</button>' +
+      '<div class="modal-actions"><button class="btn btn-ghost" onclick="agCloseModal(\'ag-modal-plantilla\')">Cancelar</button>' +
+      '<button class="btn btn-primary" onclick="agcalTplSave()">💾 Guardar plantilla</button></div>' +
+      '</div></div>';
+    while (wrap.firstChild) pg.appendChild(wrap.firstChild);
+  }
+  function agcalCampSel() {
+    var sel = agEl('agcal-camp'); if (!sel) return null;
+    var d = agGetDB(), prev = sel.value;
+    var activas = d.campanas.filter(function (c) { return c.estado !== 'cosechada'; });
+    sel.innerHTML = activas.length ? '' : '<option value="">— No hay campañas activas —</option>';
+    activas.forEach(function (c) {
+      var o = document.createElement('option'); o.value = c.id;
+      o.textContent = campLabel(d, c) + ' (' + fmtA(campHa(d, c), 1) + ' ha' + (c.siembra_plan ? ' · siembra ' + agFecha(c.siembra_plan) : ' · SIN fecha de siembra') + ')';
+      sel.appendChild(o);
+    });
+    if (prev && activas.some(function (c) { return String(c.id) === String(prev); })) sel.value = prev;
+    return sel.value || null;
+  }
+  function agcalRender() {
+    if (agcalOff() || !agEl('ag-view-agcal')) return;
+    var campId = agcalCampSel();
+    var res = agEl('agcal-resumen'), tb = agEl('agcal-tbody');
+    if (!res || !tb) return;
+    if (!campId) { res.innerHTML = '<span class="empty">Creá una campaña en la subpestaña Campañas y después generá su plan acá.</span>'; tb.innerHTML = ''; return; }
+    var d = agGetDB(), st = agcalEstado(d, campId), c = agById(d.campanas, campId);
+    if (!st.total) {
+      res.innerHTML = '<b>' + escA(campLabel(d, c)) + '</b> todavía no tiene plan. ' + (c.siembra_plan ? 'Tocá <b>📅 Generar plan</b> — se crean ' + (agcalPlantilla().actividades || []).length + ' actividades ancladas a la siembra del ' + agFecha(c.siembra_plan) + '.' : '⚠ Primero poné la <b>fecha de siembra planificada</b> en la campaña (✏️ en Campañas).');
+      tb.innerHTML = ''; return;
+    }
+    res.innerHTML =
+      '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:baseline">' +
+      '<b>' + escA(campLabel(d, c)) + '</b>' +
+      '<span><b class="agm-ok">' + st.hechas.length + '/' + st.total + ' hechas (' + st.pct + '%)</b>' +
+      (st.vencidas.length ? ' · <span class="agcal-venc">' + st.vencidas.length + ' vencida' + (st.vencidas.length > 1 ? 's' : '') + ' 🔴</span>' : '') +
+      (st.sinCostos.length ? ' · <span class="agm-pend">' + st.sinCostos.length + ' sin costos ⚠</span>' : '') + '</span></div>' +
+      '<div class="agcal-bar"><i style="background:var(--green,#3fb950);width:' + st.pct + '%"></i><i style="background:var(--red,#f85149);width:' + Math.round(st.vencidas.length * 100 / st.total) + '%"></i></div>' +
+      '<div style="font-size:11px;color:var(--muted)">siembra ' + (c.siembra_plan ? agFecha(c.siembra_plan) : '—') + ' · los plazos se calculan desde ahí</div>';
+    var html = '', hoy = agHoy();
+    function fila(l, cls, plazoTxt) {
+      var cost = laborCosto(l);
+      var acts = '';
+      if (l.estado === 'planificada') acts = '<button class="btn btn-ghost btn-sm" title="Hecha rápida (sin costos)" onclick="agcalTachar(' + l.id + ')">✔</button> <button class="btn btn-primary btn-sm" onclick="agEjecutarLabor(' + l.id + ')">▶ Registrar</button>';
+      else if (l.tachado_rapido && l.con_costo !== false && !(l.insumos || []).length) acts = '<button class="btn btn-ghost btn-sm" onclick="agEjecutarLabor(' + l.id + ')">⚠ Completar costos</button>';
+      return '<tr class="agcal-row"' + (l.estado === 'ejecutada' ? ' style="opacity:.55"' : '') + '><td>' + (l.estado === 'ejecutada' ? '✅' : (cls === 'venc' ? '🔴' : cls === 'prox' ? '🟡' : '⬜')) + '</td>' +
+        '<td>' + (l.estado === 'ejecutada' ? '<s>' : '') + escA(l.nombre || LABOR_TIPOS[l.tipo] || l.tipo) + (l.estado === 'ejecutada' ? '</s>' : '') + '</td>' +
+        '<td>' + (plazoTxt || '') + '</td><td>' + (l.fecha ? agFecha(l.fecha) : '—') + '</td>' +
+        '<td><span class="agcal-chip">' + escA((LABOR_TIPOS[l.tipo] || l.tipo || '').replace(/^[^\s]+\s/, '')) + '</span></td>' +
+        '<td class="num">' + (l.estado === 'ejecutada' ? (cost.total ? fmtA(cost.total) : (l.con_costo !== false ? '<span class="agm-pend">⚠ faltan</span>' : '—')) : '—') + '</td>' +
+        '<td style="white-space:nowrap">' + acts + '</td></tr>';
+    }
+    function offTxt(l) {
+      if (l.offset_dias == null) return '<span class="agcal-chip">' + escA(l.etapa || 'cuando toque') + '</span>';
+      var o = Number(l.offset_dias);
+      return '<b style="color:var(--blue,#58a6ff)">S' + (o >= 0 ? '+' : '−') + Math.abs(o) + '</b>';
+    }
+    if (st.vencidas.length) {
+      html += '<tr><td colspan="7" class="agcal-sec" style="color:var(--red,#f85149)">🔴 VENCIDAS — resolver primero</td></tr>';
+      st.vencidas.forEach(function (l) { html += fila(l, 'venc', offTxt(l) + ' <span class="agcal-venc">venció ' + agFecha(l.fecha) + '</span>'); });
+    }
+    if (st.proximas.length) {
+      html += '<tr><td colspan="7" class="agcal-sec">🟡 PRÓXIMAS</td></tr>';
+      st.proximas.forEach(function (l) { html += fila(l, 'prox', offTxt(l)); });
+    }
+    if (st.sinFecha.length) {
+      html += '<tr><td colspan="7" class="agcal-sec">⬜ CUANDO TOQUE (sin plazo — no vencen)</td></tr>';
+      st.sinFecha.forEach(function (l) { html += fila(l, 'sinf', offTxt(l)); });
+    }
+    if (st.hechas.length) {
+      html += '<tr><td colspan="7" class="agcal-sec" style="color:var(--green,#3fb950)">✅ HECHAS</td></tr>';
+      st.hechas.slice().sort(function (a, b) { return String(b.fecha || '').localeCompare(String(a.fecha || '')); }).forEach(function (l) { html += fila(l, 'done', offTxt(l)); });
+    }
+    tb.innerHTML = html;
+  }
+  function agcalGenerarBtn() { var sel = agEl('agcal-camp'); if (sel && sel.value) agcalGenerar(sel.value); else agToast('Elegí una campaña', 'error'); }
+  /* ── editor de plantilla ── */
+  var AGCAL_TPL_EDIT = null;
+  function agcalOpenPlantilla() {
+    AGCAL_TPL_EDIT = JSON.parse(JSON.stringify(agcalPlantilla().actividades || []));
+    agcalTplRender(); window.agOpenModal('ag-modal-plantilla');
+  }
+  function agcalTplRender() {
+    var tb = agEl('agcal-tpl-tbody'); if (!tb) return;
+    var tipos = Object.keys(LABOR_TIPOS);
+    tb.innerHTML = AGCAL_TPL_EDIT.map(function (a, i) {
+      return '<tr>' +
+        '<td><input class="form-input" value="' + escA(a.nombre || '') + '" onchange="AGCAL_TPL_EDIT[' + i + '].nombre=this.value" style="min-width:180px"></td>' +
+        '<td><select class="form-input" onchange="AGCAL_TPL_EDIT[' + i + '].tipo=this.value">' + tipos.map(function (t) { return '<option value="' + t + '"' + (a.tipo === t ? ' selected' : '') + '>' + LABOR_TIPOS[t] + '</option>'; }).join('') + '</select></td>' +
+        '<td class="num"><input class="form-input" type="number" value="' + (a.offset_dias != null ? a.offset_dias : '') + '" placeholder="—" onchange="AGCAL_TPL_EDIT[' + i + '].offset_dias=this.value===\'\'?null:Number(this.value)" style="width:82px"></td>' +
+        '<td><input class="form-input" value="' + escA(a.etapa || '') + '" placeholder="pre-siembra…" onchange="AGCAL_TPL_EDIT[' + i + '].etapa=this.value" style="width:110px"></td>' +
+        '<td style="text-align:center"><input type="checkbox"' + (a.con_costo !== false ? ' checked' : '') + ' onchange="AGCAL_TPL_EDIT[' + i + '].con_costo=this.checked"></td>' +
+        '<td><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agcalTplDel(' + i + ')">✕</button></td></tr>';
+    }).join('');
+  }
+  function agcalTplDel(i) { AGCAL_TPL_EDIT.splice(i, 1); agcalTplRender(); }
+  function agcalTplAdd() { AGCAL_TPL_EDIT.push({ id: Date.now(), tipo: 'otra', nombre: '', offset_dias: null, etapa: '', con_costo: true }); agcalTplRender(); }
+  function agcalTplSave() {
+    var limpio = AGCAL_TPL_EDIT.filter(function (a) { return (a.nombre || '').trim(); });
+    if (!limpio.length) { agToast('La plantilla no puede quedar vacía', 'error'); return; }
+    var p = agcalParams();
+    if (!Array.isArray(p.agro_plantillas) || !p.agro_plantillas.length) p.agro_plantillas = [{ id: 1, nombre: 'General', cultivo: '*' }];
+    p.agro_plantillas[0].actividades = limpio.map(function (a, i) { return Object.assign({}, a, { id: i + 1 }); });
+    agcalSaveParams(p);
+    window.agCloseModal('ag-modal-plantilla'); agcalRender();
+    agToast('🧩 Plantilla guardada (' + limpio.length + ' actividades) — aplica a los próximos "Generar plan"', 'success');
+  }
+  /* ── siembra corrida: envolver agSaveCampana (C2: preguntar, jamás automático) ── */
+  var _agcalPrevSaveCampana = agSaveCampana;
+  agSaveCampana = function () {
+    var id = null, prevSiembra = null;
+    try {
+      id = agEl('agc-id') ? agEl('agc-id').value : null;
+      if (id) { var c0 = agById(agGetDB().campanas, id); prevSiembra = c0 ? (c0.siembra_plan || '') : null; }
+    } catch (e) {}
+    _agcalPrevSaveCampana();
+    try {
+      if (agcalOff() || !id || prevSiembra == null) return;
+      var d = agGetDB(), c = agById(d.campanas, id);
+      if (!c || (c.siembra_plan || '') === prevSiembra || !c.siembra_plan) return;
+      var pend = agcalPlanDe(d, id).filter(function (l) { return l.estado === 'planificada' && l.offset_dias != null; });
+      if (!pend.length) return;
+      var dias = Math.round((new Date(c.siembra_plan + 'T12:00:00') - new Date((prevSiembra || c.siembra_plan) + 'T12:00:00')) / 86400000);
+      if (confirm('📅 La siembra planificada se corrió ' + (prevSiembra ? (Math.abs(dias) + ' día(s) ' + (dias > 0 ? 'para adelante' : 'para atrás')) : 'de fecha') + '.\n\n¿Recalcular las fechas de las ' + pend.length + ' actividades PENDIENTES del plan?\n\nAceptar = recalcular · Cancelar = dejarlas como están')) {
+        var n = agcalRecalcular(id, c.siembra_plan);
+        agToast('🔁 ' + n + ' actividad(es) recalculada(s) a la nueva siembra', 'success');
+        try { agRenderAll(); } catch (e2) {}
+      }
+    } catch (e) {}
+  };
+  window.agSaveCampana = agSaveCampana;
+  /* ── ubicación de la estancia (lat/lon para el clima de las PWAs) ── */
+  function agcalConfigUbicacion() {
+    var pg = document.getElementById('page-config');
+    if (!pg || document.getElementById('cfg-ubicacion-card')) return;
+    var p = agcalParams(), u = (p.ubicacion && typeof p.ubicacion === 'object') ? p.ubicacion : {};
+    var card = document.createElement('div');
+    card.id = 'cfg-ubicacion-card'; card.className = 'panel';
+    card.style.cssText = 'margin-top:16px;padding:16px';
+    card.innerHTML = '<h3 style="margin:0 0 4px">📍 Ubicación de la estancia</h3>' +
+      '<div class="sub" style="margin-bottom:10px">Coordenadas para el clima y pronóstico de las PWAs (Variables de EP Agro). En Google Maps: click derecho sobre la estancia → copiar coordenadas.</div>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">' +
+      '<input class="form-input" id="cfg-ubi-lat" placeholder="Latitud (ej -17.7833)" value="' + (u.lat != null ? u.lat : '') + '" style="width:180px">' +
+      '<input class="form-input" id="cfg-ubi-lon" placeholder="Longitud (ej -63.1821)" value="' + (u.lon != null ? u.lon : '') + '" style="width:180px">' +
+      '<button class="btn btn-primary" onclick="agcalGuardarUbicacion()">💾 Guardar ubicación</button>' +
+      '<span id="cfg-ubi-status" style="font-size:12px;color:var(--muted)">' + (u.lat != null ? '✓ configurada' : 'sin configurar') + '</span></div>';
+    pg.appendChild(card);
+  }
+  function agcalGuardarUbicacion() {
+    var lat = parseFloat((document.getElementById('cfg-ubi-lat') || {}).value), lon = parseFloat((document.getElementById('cfg-ubi-lon') || {}).value);
+    if (!isFinite(lat) || !isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) { agToast('Coordenadas inválidas — copialas de Google Maps (click derecho sobre la estancia)', 'error'); return; }
+    var p = agcalParams(); p.ubicacion = { lat: lat, lon: lon, updated_at: new Date().toISOString() };
+    agcalSaveParams(p);
+    var st = document.getElementById('cfg-ubi-status'); if (st) st.textContent = '✓ guardada — las PWAs la toman en su próximo sync';
+    agToast('📍 Ubicación guardada', 'success');
+  }
+  /* ── integración ── */
+  var _agcalPrevRenderAll = agRenderAll;
+  agRenderAll = function () {
+    _agcalPrevRenderAll();
+    if (agcalOff()) return;
+    try { agcalRender(); } catch (e) {}
+  };
+  window.agRenderAll = agRenderAll;
+  window.agcalRender = agcalRender; window.agcalGenerar = agcalGenerar; window.agcalGenerarBtn = agcalGenerarBtn;
+  window.agcalTachar = agcalTachar; window.agcalOpenPlantilla = agcalOpenPlantilla; window.agcalTplSave = agcalTplSave;
+  window.agcalTplAdd = agcalTplAdd; window.agcalTplDel = agcalTplDel; window.AGCAL_TPL_EDIT = AGCAL_TPL_EDIT;
+  window.agcalGuardarUbicacion = agcalGuardarUbicacion;
+  Object.defineProperty(window, 'AGCAL_TPL_EDIT', { get: function () { return AGCAL_TPL_EDIT; }, configurable: true });
+  window.__agcal = { seed: AGCAL_SEED, addDias: agcalAddDias, generar: agcalGenerar, recalcular: agcalRecalcular, estado: agcalEstado, tachar: agcalTachar, plantilla: agcalPlantilla, planDe: agcalPlanDe };
+  function agcalBoot() {
+    if (agcalOff()) return;
+    try { agcalCss(); } catch (e) {}
+    try { agcalSidebar(); } catch (e) {}
+    try { agcalVista(); } catch (e) {}
+    try { agcalConfigUbicacion(); } catch (e) {}
+    try { console.log('%c[calendario v1.8.151] plantilla + generar plan + semáforo + siembra corrida', 'color:#58a6ff;font-weight:bold'); } catch (e) {}
+  }
+  if (typeof document !== 'undefined' && document.getElementById) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', agcalBoot);
+    else agcalBoot();
+    document.addEventListener('click', function () { setTimeout(function () { try { agcalSidebar(); agcalConfigUbicacion(); } catch (e) {} }, 600); });
+  }
+/*__AGCAL_END__*/
+
 })();
 
 /*__AGM_END__*/
@@ -46792,7 +47129,36 @@ try {
 } catch(e) { console.warn('[tenant-fp] error no fatal:', e && e.message); }
 })();
 </script>
-<script>window.__E5M_BUILD='1.8.150 (agro: wizard canonico + Stock Agro + Servicios Externos + Maquinaria agro)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
+<script>
+/* v1.8.151: chip 💱 TC oficial BCB en el topbar (dato del server v4.42 via sync-pull; funciona offline con el ultimo valor) */
+(function(){
+  function tcBcbRender(){
+    try {
+      var tc = null;
+      try { tc = JSON.parse(localStorage.getItem('e5m_tc_bcb')||'null'); } catch(e){}
+      if (!tc || !tc.valor) return;
+      var right = document.querySelector('.topbar-right'); if (!right) return;
+      var el = document.getElementById('tc-bcb-chip');
+      if (!el) {
+        el = document.createElement('span'); el.id = 'tc-bcb-chip';
+        el.style.cssText = 'background:var(--sur2,#21262d);border:1px solid var(--bor,#30363d);border-radius:8px;padding:5px 12px;font-size:11px;font-family:"DM Mono",monospace;font-weight:600;display:flex;align-items:center;gap:6px;cursor:default;transition:opacity .4s';
+        right.insertBefore(el, right.firstChild);
+      }
+      var v = Number(tc.valor).toLocaleString('es-BO',{minimumFractionDigits:2,maximumFractionDigits:2});
+      var flecha = '', color = 'var(--muted,#7d8590)';
+      if (tc.variacion_pct != null && tc.variacion_pct !== 0) {
+        flecha = (tc.variacion_pct > 0 ? '▲' : '▼') + Math.abs(tc.variacion_pct).toLocaleString('es-BO',{maximumFractionDigits:2}) + '%';
+        color = tc.variacion_pct > 0 ? 'var(--green,#3fb950)' : 'var(--red,#f85149)';
+      } else if (tc.variacion_pct === 0) { flecha = '= 0%'; }
+      el.innerHTML = '💱 Bs ' + v + (flecha ? ' <span style="color:'+color+'">' + flecha + '</span>' : '');
+      el.title = 'TC oficial BCB (TCO compra) del ' + (tc.fecha||'') + (tc.anterior ? ' · anterior: Bs ' + tc.anterior + ' (' + (tc.anterior_fecha||'') + ')' : '') + (tc.stale ? ' · SIN actualizar hoy (ultimo valor guardado)' : '');
+    } catch(e){}
+  }
+  window.tcBcbRender = tcBcbRender;
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tcBcbRender); else tcBcbRender();
+})();
+</script>
+<script>window.__E5M_BUILD='1.8.151 (calendario de actividades + TC BCB + ubicacion estancia)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
 
 
 <!-- ══════════════════════════════════════════════════════════════
