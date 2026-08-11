@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Conectar WhatsApp Business — Sg Sales</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --sg-teal: #14b8c4;
+      --sg-teal-bright: #1cd4e0;
+      --sg-teal-deep: #0e8a93;
+      --sg-glow: rgba(28,212,224,0.15);
+      --bg-base: #0a0e14;
+      --bg-panel: #111722;
+      --bg-card: #161d2b;
+      --border: #232c3d;
+      --border-soft: #1a212e;
+      --text: #e8edf4;
+      --text-muted: #8895a8;
+      --text-dim: #5a6678;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-base);
+      background-image:
+        radial-gradient(ellipse 80% 50% at 50% 0%, var(--sg-glow), transparent 60%),
+        radial-gradient(ellipse 60% 40% at 100% 100%, rgba(20,184,196,0.06), transparent 55%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      -webkit-font-smoothing: antialiased;
+    }
+    .card {
+      background: linear-gradient(180deg, var(--bg-panel), var(--bg-card));
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 48px 40px;
+      max-width: 460px;
+      width: 100%;
+      box-shadow: 0 24px 60px -20px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.03);
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+      width: 200px; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--sg-teal-bright), transparent);
+    }
+    .logo {
+      width: 64px; height: 64px;
+      background: linear-gradient(135deg, var(--sg-teal-bright), var(--sg-teal-deep));
+      border-radius: 18px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Sora', sans-serif; font-weight: 800; font-size: 28px;
+      color: #04181a; letter-spacing: -1px;
+      margin: 0 auto 22px;
+      box-shadow: 0 10px 30px -8px var(--sg-glow), inset 0 1px 0 rgba(255,255,255,0.3);
+    }
+    h1 { font-family: 'Sora', sans-serif; font-weight: 700; font-size: 24px; margin-bottom: 8px; letter-spacing: -0.5px; }
+    .subtitle { color: var(--text-muted); font-size: 14px; margin-bottom: 30px; line-height: 1.55; }
+    .steps {
+      text-align: left;
+      background: var(--bg-base);
+      border: 1px solid var(--border-soft);
+      border-radius: 14px;
+      padding: 18px 22px;
+      margin-bottom: 26px;
+    }
+    .step {
+      display: flex; align-items: center; gap: 12px;
+      font-size: 13.5px; color: var(--text); padding: 7px 0;
+    }
+    .step-num {
+      background: linear-gradient(135deg, var(--sg-teal-bright), var(--sg-teal-deep));
+      color: #04181a;
+      width: 22px; height: 22px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Sora', sans-serif; font-size: 11px; font-weight: 700; flex-shrink: 0;
+    }
+    #connectBtn {
+      background: linear-gradient(135deg, var(--sg-teal), var(--sg-teal-deep));
+      color: #fff;
+      border: none; border-radius: 14px;
+      padding: 15px 24px; font-family: 'Outfit', sans-serif; font-size: 15px; font-weight: 600;
+      cursor: pointer; width: 100%;
+      transition: all 0.25s cubic-bezier(0.4,0,0.2,1);
+      box-shadow: 0 8px 20px -8px var(--sg-glow);
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    #connectBtn:hover { transform: translateY(-2px); box-shadow: 0 12px 28px -8px var(--sg-glow); background: linear-gradient(135deg, var(--sg-teal-bright), var(--sg-teal)); }
+    #connectBtn:disabled { background: #2a3548; cursor: not-allowed; transform: none; box-shadow: none; }
+    .status {
+      margin-top: 20px; padding: 12px; border-radius: 10px;
+      font-size: 13px; display: none;
+    }
+    .status.info { background: rgba(28,212,224,0.1); color: var(--sg-teal-bright); display: block; }
+    .status.success { background: rgba(28,212,224,0.12); color: var(--sg-teal-bright); display: block; }
+    .status.error { background: rgba(239,68,68,0.12); color: #fca5a5; display: block; }
+    .spinner {
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      width: 16px; height: 16px;
+      animation: spin 0.8s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .footer { margin-top: 26px; font-size: 12px; color: var(--text-dim); }
+    .success-box { display: none; }
+    .success-box.show { display: block; }
+    .token-display {
+      background: var(--bg-base); border: 1px dashed var(--border);
+      border-radius: 10px; padding: 12px; margin: 16px 0;
+      font-family: monospace; font-size: 12px; color: var(--sg-teal-bright);
+      word-break: break-all;
+    }
+    .panel-link {
+      display: inline-block;
+      background: linear-gradient(135deg, var(--sg-teal), var(--sg-teal-deep)); color: #fff;
+      text-decoration: none; padding: 13px 24px; border-radius: 14px;
+      font-weight: 600; margin-top: 12px; transition: transform 0.2s;
+    }
+    .panel-link:hover { transform: translateY(-2px); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div id="mainView">
+      <div class="logo">SG</div>
+      <h1>Conectá tu WhatsApp Business</h1>
+      <p class="subtitle">Vinculá tu número de WhatsApp Business a Sg Sales en 2 minutos. Tu asistente Aitana empezará a atender automáticamente.</p>
+
+      <div class="steps">
+        <div class="step"><span class="step-num">1</span> Iniciá sesión con tu cuenta de Facebook</div>
+        <div class="step"><span class="step-num">2</span> Seleccioná tu cuenta de WhatsApp Business</div>
+        <div class="step"><span class="step-num">3</span> Confirmá el número a conectar</div>
+        <div class="step"><span class="step-num">4</span> ¡Listo! Aitana queda activa</div>
+      </div>
+
+      <button id="connectBtn" onclick="launchSignup()">
+        <span>Conectar WhatsApp Business</span>
+      </button>
+
+      <div id="status" class="status"></div>
+    </div>
+
+    <div id="successView" class="success-box">
+      <div class="logo" style="background:linear-gradient(135deg, #1cd4e0, #0e8a93);">✓</div>
+      <h1>¡WhatsApp conectado!</h1>
+      <p class="subtitle">Tu número quedó vinculado a Sg Sales y Aitana ya está activa.</p>
+      <!-- v0.9.60: el acceso es por login (Continuar con Facebook), ya no por token en URL -->
+      <div class="token-display" style="font-family:'Outfit',sans-serif; font-size:13px;">Para entrar a tu panel usá <strong>Continuar con Facebook</strong> con la misma cuenta que usaste recién.</div>
+      <a href="#" id="panelLink" class="panel-link">Ir a mi panel →</a>
+      <p class="footer">Podés volver a entrar cuando quieras desde app.sg-ventas.com</p>
+    </div>
+
+    <div class="footer">Sg Sales · SG Bolivia · Powered by WhatsApp Business Platform</div>
+  </div>
+
+  <script>
+    let CONFIG = null;
+
+    // Cargar config pública (App ID + Config ID) desde el backend
+    async function loadConfig() {
+      try {
+        const r = await fetch('/api/onboarding/config');
+        if (!r.ok) {
+          const err = await r.json();
+          showStatus('error', 'Onboarding no configurado. Contactá a soporte. (' + (err.error || '') + ')');
+          document.getElementById('connectBtn').disabled = true;
+          return;
+        }
+        CONFIG = await r.json();
+        // Inicializar el SDK de Facebook con el App ID
+        initFacebookSDK(CONFIG.app_id, CONFIG.graph_version);
+      } catch (e) {
+        showStatus('error', 'No se pudo cargar la configuración: ' + e.message);
+        document.getElementById('connectBtn').disabled = true;
+      }
+    }
+
+    function initFacebookSDK(appId, graphVersion) {
+      window.fbAsyncInit = function () {
+        FB.init({
+          appId: appId,
+          autoLogAppEvents: true,
+          xfbml: true,
+          version: graphVersion,
+        });
+      };
+      // Cargar el SDK
+      (function (d, s, id) {
+        var js, fjs = d.getElementsByTagName(s)[0];
+        if (d.getElementById(id)) return;
+        js = d.createElement(s); js.id = id;
+        js.src = 'https://connect.facebook.net/en_US/sdk.js';
+        fjs.parentNode.insertBefore(js, fjs);
+      })(document, 'script', 'facebook-jssdk');
+    }
+
+    // v0.9.14 — modo "add-line": el flujo se abrió como popup desde el panel
+    // (Config → 📱 Líneas → Conectar con Facebook). En vez de crear un tenant,
+    // se devuelven code+ids al panel por postMessage y el panel crea la LÍNEA
+    // con su propia sesión (JWT del owner).
+    const ADD_LINE_MODE = new URLSearchParams(window.location.search).get('mode') === 'add-line';
+
+    // Datos capturados del evento de Embedded Signup
+    let sessionInfo = { waba_id: null, phone_number_id: null };
+
+    // v0.9.111 — funnel del Embedded Signup (lanzó -> eligió WABA -> terminó).
+    const ONB_SESSION = (function () { try { return crypto.randomUUID(); } catch (e) { return 'onb_' + Date.now() + '_' + Math.random().toString(36).slice(2); } })();
+    function trackOnb(stage, extra) {
+      if (ADD_LINE_MODE) return;
+      try {
+        fetch('/api/onboarding/track', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          keepalive: true,
+          // v0.9.125: landing_url (con UTM) + referrer → identificar origen del lead.
+          body: JSON.stringify(Object.assign({ session_id: ONB_SESSION, stage: stage, landing_url: location.href, referrer: document.referrer || '' }, extra || {})),
+        }).catch(function () {});
+      } catch (e) {}
+    }
+
+    // Escuchar el mensaje del Embedded Signup (postMessage)
+    window.addEventListener('message', (event) => {
+      if (!event.origin.endsWith('facebook.com')) return;
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'WA_EMBEDDED_SIGNUP') {
+          if (data.event === 'FINISH' || data.event === 'FINISH_ONLY_WABA' || data.event === 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING') {
+            // v0.9.40: FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING = coexistence
+            // (el cliente conectó el número de su app de WhatsApp Business)
+            sessionInfo.waba_id = data.data?.waba_id || null;
+            sessionInfo.phone_number_id = data.data?.phone_number_id || null;
+            sessionInfo.coexistence = data.event === 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING';
+            console.log('Embedded Signup capturado:', sessionInfo);
+            trackOnb('waba_selected', { waba_id: sessionInfo.waba_id, phone_number_id: sessionInfo.phone_number_id, coexistence: !!sessionInfo.coexistence });
+          } else if (data.event === 'CANCEL') {
+            showStatus('error', 'Conexión cancelada. Podés intentar de nuevo cuando quieras.');
+            resetButton();
+            trackOnb('cancelled');
+          }
+        }
+      } catch (e) { /* no era JSON, ignorar */ }
+    });
+
+    function launchSignup() {
+      if (!CONFIG) { showStatus('error', 'Configuración no cargada todavía.'); return; }
+      if (typeof FB === 'undefined') { showStatus('error', 'El SDK de Facebook no cargó. Recargá la página.'); return; }
+
+      const btn = document.getElementById('connectBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span><span>Abriendo...</span>';
+      showStatus('info', 'Se abrió la ventana de Facebook. Completá los pasos ahí.');
+
+      trackOnb('launched');
+      FB.login(function (response) {
+        if (response.authResponse && response.authResponse.code) {
+          const code = response.authResponse.code;
+          exchangeCode(code);
+        } else {
+          showStatus('error', 'No autorizaste la conexión o se cerró la ventana.');
+          resetButton();
+        }
+      }, {
+        config_id: CONFIG.config_id,
+        response_type: 'code',
+        override_default_response_type: true,
+        // v0.9.40: featureType habilita COEXISTENCE — aparece la opción
+        // "Connect a WhatsApp Business App" (conectar el número sin perder
+        // la app). sessionInfoVersion 3 es requisito de ese flujo.
+        extras: {
+          sessionInfoVersion: '3',
+          featureType: 'whatsapp_business_app_onboarding',
+          setup: {},
+        },
+      });
+    }
+
+    async function exchangeCode(code) {
+      showStatus('info', 'Conectando tu número... esto puede tardar unos segundos.');
+      document.getElementById('connectBtn').innerHTML = '<span class="spinner"></span><span>Conectando...</span>';
+
+      // Esperar un momento por si el postMessage del WABA llega un poco después
+      await new Promise(r => setTimeout(r, 1000));
+
+      // v0.9.14 — modo add-line: devolver code+ids al panel (mismo origin) y listo.
+      // El panel hace el POST /api/admin/lines/connect-facebook con su JWT.
+      if (ADD_LINE_MODE) {
+        if (window.opener) {
+          window.opener.postMessage({
+            type: 'SGV_ADD_LINE',
+            code: code,
+            waba_id: sessionInfo.waba_id,
+            phone_number_id: sessionInfo.phone_number_id,
+          }, window.location.origin);
+          showStatus('info', '✅ Listo. Volvé al panel — esta ventana se cierra sola.');
+          setTimeout(() => window.close(), 1800);
+        } else {
+          showStatus('error', 'Este flujo se abre desde el panel (Config → 📱 Líneas → Conectar con Facebook).');
+        }
+        return;
+      }
+
+      try {
+        const r = await fetch('/api/onboarding/exchange-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: code,
+            waba_id: sessionInfo.waba_id,
+            phone_number_id: sessionInfo.phone_number_id,
+            coexistence: !!sessionInfo.coexistence, // v0.9.60
+            ref: (function(){try{var u=new URLSearchParams(location.search).get('ref');if(u){sessionStorage.setItem('sgv_ref',u);return u;}return sessionStorage.getItem('sgv_ref')||null;}catch(e){return null;}})(), // v0.9.274 código de referido del link (?ref=)
+          }),
+        });
+        const data = await r.json();
+        if (r.ok && data.ok) {
+          showSuccess(data);
+        } else {
+          // v0.9.60: mostrar también el detalle técnico si vino (diagnóstico)
+          const detail = data.detail ? ' — ' + data.detail : '';
+          showStatus('error', (data.error || 'Error al conectar. Intentá de nuevo.') + detail);
+          resetButton();
+        }
+      } catch (e) {
+        showStatus('error', 'Error de red: ' + e.message);
+        resetButton();
+      }
+    }
+
+    function showSuccess(data) {
+      document.getElementById('mainView').style.display = 'none';
+      const sv = document.getElementById('successView');
+      sv.classList.add('show');
+      // v0.9.60: el backend devuelve la URL absoluta del panel (login con Facebook)
+      document.getElementById('panelLink').href = data.panel_url || 'https://app.sg-ventas.com/panel/';
+    }
+
+    function showStatus(type, msg) {
+      const el = document.getElementById('status');
+      el.className = 'status ' + type;
+      el.textContent = msg;
+    }
+
+    function resetButton() {
+      const btn = document.getElementById('connectBtn');
+      btn.disabled = false;
+      btn.innerHTML = '<span>Conectar WhatsApp Business</span>';
+    }
+
+    // Init al cargar
+    loadConfig();
+  </script>
+</body>
+</html>

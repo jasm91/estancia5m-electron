@@ -1,0 +1,290 @@
+{
+  "name": "SG_Ventas_Followup_Worker_v1.0",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Every 15min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.SG_VENTAS_API_URL}}/bot/follow-up/candidates",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "get-candidates",
+      "name": "GET /bot/follow-up/candidates",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BOT_SECRET_SGVENTAS",
+          "name": "BOT_SECRET_SGVENTAS"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-candidates",
+              "leftValue": "={{ $json.count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "if-has-candidates",
+      "name": "IF Has Candidates",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "candidates",
+        "options": {}
+      },
+      "id": "split-candidates",
+      "name": "Split Candidates",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [900, 240]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Construir prompt para Gemini con contexto del lead\nconst c = $input.item.json;\n\nconst recentMsgs = (c.recent_messages || [])\n  .map(m => {\n    const who = m.direction === 'outgoing' ? 'AITANA' : (c.contact_name || 'CLIENTE');\n    return `${who}: ${m.body || `[${m.type}]`}`;\n  })\n  .join('\\n');\n\nconst leadName = c.lead_name || c.contact_name || '';\nconst company = c.company ? ` (${c.company})` : '';\nconst vertical = c.vertical_id ? ` del rubro ${c.vertical_id}` : '';\nconst summary = c.lead_summary || 'Sin resumen disponible';\n\nconst prompt = `Sos Aitana, asistente comercial de SG Bolivia. Hace aproximadamente 23 horas tuviste esta conversación con ${leadName}${company}${vertical} y el cliente NO respondió a tu último mensaje.\n\nRESUMEN DEL LEAD:\n${summary}\n\nSCORE DEL LEAD: ${c.current_score}/100\n\nÚLTIMOS MENSAJES (cronológicos):\n${recentMsgs}\n\nINSTRUCCIONES:\n- Generá UN solo mensaje de follow-up, corto y natural (máximo 200 caracteres).\n- Retomá el hilo natural de la conversación.\n- Si había una objeción clara (precio, dudas, tiempo), abordala con valor agregado o pregunta abierta.\n- Si no había objeción, simplemente recordá que estás disponible para resolver cualquier duda.\n- NUNCA preguntes \"¿seguís interesado?\" ni \"¿estás ahí?\" ni \"¿me leés?\". Eso suena a vendedor desesperado.\n- NO uses más de 1 emoji.\n- Hablá como humano boliviano: \"vos\", \"¿te animás?\", \"¿qué tal si...?\"\n- NO empieces con \"Hola ${leadName}\" porque ya te conoce. Empezá directo con el tema.\n- Devolvé SOLO el texto del mensaje, sin comillas, sin explicaciones.`;\n\nreturn {\n  json: {\n    ...c,\n    gemini_prompt: prompt\n  }\n};"
+      },
+      "id": "build-prompt",
+      "name": "Build Gemini Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 240]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/{{ $json.gemini_model }}:generateContent?key={{ $env.GEMINI_API_KEY }}",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [{\n      \"text\": {{ JSON.stringify($json.gemini_prompt) }}\n    }]\n  }],\n  \"generationConfig\": {\n    \"temperature\": 0.8,\n    \"maxOutputTokens\": 150,\n    \"topP\": 0.95\n  }\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "call-gemini",
+      "name": "Call Gemini",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 240]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extraer texto del response de Gemini\nconst response = $input.item.json;\nconst candidate = $('Build Gemini Prompt').item.json;\n\nlet text = '';\ntry {\n  text = response.candidates?.[0]?.content?.parts?.[0]?.text || '';\n  text = text.trim();\n  // Limpiar comillas que a veces agrega Gemini\n  if (text.startsWith('\"') && text.endsWith('\"')) {\n    text = text.slice(1, -1);\n  }\n} catch (e) {\n  text = '';\n}\n\nif (!text || text.length < 10) {\n  // Fallback genérico si Gemini falla\n  text = 'Hola! Te escribo para retomar nuestra charla del otro día. Cualquier duda que te haya quedado, estoy disponible para resolverla.';\n}\n\nreturn {\n  json: {\n    ...candidate,\n    message_body: text\n  }\n};"
+      },
+      "id": "extract-message",
+      "name": "Extract Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 240]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SG_VENTAS_API_URL }}/bot/follow-up/schedule",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"tenant_id\": {{ $json.tenant_id }},\n  \"conversation_id\": {{ $json.conversation_id }},\n  \"lead_id\": {{ $json.lead_id || 'null' }},\n  \"phone\": {{ JSON.stringify($json.phone) }},\n  \"message_body\": {{ JSON.stringify($json.message_body) }},\n  \"gemini_prompt\": {{ JSON.stringify($json.gemini_prompt) }},\n  \"score_at_send\": {{ $json.current_score }}\n}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "register-followup",
+      "name": "Register Follow-up in DB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 240],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BOT_SECRET_SGVENTAS",
+          "name": "BOT_SECRET_SGVENTAS"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v21.0/{{ $('Extract Message').item.json.meta_phone_number_id }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.META_WHATSAPP_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"recipient_type\": \"individual\",\n  \"to\": {{ JSON.stringify($('Extract Message').item.json.phone) }},\n  \"type\": \"text\",\n  \"text\": {\n    \"preview_url\": false,\n    \"body\": {{ JSON.stringify($('Extract Message').item.json.message_body) }}\n  }\n}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "send-meta",
+      "name": "Send via Meta WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 240],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SG_VENTAS_API_URL }}/bot/follow-up/{{ $('Register Follow-up in DB').item.json.id }}/sent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"meta_message_id\": {{ JSON.stringify($json.messages?.[0]?.id || '') }}\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "mark-sent",
+      "name": "Mark as Sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2220, 180],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BOT_SECRET_SGVENTAS",
+          "name": "BOT_SECRET_SGVENTAS"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SG_VENTAS_API_URL }}/bot/follow-up/{{ $('Register Follow-up in DB').item.json.id }}/failed",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"error_message\": {{ JSON.stringify($json.error?.message || $json.message || 'Meta API error') }}\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "mark-failed",
+      "name": "Mark as Failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2220, 320],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BOT_SECRET_SGVENTAS",
+          "name": "BOT_SECRET_SGVENTAS"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log de resumen\nconst items = $input.all();\nconsole.log(`Follow-up worker: ${items.length} mensajes procesados`);\nreturn items;"
+      },
+      "id": "log-summary",
+      "name": "Log Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 240]
+    }
+  ],
+  "connections": {
+    "Schedule Every 15min": {
+      "main": [[{"node": "GET /bot/follow-up/candidates", "type": "main", "index": 0}]]
+    },
+    "GET /bot/follow-up/candidates": {
+      "main": [[{"node": "IF Has Candidates", "type": "main", "index": 0}]]
+    },
+    "IF Has Candidates": {
+      "main": [
+        [{"node": "Split Candidates", "type": "main", "index": 0}],
+        []
+      ]
+    },
+    "Split Candidates": {
+      "main": [[{"node": "Build Gemini Prompt", "type": "main", "index": 0}]]
+    },
+    "Build Gemini Prompt": {
+      "main": [[{"node": "Call Gemini", "type": "main", "index": 0}]]
+    },
+    "Call Gemini": {
+      "main": [[{"node": "Extract Message", "type": "main", "index": 0}]]
+    },
+    "Extract Message": {
+      "main": [[{"node": "Register Follow-up in DB", "type": "main", "index": 0}]]
+    },
+    "Register Follow-up in DB": {
+      "main": [[{"node": "Send via Meta WhatsApp", "type": "main", "index": 0}]]
+    },
+    "Send via Meta WhatsApp": {
+      "main": [
+        [{"node": "Mark as Sent", "type": "main", "index": 0}],
+        [{"node": "Mark as Failed", "type": "main", "index": 0}]
+      ]
+    },
+    "Mark as Sent": {
+      "main": [[{"node": "Log Summary", "type": "main", "index": 0}]]
+    },
+    "Mark as Failed": {
+      "main": [[{"node": "Log Summary", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "tags": [
+    {"name": "sg-ventas"},
+    {"name": "follow-up"},
+    {"name": "automation"}
+  ],
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "description": "Worker que cada 15 min identifica leads que califican para follow-up (score >=70, último mensaje del bot, cliente sin responder hace 22-23h) y envía mensaje generado por Gemini. Multi-tenant: procesa todos los tenants activos con follow_up.enabled=true."
+  }
+}
