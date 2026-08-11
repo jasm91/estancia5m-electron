@@ -44854,13 +44854,13 @@ document.addEventListener('click', function(ev){
       '<div class="panel" id="agcal-resumen" style="padding:12px 16px"></div>' +
       '<div class="panel"><table class="tbl"><thead><tr><th></th><th>Actividad</th><th>Plazo</th><th>Fecha</th><th>Tipo</th><th class="num">Costo (Bs)</th><th></th></tr></thead><tbody id="agcal-tbody"></tbody></table></div>' +
       '</div>' +
-      /* modal plantilla */
-      '<div class="modal" id="ag-modal-plantilla"><div class="modal-box" style="max-width:720px">' +
+      /* modal plantilla (v1.8.152 FIX: clases reales modal-overlay/agx — antes quedaba visible inline) */
+      '<div class="modal-overlay agx" id="ag-modal-plantilla"><div class="modal" style="max-width:720px">' +
       '<h3>🧩 Plantilla de actividades (general — vale para cualquier cultivo)</h3>' +
       '<div class="sub" style="margin:4px 0 10px">Plazo en días desde la siembra (negativo = antes). Sin plazo → actividad por etapa que nunca vence. "Costo" = al tacharla rápido queda marcada "⚠ faltan costos".</div>' +
       '<div style="max-height:46vh;overflow-y:auto"><table class="tbl"><thead><tr><th>Actividad</th><th>Tipo</th><th class="num">Plazo (días)</th><th>Etapa</th><th>Costo</th><th></th></tr></thead><tbody id="agcal-tpl-tbody"></tbody></table></div>' +
       '<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="agcalTplAdd()">➕ Agregar actividad</button>' +
-      '<div class="modal-actions"><button class="btn btn-ghost" onclick="agCloseModal(\'ag-modal-plantilla\')">Cancelar</button>' +
+      '<div class="m-actions"><button class="btn btn-ghost" onclick="agCloseModal(\'ag-modal-plantilla\')">Cancelar</button>' +
       '<button class="btn btn-primary" onclick="agcalTplSave()">💾 Guardar plantilla</button></div>' +
       '</div></div>';
     while (wrap.firstChild) pg.appendChild(wrap.firstChild);
@@ -44953,9 +44953,13 @@ document.addEventListener('click', function(ev){
         '<td><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agcalTplDel(' + i + ')">✕</button></td></tr>';
     }).join('');
   }
-  function agcalTplDel(i) { AGCAL_TPL_EDIT.splice(i, 1); agcalTplRender(); }
-  function agcalTplAdd() { AGCAL_TPL_EDIT.push({ id: Date.now(), tipo: 'otra', nombre: '', offset_dias: null, etapa: '', con_costo: true }); agcalTplRender(); }
+  function agcalTplGuard() { /* v1.8.152: self-heal si el editor se usa sin pasar por agcalOpenPlantilla */
+    if (!Array.isArray(AGCAL_TPL_EDIT)) AGCAL_TPL_EDIT = JSON.parse(JSON.stringify(agcalPlantilla().actividades || []));
+  }
+  function agcalTplDel(i) { agcalTplGuard(); AGCAL_TPL_EDIT.splice(i, 1); agcalTplRender(); }
+  function agcalTplAdd() { agcalTplGuard(); AGCAL_TPL_EDIT.push({ id: Date.now(), tipo: 'otra', nombre: '', offset_dias: null, etapa: '', con_costo: true }); agcalTplRender(); }
   function agcalTplSave() {
+    agcalTplGuard();
     var limpio = AGCAL_TPL_EDIT.filter(function (a) { return (a.nombre || '').trim(); });
     if (!limpio.length) { agToast('La plantilla no puede quedar vacía', 'error'); return; }
     var p = agcalParams();
@@ -45034,7 +45038,7 @@ document.addEventListener('click', function(ev){
     try { agcalSidebar(); } catch (e) {}
     try { agcalVista(); } catch (e) {}
     try { agcalConfigUbicacion(); } catch (e) {}
-    try { console.log('%c[calendario v1.8.151] plantilla + generar plan + semáforo + siembra corrida', 'color:#58a6ff;font-weight:bold'); } catch (e) {}
+    try { console.log('%c[calendario v1.8.152] plantilla + generar plan + semáforo + siembra corrida', 'color:#58a6ff;font-weight:bold'); } catch (e) {}
   }
   if (typeof document !== 'undefined' && document.getElementById) {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', agcalBoot);
@@ -47158,7 +47162,7 @@ try {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tcBcbRender); else tcBcbRender();
 })();
 </script>
-<script>window.__E5M_BUILD='1.8.151 (calendario de actividades + TC BCB + ubicacion estancia)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
+<script>window.__E5M_BUILD='1.8.152 (fix: modal plantilla oculto + self-heal editor)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
 
 
 <!-- ══════════════════════════════════════════════════════════════
