@@ -29,6 +29,9 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          # v1.8.153 CI fix: GitHub fuerza las actions a Node 24 y el TLS viejo
+          # tira "self-signed certificate" — este flag usa los CA del sistema
+          NODE_OPTIONS: --use-system-ca
 
   build-mac:
     needs: create-release
