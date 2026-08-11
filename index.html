@@ -45038,7 +45038,7 @@ document.addEventListener('click', function(ev){
     try { agcalSidebar(); } catch (e) {}
     try { agcalVista(); } catch (e) {}
     try { agcalConfigUbicacion(); } catch (e) {}
-    try { console.log('%c[calendario v1.8.152] plantilla + generar plan + semáforo + siembra corrida', 'color:#58a6ff;font-weight:bold'); } catch (e) {}
+    try { console.log('%c[calendario v1.8.153] plantilla + generar plan + semáforo + siembra corrida', 'color:#58a6ff;font-weight:bold'); } catch (e) {}
   }
   if (typeof document !== 'undefined' && document.getElementById) {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', agcalBoot);
@@ -47162,7 +47162,143 @@ try {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tcBcbRender); else tcBcbRender();
 })();
 </script>
-<script>window.__E5M_BUILD='1.8.152 (fix: modal plantilla oculto + self-heal editor)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
+<script>
+/* ═══ v1.8.153 — MAQUINARIA POR CATEGORÍA (pedido José 11-08 tras cargar las 40 de Chaco Lejos) ═══
+   1) Campo "Categoría" en Registrar/Editar equipo (select con las existentes + nueva).
+   2) La lista se agrupa en secciones COLAPSABLES por categoría con transición suave.
+   Retrocompat: si el tenant no usa categorías y tiene ≤8 equipos, la vista queda como siempre. */
+(function(){
+  var CATS_BASE = ['Tractores','Maquinaria Pesada','Implementos','Vehículos'];
+  var CAT_ICON = {'Tractores':'🚜','Maquinaria Pesada':'🏗️','Implementos':'⚙️','Vehículos':'🛻','Sin categoría':'📦'};
+  function maqCats(){
+    var s = {};
+    (db.maquinaria||[]).forEach(function(m){ if(m && m.categoria) s[String(m.categoria)] = 1; });
+    return CATS_BASE.concat(Object.keys(s).filter(function(c){ return CATS_BASE.indexOf(c) < 0; }).sort());
+  }
+  function cssId(c){ return String(c).toLowerCase().replace(/[^a-z0-9]+/g,'-'); }
+
+  /* ── campo Categoría en el modal ── */
+  function injectCatField(){
+    if (document.getElementById('maq-categoria')) return;
+    var tipo = document.getElementById('maq-tipo'); if (!tipo) return;
+    var group = tipo.closest('.form-group') || tipo.parentElement; if (!group || !group.parentElement) return;
+    var g = document.createElement('div'); g.className = 'form-group';
+    g.innerHTML = '<label class="form-label">Categoría</label><select class="form-select" id="maq-categoria"></select>';
+    group.parentElement.insertBefore(g, group.nextSibling);
+  }
+  function fillCatSelect(val){
+    var sel = document.getElementById('maq-categoria'); if (!sel) return;
+    var cats = maqCats();
+    if (val && cats.indexOf(val) < 0) cats.push(val);
+    sel.innerHTML = '<option value="">— Sin categoría —</option>' +
+      cats.map(function(c){ return '<option value="'+c.replace(/"/g,'&quot;')+'"'+(c===val?' selected':'')+'>'+c+'</option>'; }).join('') +
+      '<option value="__nueva">➕ Nueva categoría…</option>';
+    sel.onchange = function(){
+      if (sel.value === '__nueva') { var n = (prompt('Nombre de la nueva categoría:')||'').trim(); fillCatSelect(n || ''); }
+    };
+  }
+  openModalMaq = (function(base){ return function(editId){
+    base(editId);
+    try {
+      injectCatField();
+      var m = editId ? (db.maquinaria||[]).find(function(x){ return String(x.id) === String(editId); }) : null;
+      fillCatSelect((m && m.categoria) || '');
+    } catch(e){}
+  }; })(openModalMaq);
+  saveMaq = (function(base){ return function(){
+    var editId = (document.getElementById('maq-edit-id')||{}).value;
+    var nombre = ((document.getElementById('maq-nombre')||{}).value||'').trim();
+    var cat = (document.getElementById('maq-categoria')||{}).value || '';
+    if (cat === '__nueva') cat = '';
+    var antes = (db.maquinaria||[]).length;
+    base();
+    try {
+      var rec = editId
+        ? (db.maquinaria||[]).find(function(x){ return String(x.id) === String(editId); })
+        : ((db.maquinaria||[]).length > antes ? db.maquinaria[db.maquinaria.length-1] : (db.maquinaria||[]).filter(function(x){ return (x.nombre||'') === nombre; }).slice(-1)[0]);
+      if (rec && String(rec.categoria||'') !== cat) {
+        rec.categoria = cat;
+        saveDB();
+        try { replaceTableInRailway('maquinaria', db.maquinaria||[]); } catch(e2){}
+        try { renderMaquinaria(); } catch(e3){}
+      }
+    } catch(e){}
+  }; })(saveMaq);
+
+  /* ── vista agrupada colapsable ── */
+  function estaAbierta(cat){
+    try { var st = JSON.parse(localStorage.getItem('e5m_maqcat_open')||'{}'); return st[cat] === true; } catch(e){ return false; }
+  }
+  window.maqCatToggle = function(cat){
+    try { var st = JSON.parse(localStorage.getItem('e5m_maqcat_open')||'{}'); st[cat] = !(st[cat] === true); localStorage.setItem('e5m_maqcat_open', JSON.stringify(st)); } catch(e){}
+    var raf = (typeof requestAnimationFrame === 'function') ? requestAnimationFrame : function(f){ setTimeout(f,16); };
+    var wrap = document.getElementById('maqcat-' + cssId(cat));
+    var head = document.getElementById('maqcath-' + cssId(cat));
+    if (!wrap) return;
+    var abriendo = wrap.classList.contains('maqcat-closed');
+    wrap.style.overflow = 'hidden';
+    wrap.style.transition = 'max-height .36s ease, opacity .36s ease';
+    if (abriendo) {
+      wrap.classList.remove('maqcat-closed');
+      var h = wrap.scrollHeight;
+      wrap.style.maxHeight = '0px'; wrap.style.opacity = '0';
+      raf(function(){ wrap.style.maxHeight = h + 'px'; wrap.style.opacity = '1'; });
+      setTimeout(function(){ wrap.style.maxHeight = ''; wrap.style.overflow = ''; }, 400);
+    } else {
+      wrap.style.maxHeight = wrap.scrollHeight + 'px';
+      raf(function(){ wrap.style.maxHeight = '0px'; wrap.style.opacity = '0'; });
+      setTimeout(function(){ wrap.classList.add('maqcat-closed'); wrap.style.maxHeight = ''; wrap.style.opacity = ''; }, 370);
+    }
+    if (head) { var ch = head.querySelector('.maqcat-ch'); if (ch) ch.textContent = abriendo ? '▾' : '▸'; }
+  };
+  renderMaquinaria = (function(base){ return function(){
+    base();
+    try {
+      var cardsEl = document.getElementById('maq-cards'); if (!cardsEl) return;
+      var maqs = db.maquinaria || [];
+      var conCat = maqs.some(function(m){ return m && m.categoria; });
+      if ((!conCat && maqs.length <= 8) || !maqs.length) return; /* pocos y sin categorías → vista clásica (César intacto) */
+      var kids = Array.prototype.slice.call(cardsEl.children);
+      if (kids.length !== maqs.length) return; /* estado vacío u otro layout */
+      var by = {}, extras = [];
+      maqs.forEach(function(m, i){
+        var c = (m && m.categoria) || 'Sin categoría';
+        (by[c] = by[c] || []).push(kids[i]);
+      });
+      var orden = maqCats().filter(function(c){ return by[c]; });
+      Object.keys(by).forEach(function(c){ if (orden.indexOf(c) < 0 && c !== 'Sin categoría') orden.push(c); });
+      if (by['Sin categoría']) orden.push('Sin categoría');
+      cardsEl.style.display = 'block';
+      cardsEl.innerHTML = '';
+      orden.forEach(function(cat){
+        var nodos = by[cat];
+        var abierta = estaAbierta(cat);
+        var head = document.createElement('div');
+        head.id = 'maqcath-' + cssId(cat);
+        head.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:12px 14px;margin:10px 0 8px;background:var(--sur);border:1px solid var(--bor);border-radius:10px;cursor:pointer;user-select:none';
+        head.onclick = (function(c){ return function(){ window.maqCatToggle(c); }; })(cat);
+        head.innerHTML = '<span style="font-size:13px;font-weight:800;letter-spacing:.05em;color:var(--amber2);display:flex;align-items:center;gap:9px">' +
+          '<span class="maqcat-ch" style="color:var(--muted)">' + (abierta ? '▾' : '▸') + '</span>' +
+          (CAT_ICON[cat] || '📦') + ' ' + cat.toUpperCase() + '</span>' +
+          '<span style="font-family:DM Mono,monospace;font-size:12px;font-weight:700;color:var(--muted)">' + nodos.length + ' equipo' + (nodos.length === 1 ? '' : 's') + '</span>';
+        cardsEl.appendChild(head);
+        var wrap = document.createElement('div');
+        wrap.id = 'maqcat-' + cssId(cat);
+        wrap.className = abierta ? '' : 'maqcat-closed';
+        wrap.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px;overflow:hidden' + (abierta ? '' : ';max-height:0');
+        nodos.forEach(function(n){ wrap.appendChild(n); });
+        cardsEl.appendChild(wrap);
+      });
+      if (!document.getElementById('maqcat-css')) {
+        var st = document.createElement('style'); st.id = 'maqcat-css';
+        st.textContent = '.maqcat-closed{max-height:0!important;opacity:0}';
+        document.head.appendChild(st);
+      }
+    } catch(e){ console.warn('[maqcat]', e); }
+  }; })(renderMaquinaria);
+})();
+</script>
+<script>window.__E5M_BUILD='1.8.153 (fix plantilla + maquinaria por categoria)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
 
 
 <!-- ══════════════════════════════════════════════════════════════
