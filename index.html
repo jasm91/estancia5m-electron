@@ -43949,7 +43949,7 @@ document.addEventListener('click', function(ev){
   /* ═══════════════ HELPERS PUROS (testeables) ═══════════════ */
   function agmUltRecargaBs(tankId) {
     /* Bs/L automático: última recarga con precio del tanque; sin recarga propia → última global */
-    var recs = ((window.db && db.diesel) || []).filter(function (r) {
+    var recs = ((typeof db !== 'undefined' && db && db.diesel) || []).filter(function (r) {
       if (!r) return false;
       var esRec = (r.type === 'recarga') || (!!r.proveedor && !r.vehiculo);
       return esRec && (parseFloat(r.precio) || 0) > 0;
@@ -43963,12 +43963,12 @@ document.addEventListener('click', function(ev){
     return (tanks || []).filter(function (t) { return !(/gasolina|bidon|bidón/i.test(String(t && t.name || ''))); });
   }
   function agmEmpleados() {
-    return ((window.db && db.employees) || []).filter(function (e) { return e && e.active; })
+    return ((typeof db !== 'undefined' && db && db.employees) || []).filter(function (e) { return e && e.active; })
       .map(function (e) { return String(e.name || '').trim(); }).filter(Boolean)
       .filter(function (n, i, a) { return a.indexOf(n) === i; }).sort();
   }
   function agmMaquinas() {
-    return ((window.db && db.maquinaria) || []).filter(function (m) {
+    return ((typeof db !== 'undefined' && db && db.maquinaria) || []).filter(function (m) {
       return m && (m.nombre || m.name) && !/vendid/i.test(String(m.estado || ''));
     });
   }
@@ -46324,7 +46324,7 @@ setInterval(swSelectorRender, 5000); // auto-sanado si algo re-renderiza la topb
   function cgSelfHeal(origen){
     try {
       if (off()) return 0;
-      if (!window.db || !Array.isArray(db.compras_ganado) || typeof getAnimalesDB !== 'function') return 0;
+      if (typeof db === 'undefined' || !db || !Array.isArray(db.compras_ganado) || typeof getAnimalesDB !== 'function') return 0;
       var animals = getAnimalesDB();
       var globalIds = {};
       Object.keys(animals).forEach(function(lc){
@@ -46420,8 +46420,8 @@ setInterval(swSelectorRender, 5000); // auto-sanado si algo re-renderiza la topb
         } else out.kgSinLote += kg;
       });
     }
-    scan(window.db && db.sal);
-    scan(window.db && db.alimento);
+    scan(typeof db !== 'undefined' && db && db.sal);
+    scan(typeof db !== 'undefined' && db && db.alimento);
     out.kgTodos = out.kgConLote + out.kgSinLote;
     out.hayDatos = out.kgTodos > 0;
     if (out.hayDatos) out.fraccionLote = out.kgLote / out.kgTodos;
@@ -46470,7 +46470,7 @@ setInterval(swSelectorRender, 5000); // auto-sanado si algo re-renderiza la topb
 
   /* ═══ ② TIPOS DE SAL vs CATÁLOGO DE STOCK ═══ */
   function v158ProductosSal() {
-    return ((window.db && db.vet_products) || []).filter(function (p) {
+    return ((typeof db !== 'undefined' && db && db.vet_products) || []).filter(function (p) {
       var bag = ((p && p.category) || '') + ' ' + ((p && p.subcategory) || '') + ' ' + ((p && p.type) || '');
       return /sal|suplement|mineral/i.test(bag);
     });
@@ -46551,21 +46551,38 @@ setInterval(swSelectorRender, 5000); // auto-sanado si algo re-renderiza la topb
       codigosVivos[String(l.code).toLowerCase()] = l;
       if (l.status === 'active') activos += parseInt(l.animal_count || 0) || 0;
     });
-    /* lotes que SÍ tuvieron alguna entrada registrada */
+    /* lotes que SÍ tuvieron alguna entrada registrada (compra directa, marcaje o parto) */
     var conEntrada = {};
+    function marcarEntrada(txt) {
+      String(txt || '').split(',').forEach(function (p) {
+        var k = p.trim().toLowerCase(); if (k) conEntrada[k] = 1;
+      });
+    }
     movs.forEach(function (m) {
       if (m.clase !== 'entrada') return;
-      String(m.detalle || '').replace(/→\s*([^()]+)$/, function (_, lc) { conEntrada[lc.trim().toLowerCase()] = 1; return ''; });
-      if (m._lote) conEntrada[String(m._lote).toLowerCase()] = 1;
+      String(m.detalle || '').replace(/→\s*([^()]+)$/, function (_, lc) { marcarEntrada(lc); return ''; });
+      String(m.detalle || '').replace(/\ben\s+([^()]+)$/, function (_, lc) { marcarEntrada(lc); return ''; });
+      if (m._lote) marcarEntrada(m._lote);
     });
+    /* los destinos de las compras de cuarentena también cuentan como entrada del lote final */
+    try {
+      ((typeof db !== 'undefined' && db && db.compras_ganado) || []).forEach(function (c) {
+        if (c && c.lot_code) marcarEntrada(c.lot_code);
+        if (c && Array.isArray(c.lote_destinos)) c.lote_destinos.forEach(marcarEntrada);
+      });
+    } catch (e) {}
     var huerfanas = [];
     var entradas = 0, salidas = 0;
     movs.forEach(function (m) {
       if (m.clase === 'entrada') { entradas += m.cabezas; return; }
       if (m.clase !== 'salida') return;
-      var lc = String(m._lote || '').toLowerCase();
+      var lcRaw = String(m._lote || '');
+      var lc = lcRaw.toLowerCase();
+      /* un lote compuesto ("TROPA 1,TROPA 2") no es huérfano si alguna de sus partes existe */
+      var partes = lc.split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+      var algunaConocida = partes.some(function (p) { return codigosVivos[p] || conEntrada[p]; });
       /* huérfana = salida de un lote que hoy NO existe y que nunca tuvo entrada registrada */
-      if (lc && !codigosVivos[lc] && !conEntrada[lc]) {
+      if (lc && !codigosVivos[lc] && !conEntrada[lc] && !algunaConocida) {
         m._huerfana = true;
         huerfanas.push({ lote: m._lote, cabezas: m.cabezas, fecha: m.fecha, tipo: m.tipo });
         return; /* no suma a salidas */
@@ -46590,7 +46607,7 @@ setInterval(swSelectorRender, 5000); // auto-sanado si algo re-renderiza la topb
         if (offKx()) return movs;
         try {
           /* etiquetar lote por movimiento (para detectar huérfanas) */
-          var bajas = (window.db && db.bajas) || [];
+          var bajas = (typeof db !== 'undefined' && db && db.bajas) || [];
           var idxBaja = 0;
           movs.forEach(function (m) {
             if (m._lote) return;
@@ -46602,7 +46619,7 @@ setInterval(swSelectorRender, 5000); // auto-sanado si algo re-renderiza la topb
           /* BLINDAJE: las ventas de carne post-baja NO son salida de cabezas
              (el animal ya salió por la baja). Hoy zafan porque `animals` viene
              vacío; acá queda explícito y a prueba de futuros parsers. */
-          var ventasCarneBaja = ((window.db && db.sales) || []).filter(function (s) { return s && s.type === 'carne_baja'; });
+          var ventasCarneBaja = ((typeof db !== 'undefined' && db && db.sales) || []).filter(function (s) { return s && s.type === 'carne_baja'; });
           if (ventasCarneBaja.length) {
             movs = movs.filter(function (m) {
               if (m.tipo !== 'venta') return true;
@@ -46628,7 +46645,7 @@ setInterval(swSelectorRender, 5000); // auto-sanado si algo re-renderiza la topb
         if (offKx()) return;
         try {
           var movs = (typeof _keBuildMovimientos === 'function') ? _keBuildMovimientos() : [];
-          var c = v158ConciliarKardex(movs, (window.db && db.lots) || []);
+          var c = v158ConciliarKardex(movs, (typeof db !== 'undefined' && db && db.lots) || []);
           /* 1. recalcular el saldo mostrado en las tarjetas y en cada fila */
           var resumen = document.getElementById('ke-resumen');
           if (resumen) {
@@ -46716,7 +46733,7 @@ setInterval(swSelectorRender, 5000); // auto-sanado si algo re-renderiza la topb
   }, true);
 
   window.__v158 = { alimKg: v158AlimentacionKg, conciliar: v158ConciliarKardex, tipoOk: v158TipoTieneProducto };
-  try { console.log('%c[v1.8.158] sal directa por consumo + tipos vs catálogo + kardex conciliado', 'color:#3fb950'); } catch (e) {}
+  try { console.log('%c[v1.8.159] FIX window.db (maquinaria + self-heal + kardex) · sal directa + tipos + conciliación', 'color:#3fb950'); } catch (e) {}
 })();
 /*__V158_END__*/
 </script>
@@ -46916,7 +46933,7 @@ setInterval(swSelectorRender, 5000); // auto-sanado si algo re-renderiza la topb
     if (off()) return;
     try {
       var fixed = 0;
-      (window.db && db.compras_ganado || []).forEach(function(c){
+      ((typeof db !== 'undefined' && db && db.compras_ganado) || []).forEach(function(c){
         if (c && c.price_per_kg > 0 && c.price_per_kg < 0.001 && (c.total || 0) < 1) { c.price_per_kg = 0; c.total = 0; fixed++; }
       });
       if (fixed) {
@@ -48136,7 +48153,7 @@ try {
   }; })(renderMaquinaria);
 })();
 </script>
-<script>window.__E5M_BUILD='1.8.158 (sal directa por lote + tipos de sal del catalogo + kardex conciliado con apertura y huerfanas)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
+<script>window.__E5M_BUILD='1.8.159 (FIX window.db: self-heal, select de maquinaria y conciliacion del kardex ahora SI leen la base)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
 
 
 <!-- ══════════════════════════════════════════════════════════════
