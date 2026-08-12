@@ -46379,6 +46379,347 @@ setInterval(swSelectorRender, 5000); // auto-sanado si algo re-renderiza la topb
 })();
 /*__CGHEAL_END__*/
 </script>
+<script id="sal-kardex-v18158">
+/*__V158_START__*/
+// ══════════════════════════════════════════════════════════════════════
+// v1.8.158 — TRES CORRECCIONES DE FONDO (pedidos José 12-08):
+//  ① SAL/ALIMENTO DIRECTOS: dejan de prorratearse por cabezas-días. El gasto se
+//     reparte por los KG REALMENTE DESPACHADOS a cada lote (db.sal + db.alimento
+//     con lot_code). Lo despachado sin lote sigue en el pool. Sin despachos en el
+//     período → fallback al comportamiento anterior (nunca rompe).
+//  ② TIPOS DE SAL vs CATÁLOGO: el análisis marca los tipos que no existen como
+//     producto en Stock, y el modal de registro ofrece primero los productos reales.
+//  ③ KARDEX CONCILIADO: fila de "Saldo de apertura" para lo que existe sin
+//     movimiento de entrada, salidas huérfanas (lotes fantasma de la contaminación)
+//     marcadas y NO restadas, carne_baja blindada, y card de conciliación.
+// Todo es CÁLCULO DE PRESENTACIÓN: no se escribe ni se borra un solo dato histórico.
+// Kill switches: __V158_SAL_OFF · __V158_KARDEX_OFF
+// ══════════════════════════════════════════════════════════════════════
+(function(){
+  function offSal(){ return window.__V158_SAL_OFF === true; }
+  function offKx(){ return window.__V158_KARDEX_OFF === true; }
+  function _n(v){ var x = parseFloat(v); return isFinite(x) ? x : 0; }
+  function _d(v){ return String(v || '').slice(0, 10); }
+
+  /* ═══ ① ALIMENTACIÓN DIRECTA POR KG DESPACHADOS ═══ */
+  // Devuelve {kgLote, kgConLote, kgSinLote, kgTodos, fraccionLote, hayDatos}
+  // para el período [desde, hasta] mirando db.sal y db.alimento (ambos llevan lot_code).
+  function v158AlimentacionKg(lotCode, desde, hasta) {
+    var out = { kgLote: 0, kgConLote: 0, kgSinLote: 0, kgTodos: 0, fraccionLote: 0, hayDatos: false };
+    function scan(arr) {
+      (arr || []).forEach(function (r) {
+        if (!r) return;
+        var f = _d(r.fecha || r.date || r.created_at);
+        if (!f || (desde && f < desde) || (hasta && f > hasta)) return;
+        var kg = _n(r.qty != null ? r.qty : (r.kg != null ? r.kg : r.cantidad));
+        if (kg <= 0) return;
+        var lc = String(r.lot_code || '').trim();
+        if (lc) {
+          out.kgConLote += kg;
+          if (lc === lotCode) out.kgLote += kg;
+        } else out.kgSinLote += kg;
+      });
+    }
+    scan(window.db && db.sal);
+    scan(window.db && db.alimento);
+    out.kgTodos = out.kgConLote + out.kgSinLote;
+    out.hayDatos = out.kgTodos > 0;
+    if (out.hayDatos) out.fraccionLote = out.kgLote / out.kgTodos;
+    return out;
+  }
+  window.v158AlimentacionKg = v158AlimentacionKg;
+
+  // Wrapper del motor de costos: reparte `alimento_total` por consumo real.
+  if (typeof _ahCalcularIndirectos === 'function') {
+    _ahCalcularIndirectos = (function (base) {
+      return function (lot, ventas, compras) {
+        var r = base.apply(this, arguments);
+        try {
+          if (offSal() || !r || !lot) return r;
+          /* el motor base ya calculó el período; lo re-derivamos igual que él */
+          var desde = r._periodoDesde || null, hasta = r._periodoHasta || null;
+          if (!desde || !hasta) {
+            /* reconstrucción mínima: entrada del lote → hoy/venta */
+            desde = _d(lot.entry_date);
+            hasta = _d(new Date().toISOString());
+          }
+          var km = v158AlimentacionKg(lot.code, desde, hasta);
+          r.alimKg = km;
+          if (!km.hayDatos || km.kgConLote <= 0) {
+            r.alimentoDirecto = 0;
+            r.alimentoModo = 'prorrateo (sin despachos registrados en el período)';
+            return r; /* fallback: queda como estaba */
+          }
+          var poolAlim = _n(r.alimento_total);
+          var directo = poolAlim * (km.kgLote / km.kgTodos);
+          var restoSinLote = poolAlim * (km.kgSinLote / km.kgTodos);
+          /* el pool prorrateable de alimento pasa a ser SOLO lo despachado sin lote */
+          var alimentoPoolViejo = _n(r.alimento);
+          r.alimento_total_original = poolAlim;
+          r.alimento_total = restoSinLote;                 /* lo que se sigue prorrateando */
+          r.alimento = restoSinLote * (_n(r.fraccionPct) / 100);
+          r.alimentoDirecto = directo;                     /* va a COSTOS DIRECTOS */
+          r.alimentoModo = 'consumo real (' + Math.round(km.kgLote).toLocaleString() + ' kg de ' + Math.round(km.kgTodos).toLocaleString() + ' kg despachados)';
+          r.total = _n(r.total) - alimentoPoolViejo + _n(r.alimento);
+        } catch (e) { console.warn('[v158 alimentación]', e); }
+        return r;
+      };
+    })(_ahCalcularIndirectos);
+    window._ahCalcularIndirectos = _ahCalcularIndirectos;
+  }
+
+  /* ═══ ② TIPOS DE SAL vs CATÁLOGO DE STOCK ═══ */
+  function v158ProductosSal() {
+    return ((window.db && db.vet_products) || []).filter(function (p) {
+      var bag = ((p && p.category) || '') + ' ' + ((p && p.subcategory) || '') + ' ' + ((p && p.type) || '');
+      return /sal|suplement|mineral/i.test(bag);
+    });
+  }
+  function v158NormNombre(s) {
+    s = String(s == null ? '' : s).toLowerCase().trim();
+    s = s.replace(/[áàä]/g, 'a').replace(/[éèë]/g, 'e').replace(/[íìï]/g, 'i').replace(/[óòö]/g, 'o').replace(/[úùü]/g, 'u');
+    return s.replace(/^sal\s+/, '').replace(/\s+/g, ' ').trim();
+  }
+  // ¿el tipo normalizado existe como producto del catálogo?
+  function v158TipoTieneProducto(tipoNorm) {
+    var t = v158NormNombre(tipoNorm);
+    if (!t || t === 'sin clasificar') return false;
+    return v158ProductosSal().some(function (p) {
+      var n = v158NormNombre(p.name || p.nombre);
+      return n === t || n.indexOf(t) >= 0 || t.indexOf(n) >= 0;
+    });
+  }
+  window.v158TipoTieneProducto = v158TipoTieneProducto;
+  // Aviso de conciliación en el filtro de tipos + ⚠️ en las opciones sin producto
+  if (typeof _salPopulateTipoFilter === 'function') {
+    _salPopulateTipoFilter = (function (base) {
+      return function () {
+        base.apply(this, arguments);
+        try {
+          if (offSal()) return;
+          var sel = document.getElementById('sal-tipo-filter'); if (!sel) return;
+          var huerf = [];
+          Array.prototype.forEach.call(sel.options, function (o) {
+            if (!o.value) return;
+            if (!v158TipoTieneProducto(o.value)) {
+              huerf.push(o.value);
+              if (o.textContent.indexOf('⚠') < 0) o.textContent = '⚠ ' + o.textContent;
+            }
+          });
+          var wrap = document.getElementById('sal-tipo-filter-wrap');
+          var av = document.getElementById('v158-sal-aviso');
+          if (!huerf.length) { if (av) av.remove(); return; }
+          if (!av && wrap && wrap.parentNode) {
+            av = document.createElement('div');
+            av.id = 'v158-sal-aviso';
+            av.style.cssText = 'font-size:10px;color:var(--amber2,#f0b429);margin-top:4px;cursor:help';
+            wrap.parentNode.insertBefore(av, wrap.nextSibling);
+          }
+          if (av) {
+            av.textContent = '⚠ ' + huerf.length + ' tipo(s) sin producto en Stock: ' + huerf.join(', ');
+            av.title = 'Estos tipos se escribieron a mano en los despachos y no existen como producto en Stock → sus kg no se pueden valorizar. Creá el producto en Stock o corregí el tipo al registrar.';
+          }
+        } catch (e) { console.warn('[v158 sal tipos]', e); }
+      };
+    })(_salPopulateTipoFilter);
+    window._salPopulateTipoFilter = _salPopulateTipoFilter;
+  }
+  // El modal de registro sugiere PRIMERO los productos del catálogo
+  function v158SalSugerenciasCatalogo() {
+    try {
+      var dl = document.getElementById('sal-tipo-suggestions'); if (!dl) return;
+      var prods = v158ProductosSal().map(function (p) { return String(p.name || p.nombre || '').trim(); }).filter(Boolean);
+      if (!prods.length) return;
+      var yaHay = {};
+      Array.prototype.forEach.call(dl.options, function (o) { yaHay[v158NormNombre(o.value)] = 1; });
+      var pre = prods.filter(function (n) { return !yaHay[v158NormNombre(n)]; })
+        .map(function (n) { return '<option value="' + String(n).replace(/"/g, '&quot;') + '"></option>'; }).join('');
+      if (pre) dl.innerHTML = pre + dl.innerHTML; /* productos reales arriba */
+    } catch (e) {}
+  }
+  window.v158SalSugerenciasCatalogo = v158SalSugerenciasCatalogo;
+
+  /* ═══ ③ KARDEX CONCILIADO ═══ */
+  // Clasifica los movimientos: detecta salidas huérfanas y calcula el saldo de apertura.
+  // PURA sobre (movs, lots) → {movs (con flags), apertura, huerfanas, inventario, cierra}
+  function v158ConciliarKardex(movs, lots) {
+    movs = Array.isArray(movs) ? movs.slice() : [];
+    lots = Array.isArray(lots) ? lots : [];
+    var codigosVivos = {}, activos = 0;
+    lots.forEach(function (l) {
+      if (!l || !l.code) return;
+      codigosVivos[String(l.code).toLowerCase()] = l;
+      if (l.status === 'active') activos += parseInt(l.animal_count || 0) || 0;
+    });
+    /* lotes que SÍ tuvieron alguna entrada registrada */
+    var conEntrada = {};
+    movs.forEach(function (m) {
+      if (m.clase !== 'entrada') return;
+      String(m.detalle || '').replace(/→\s*([^()]+)$/, function (_, lc) { conEntrada[lc.trim().toLowerCase()] = 1; return ''; });
+      if (m._lote) conEntrada[String(m._lote).toLowerCase()] = 1;
+    });
+    var huerfanas = [];
+    var entradas = 0, salidas = 0;
+    movs.forEach(function (m) {
+      if (m.clase === 'entrada') { entradas += m.cabezas; return; }
+      if (m.clase !== 'salida') return;
+      var lc = String(m._lote || '').toLowerCase();
+      /* huérfana = salida de un lote que hoy NO existe y que nunca tuvo entrada registrada */
+      if (lc && !codigosVivos[lc] && !conEntrada[lc]) {
+        m._huerfana = true;
+        huerfanas.push({ lote: m._lote, cabezas: m.cabezas, fecha: m.fecha, tipo: m.tipo });
+        return; /* no suma a salidas */
+      }
+      salidas += m.cabezas;
+    });
+    var saldoMov = entradas - salidas;
+    var apertura = activos - saldoMov;   /* lo que existe y no se explica con movimientos */
+    return {
+      movs: movs, entradas: entradas, salidas: salidas, saldoMov: saldoMov,
+      apertura: apertura, huerfanas: huerfanas, inventario: activos,
+      cierra: (saldoMov + (apertura > 0 ? apertura : 0)) === activos
+    };
+  }
+  window.v158ConciliarKardex = v158ConciliarKardex;
+
+  // Enriquecer el builder: etiquetar el lote de cada movimiento + blindar carne_baja
+  if (typeof _keBuildMovimientos === 'function') {
+    _keBuildMovimientos = (function (base) {
+      return function () {
+        var movs = base.apply(this, arguments) || [];
+        if (offKx()) return movs;
+        try {
+          /* etiquetar lote por movimiento (para detectar huérfanas) */
+          var bajas = (window.db && db.bajas) || [];
+          var idxBaja = 0;
+          movs.forEach(function (m) {
+            if (m._lote) return;
+            var mm = String(m.detalle || '').match(/\(([^()]+)\)\s*(?:—|$)/);
+            if (mm) m._lote = mm[1].trim();
+            var mmc = String(m.detalle || '').match(/→\s*([^()]+)$/);
+            if (!m._lote && mmc) m._lote = mmc[1].trim();
+          });
+          /* BLINDAJE: las ventas de carne post-baja NO son salida de cabezas
+             (el animal ya salió por la baja). Hoy zafan porque `animals` viene
+             vacío; acá queda explícito y a prueba de futuros parsers. */
+          var ventasCarneBaja = ((window.db && db.sales) || []).filter(function (s) { return s && s.type === 'carne_baja'; });
+          if (ventasCarneBaja.length) {
+            movs = movs.filter(function (m) {
+              if (m.tipo !== 'venta') return true;
+              var esCB = ventasCarneBaja.some(function (s) {
+                return _d(s.date || s.fecha) === m.fecha && Math.abs(_n(s.total) - _n(m.valor)) < 0.01;
+              });
+              if (esCB) { console.log('[v158 kardex] venta carne_baja excluida del saldo (el animal ya salió por la baja):', m.detalle); return false; }
+              return true;
+            });
+          }
+        } catch (e) { console.warn('[v158 kardex build]', e); }
+        return movs;
+      };
+    })(_keBuildMovimientos);
+    window._keBuildMovimientos = _keBuildMovimientos;
+  }
+
+  // Render: fila de apertura + huérfanas en gris + card de conciliación
+  if (typeof renderKardexEstancia === 'function') {
+    renderKardexEstancia = (function (base) {
+      return function () {
+        base.apply(this, arguments);
+        if (offKx()) return;
+        try {
+          var movs = (typeof _keBuildMovimientos === 'function') ? _keBuildMovimientos() : [];
+          var c = v158ConciliarKardex(movs, (window.db && db.lots) || []);
+          /* 1. recalcular el saldo mostrado en las tarjetas y en cada fila */
+          var resumen = document.getElementById('ke-resumen');
+          if (resumen) {
+            var saldoReal = c.saldoMov + (c.apertura > 0 ? c.apertura : 0);
+            var cards = resumen.children;
+            if (cards[0]) {
+              var v = cards[0].querySelector('div[style*="DM Mono"]');
+              if (v) v.innerHTML = saldoReal.toLocaleString() + '<span style="font-size:14px;color:var(--muted);font-weight:400"> cab</span>';
+              var s = cards[0].querySelector('div[style*="margin-top:6px"]');
+              if (s) s.textContent = 'existencia en la estancia' + (c.apertura ? ' (incl. saldo de apertura)' : '');
+            }
+            if (cards[2]) {
+              var v3 = cards[2].querySelector('div[style*="DM Mono"]');
+              if (v3) v3.textContent = '−' + c.salidas.toLocaleString();
+            }
+          }
+          /* 2. card de conciliación */
+          var host = document.getElementById('ke-resumen');
+          if (host && host.parentNode) {
+            var box = document.getElementById('v158-kx-concilia');
+            if (!box) {
+              box = document.createElement('div');
+              box.id = 'v158-kx-concilia';
+              box.style.cssText = 'margin:10px 0 4px;padding:10px 14px;border-radius:10px;font-size:11px;line-height:1.6';
+              host.parentNode.insertBefore(box, host.nextSibling);
+            }
+            var difer = c.inventario - (c.saldoMov + (c.apertura > 0 ? c.apertura : 0));
+            var ok = Math.abs(difer) < 0.5;
+            var partes = [];
+            if (c.apertura > 0) partes.push('📋 <b>' + c.apertura.toLocaleString() + '</b> cab de saldo de apertura (existían antes del primer movimiento registrado)');
+            if (c.huerfanas.length) {
+              var totH = c.huerfanas.reduce(function (s2, h) { return s2 + h.cabezas; }, 0);
+              var lotesH = {}; c.huerfanas.forEach(function (h) { lotesH[h.lote] = (lotesH[h.lote] || 0) + h.cabezas; });
+              partes.push('⚠️ <b>' + totH + '</b> salida(s) de lotes sin entrada registrada — ' +
+                Object.keys(lotesH).map(function (k) { return k + ' (' + lotesH[k] + ')'; }).join(', ') +
+                ' — no restan del saldo');
+            }
+            box.style.background = ok ? 'rgba(63,185,80,.07)' : 'rgba(248,81,73,.07)';
+            box.style.border = '1px solid ' + (ok ? 'rgba(63,185,80,.3)' : 'rgba(248,81,73,.35)');
+            box.innerHTML = '<b style="color:' + (ok ? 'var(--green,#3fb950)' : 'var(--red,#f85149)') + '">' +
+              (ok ? '✓ Kardex conciliado' : '⚠ Kardex sin cuadrar (diferencia ' + difer + ' cab)') + '</b> · ' +
+              'Inventario de lotes activos: <b>' + c.inventario.toLocaleString() + '</b> cab · ' +
+              'Movimientos: +' + c.entradas.toLocaleString() + ' / −' + c.salidas.toLocaleString() +
+              (partes.length ? '<div style="margin-top:5px;color:var(--muted)">' + partes.join('<br>') + '</div>' : '');
+          }
+          /* 3. fila de apertura al final de la tabla (es el movimiento más viejo) */
+          var tb = document.getElementById('ke-tbody');
+          if (tb && c.apertura > 0 && !document.getElementById('v158-fila-apertura')) {
+            var tr = document.createElement('tr');
+            tr.id = 'v158-fila-apertura';
+            tr.style.cssText = 'background:rgba(240,180,41,.05)';
+            tr.innerHTML = '<td colspan="6" style="padding:12px 14px;color:var(--muted);font-size:12px">' +
+              '📋 <b style="color:var(--amber2,#f0b429)">Saldo de apertura: ' + c.apertura.toLocaleString() + ' cab</b> — ' +
+              'animales que ya estaban en la estancia antes del primer movimiento registrado (carga inicial del sistema). ' +
+              'No es una compra: es el punto de partida del kardex.</td>';
+            tb.appendChild(tr);
+          }
+          /* 4. marcar visualmente las filas huérfanas */
+          if (c.huerfanas.length) {
+            var codigos = {}; c.huerfanas.forEach(function (h) { codigos[String(h.lote).toLowerCase()] = 1; });
+            Array.prototype.forEach.call(document.querySelectorAll('#ke-tbody tr'), function (tr2) {
+              if (tr2.id === 'v158-fila-apertura' || tr2.__v158) return;
+              var txt = (tr2.textContent || '').toLowerCase();
+              var hit = Object.keys(codigos).some(function (k) { return txt.indexOf('(' + k + ')') >= 0; });
+              if (!hit) return;
+              tr2.__v158 = true;
+              tr2.style.opacity = '.55';
+              tr2.title = 'Salida de un lote sin entrada registrada (dato heredado) — no resta del saldo';
+              var c1 = tr2.querySelector('td');
+              if (c1 && c1.innerHTML.indexOf('⚠') < 0) c1.innerHTML = '⚠ ' + c1.innerHTML;
+            });
+          }
+        } catch (e) { console.warn('[v158 kardex render]', e); }
+      };
+    })(renderKardexEstancia);
+    window.renderKardexEstancia = renderKardexEstancia;
+  }
+
+  /* enganchar sugerencias del catálogo al abrir el modal de sal */
+  document.addEventListener('click', function (ev) {
+    var t = ev.target;
+    if (!t || !t.getAttribute) return;
+    var oc = t.getAttribute('onclick') || '';
+    if (/modal-sal|'sal'/.test(oc)) setTimeout(v158SalSugerenciasCatalogo, 120);
+  }, true);
+
+  window.__v158 = { alimKg: v158AlimentacionKg, conciliar: v158ConciliarKardex, tipoOk: v158TipoTieneProducto };
+  try { console.log('%c[v1.8.158] sal directa por consumo + tipos vs catálogo + kardex conciliado', 'color:#3fb950'); } catch (e) {}
+})();
+/*__V158_END__*/
+</script>
 <script id="ux-lotes-compras-v18157">
 /*__UX157_START__*/
 // ══════════════════════════════════════════════════════════════════════
@@ -47795,7 +48136,7 @@ try {
   }; })(renderMaquinaria);
 })();
 </script>
-<script>window.__E5M_BUILD='1.8.157 (lote clickable a animales + detalle compras colapsable + total editable compra-venta + self-heal + catalogo)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
+<script>window.__E5M_BUILD='1.8.158 (sal directa por lote + tipos de sal del catalogo + kardex conciliado con apertura y huerfanas)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
 
 
 <!-- ══════════════════════════════════════════════════════════════
