@@ -46379,6 +46379,221 @@ setInterval(swSelectorRender, 5000); // auto-sanado si algo re-renderiza la topb
 })();
 /*__CGHEAL_END__*/
 </script>
+<script id="ux-lotes-compras-v18157">
+/*__UX157_START__*/
+// ══════════════════════════════════════════════════════════════════════
+// v1.8.157 — DOS DETALLES UX (pedidos José 11-08 noche):
+// ① Lotes: click en el código del lote → pestaña Animales con ese lote filtrado.
+// ② Compra Ganado: la columna Detalle con N animales individuales (caso T3: 152)
+//    se colapsa a "🐂 N animales · ver detalle ▸" con expansión suave.
+// Aditivo puro: envuelve renderLotes/renderComprasGanado POR ASIGNACIÓN (ley de
+// hoisting) y post-procesa el DOM — cero cambios a los renders base.
+// Kill switch: window.__UX157_OFF = true
+// ══════════════════════════════════════════════════════════════════════
+(function(){
+  function off(){ return window.__UX157_OFF === true; }
+  (function css(){
+    if (document.getElementById('ux157-css')) return;
+    var st = document.createElement('style'); st.id = 'ux157-css';
+    st.textContent =
+      '.lot-link{cursor:pointer;transition:filter .15s ease}' +
+      '.lot-link:hover{filter:brightness(1.35);text-decoration:underline}' +
+      '.cg-det-toggle{cursor:pointer;color:var(--amber2,#f0b429);white-space:nowrap;user-select:none}' +
+      '.cg-det-toggle:hover{filter:brightness(1.2)}' +
+      '.cg-det-body{overflow:hidden;max-height:0;opacity:0;transition:max-height .36s ease,opacity .33s ease;white-space:normal;line-height:1.7;margin-top:4px}';
+    document.head.appendChild(st);
+  })();
+
+  /* ① ir a Animales con el lote preseleccionado */
+  window.goToAnimalesDeLote = function(code){
+    try {
+      var animBtn = document.getElementById('lotes-tab-animales-btn');
+      if (animBtn && typeof showLotesTab === 'function') showLotesTab('lotes-tab-animales', animBtn);
+      setTimeout(function(){
+        var sel = document.getElementById('animales-lot-filter');
+        if (sel) sel.value = code;
+        if (typeof renderAnimalesLote === 'function') { try { renderAnimalesLote(); } catch(e){} }
+      }, 60);
+    } catch(e){ console.warn('[ux157] goToAnimalesDeLote', e); }
+  };
+  function uxLotesClickable(){
+    var tb = document.getElementById('lotes-tbody'); if (!tb) return;
+    tb.querySelectorAll('tr').forEach(function(tr){
+      var td = tr.querySelector('td'); if (!td) return;
+      var chip = td.querySelector('span'); if (!chip || chip.classList.contains('lot-link')) return;
+      var code = (chip.textContent || '').trim(); if (!code) return;
+      chip.classList.add('lot-link');
+      chip.title = 'Ver los animales de ' + code;
+      chip.addEventListener('click', function(ev){ ev.stopPropagation(); window.goToAnimalesDeLote(code); });
+    });
+  }
+
+  /* ② detalle de compras colapsable */
+  function uxComprasDetalle(){
+    var tb = document.getElementById('cg-tbody'); if (!tb) return;
+    tb.querySelectorAll('tr').forEach(function(tr){
+      var tds = tr.querySelectorAll('td'); if (tds.length < 9) return;
+      var det = tds[7];
+      if (det.querySelector('.cg-det-toggle')) return;
+      var txt = (det.textContent || '').trim(); if (!txt) return;
+      var n = (txt.match(/\(/g) || []).length;
+      if (n <= 8) return; /* detalle corto: se deja como está */
+      det.style.maxWidth = '340px'; det.style.overflow = 'visible'; det.style.textOverflow = 'clip';
+      var tog = document.createElement('span');
+      tog.className = 'cg-det-toggle';
+      tog.textContent = '🐂 ' + n + ' animales · ver detalle ▸';
+      var body = document.createElement('div');
+      body.className = 'cg-det-body';
+      body.textContent = txt;
+      det.textContent = '';
+      det.appendChild(tog); det.appendChild(body);
+      tog.addEventListener('click', function(){
+        var abre = body.style.opacity !== '1';
+        tog.textContent = '🐂 ' + n + ' animales · ' + (abre ? 'ocultar ▾' : 'ver detalle ▸');
+        if (abre) { body.style.maxHeight = body.scrollHeight + 'px'; body.style.opacity = '1'; }
+        else { body.style.maxHeight = body.scrollHeight + 'px'; void body.offsetHeight; body.style.maxHeight = '0'; body.style.opacity = '0'; }
+      });
+    });
+  }
+
+  /* wrappers por ASIGNACIÓN (nunca declaración — ley de hoisting) */
+  if (typeof renderLotes === 'function') {
+    renderLotes = (function(base){ return function(){ base.apply(this, arguments); try { if (!off()) uxLotesClickable(); } catch(e){ console.warn('[ux157]', e); } }; })(renderLotes);
+    window.renderLotes = renderLotes;
+  }
+  if (typeof renderComprasGanado === 'function') {
+    renderComprasGanado = (function(base){ return function(){ base.apply(this, arguments); try { if (!off()) uxComprasDetalle(); } catch(e){ console.warn('[ux157]', e); } }; })(renderComprasGanado);
+    window.renderComprasGanado = renderComprasGanado;
+  }
+  /* ③ TOTAL EDITABLE A MANO en Compra y Venta (pedido José: "hay compras a 7 dígitos de
+     precisión, hay que jugar con los números" — caso T3 al partido: precio 1e-7 para total 0).
+     El auto-cálculo sigue igual; pero si el usuario ESCRIBE el total, ese número manda:
+     el precio/kg pasa a ser derivado (total ÷ kg) y el registro guarda el total EXACTO.
+     Editar el precio/kg de nuevo → vuelve el modo automático. */
+  var _cgManual = { active: false, value: 0 };
+  var _saleManual = { active: false, value: 0 };
+  function uxParseBs(s) {
+    s = String(s == null ? '' : s).replace(/Bs\.?/i, '').replace(/\s/g, '').replace(/,/g, '');
+    var v = parseFloat(s);
+    return isFinite(v) && v >= 0 ? v : null;
+  }
+  function cgPesoTotalActual() {
+    var marcar = !!(document.getElementById('cg-marcar-ahora') || {}).checked;
+    if (marcar && Array.isArray(window._cgAnimals)) return _cgAnimals.reduce(function(s, a){ return s + (a.peso || 0); }, 0);
+    var count = parseInt((document.getElementById('cg-cuarentena-count') || {}).value) || 0;
+    var prom = parseFloat((document.getElementById('cg-cuarentena-peso-prom') || {}).value) || 0;
+    return count * prom;
+  }
+  function uxTotalesEditables() {
+    [['cg-total', _cgManual, 'cg-precio-kg'], ['sale-total', _saleManual, 'sale-price']].forEach(function(t){
+      var inp = document.getElementById(t[0]); if (!inp || inp.__ux157) return;
+      inp.__ux157 = true;
+      inp.removeAttribute('readonly');
+      inp.style.background = '';
+      inp.title = 'Podés escribir el total a mano — el precio/kg se ajusta solo';
+      inp.addEventListener('focus', function(){
+        var v = uxParseBs(inp.value);
+        if (v != null) inp.value = String(v); /* quitar formato Bs. para editar cómodo */
+      });
+      inp.addEventListener('input', function(){
+        var v = uxParseBs(inp.value);
+        t[1].active = (v != null);
+        t[1].value = v != null ? v : 0;
+      });
+      inp.addEventListener('blur', function(){
+        if (!t[1].active) return;
+        inp.value = 'Bs. ' + t[1].value.toLocaleString();
+      });
+      var precio = document.getElementById(t[2]);
+      if (precio && !precio.__ux157) { precio.__ux157 = true; precio.addEventListener('input', function(){ t[1].active = false; }); }
+    });
+  }
+  /* guardar COMPRA con total manual: derivar precio y clavar el total exacto en el registro */
+  if (typeof saveCompraGanado === 'function') {
+    saveCompraGanado = (function(base){ return function(){
+      if (off() || !_cgManual.active) return base.apply(this, arguments);
+      try {
+        var manual = _cgManual.value;
+        var pk = document.getElementById('cg-precio-kg');
+        var pesoTotal = cgPesoTotalActual();
+        if (manual > 0 && pesoTotal > 0) pk.value = String(manual / pesoTotal); /* precisión completa */
+        else if (manual === 0) pk.value = '1'; /* pasa la validación; se clava 0 abajo (al partido) */
+        /* identificar la compra NUEVA por diff de ids — renderComprasGanado ordena el
+           array IN PLACE, así que "el último" puede ser cualquiera (bug cazado por e2e) */
+        var idsAntes = {};
+        (db.compras_ganado || []).forEach(function(x){ if (x && x.id) idsAntes[x.id] = 1; });
+        var antes = (db.compras_ganado || []).length;
+        base.apply(this, arguments);
+        if ((db.compras_ganado || []).length <= antes) return; /* validación cortó: no tocar */
+        var c = (db.compras_ganado || []).find(function(x){ return x && x.id && !idsAntes[x.id]; });
+        if (!c) return;
+        c.total = manual;
+        c.price_per_kg = (c.total_kg > 0 && manual > 0) ? Math.round(manual / c.total_kg * 10000) / 10000 : 0;
+        var k = (db.kardex || []).slice().reverse().find(function(x){ return x && x.auto && x.tipo === 'compra' && x.lote === c.lot_code && x.created_at && (Date.now() - new Date(x.created_at).getTime()) < 10000; }); /* solo el kardex recién creado */
+        if (k) { k.precio = c.price_per_kg; k.total = manual; }
+        localStorage.setItem((typeof DB_KEY !== 'undefined') ? DB_KEY : 'estancia5m_v1', JSON.stringify(db));
+        try { renderComprasGanado(); } catch(e){}
+        _cgManual.active = false; _cgManual.value = 0; /* mutar, NO rebindear: los listeners capturan el objeto */
+        console.log('[ux157] compra con total manual: Bs.', manual, '· precio/kg derivado:', c.price_per_kg);
+      } catch(e){ console.warn('[ux157] total manual compra', e); }
+    }; })(saveCompraGanado);
+    window.saveCompraGanado = saveCompraGanado;
+  }
+  /* guardar VENTA con total manual: derivar precio por regla de tres sobre el total automático */
+  if (typeof saveSale === 'function') {
+    saveSale = (function(base){ return function(){
+      if (off() || !_saleManual.active) return base.apply(this, arguments);
+      try {
+        var manual = _saleManual.value;
+        var precioEl = document.getElementById('sale-price');
+        var precioAct = parseFloat((precioEl || {}).value) || 0;
+        /* total automático actual con el precio vigente */
+        var totAuto = null;
+        try { calcSaleTotal(); totAuto = uxParseBs((document.getElementById('sale-total') || {}).value); } catch(e){}
+        if (manual > 0 && totAuto && totAuto > 0 && precioAct > 0) precioEl.value = String(precioAct * (manual / totAuto));
+        var idsAntesV = {};
+        (db.sales || []).forEach(function(x){ if (x && x.id != null) idsAntesV[x.id] = 1; });
+        var antes = (db.sales || []).length;
+        base.apply(this, arguments);
+        if ((db.sales || []).length <= antes) return;
+        var s = (db.sales || []).find(function(x){ return x && x.id != null && !idsAntesV[x.id]; });
+        if (!s) return;
+        if (s && s.total != null && Math.abs((s.total || 0) - manual) <= Math.max(1, manual * 0.001)) {
+          s.total = manual;
+          if (s.kg_facturados > 0) s.price_per_kg = Math.round(manual / s.kg_facturados * 10000) / 10000;
+          else if (s.kg > 0) s.price_per_kg = Math.round(manual / s.kg * 10000) / 10000;
+          localStorage.setItem((typeof DB_KEY !== 'undefined') ? DB_KEY : 'estancia5m_v1', JSON.stringify(db));
+        }
+        _saleManual.active = false; _saleManual.value = 0; /* mutar, NO rebindear */
+        console.log('[ux157] venta con total manual: Bs.', manual);
+      } catch(e){ console.warn('[ux157] total manual venta', e); }
+    }; })(saveSale);
+    window.saveSale = saveSale;
+  }
+  /* limpieza one-shot del hack histórico 1e-7 (T3): precio microscópico + total ~0 → 0 limpio */
+  setTimeout(function(){
+    if (off()) return;
+    try {
+      var fixed = 0;
+      (window.db && db.compras_ganado || []).forEach(function(c){
+        if (c && c.price_per_kg > 0 && c.price_per_kg < 0.001 && (c.total || 0) < 1) { c.price_per_kg = 0; c.total = 0; fixed++; }
+      });
+      if (fixed) {
+        localStorage.setItem((typeof DB_KEY !== 'undefined') ? DB_KEY : 'estancia5m_v1', JSON.stringify(db));
+        console.log('[ux157] normalizados ' + fixed + ' precio(s) 1e-7 → 0 (compras al partido)');
+        try { renderComprasGanado(); } catch(e){}
+      }
+    } catch(e){}
+  }, 5000);
+
+  window.__ux157 = { lotes: uxLotesClickable, compras: uxComprasDetalle, totales: uxTotalesEditables, cgManual: function(){ return _cgManual; } }; /* para tests */
+  /* barrido de arranque por si los renders corrieron antes de instalar los wrappers */
+  setTimeout(function(){ if (!off()) { try { uxLotesClickable(); uxComprasDetalle(); uxTotalesEditables(); } catch(e){} } }, 3000);
+  document.addEventListener('DOMContentLoaded', function(){ try { uxTotalesEditables(); } catch(e){} });
+  try { console.log('%c[ux v1.8.157] lote→animales clickable + detalle compras colapsable + total editable en compra/venta', 'color:#f0b429'); } catch(e){}
+})();
+/*__UX157_END__*/
+</script>
 <script id="maq-compraventa-v18122">
 // ══════════════════════════════════════════════════════════════════════
 // v1.8.122 — MAQUINARIA: COMPRA / VENTA / BAJA DE EQUIPOS
@@ -47580,7 +47795,7 @@ try {
   }; })(renderMaquinaria);
 })();
 </script>
-<script>window.__E5M_BUILD='1.8.156 (self-heal compras-animals + seccion catalogo servicios externos + catalogos proveedores/servicios + maquinaria por categoria + fix plantilla + ci node24)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
+<script>window.__E5M_BUILD='1.8.157 (lote clickable a animales + detalle compras colapsable + total editable compra-venta + self-heal + catalogo)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
 
 
 <!-- ══════════════════════════════════════════════════════════════
