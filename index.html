@@ -45038,7 +45038,7 @@ document.addEventListener('click', function(ev){
     try { agcalSidebar(); } catch (e) {}
     try { agcalVista(); } catch (e) {}
     try { agcalConfigUbicacion(); } catch (e) {}
-    try { console.log('%c[calendario v1.8.154] plantilla + generar plan + semáforo + siembra corrida', 'color:#58a6ff;font-weight:bold'); } catch (e) {}
+    try { console.log('%c[calendario v1.8.156] plantilla + generar plan + semáforo + siembra corrida', 'color:#58a6ff;font-weight:bold'); } catch (e) {}
   }
   if (typeof document !== 'undefined' && document.getElementById) {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', agcalBoot);
@@ -45046,6 +45046,214 @@ document.addEventListener('click', function(ev){
     document.addEventListener('click', function () { setTimeout(function () { try { agcalSidebar(); agcalConfigUbicacion(); } catch (e) {} }, 600); });
   }
 /*__AGCAL_END__*/
+
+/*__PROV_START__*/
+  /* ═══ v1.8.155 — CATÁLOGOS DE PROVEEDORES Y SERVICIOS (pedido José 11-08) ═══
+     El proveedor y el concepto de Servicios Externos "casi siempre son los mismos":
+     - Catálogo EFECTIVO = valores del HISTORIAL de servicios ∪ listas manuales en
+       estancia_params (agro_proveedores / agro_servicios). Se AUTOALIMENTA: cada
+       servicio guardado suma su proveedor y concepto al catálogo, sin administrar nada.
+     - UI desktop: los inputs del modal ganan <datalist> (sugerencias al tipear,
+       texto libre intacto → cero cambios en el guardado).
+     Sin server: params + historial ya sincronizan. */
+  function provParams() {
+    try { var p = JSON.parse(localStorage.getItem('e5m_params') || '{}'); return (p && typeof p === 'object') ? p : {}; } catch (e) { return {}; }
+  }
+  function provCatalogo(campo, extra) {
+    var d = agGetDB();
+    var vistos = {}, out = [];
+    function add(v) {
+      v = String(v == null ? '' : v).trim();
+      if (!v) return;
+      var k = v.toLowerCase();
+      if (vistos[k]) return;
+      vistos[k] = 1; out.push(v);
+    }
+    var p = provParams();
+    var lista = campo === 'proveedor' ? p.agro_proveedores : p.agro_servicios;
+    (Array.isArray(lista) ? lista : []).forEach(add);
+    d.labores.forEach(function (l) { if (l && l.tipo === 'servicio_ext') add(l[campo]); });
+    (extra || []).forEach(add);
+    return out.sort(function (a, b) { return a.localeCompare(b); });
+  }
+  function provDatalist(inputId, listId, valores) {
+    var inp = agEl(inputId); if (!inp) return;
+    var dl = document.getElementById(listId);
+    if (!dl) { dl = document.createElement('datalist'); dl.id = listId; document.body.appendChild(dl); }
+    dl.innerHTML = valores.map(function (v) { return '<option value="' + escA(v) + '"></option>'; }).join('');
+    inp.setAttribute('list', listId);
+    inp.setAttribute('autocomplete', 'off');
+  }
+  agmOpenServicio = (function (base) {
+    return function (id) {
+      base(id);
+      try {
+        provDatalist('agsx-proveedor', 'dl-agro-proveedores', provCatalogo('proveedor'));
+        provDatalist('agsx-concepto', 'dl-agro-servicios', provCatalogo('concepto'));
+      } catch (e) {}
+    };
+  })(window.agmOpenServicio);
+  window.agmOpenServicio = agmOpenServicio;
+  /* autoalimentar params al guardar (además del historial: sobrevive aunque borren la labor) */
+  agmSaveServicio = (function (base) {
+    return function () {
+      var prov = ((agEl('agsx-proveedor') || {}).value || '').trim();
+      var conc = ((agEl('agsx-concepto') || {}).value || '').trim();
+      var antes = agGetDB().labores.filter(function (l) { return l && l.tipo === 'servicio_ext'; }).length;
+      base();
+      try {
+        var ahora = agGetDB().labores.filter(function (l) { return l && l.tipo === 'servicio_ext'; }).length;
+        if (ahora <= antes && !agEl('agsx-id').value) return; /* no guardó (validación) */
+        var p = provParams(); var cambio = false;
+        function suma(key, val) {
+          if (!val) return;
+          if (!Array.isArray(p[key])) p[key] = [];
+          if (!p[key].some(function (x) { return String(x).toLowerCase() === val.toLowerCase(); })) { p[key].push(val); cambio = true; }
+        }
+        suma('agro_proveedores', prov);
+        suma('agro_servicios', conc);
+        if (cambio) {
+          p.updated_at = new Date().toISOString();
+          localStorage.setItem('e5m_params', JSON.stringify(p));
+          try { if (typeof pushToRailway === 'function') pushToRailway(); } catch (e2) {}
+        }
+      } catch (e) {}
+    };
+  })(window.agmSaveServicio);
+  window.agmSaveServicio = agmSaveServicio;
+  /*__PROVADM_START__*/
+  /* ═══ v1.8.156 — Sección 📇 CATÁLOGO visible en Servicios Externos (pedido José 11-08) ═══
+     "¿no seria mejor agregar una subpestaña o seccion en servicios externos para cargar esta lista?"
+     Card colapsable al pie de la subpestaña: chips de Proveedores y Conceptos.
+     - Chips del catálogo manual (estancia_params) → borrables con ✕.
+     - Chips que solo existen en el HISTORIAL → badge "auto" (no se borran: renacen de las labores).
+     - Agregar con input + Enter/botón → params + pushToRailway (sync a EP Agro).
+     - Cerrada por defecto, apertura/cierre suave (regla global: nada instantáneo). */
+  function provParamsSave(p) {
+    p.updated_at = new Date().toISOString();
+    localStorage.setItem('e5m_params', JSON.stringify(p));
+    try { if (typeof pushToRailway === 'function') pushToRailway(); } catch (e) {}
+  }
+  function provAdmHist(campo) {
+    var d = agGetDB(), s = {};
+    d.labores.forEach(function (l) {
+      if (l && l.tipo === 'servicio_ext') { var v = String(l[campo] == null ? '' : l[campo]).trim(); if (v) s[v.toLowerCase()] = v; }
+    });
+    return s;
+  }
+  function provAdmStyles() {
+    if (document.getElementById('agsx-cat-css')) return;
+    var st = document.createElement('style'); st.id = 'agsx-cat-css';
+    st.textContent =
+      '#agsx-catalogo .agsx-cat-head{width:100%;display:flex;align-items:center;gap:8px;background:none;border:0;color:var(--text,#e6edf3);font:inherit;font-weight:700;cursor:pointer;padding:2px 0;text-align:left}' +
+      '#agsx-catalogo .agsx-cat-head .chev{margin-left:auto;transition:transform .33s ease;color:var(--muted,#8b949e)}' +
+      '#agsx-catalogo.open .agsx-cat-head .chev{transform:rotate(90deg)}' +
+      '#agsx-cat-body{overflow:hidden;max-height:0;opacity:0;transition:max-height .36s ease,opacity .33s ease}' +
+      '.agsx-chip{display:inline-flex;align-items:center;gap:6px;background:rgba(240,180,41,.08);border:1px solid rgba(240,180,41,.25);border-radius:14px;padding:3px 10px;margin:3px;font-size:12px}' +
+      '.agsx-chip .x{cursor:pointer;color:var(--red,#f85149);font-weight:700;padding:0 2px}' +
+      '.agsx-chip .auto{font-size:10px;color:var(--muted,#8b949e);border:1px solid var(--muted,#8b949e);border-radius:8px;padding:0 5px}' +
+      '.agsx-cat-add{display:flex;gap:6px;margin-top:8px}' +
+      '.agsx-cat-add input{flex:1}';
+    document.head.appendChild(st);
+  }
+  function provAdmPanel() {
+    var view = agEl('ag-view-servext');
+    if (!view || agEl('agsx-catalogo')) return;
+    provAdmStyles();
+    var p = document.createElement('div');
+    p.className = 'panel'; p.id = 'agsx-catalogo';
+    p.innerHTML =
+      '<button type="button" class="agsx-cat-head" id="agsx-cat-toggle">📇 Catálogo de proveedores y conceptos <span id="agsx-cat-n" style="color:var(--muted,#8b949e);font-weight:400"></span><span class="chev">▸</span></button>' +
+      '<div id="agsx-cat-body">' +
+      '<div class="sub" style="margin:8px 0 10px">Estas listas alimentan las sugerencias de este wizard y los selectores de EP Agro (tras un sync). Se autoalimentan con cada servicio guardado; acá podés precargarlas o depurarlas. Los marcados <b>auto</b> vienen del historial y no se borran (renacen de las labores registradas).</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">' +
+      '<div><div style="font-weight:700;margin-bottom:4px">🤝 Proveedores</div><div id="agsx-cat-prov"></div>' +
+      '<div class="agsx-cat-add"><input class="form-input" id="agsx-cat-add-proveedor" placeholder="Ej: David Dick"><button class="btn btn-ghost btn-sm" data-add="proveedor">➕ Agregar</button></div></div>' +
+      '<div><div style="font-weight:700;margin-bottom:4px">🛠 Conceptos de servicio</div><div id="agsx-cat-conc"></div>' +
+      '<div class="agsx-cat-add"><input class="form-input" id="agsx-cat-add-concepto" placeholder="Ej: Desmonte / Encalado"><button class="btn btn-ghost btn-sm" data-add="concepto">➕ Agregar</button></div></div>' +
+      '</div></div>';
+    view.appendChild(p);
+    var body = p.querySelector('#agsx-cat-body');
+    p.querySelector('#agsx-cat-toggle').addEventListener('click', function () {
+      var abre = !p.classList.contains('open');
+      p.classList.toggle('open', abre);
+      if (abre) { body.style.maxHeight = body.scrollHeight + 'px'; body.style.opacity = '1'; }
+      else { body.style.maxHeight = body.scrollHeight + 'px'; void body.offsetHeight; body.style.maxHeight = '0'; body.style.opacity = '0'; }
+    });
+    p.addEventListener('click', function (ev) {
+      var del = ev.target.closest ? ev.target.closest('[data-del]') : null;
+      var add = ev.target.closest ? ev.target.closest('[data-add]') : null;
+      if (del) { provCatDel(del.getAttribute('data-campo'), del.getAttribute('data-del')); }
+      if (add) { provCatAdd(add.getAttribute('data-add')); }
+    });
+    ['proveedor', 'concepto'].forEach(function (campo) {
+      var inp = p.querySelector('#agsx-cat-add-' + campo);
+      if (inp) inp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); provCatAdd(campo); } });
+    });
+  }
+  function provAdmRender() {
+    var hostP = agEl('agsx-cat-prov'), hostC = agEl('agsx-cat-conc');
+    if (!hostP || !hostC) return;
+    var params = provParams();
+    var total = 0;
+    [['proveedor', hostP, params.agro_proveedores], ['concepto', hostC, params.agro_servicios]].forEach(function (t) {
+      var campo = t[0], host = t[1];
+      var enParams = {};
+      (Array.isArray(t[2]) ? t[2] : []).forEach(function (v) { v = String(v == null ? '' : v).trim(); if (v) enParams[v.toLowerCase()] = 1; });
+      var hist = provAdmHist(campo);
+      var vals = provCatalogo(campo);
+      total += vals.length;
+      host.innerHTML = vals.map(function (v) {
+        var k = v.toLowerCase();
+        if (enParams[k]) {
+          return '<span class="agsx-chip">' + escA(v) + '<span class="x" data-del="' + escA(v) + '" data-campo="' + campo + '" title="Quitar del catálogo manual">✕</span></span>';
+        }
+        return '<span class="agsx-chip">' + escA(v) + '<span class="auto" title="Viene del historial de servicios">auto</span></span>';
+      }).join('') || '<span style="color:var(--muted,#8b949e);font-size:12px">— vacío: se llena solo con el primer servicio, o precargá acá —</span>';
+    });
+    var n = agEl('agsx-cat-n'); if (n) n.textContent = total ? '· ' + total : '';
+    var body = agEl('agsx-cat-body'), card = agEl('agsx-catalogo');
+    if (body && card && card.classList.contains('open')) body.style.maxHeight = body.scrollHeight + 'px';
+  }
+  window.provCatAdd = function (campo) {
+    var inp = agEl('agsx-cat-add-' + campo); if (!inp) return;
+    var val = String(inp.value || '').trim();
+    if (!val) { agToast('Escribí el ' + (campo === 'proveedor' ? 'proveedor' : 'concepto') + ' a agregar', 'error'); return; }
+    var p = provParams();
+    var key = campo === 'proveedor' ? 'agro_proveedores' : 'agro_servicios';
+    if (!Array.isArray(p[key])) p[key] = [];
+    if (p[key].some(function (x) { return String(x).toLowerCase() === val.toLowerCase(); }) || provAdmHist(campo)[val.toLowerCase()]) {
+      agToast('"' + val + '" ya está en el catálogo', 'info'); inp.value = ''; return;
+    }
+    p[key].push(val);
+    provParamsSave(p);
+    inp.value = ''; inp.focus();
+    provAdmRender();
+    agToast('"' + val + '" agregado al catálogo', 'success');
+  };
+  window.provCatDel = function (campo, val) {
+    var p = provParams();
+    var key = campo === 'proveedor' ? 'agro_proveedores' : 'agro_servicios';
+    p[key] = (Array.isArray(p[key]) ? p[key] : []).filter(function (x) { return String(x).toLowerCase() !== String(val).toLowerCase(); });
+    provParamsSave(p);
+    provAdmRender();
+    if (provAdmHist(campo)[String(val).toLowerCase()]) agToast('"' + val + '" quitado del catálogo manual — sigue apareciendo porque está en el historial', 'info');
+    else agToast('"' + val + '" quitado del catálogo', 'info');
+  };
+  /* render junto con la subpestaña (y al guardar servicios, que llama agRenderAll → este render).
+     Wrapper por ASIGNACIÓN (ley de hoisting) + typeof para poder extraer el bloque en tests. */
+  agmRenderServExt = (function (base) {
+    return function () {
+      if (base) base();
+      try { provAdmPanel(); provAdmRender(); } catch (e) { console.warn('[provadm]', e); }
+    };
+  })(typeof agmRenderServExt === 'function' ? agmRenderServExt : null);
+  window.__provadm = { render: provAdmRender, panel: provAdmPanel }; /* para tests */
+  /*__PROVADM_END__*/
+  window.__prov = { catalogo: provCatalogo }; /* para tests */
+  try { console.log('%c[proveedores v1.8.156] catálogos autoalimentados + sección 📇 Catálogo en Servicios Externos', 'color:#3fb950'); } catch (e) {}
+/*__PROV_END__*/
+
 
 })();
 
@@ -46097,6 +46305,80 @@ setInterval(swSelectorRender, 5000); // auto-sanado si algo re-renderiza la topb
 })();
 </script>
 
+<script id="cg-selfheal-v18156">
+/*__CGHEAL_START__*/
+// ══════════════════════════════════════════════════════════════════════
+// v1.8.156 — SELF-HEAL compras_ganado → animals (PUENTE hasta animals server-gana R0)
+// Incidente 11-08 (5M, compra T3/152): push de animals rechazado por STALE → pull
+// server-wins pisó los 152 recién creados (el "Preservando lote por pending" no aplicó
+// porque la COMPRA sí había sincronizado; solo la tabla animals quedó en el aire).
+// Cura: si un lote ACTIVO declara animal_count > registros individuales, se re-materializan
+// los faltantes desde la copia que cada compra guarda en compras_ganado.animales.
+// Guardas anti-resurrección: gap de conteo obligatorio (LECHERIA-safe), id inexistente en
+// TODOS los lotes (no revivir movidos), ni en bajas, ni en e5m_deleted_ids (tumbados),
+// lote no vendido, compras de cuarentena excluidas. Idempotente. Kill: __CG_SELFHEAL_OFF.
+// Se JUBILA cuando salga la arquitectura de eventos (server v4.43 + R0).
+// ══════════════════════════════════════════════════════════════════════
+(function(){
+  function off(){ return window.__CG_SELFHEAL_OFF === true; }
+  function cgSelfHeal(origen){
+    try {
+      if (off()) return 0;
+      if (!window.db || !Array.isArray(db.compras_ganado) || typeof getAnimalesDB !== 'function') return 0;
+      var animals = getAnimalesDB();
+      var globalIds = {};
+      Object.keys(animals).forEach(function(lc){
+        (animals[lc]||[]).forEach(function(a){ var k = String((a && (a.animal_id || a.id)) || ''); if (k) globalIds[k] = 1; });
+      });
+      var bajaIds = {};
+      (db.bajas||[]).forEach(function(b){ var k = String((b && b.animal_id) || ''); if (k) bajaIds[k] = 1; });
+      var tumbados = {};
+      try { tumbados = JSON.parse(localStorage.getItem('e5m_deleted_ids')||'{}'); } catch(e){}
+      var totalAdd = 0, porLote = {};
+      (db.compras_ganado||[]).forEach(function(cg){
+        if (!cg || !cg.lot_code || cg.cuarentena === true) return;
+        if (!Array.isArray(cg.animales) || !cg.animales.length) return;
+        var lot = (db.lots||[]).find(function(l){ return l && l.code === cg.lot_code; });
+        if (!lot || lot.status !== 'active') return;               /* vendido/cerrado → no tocar */
+        var arr = animals[cg.lot_code] || [];
+        var declarados = Number(lot.animal_count) || 0;
+        if (arr.length >= declarados) return;                      /* sin hueco → nada que sanar */
+        cg.animales.forEach(function(a){
+          var id = String((a && a.id) || ''); if (!id) return;
+          if (globalIds[id] || bajaIds[id] || tumbados['animal:'+id]) return;
+          var nuevo = { id:id, animal_id:id, raza:a.raza||'', breed:a.raza||'', pesajes:[{ fecha: cg.fecha || String(cg.created_at||'').slice(0,10), peso: a.peso }] };
+          if (a.rfid) nuevo.rfid = a.rfid;
+          arr.push(nuevo); globalIds[id] = 1; totalAdd++;
+          porLote[cg.lot_code] = (porLote[cg.lot_code]||0) + 1;
+        });
+        animals[cg.lot_code] = arr;
+      });
+      if (!totalAdd) return 0;
+      if (typeof saveAnimalesDB === 'function') saveAnimalesDB(animals);
+      Object.keys(porLote).forEach(function(lc){
+        var lot = (db.lots||[]).find(function(l){ return l && l.code === lc; });
+        if (lot) lot.animal_count = (animals[lc]||[]).length;
+      });
+      try { localStorage.setItem((typeof DB_KEY !== 'undefined') ? DB_KEY : 'estancia5m_v1', JSON.stringify(db)); } catch(e){}
+      var det = Object.keys(porLote).map(function(lc){ return lc + ': +' + porLote[lc]; }).join(' · ');
+      console.warn('[CG-SelfHeal] (' + (origen||'?') + ') re-materializados ' + totalAdd + ' animal(es) desde compras_ganado → ' + det);
+      try { if (typeof toast === 'function') toast('🛟 Recuperados ' + totalAdd + ' animales desde compras (' + det + ')', 'success'); } catch(e){}
+      /* push diferido con base fresca (post-pull) para que el server lo persista */
+      clearTimeout(window._cgHealPushT);
+      window._cgHealPushT = setTimeout(function(){ try { if (typeof pushDesktopRecords === 'function') pushDesktopRecords(); } catch(e){} }, 1500);
+      try { ['renderLotes','renderDashboard'].forEach(function(fn){ if (typeof window[fn] === 'function') window[fn](); }); } catch(e){}
+      return totalAdd;
+    } catch(e){ console.warn('[CG-SelfHeal] error', e); return 0; }
+  }
+  window.cgSelfHeal = cgSelfHeal;
+  /* Cadencia: arranque (tras el StartupPull) + barrido cada 60s. No engancha el pull por
+     dentro (async frágil): el barrido converge igual aunque un pull pise en el medio. */
+  setTimeout(function(){ cgSelfHeal('arranque'); }, 15000);
+  setInterval(function(){ cgSelfHeal('tick'); }, 60000);
+  try { console.log('%c[cg-selfheal v1.8.156] guardia compras→animals activa (puente hasta animals server-gana)', 'color:#f0b429'); } catch(e){}
+})();
+/*__CGHEAL_END__*/
+</script>
 <script id="maq-compraventa-v18122">
 // ══════════════════════════════════════════════════════════════════════
 // v1.8.122 — MAQUINARIA: COMPRA / VENTA / BAJA DE EQUIPOS
@@ -47298,7 +47580,7 @@ try {
   }; })(renderMaquinaria);
 })();
 </script>
-<script>window.__E5M_BUILD='1.8.154 (fix plantilla + maquinaria por categoria + ci node24)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
+<script>window.__E5M_BUILD='1.8.156 (self-heal compras-animals + seccion catalogo servicios externos + catalogos proveedores/servicios + maquinaria por categoria + fix plantilla + ci node24)'; console.log('%c[BUILD] '+window.__E5M_BUILD,'color:#f0b429;font-weight:bold');</script>
 
 
 <!-- ══════════════════════════════════════════════════════════════
