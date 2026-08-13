@@ -8907,7 +8907,9 @@ function renderLotes() {
       '<td style="display:flex;gap:6px">'+
         btnMover +
         btnFusionar +
-        (isMarcado ? '' : '<button class="btn btn-danger btn-sm" onclick="deleteLot(\''+(lot.code||'').replace(/'/g,"\\'")+'\')">X</button>')+
+        /* v1.8.161: el boton X de borrar lote se saca de la UI (riesgo innecesario).
+           Para un caso excepcional queda deleteLot('CODIGO') desde la consola. */
+        (window.__V161_LOTES_X_ON && !isMarcado ? '<button class="btn btn-danger btn-sm" onclick="deleteLot(\''+(lot.code||'').replace(/'/g,"\\'")+'\')">X</button>' : '')+
       '</td>'+
     '</tr>';
   }).join('');
@@ -24845,7 +24847,7 @@ function _salGetTipos() {
   var byTipo = {};
   (db.sal || []).forEach(function(r){
     if (!r) return;
-    var n = _salNormalizeTipo(r.tipo);
+    var n = (typeof _salTipoEfectivo==='function'?_salTipoEfectivo(r):_salNormalizeTipo(r&&r.tipo));
     if (!byTipo[n]) byTipo[n] = { normalized: n, label: _salTipoLabel(n), count: 0, kg: 0 };
     byTipo[n].count++;
     byTipo[n].kg += parseFloat(r.qty || r.total || r.kg || 0) || 0;
@@ -24857,7 +24859,7 @@ function _salGetTipos() {
 // Filtra una lista de registros por tipo normalizado. '' = todas.
 function _salFilterByTipo(records, tipoNorm) {
   if (!tipoNorm) return records;
-  return records.filter(function(r){ return _salNormalizeTipo(r && r.tipo) === tipoNorm; });
+  return records.filter(function(r){ return (typeof _salTipoEfectivo==='function'?_salTipoEfectivo(r):_salNormalizeTipo(r&&r.tipo)) === tipoNorm; });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -24987,7 +24989,7 @@ function _salRenderTipoCard(allRecords) {
   // Agregar por tipo dentro del período actual (no de toda la DB)
   var byTipo = {};
   allRecords.forEach(function(r){
-    var n = _salNormalizeTipo(r && r.tipo);
+    var n = (typeof _salTipoEfectivo==='function'?_salTipoEfectivo(r):_salNormalizeTipo(r&&r.tipo));
     var kg = parseFloat(r.qty||r.total||r.kg||0)||0;
     if (!kg) return;
     byTipo[n] = (byTipo[n] || 0) + kg;
@@ -46470,9 +46472,16 @@ setInterval(swSelectorRender, 5000); // auto-sanado si algo re-renderiza la topb
 
   /* ═══ ② TIPOS DE SAL vs CATÁLOGO DE STOCK ═══ */
   function v158ProductosSal() {
-    return ((typeof db !== 'undefined' && db && db.vet_products) || []).filter(function (p) {
-      var bag = ((p && p.category) || '') + ' ' + ((p && p.subcategory) || '') + ' ' + ((p && p.type) || '');
-      return /sal|suplement|mineral/i.test(bag);
+    /* v1.8.161 FIX: la tabla es `products` en el desktop (`vet_products` es el nombre
+       del server) y el filtro correcto es el helper que ya usa "Stock disponible" —
+       el regex suelto se comia Yodo y BioAnemin, que son vitaminas, no sal. */
+    var _p = (typeof db !== 'undefined' && db) ? (db.vet_products || db.products || []) : [];
+    if (typeof _salIsProductOfCategory === 'function') {
+      return _p.filter(function (p) { return _salIsProductOfCategory(p, 'sal'); });
+    }
+    return _p.filter(function (p) {
+      var t = String((p && p.type) || '').toLowerCase(), c = String((p && p.category) || '').toLowerCase();
+      return t === 'sal_mineral' || t === 'sal' || c === 'sal_mineral' || c === 'sal' || c === 'sal y suplementos';
     });
   }
   function v158NormNombre(s) {
@@ -48776,15 +48785,20 @@ try {
         '<table><tr><th>Concepto</th><th class="r">'+mon+'</th></tr>'+
         '<tr><td>Sanidad (tratamientos del lote)</td><td class="r">'+mon+' '+fn(dir.sanidad)+'</td></tr>'+
         '<tr><td>Mantenimiento del lote</td><td class="r">'+mon+' '+fn(dir.mantenimiento)+'</td></tr>'+
-        '<tr class="tot"><td>Subtotal directos</td><td class="r">'+mon+' '+fn(dir.total)+'</td></tr></table>'+
+        /* v1.8.163: sal/alimento valorizado a costo de Stock = costo DIRECTO del lote */
+        ((ind.salDirectoBs||0)>0 ? ('<tr><td>Sal / alimento — consumo del lote ('+fn(ind.salDirectoKg||0)+' kg a costo de Stock)'+
+          ((ind.salDirectoDetalle&&ind.salDirectoDetalle.length)?('<br><span style="color:#666;font-size:11px">'+ind.salDirectoDetalle.map(function(d){return esc(d.producto)+' '+fn(d.kg)+' kg × '+mon+' '+d.costo;}).join(' · ')+'</span>'):'')+
+          '</td><td class="r">'+mon+' '+fn(ind.salDirectoBs)+'</td></tr>') : '')+
+        ((ind.salKgSinValor||0)>0 ? ('<tr><td style="color:#946200">&#9888; '+fn(ind.salKgSinValor)+' kg de sal/alimento del lote sin valorizar (producto sin costo en Stock)</td><td class="r" style="color:#946200">&mdash;</td></tr>') : '')+
+        '<tr class="tot"><td>Subtotal directos</td><td class="r">'+mon+' '+fn(dir.total+(ind.salDirectoBs||0))+'</td></tr></table>'+
         '<h2>3. Costos indirectos (pool de la estancia × fracción)</h2>'+
         '<table><tr><th>Categoría</th><th class="r">Pool total</th><th class="r">Fracción</th><th class="r">Asignado al lote</th></tr>'+
         fila('Sueldos / personal', ind.sueldos_total||0, ind.sueldos||0)+
         fila('Diesel / combustible', ind.diesel_total||0, ind.diesel||0)+
-        fila('Alimento / sal', ind.alimento_total||0, ind.alimento||0)+
+        fila('Alimento / sal (resto de compras sin atribuir por consumo)', ind.alimento_total||0, ind.alimento||0)+
         fila('Mantenimiento general', ind.mantGeneral_total||0, ind.mantGeneral||0)+
         fila('Compras / otros (incl. intereses)', ind.compras_total||0, ind.compras||0)+
-        '<tr class="tot"><td colspan="3">Subtotal indirectos</td><td class="r">'+mon+' '+fn(ind.total||0)+'</td></tr></table>'+
+        '<tr class="tot"><td colspan="3">Subtotal indirectos</td><td class="r">'+mon+' '+fn((ind.total||0)-(ind.salDirectoBs||0))+'</td></tr></table>'+
         '<div class="sub">Excluidos del costo operativo: compra de ganado y CAPEX (maquinaria/inversión).</div>'+
         '<h2>4. Resultado</h2>'+
         '<table><tr class="tot"><td>Costo operativo (directos + indirectos)</td><td class="r">'+mon+' '+fn(r.costoOperativo)+'</td></tr>'+
@@ -48833,6 +48847,755 @@ try {
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', hook);
   else hook();
 })();
+</script>
+
+<script id="r0-papelitos-v18160">
+/*__R0_START__*/
+/* ═══════════════════════════════════════════════════════════════════════════
+   R0 FASE 2 — LOS PAPELITOS DEL DESKTOP  (v1.8.160)
+
+   El desktop deja de ser dueño de `animals` y pasa a mandarle al server un
+   "papelito" por cada cosa que hace. El server (v4.43.0, POST /api/animal-events)
+   es el único que muta animals y recalcula los contadores de lotes.
+
+   ── DÓNDE SE ENGANCHA ────────────────────────────────────────────────────
+   El primer intento fue envolver `saveAnimalesDB()`. NO ALCANZA: revisando el
+   índice hay 6 operaciones reales del usuario que escriben `e5m_animals` DIRECTO
+   con localStorage.setItem y se saltean esa función —
+     saveSale (venta) · saveMarcaje (traspaso de cuarentena) · deleteCompraGanado
+     saveEditAnimalId (renombrar) · confirmBulkAnimals (carga masiva) · guardarKardex
+   El único cuello de botella de verdad es `localStorage.setItem('e5m_animals', …)`.
+   Ahí se engancha, y por eso no hay operación que se escape.
+
+   ── QUÉ DERIVA DEL DIFF ──────────────────────────────────────────────────
+     · id nuevo en un lote ............... alta_lote  (alta_compra si hay intención)
+     · id que desaparece ................. baja  (venta si hay intención)
+     · id que cambia de lote ............. mover
+     · pesajes que crecen ................ pesaje_sesion  (UNA sesión, N filas)
+     · raza / rfid que cambian ........... correccion
+     · id viejo fuera + id nuevo dentro
+       con los MISMOS pesajes ............ correccion (rename) ← no baja+alta
+
+   Esa última regla evita el desastre: un renombre visto como baja+alta deja un
+   tombstone sobre el id viejo y el server lo bloquea para siempre. Tiene tres
+   guardas — huella de pesajes no vacía y única de los dos lados — porque ante la
+   duda es preferible baja+alta (deja el estado final correcto) que un renombre
+   falso (deja al que se fue adentro y al nuevo afuera).
+
+   ── LO QUE NO EMITE ──────────────────────────────────────────────────────
+   Sync, restore, import, onboarding, reparaciones y la auto-limpieza de lotes
+   huérfanos quedan suspendidos: no son movimientos del usuario. Sin esto, un
+   pull que trae menos animales se leería como una baja masiva.
+
+   ── LA COLA (outbox) ─────────────────────────────────────────────────────
+   Cada papelito lleva su event_id. Se guarda en `e5m_animal_outbox` y se manda en
+   tandas de ≤50. El ACK es POR EVENTO: el que el server confirma sale de la cola;
+   el que falla se queda y se reintenta. Un event_id ya aplicado contesta
+   `idempotente:true` — el reintento nunca duplica.
+
+   ── CONVIVENCIA CON EL SYNC DE HOY ───────────────────────────────────────
+   Por ahora los papelitos van ADEMÁS del bulk-push de animals que ya existe. Los
+   dos caminos convergen (el merge del server es lot-granular y los eventos son
+   idempotentes) y así podemos comparar los dos durante unos días. Cuando el log
+   `animal_events` demuestre que no se pierde nada, se apaga el push y recién ahí
+   el desktop deja de mandar la tabla.
+
+   KILL SWITCH:  __R0_OFF = true   → no emite nada, todo vuelve a como está hoy.
+   DIAGNÓSTICO:  r0.estado() · r0.cola() · r0.flush() · r0.simular() · r0.rebasar()
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var LS_ANIMALS = 'e5m_animals';
+  var LS_OUTBOX  = 'e5m_animal_outbox';
+  var LS_SHADOW  = 'e5m_animal_shadow';
+  var MAX_LOTE = 50;          /* el server acepta hasta 50 eventos por llamada */
+  var MAX_INTENTOS = 8;
+  var MAX_COLA = 500;
+  var INTENCION_TTL = 8000;   /* una pista vieja no se aplica a otra operación */
+
+  /* ── utilidades ───────────────────────────────────────────────────────── */
+  function idDe(a) { return String((a && (a.animal_id != null ? a.animal_id : a.id)) || ''); }
+  function nuevoEventId() {
+    try { if (typeof crypto !== 'undefined' && crypto.randomUUID) return 'ev_' + crypto.randomUUID(); } catch (e) {}
+    return 'ev_' + Date.now().toString(36) + '_' + Math.floor(Math.random() * 1e9).toString(36);
+  }
+  function hoy() {
+    try { if (typeof localDate === 'function') return localDate(); } catch (e) {}
+    return new Date().toISOString().slice(0, 10);
+  }
+  function firmaPesajes(a) {
+    return (a && Array.isArray(a.pesajes) ? a.pesajes : [])
+      .map(function (p) { return [p && p.fecha, p && p.peso, (p && p.tipo) || ''].join('~'); })
+      .sort().join('|');
+  }
+  function indexar(mapa) {
+    var out = {};
+    Object.keys(mapa || {}).forEach(function (lote) {
+      (mapa[lote] || []).forEach(function (a) {
+        var id = idDe(a);
+        if (id) out[id] = { lote: lote, a: a };
+      });
+    });
+    return out;
+  }
+  function leerJSON(k, def) {
+    try { var v = JSON.parse(localStorage.getItem(k) || 'null'); return v == null ? def : v; } catch (e) { return def; }
+  }
+
+  /* ── EL DIFF → PAPELITOS (función pura, testeable) ────────────────────── */
+  function r0Derivar(antes, despues, intencion) {
+    intencion = intencion || {};
+    var A = indexar(antes), D = indexar(despues);
+    var evs = [];
+    var fecha = intencion.fecha || hoy();
+
+    var idsD = Object.keys(D);
+    var salieron = Object.keys(A).filter(function (id) { return !D[id]; });
+    var entraron = idsD.filter(function (id) { return !A[id]; });
+
+    /* ── renombres ───────────────────────────────────────────────────────── */
+    var renombrados = {};
+    salieron.slice().forEach(function (viejo) {
+      var fv = firmaPesajes(A[viejo].a);
+      if (!fv) return;                        /* sin pesajes no hay huella: no adivinamos */
+      var otrosIguales = salieron.filter(function (o) { return o !== viejo && firmaPesajes(A[o].a) === fv; });
+      if (otrosIguales.length) return;        /* dos que salen con la misma huella */
+      var cand = entraron.filter(function (nuevo) {
+        return !renombrados[nuevo] &&
+               D[nuevo].lote === A[viejo].lote &&
+               firmaPesajes(D[nuevo].a) === fv;
+      });
+      if (cand.length !== 1) return;          /* ambigüedad: mejor baja+alta */
+      var nuevo = cand[0];
+      renombrados[nuevo] = viejo;
+      evs.push({ tipo: 'correccion', animal_id: viejo, fecha: fecha, lot_code: A[viejo].lote,
+                 cambios: { id: nuevo } });
+      salieron.splice(salieron.indexOf(viejo), 1);
+      entraron.splice(entraron.indexOf(nuevo), 1);
+    });
+
+    /* ── altas, agrupadas por lote: un papelito por lote ─────────────────── */
+    var porLote = {};
+    entraron.forEach(function (id) {
+      (porLote[D[id].lote] = porLote[D[id].lote] || []).push(D[id].a);
+    });
+    Object.keys(porLote).forEach(function (lote) {
+      evs.push({
+        tipo: (intencion.alta === 'compra' ? 'alta_compra' : 'alta_lote'),
+        lot_code: lote, fecha: fecha,
+        animales: porLote[lote].map(function (a) {
+          var o = { id: idDe(a), raza: a.raza || a.breed || '' };
+          var p0 = (a.pesajes || [])[0];
+          if (p0 && p0.peso != null) o.peso = p0.peso;
+          if (a.rfid) o.rfid = a.rfid;
+          return o;
+        })
+      });
+    });
+
+    /* ── movimientos ─────────────────────────────────────────────────────── */
+    idsD.forEach(function (id) {
+      if (A[id] && A[id].lote !== D[id].lote) {
+        evs.push({ tipo: 'mover', animal_id: id, to: D[id].lote, fecha: fecha });
+      }
+    });
+
+    /* ── pesajes nuevos: TODOS en una sola sesión (decisión de José) ─────── */
+    var filas = [];
+    idsD.forEach(function (id) {
+      var antesA = A[id] ? A[id].a : (renombrados[id] ? A[renombrados[id]].a : null);
+      if (!antesA) return;
+      var viejos = {};
+      (antesA.pesajes || []).forEach(function (p) { viejos[[p && p.fecha, p && p.peso, (p && p.tipo) || ''].join('~')] = 1; });
+      (D[id].a.pesajes || []).forEach(function (p) {
+        var k = [p && p.fecha, p && p.peso, (p && p.tipo) || ''].join('~');
+        if (viejos[k]) return;
+        var f = { animal_id: id, fecha: (p && p.fecha) || fecha, peso: p && p.peso };
+        if (p && p.tipo) f.tipo = p.tipo;
+        if (p && p.nota) f.nota = p.nota;
+        filas.push(f);
+      });
+    });
+    if (filas.length) evs.push({ tipo: 'pesaje_sesion', fecha: fecha, pesajes: filas });
+
+    /* ── correcciones de raza / rfid ─────────────────────────────────────── */
+    idsD.forEach(function (id) {
+      if (!A[id]) return;
+      var x = A[id].a, y = D[id].a, c = {};
+      var rx = x.raza || x.breed || '', ry = y.raza || y.breed || '';
+      if (rx !== ry) c.raza = ry;
+      if ((x.rfid || '') !== (y.rfid || '')) c.rfid = y.rfid || '';
+      if (Object.keys(c).length) evs.push({ tipo: 'correccion', animal_id: id, fecha: fecha, cambios: c });
+    });
+
+    /* ── salidas ─────────────────────────────────────────────────────────── */
+    if (salieron.length) {
+      if (intencion.salida === 'venta') {
+        evs.push({ tipo: 'venta', animal_ids: salieron.slice(), fecha: fecha,
+                   lot_code: intencion.lot_code || (A[salieron[0]] && A[salieron[0]].lote) || '' });
+      } else {
+        salieron.forEach(function (id) {
+          evs.push({ tipo: 'baja', animal_id: id, fecha: fecha, lot_code: A[id].lote,
+                     causa: intencion.causa || '' });
+        });
+      }
+    }
+    return evs;
+  }
+
+  /* ── LA COLA ──────────────────────────────────────────────────────────── */
+  function colaLeer() { var q = leerJSON(LS_OUTBOX, []); return Array.isArray(q) ? q : []; }
+  function colaGuardar(q) {
+    if (q.length > MAX_COLA) {
+      console.error('[R0] la cola pasó de ' + MAX_COLA + ' papelitos — se descartan los más viejos');
+      q = q.slice(-MAX_COLA);
+    }
+    try { _set(LS_OUTBOX, JSON.stringify(q)); } catch (e) { console.error('[R0] no se pudo guardar la cola:', e.message); }
+  }
+  function encolar(evs) {
+    if (!evs || !evs.length) return 0;
+    var q = colaLeer();
+    evs.forEach(function (ev) {
+      ev.event_id = ev.event_id || nuevoEventId();
+      ev._encolado = Date.now();
+      ev._intentos = 0;
+      q.push(ev);
+    });
+    colaGuardar(q);
+    console.log('[R0] +' + evs.length + ' papelito(s): ' + evs.map(function (e) { return e.tipo; }).join(', ') + ' (cola: ' + q.length + ')');
+    badge();
+    return evs.length;
+  }
+
+  /* ── ENVÍO con ACK por evento ─────────────────────────────────────────── */
+  var enviando = false;
+  function flush() {
+    if (typeof window !== 'undefined' && window.__R0_OFF) return Promise.resolve(false);
+    if (enviando) return Promise.resolve(false);
+    if (typeof navigator !== 'undefined' && navigator && navigator.onLine === false) return Promise.resolve(false);
+    var q = colaLeer();
+    if (!q.length) return Promise.resolve(true);
+
+    var apiUrl = (typeof getApiUrl === 'function') ? getApiUrl() : (localStorage.getItem('e5m_api_url') || '');
+    var token = localStorage.getItem('e5m_api_token') || '';
+    if (!apiUrl || !token) return Promise.resolve(false);
+
+    enviando = true;
+    var tanda = q.slice(0, MAX_LOTE);
+    var limpios = tanda.map(function (ev) {
+      var o = {}; Object.keys(ev).forEach(function (k) { if (k.charAt(0) !== '_') o[k] = ev[k]; });
+      return o;
+    });
+
+    return fetch(apiUrl + '/animal-events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token,
+                 'X-App-Type': 'desktop', 'X-App-Version': (typeof _APP_VERSION !== 'undefined' ? _APP_VERSION : '') },
+      body: JSON.stringify({ events: limpios })
+    }).then(function (r) { return r.json().then(function (j) { return { status: r.status, d: j }; }); })
+      .then(function (resp) {
+        var d = resp.d || {};
+        if (resp.status === 503) { console.warn('[R0] el server tiene los papelitos apagados — reintento después'); return false; }
+        if (!d.ok || !Array.isArray(d.results)) { console.warn('[R0] respuesta rara del server:', d); return false; }
+
+        var ok = {}, errores = {};
+        d.results.forEach(function (r) {
+          if (!r) return;
+          if (r.ok) ok[String(r.event_id)] = 1; else errores[String(r.event_id)] = r.error || 'error';
+        });
+        var descartados = 0;
+        var q2 = colaLeer().filter(function (ev) {
+          var eid = String(ev.event_id);
+          if (ok[eid]) return false;                    /* aplicado (o idempotente) → fuera */
+          if (errores[eid]) {
+            ev._intentos = (ev._intentos || 0) + 1;
+            ev._error = errores[eid];
+            if (ev._intentos >= MAX_INTENTOS) {
+              descartados++;
+              console.error('[R0] papelito descartado tras ' + MAX_INTENTOS + ' intentos:', ev.tipo, eid, errores[eid]);
+              return false;
+            }
+          }
+          return true;
+        });
+        colaGuardar(q2);
+        if (descartados) { try { toast(descartados + ' movimiento(s) de animales no se pudieron sincronizar. Revisá la consola.', 'error'); } catch (e) {} }
+        console.log('[R0] ' + Object.keys(ok).length + '/' + tanda.length + ' papelito(s) aplicados' +
+                    (Object.keys(errores).length ? ' · ' + Object.keys(errores).length + ' con error' : '') +
+                    ' · quedan ' + q2.length);
+        badge();
+        return q2.length ? 'seguir' : true;
+      })
+      .catch(function (e) { console.warn('[R0] no se pudo mandar:', e.message); return false; })
+      .then(function (r) {
+        enviando = false;
+        if (r === 'seguir') { flushPronto(); return true; }
+        return r;
+      });
+  }
+  function flushPronto() { try { setTimeout(function () { flush(); }, 800); } catch (e) {} }
+
+  /* ── BADGE ────────────────────────────────────────────────────────────── */
+  function badge() {
+    try {
+      var n = colaLeer().length;
+      var el = document.getElementById('r0-badge');
+      if (!n) { if (el) el.remove(); return; }
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'r0-badge';
+        el.style.cssText = 'position:fixed;bottom:14px;right:14px;z-index:9998;background:#1f6feb;color:#fff;' +
+          'padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;' +
+          'box-shadow:0 2px 10px rgba(0,0,0,.35);font-family:inherit';
+        el.title = 'Movimientos de animales esperando confirmación del servidor. Click para reintentar.';
+        el.onclick = function () { flush(); };
+        document.body.appendChild(el);
+      }
+      el.textContent = '📨 ' + n + ' papelito' + (n === 1 ? '' : 's');
+    } catch (e) {}
+  }
+
+  /* ── EL ENGANCHE ──────────────────────────────────────────────────────── */
+  var _set = localStorage.setItem.bind(localStorage);
+  function sombraGuardar(txt) { try { _set(LS_SHADOW, txt); } catch (e) {} }
+
+  var suspendido = 0;
+  function suspender(fn) { suspendido++; try { return fn(); } finally { suspendido--; } }
+
+  if (!localStorage.setItem.__r0) {
+    var envuelto = function (k, v) {
+      if (k !== LS_ANIMALS) return _set(k, v);
+      var emitir = false, antes = null;
+      try {
+        emitir = !(typeof window !== 'undefined' && window.__R0_OFF) && !suspendido;
+        if (emitir) antes = leerJSON(LS_SHADOW, null);
+      } catch (e) {}
+      var r = _set(k, v);
+      try {
+        if (emitir) {
+          var despues = JSON.parse(v || '{}');
+          var i = (typeof window !== 'undefined' && window.__r0Intencion) || null;
+          if (typeof window !== 'undefined') window.__r0Intencion = null;
+          if (i && i._ts && (Date.now() - i._ts) > INTENCION_TTL) i = null;   /* pista vieja: se ignora */
+          if (antes) {
+            var evs = r0Derivar(antes, despues, i || {});
+            if (evs.length) { encolar(evs); flushPronto(); }
+          } else {
+            console.log('[R0] primera corrida: se toma la foto base, no se emiten papelitos');
+          }
+        }
+        sombraGuardar(v);
+      } catch (e) { console.error('[R0] fallo derivando papelitos (los datos locales están OK):', e.message); }
+      return r;
+    };
+    envuelto.__r0 = true;
+    localStorage.setItem = envuelto;
+  }
+
+  /* Después de un pull/restore/import el server manda su verdad: se re-basa la
+     sombra sin emitir nada. Sin esto, un pull que trae menos animales se leería
+     como una baja masiva. */
+  function rebasar(motivo) {
+    try {
+      sombraGuardar(localStorage.getItem(LS_ANIMALS) || '{}');
+      console.log('[R0] sombra re-basada (' + motivo + ')');
+    } catch (e) {}
+  }
+
+  /* NO son movimientos del usuario → suspendidos, y re-basan al terminar. */
+  var NO_EMITEN = ['pullFromRailwayDesktop', 'pullThenPush', 'startRestoreWithData', 'forcePullFromToken',
+                   'confirmOnboardingImport', 'importBackup', 'reconcileNextIds', 'cleanupOrphanLots',
+                   'repararAnimalesLotes', 'getAnimalesDB'];
+  NO_EMITEN.forEach(function (nombre) {
+    var f = (typeof window !== 'undefined') ? window[nombre] : null;
+    if (typeof f !== 'function' || f.__r0) return;
+    var w = (function (base, n) {
+      function envolt() {
+        var res = suspender(function () { return base.apply(this, arguments); }.bind(this));
+        if (n !== 'getAnimalesDB') { try { setTimeout(function () { rebasar('después de ' + n); }, 5000); } catch (e) {} }
+        return res;
+      }
+      envolt.__r0 = true;
+      return envolt;
+    })(f, nombre);
+    window[nombre] = w;
+  });
+
+  /* Pistas de intención: 3 wrappers para que el historial diga "venta" y
+     "compra" en vez de "baja" y "alta". El papelito sale igual sin esto. */
+  function pista(nombre, obj) {
+    var f = (typeof window !== 'undefined') ? window[nombre] : null;
+    if (typeof f !== 'function' || f.__r0i) return;
+    var w = (function (base) {
+      function envolt() {
+        try { window.__r0Intencion = Object.assign({ _ts: Date.now() }, typeof obj === 'function' ? obj() : obj); } catch (e) {}
+        return base.apply(this, arguments);
+      }
+      envolt.__r0i = true;
+      return envolt;
+    })(f);
+    window[nombre] = w;
+  }
+  pista('saveSale', { salida: 'venta' });
+  pista('_releaseCG', { alta: 'compra' });
+  pista('confirmarBajaAnimal', function () {
+    var el = document.getElementById('baja-causa');
+    return { causa: (el && el.value) || '' };
+  });
+
+  window.__r0Suspender = suspender;
+
+  /* ── arranque ─────────────────────────────────────────────────────────── */
+  try {
+    setTimeout(function () {
+      if (window.__R0_OFF) { console.log('[R0] apagado por __R0_OFF'); return; }
+      if (!localStorage.getItem(LS_SHADOW)) rebasar('arranque');
+      badge();
+      flush();
+    }, 4000);
+    setInterval(function () { if (!window.__R0_OFF) flush(); }, 60000);
+    window.addEventListener('online', function () { flush(); });
+  } catch (e) {}
+
+  /* ── API de diagnóstico ───────────────────────────────────────────────── */
+  window.r0 = {
+    derivar: r0Derivar,
+    cola: function () {
+      var q = colaLeer();
+      console.table(q.map(function (e) {
+        return { tipo: e.tipo, event_id: e.event_id, lote: e.lot_code || e.to || '',
+                 intentos: e._intentos || 0, error: e._error || '' };
+      }));
+      return q;
+    },
+    flush: flush,
+    estado: function () {
+      var q = colaLeer(), s = leerJSON(LS_SHADOW, {}), a = leerJSON(LS_ANIMALS, {});
+      var n = function (m) { return Object.keys(m || {}).reduce(function (t, k) { return t + (m[k] || []).length; }, 0); };
+      console.log('%cR0 · papelitos', 'font-weight:bold;color:#58a6ff');
+      console.table([{ 'en cola': q.length, 'animales (sombra)': n(s), 'animales (local)': n(a),
+                       'sombra al día': n(s) === n(a) ? 'sí' : 'NO',
+                       'kill switch': window.__R0_OFF ? 'APAGADO' : 'activo' }]);
+      return { cola: q.length, sombra: n(s), local: n(a) };
+    },
+    simular: function () {
+      var evs = r0Derivar(leerJSON(LS_SHADOW, {}), leerJSON(LS_ANIMALS, {}), {});
+      console.log('Papelitos que saldrían del estado actual vs la sombra:');
+      console.table(evs.map(function (e) { return { tipo: e.tipo, detalle: JSON.stringify(e).slice(0, 90) }; }));
+      return evs;
+    },
+    rebasar: rebasar,
+    suspender: suspender
+  };
+  console.log('[v1.8.160] R0 fase 2 · papelitos del desktop activos — r0.estado() para ver');
+})();
+
+/*__R0_END__*/
+</script>
+
+<script id="sal-producto-v18161">
+/*__V161_START__*/
+/* ═══════════════════════════════════════════════════════════════════════════
+   v1.8.161 — Sal por PRODUCTO real + fix del catálogo + sin borrar lotes
+
+   ① EL BUG DEL NOMBRE DE TABLA (tercera vez que aparece esta familia)
+      Mi código del v1.8.158 leía la tabla de productos por su nombre del SERVER.
+      En el desktop se llama distinto. El resto del índice lo hace bien, con
+      fallback a los dos nombres; mi línea era la única sin él. Resultado: el catálogo salía vacío y TODOS los tipos
+      de sal se marcaban como "sin producto en Stock".
+      Es el mismo error que `window.db` (v1.8.159) y que `field_activities` vs
+      `activities` (limpieza fase 2). Por eso ahora hay un test que barre el
+      índice entero buscando lecturas de tablas por su nombre remoto.
+
+   ② EL REPORTE DE SAL AGRUPABA POR TEXTO LIBRE, NO POR PRODUCTO
+      Esto es más grave que el aviso. El reporte agrupaba por el campo `tipo`,
+      que se escribe a mano y tiene 9 variantes para 4 productos ("Calcimin",
+      "Calcimin ", "Sal calcimin", "Sal calcimin ", "mineral", "Mineral"…).
+      Pero el 93% de los despachos ya trae `stock_product`: el producto REAL que
+      se descontó del stock. Y los dos campos no tienen nada que ver entre sí —
+      en los datos de César, `tipo:"mineral"` se descontó de Sal Mineral (56
+      veces), de Sal Transición (31) y de Sal Arizona Plus (3).
+      O sea que "Distribución por tipo: Mineral 65% / Calcimin 33%" describía
+      texto libre, no productos. Ahora agrupa por `stock_product` y sólo cae al
+      `tipo` normalizado para los 11 registros viejos que no lo tienen.
+
+      Lo que pasa a mostrar, con los datos de hoy:
+        Sal Mineral 2.475 kg · Sal Transición 880 · Sal Arizona Plus 560
+        Calcimin 240 ⚠ (los 11 viejos sin producto) · Calcimin Aditivada 140 ⚠
+      Total 4.295 kg — el mismo acumulado de siempre, ahora bien repartido.
+      Y el aviso ⚠ pasa de 4 tipos falsos a 2 huérfanos de verdad.
+
+   ③ SE VA EL BOTÓN "X" DE LA PESTAÑA LOTES
+      Riesgo innecesario a un click de distancia. La función `deleteLot` sigue
+      existiendo para un caso excepcional desde la consola, pero ya no se pinta.
+
+   Kill switches: __V161_SAL_OFF · __V161_LOTES_X_ON (vuelve a poner la X)
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  /* ═══ ① catálogo de sal: leer la tabla con el nombre LOCAL ═══ */
+  function v161ProductosSal() {
+    /* la tabla es `products` en el desktop y `vet_products` en el server */
+    var prods = (typeof db !== 'undefined' && db) ? (db.vet_products || db.products || []) : [];
+    /* y el filtro es el helper que ya existe y ya funciona bien en "Stock disponible":
+       exige type/subtype/category === sal_mineral. El regex suelto del v1.8.158 se
+       comia ademas Yodo y BioAnemin, que son vitaminas veterinarias, no sal. */
+    if (typeof _salIsProductOfCategory === 'function') {
+      return prods.filter(function (p) { return _salIsProductOfCategory(p, 'sal'); });
+    }
+    return prods.filter(function (p) {
+      var t = String((p && p.type) || '').toLowerCase();
+      var c = String((p && p.category) || '').toLowerCase();
+      return t === 'sal_mineral' || t === 'sal' || c === 'sal_mineral' || c === 'sal' || c === 'sal y suplementos';
+    });
+  }
+  window.v161ProductosSal = v161ProductosSal;
+
+  /* pisa la versión rota del v1.8.158 (mismo nombre, ahora con el fallback) */
+  if (typeof window.v158TipoTieneProducto === 'function') {
+    window.v158TipoTieneProducto = function (tipoNorm) {
+      var t = norm(tipoNorm);
+      if (!t || t === 'sin clasificar') return false;
+      return v161ProductosSal().some(function (p) {
+        var n = norm(p.name || p.nombre);
+        return !!n && (n === t || n.indexOf(t) >= 0 || t.indexOf(n) >= 0);
+      });
+    };
+  }
+
+  function norm(s) {
+    if (typeof _salNormalizeTipo === 'function') return _salNormalizeTipo(s);
+    s = String(s == null ? '' : s).toLowerCase().trim();
+    s = s.replace(/[áàä]/g, 'a').replace(/[éèë]/g, 'e').replace(/[íìï]/g, 'i').replace(/[óòö]/g, 'o').replace(/[úùü]/g, 'u');
+    return s.replace(/^sal\s+/, '').replace(/\s+/g, ' ').trim();
+  }
+
+  /* ═══ ② agrupar por PRODUCTO real ═══ */
+  var etiquetas = {};   /* normalizado → nombre lindo del producto */
+
+  function _salTipoEfectivo(r) {
+    if (window.__V161_SAL_OFF) return norm(r && r.tipo);
+    var p = r && (r.stock_product || r.producto || '');
+    if (p) {
+      var n = norm(p);
+      if (n) { etiquetas[n] = String(p).trim(); return n; }
+    }
+    return norm(r && r.tipo);
+  }
+  window._salTipoEfectivo = _salTipoEfectivo;
+
+  /* el label del donut/dropdown muestra el nombre real del producto */
+  if (typeof _salTipoLabel === 'function' && !_salTipoLabel.__v161) {
+    _salTipoLabel = (function (base) {
+      function w(n) {
+        if (!window.__V161_SAL_OFF && etiquetas[n]) return etiquetas[n];
+        return base.apply(this, arguments);
+      }
+      w.__v161 = true;
+      return w;
+    })(_salTipoLabel);
+    window._salTipoLabel = _salTipoLabel;
+  }
+
+  /* precargar las etiquetas para que el dropdown ya salga con los nombres reales */
+  function precargar() {
+    try { ((typeof db !== 'undefined' && db && db.sal) || []).forEach(_salTipoEfectivo); } catch (e) {}
+  }
+  precargar();
+
+  /* el aviso ⚠ ahora mira el producto real */
+  if (typeof _salPopulateTipoFilter === 'function' && !_salPopulateTipoFilter.__v161) {
+    _salPopulateTipoFilter = (function (base) {
+      function w() {
+        precargar();
+        var r = base.apply(this, arguments);
+        try {
+          if (window.__V161_SAL_OFF) return r;
+          var sel = document.getElementById('sal-tipo-filter');
+          var av = document.getElementById('v158-sal-aviso');
+          if (!sel) return r;
+          var huerf = [];
+          Array.prototype.forEach.call(sel.options, function (o) {
+            if (!o.value) return;
+            var tiene = window.v158TipoTieneProducto ? window.v158TipoTieneProducto(o.value) : true;
+            o.textContent = o.textContent.replace(/^⚠\s*/, '');
+            if (!tiene) { huerf.push(etiquetas[o.value] || o.value); o.textContent = '⚠ ' + o.textContent; }
+          });
+          if (!huerf.length) { if (av) av.remove(); return r; }
+          if (av) {
+            av.textContent = '⚠ ' + huerf.length + ' sin producto en Stock: ' + huerf.join(', ');
+            av.title = 'Estos kg se despacharon contra un producto que hoy no está en el catálogo de Stock ' +
+                       '(o se cargaron a mano antes de que el registro pidiera producto), así que no se pueden valorizar.';
+          }
+        } catch (e) { console.warn('[v161 sal]', e); }
+        return r;
+      }
+      w.__v161 = true;
+      return w;
+    })(_salPopulateTipoFilter);
+    window._salPopulateTipoFilter = _salPopulateTipoFilter;
+  }
+
+  /* ═══ ③ fuera la X de Lotes ═══ */
+  function sacarX() {
+    if (window.__V161_LOTES_X_ON) return;
+    try {
+      var tb = document.getElementById('lots-tbody') || document.querySelector('#page-lotes tbody');
+      if (!tb) return;
+      tb.querySelectorAll('button.btn-danger').forEach(function (b) {
+        if (/^\s*X\s*$/.test(b.textContent || '') && /deleteLot/.test(b.getAttribute('onclick') || '')) b.remove();
+      });
+    } catch (e) {}
+  }
+  if (typeof renderLotes === 'function' && !renderLotes.__v161) {
+    renderLotes = (function (base) {
+      function w() { var r = base.apply(this, arguments); try { sacarX(); } catch (e) {} return r; }
+      w.__v161 = true;
+      return w;
+    })(renderLotes);
+    window.renderLotes = renderLotes;
+  }
+  try { setTimeout(sacarX, 1500); } catch (e) {}
+
+  console.log('[v1.8.161] sal por producto real + catálogo arreglado + Lotes sin botón de borrar');
+})();
+
+/*__V161_END__*/
+</script>
+
+<script id="sal-directo-v18163">
+/*__V163_START__*/
+/* ═══════════════════════════════════════════════════════════════════════════
+   v1.8.163 — SAL/ALIMENTO COMO COSTO DIRECTO DEL LOTE (valorizado de verdad)
+
+   Lo que habíamos quedado en el v1.8.158 y quedó a medias — mea culpa doble:
+   ese wrapper calculaba `alimentoDirecto` pero (a) el PDF de Costo por kg nunca
+   lo mostró, y (b) tampoco se sumaba a r.total, así que no entraba al costo
+   operativo. Encima el pool "Alimento / sal" sale de db.purchases (compras de
+   insumos) y suele estar en 0, así que repartir el pool era repartir nada.
+
+   AHORA SE PUEDE HACER BIEN, gracias a lo que ya existe:
+     · v1.8.161: cada despacho de sal lleva su `stock_product` (el producto REAL
+       que se descontó del stock).
+     · El catálogo de Stock tiene `unit_cost` por producto (Bs/kg).
+   ⇒ COSTO DIRECTO del lote = Σ (kg despachados al lote × costo del producto).
+     Sin prorrateo, sin pool: la sal que comió el lote, al precio que se pagó.
+
+   REGLAS
+   · Se valoriza con stock_product → si no hay, con el tipo escrito (normalizado)
+     si coincide con un producto del catálogo con costo > 0.
+   · Los kg SIN valorizar (producto sin costo — ej. Sal Mineral con costo 0 — o
+     sin producto) se informan aparte con ⚠: no se inventa un precio.
+   · Anti doble conteo: lo valorizado (de TODOS los lotes) se RESTA del pool
+     "Alimento / sal" de compras antes de prorratear el resto.
+   · El monto directo entra a r.total → el costo operativo y el Bs/kg lo ven.
+
+   Kill switch: __V163_SAL_OFF (vuelve al comportamiento del v158).
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  function _n163(v) { var x = parseFloat(v); return isFinite(x) ? x : 0; }
+  function _norm163(s) {
+    s = String(s == null ? '' : s).toLowerCase().trim();
+    s = s.replace(/[áàä]/g, 'a').replace(/[éèë]/g, 'e').replace(/[íìï]/g, 'i').replace(/[óòö]/g, 'o').replace(/[úùü]/g, 'u');
+    return s.replace(/^sal\s+/, '').replace(/\s+/g, ' ').trim();
+  }
+  function _d163(v) { var s = String(v || '').slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null; }
+
+  /* costo por kg de cada producto del catálogo (solo los que tienen costo > 0) */
+  function v163CostosCatalogo() {
+    var out = {};
+    var prods = (typeof db !== 'undefined' && db) ? (db.vet_products || db.products || []) : [];
+    prods.forEach(function (p) {
+      var c = _n163(p && p.unit_cost);
+      var n = _norm163(p && (p.name || p.nombre));
+      if (n && c > 0) out[n] = { costo: c, nombre: String(p.name || p.nombre || '').trim() };
+    });
+    return out;
+  }
+  window.v163CostosCatalogo = v163CostosCatalogo;
+
+  /* PURA: valoriza los despachos de sal+alimento en el período.
+     → { lote:{kg,bs,detalle{prod:{kg,bs,costo}}}, global:{kg,bs}, sinValorLote, sinValorGlobal } */
+  function v163Valorizar(lotCode, desde, hasta) {
+    var cm = v163CostosCatalogo();
+    var out = { kg: 0, bs: 0, detalle: {}, globalKg: 0, globalBs: 0, sinValorKg: 0, sinValorGlobalKg: 0 };
+    function scan(arr) {
+      (arr || []).forEach(function (r) {
+        if (!r) return;
+        var f = _d163(r.fecha || r.date || r.created_at);
+        if (!f || (desde && f < desde) || (hasta && f > hasta)) return;
+        var kg = _n163(r.qty != null ? r.qty : (r.kg != null ? r.kg : r.cantidad));
+        if (kg <= 0) return;
+        var esLote = String(r.lot_code || '').trim() === lotCode;
+        var n = _norm163(r.stock_product || r.producto || r.tipo);
+        var hit = n ? cm[n] : null;
+        if (hit) {
+          var bs = kg * hit.costo;
+          out.globalKg += kg; out.globalBs += bs;
+          if (esLote) {
+            out.kg += kg; out.bs += bs;
+            var d = out.detalle[hit.nombre] = out.detalle[hit.nombre] || { kg: 0, bs: 0, costo: hit.costo };
+            d.kg += kg; d.bs += bs;
+          }
+        } else {
+          out.sinValorGlobalKg += kg;
+          if (esLote) out.sinValorKg += kg;
+        }
+      });
+    }
+    scan(typeof db !== 'undefined' && db && db.sal);
+    scan(typeof db !== 'undefined' && db && db.alimento);
+    return out;
+  }
+  window.v163Valorizar = v163Valorizar;
+
+  /* ── wrapper del motor de costos (corre DESPUÉS del v158: lo supersede) ── */
+  if (typeof _ahCalcularIndirectos === 'function' && !_ahCalcularIndirectos.__v163) {
+    _ahCalcularIndirectos = (function (base) {
+      function w(lot, ventas, compras) {
+        var r = base.apply(this, arguments);
+        try {
+          if (window.__V163_SAL_OFF || !r || !lot) return r;
+          var desde = r._periodoDesde || _d163(lot.entry_date);
+          var hasta = r._periodoHasta || _d163(new Date().toISOString());
+          var v = v163Valorizar(lot.code, desde, hasta);
+
+          /* pool ORIGINAL de compras (v158 pudo haberlo achicado: usamos el de antes) */
+          var P = _n163(r.alimento_total_original != null ? r.alimento_total_original : r.alimento_total);
+          var resto = Math.max(0, P - v.globalBs);   /* anti doble conteo */
+          var prevAsignado = _n163(r.alimento);
+
+          r.alimento_total = resto;
+          r.alimento = resto * (_n163(r.fraccionPct) / 100);
+          r.salDirectoBs = v.bs;
+          r.salDirectoKg = v.kg;
+          r.salKgSinValor = v.sinValorKg;
+          r.salDirectoDetalle = Object.keys(v.detalle).map(function (k) {
+            return { producto: k, kg: v.detalle[k].kg, costo: v.detalle[k].costo, bs: v.detalle[k].bs };
+          }).sort(function (a, b) { return b.bs - a.bs; });
+          r.alimentoDirecto = v.bs;   /* el campo del v158, ahora con plata de verdad */
+          r.alimentoModo = v.bs > 0
+            ? ('consumo valorizado: ' + Math.round(v.kg).toLocaleString() + ' kg a costo de Stock')
+            : (v.sinValorKg > 0 ? 'consumo sin valorizar (producto sin costo en Stock)' : 'sin despachos en el período');
+
+          /* el directo ENTRA al total del motor → costo operativo y Bs/kg lo ven */
+          r.total = _n163(r.total) - prevAsignado + r.alimento + v.bs;
+        } catch (e) { console.warn('[v163 sal directo]', e); }
+        return r;
+      }
+      w.__v163 = true;
+      return w;
+    })(_ahCalcularIndirectos);
+    window._ahCalcularIndirectos = _ahCalcularIndirectos;
+  }
+  console.log('[v1.8.163] sal/alimento como costo directo valorizado del lote');
+})();
+
+/*__V163_END__*/
 </script>
 
 </body>
