@@ -2549,11 +2549,20 @@ function orMarcajeGo(){
     <!-- Buscador de ternero/animal -->
     <div class="card" style="margin-bottom:14px">
       <div class="card-body" style="padding:14px">
-        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end">
+        <!-- v1.8.171: primero el lote, despues el animal. Antes el desplegable
+             volcaba todos los animales de todos los lotes ordenados como texto. -->
+        <div style="display:grid;grid-template-columns:.75fr 1fr 1fr auto;gap:10px;align-items:end">
           <div>
-            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Buscar por cría / ternero (ID o arete)</label>
-            <input type="text" id="repro-hist-search-cria" list="repro-hist-crias-list" placeholder="Ej: 0042" autocomplete="off" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;width:100%">
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Lote</label>
+            <select id="repro-hist-lote" onchange="if(typeof v171LoteCambio==='function')v171LoteCambio()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;width:100%">
+              <option value="">Todos los lotes</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Cría / ternero (ID o arete)</label>
+            <input type="text" id="repro-hist-search-cria" list="repro-hist-crias-list" placeholder="Ej: 0042 — o elegí un lote primero" autocomplete="off" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;width:100%">
             <datalist id="repro-hist-crias-list"></datalist>
+            <div id="repro-hist-cria-hint" style="font-size:10.5px;color:var(--muted);margin-top:3px"></div>
           </div>
           <div>
             <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">O por madre (vaca)</label>
@@ -49986,7 +49995,7 @@ try {
 
 <script id="costo-asientos-v18168">
 /* ═══════════════════════════════════════════════════════════════════════════
-   v1.8.170 — EL COSTO SIGUE AL ANIMAL (modelo de asientos)
+   v1.8.173 — EL COSTO SIGUE AL ANIMAL (modelo de asientos)
 
    Reemplaza al v1.8.167, que José frenó con dos objeciones correctas:
 
@@ -50163,7 +50172,7 @@ try {
      por dosis; y para cada lote, cuánta sanidad le toca HOY.
 
      Prioridad de atribución:
-       1. t.animal_ids  → lo que graba el v1.8.170 hacia adelante (exacto)
+       1. t.animal_ids  → lo que graba el v1.8.173 hacia adelante (exacto)
        2. t.animal_id   → tratamiento individual (exacto)
        3. reconstrucción por _movements: qué animales estaban en t.lot_code el
           día t.applied_at (histórico). Si los candidatos no coinciden con
@@ -50423,7 +50432,7 @@ try {
 </script>
 <script id="origen-animal-v18169">
 /* ═══════════════════════════════════════════════════════════════════════════
-   v1.8.170 — EL ANIMAL NO PIERDE DE DÓNDE VINO
+   v1.8.173 — EL ANIMAL NO PIERDE DE DÓNDE VINO
 
    Pregunta de José 15-08, mirando la trazabilidad del animal 1678:
    "el animal trasladado pierde el historial de desde dónde se compró, ¿esto no
@@ -50580,7 +50589,7 @@ try {
 })();
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   v1.8.170 · parte ② — QUE NADA SE PIERDA EN SILENCIO
+   v1.8.173 · parte ② — QUE NADA SE PIERDA EN SILENCIO
    Dos avisos que faltaban y que hicieron que José desconfiara de los números
    (con razón, las dos veces).
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -50726,7 +50735,7 @@ try {
 })();
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   v1.8.170 · parte ③ — LOTES VACÍOS EN "INACTIVO" (idea de José, 15-08)
+   v1.8.173 · parte ③ — LOTES VACÍOS EN "INACTIVO" (idea de José, 15-08)
 
    "estos lotes que van quedando vacíos, para poder jalar la historia
     correctamente, que se pueda poner como inactivos, bajo la condición de que
@@ -50876,10 +50885,10 @@ try {
 <script id="archivar-lotes-v18170">
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   v1.8.170 — ARCHIVAR LOTES DESDE LA PANTALLA (y dos arreglos de datos)
+   v1.8.173 — ARCHIVAR LOTES DESDE LA PANTALLA (y dos arreglos de datos)
 
    José, 15-08: "un comando de consola no es una función del sistema — César no
-   va a abrir DevTools". Correcto. El v1.8.170 dejó `v169Inactivar()` en la
+   va a abrir DevTools". Correcto. El v1.8.173 dejó `v169Inactivar()` en la
    consola; acá pasa a ser un botón en la pestaña Lotes:
 
      · un lote ACTIVO con 0 animales muestra 📦 Archivar (con confirmación)
@@ -50992,6 +51001,437 @@ try {
   }
 
   console.log('[v1.8.170] archivar lotes desde la pantalla · v170ProductosSinCosto()');
+})();
+
+</script>
+<script id="buscador-lote-v18171">
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   v1.8.173 — BUSCADOR DE HISTORIAL TERNERO POR LOTE + TRANSICIONES SUAVES
+
+   José, 15-08: "este selector está horrible, deberías poner primero lote,
+   luego los animales y que no se despliegue en esa lista plana horrible" · y
+   "en la expansión de pestañas y los cambios en subpestañas deben ser
+   transiciones suaves, no instantáneas".
+
+   ① EL BUSCADOR
+   El datalist volcaba TODOS los animales de TODOS los lotes, ordenados como
+   texto — por eso salía 105, 1123, 118, 120, 122, 1234… Ahora:
+     · primero se elige el LOTE (o "todos")
+     · el desplegable muestra solo los animales de ese lote
+     · orden natural: 105, 118, 120, 122, 1123, 1234 (numérico, no alfabético)
+     · cada opción trae contexto — el lote y el último peso
+   El campo sigue siendo de texto libre: escribir un arete que no está en la
+   lista funciona igual que antes.
+
+   ② LAS TRANSICIONES
+   El v1.8.86 dejó suaves los modales, los pasos del wizard y el cambio de
+   página, pero las SUBPESTAÑAS (.tab-pane) seguían apareciendo de golpe, igual
+   que el colapso de las secciones del menú. Se agregan acá, respetando
+   prefers-reduced-motion.
+
+   Kill switch: __V171_OFF.
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  /* ── orden natural: los números como números, lo demás alfabético ── */
+  function _natural(a, b) {
+    var A = String(a == null ? '' : a).trim(), B = String(b == null ? '' : b).trim();
+    var nA = /^\d+$/.test(A), nB = /^\d+$/.test(B);
+    if (nA && nB) return parseInt(A, 10) - parseInt(B, 10);
+    if (nA !== nB) return nA ? 1 : -1;          /* los que tienen letras primero */
+    return A.localeCompare(B, 'es', { numeric: true, sensitivity: 'base' });
+  }
+  window.v171OrdenNatural = _natural;
+
+  function _animales() {
+    try { return (typeof getAnimalesDB === 'function') ? (getAnimalesDB() || {}) : JSON.parse(localStorage.getItem('e5m_animals') || '{}'); }
+    catch (e) { return {}; }
+  }
+  function _aid(a) { return String((a && (a.animal_id || a.caravana || a.id)) || '').trim(); }
+  function _peso(a) {
+    var p = (a && a.pesajes) || [];
+    return p.length ? p[p.length - 1].peso : null;
+  }
+
+  /* ── ① poblar el selector de lotes ── */
+  function v171PoblarLotes() {
+    if (window.__V171_OFF) return;
+    var sel = document.getElementById('repro-hist-lote');
+    if (!sel) return;
+    var A = _animales();
+    var previo = sel.value;
+    var lotes = Object.keys(A).filter(function (k) { return (A[k] || []).length > 0; }).sort(_natural);
+    sel.innerHTML = '<option value="">Todos los lotes</option>' + lotes.map(function (c) {
+      return '<option value="' + String(c).replace(/"/g, '&quot;') + '">' + String(c) + ' (' + (A[c] || []).length + ')</option>';
+    }).join('');
+    if (previo && lotes.indexOf(previo) >= 0) sel.value = previo;
+  }
+  window.v171PoblarLotes = v171PoblarLotes;
+
+  /* ── el desplegable de crías, acotado al lote elegido ── */
+  function v171PoblarCrias() {
+    if (window.__V171_OFF) return;
+    var dl = document.getElementById('repro-hist-crias-list');
+    var inp = document.getElementById('repro-hist-search-cria');
+    var sel = document.getElementById('repro-hist-lote');
+    var hint = document.getElementById('repro-hist-cria-hint');
+    if (!dl) return;
+    var lote = sel ? sel.value : '';
+    var A = _animales();
+    var items = [];
+    Object.keys(A).forEach(function (lc) {
+      if (lote && lc !== lote) return;
+      (A[lc] || []).forEach(function (a) {
+        var id = _aid(a); if (!id) return;
+        items.push({ id: id, lote: lc, peso: _peso(a) });
+      });
+    });
+    items.sort(function (x, y) { return _natural(x.id, y.id); });
+    dl.innerHTML = items.map(function (it) {
+      var etq = (lote ? '' : it.lote) + (it.peso ? (lote ? '' : ' · ') + it.peso + ' kg' : '');
+      return '<option value="' + it.id.replace(/"/g, '&quot;') + '">' + (etq ? etq.replace(/</g, '&lt;') : '') + '</option>';
+    }).join('');
+    if (inp) inp.placeholder = lote ? ('Animal de ' + lote + ' (' + items.length + ')') : 'Ej: 0042 — o elegí un lote primero';
+    if (hint) {
+      hint.textContent = lote
+        ? items.length + ' animal(es) en ' + lote
+        : 'Elegí un lote para acotar la lista — o escribí el arete directo';
+    }
+  }
+  window.v171PoblarCrias = v171PoblarCrias;
+
+  window.v171LoteCambio = function () {
+    var inp = document.getElementById('repro-hist-search-cria');
+    if (inp) inp.value = '';
+    v171PoblarCrias();
+    try { if (inp) inp.focus(); } catch (e) {}
+  };
+
+  /* engancharse a la función que ya poblaba los datalists */
+  if (typeof window._reproHistPopulateDataLists === 'function' && !window._reproHistPopulateDataLists.__v171) {
+    var _base = window._reproHistPopulateDataLists;
+    var w = function () {
+      var r = _base.apply(this, arguments);
+      try { if (!window.__V171_OFF) { v171PoblarLotes(); v171PoblarCrias(); } } catch (e) { console.warn('[v171]', e); }
+      return r;
+    };
+    w.__v171 = true;
+    window._reproHistPopulateDataLists = w;
+  }
+
+  /* ── ② transiciones suaves de subpestañas ── */
+  function v171Estilos() {
+    if (document.getElementById('v171-css')) return;
+    var s = document.createElement('style');
+    s.id = 'v171-css';
+    s.textContent =
+      '@keyframes v171PaneIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}' +
+      '.tab-pane.active,.tab-content.active{animation:v171PaneIn .2s ease both}' +
+      '.tab-btn{transition:color .16s ease,border-color .16s ease,background .16s ease}' +
+      '.nav-sec{overflow:hidden;transition:max-height .22s cubic-bezier(.2,.85,.25,1),opacity .16s ease}' +
+      '.nav-lbl-chevron{transition:transform .18s ease}' +
+      '@media (prefers-reduced-motion: reduce){.tab-pane.active,.tab-content.active{animation:none!important}' +
+      '.nav-sec,.tab-btn,.nav-lbl-chevron{transition:none!important}}';
+    document.head.appendChild(s);
+  }
+
+  /* switchTab quita y vuelve a poner .active — con eso la animación se re-dispara.
+     Se fuerza un reflow para que el navegador no la saltee al cambiar de pestaña. */
+  if (typeof window.switchTab === 'function' && !window.switchTab.__v171) {
+    var _st = window.switchTab;
+    var w2 = function (prefix, btnOrId, targetId) {
+      var r = _st.apply(this, arguments);
+      try {
+        if (window.__V171_OFF) return r;
+        var t = document.getElementById(targetId);
+        if (t) { t.classList.remove('active'); void t.offsetWidth; t.classList.add('active'); }
+      } catch (e) {}
+      return r;
+    };
+    w2.__v171 = true;
+    window.switchTab = w2;
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', v171Estilos);
+  else v171Estilos();
+
+  console.log('[v1.8.171] historial ternero por lote + transiciones de subpestañas');
+})();
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   v1.8.173 · parte ③ — PLANILLA DE ARETES SIN RFID
+
+   José: "para la siembra de RFID debería proveer un botón de descargar
+   planilla con aretes sin RFID como ejemplo".
+
+   Baja un CSV con los animales que TODAVÍA no tienen chip, listo para que el
+   cliente (o SINTRABOL) complete la columna `rfid` y lo pegue de vuelta en la
+   misma card. El formato coincide con lo que espera el parser: columna 1 arete,
+   columna 2 rfid; las columnas extra (lote, peso) son contexto y se ignoran al
+   pegar, así que la planilla vuelve tal cual sin editar nada más.
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+  function _animales() {
+    try { return (typeof getAnimalesDB === 'function') ? (getAnimalesDB() || {}) : JSON.parse(localStorage.getItem('e5m_animals') || '{}'); }
+    catch (e) { return {}; }
+  }
+  function _csv(v) {
+    var s = String(v == null ? '' : v);
+    return /[",;\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  window.v171AretesSinRfid = function () {
+    var A = _animales(), out = [];
+    Object.keys(A).forEach(function (lc) {
+      (A[lc] || []).forEach(function (a) {
+        if (!a) return;
+        var id = String(a.animal_id || a.caravana || a.id || '').trim();
+        if (!id) return;
+        var chip = String(a.rfid || '').trim();
+        if (chip) return;                       /* ya tiene chip */
+        var p = (a.pesajes || []);
+        out.push({ arete: id, lote: lc, peso: p.length ? p[p.length - 1].peso : '', raza: a.breed || a.raza || '' });
+      });
+    });
+    out.sort(function (x, y) {
+      if (x.lote !== y.lote) return String(x.lote).localeCompare(String(y.lote), 'es');
+      return (window.v171OrdenNatural || function (a, b) { return String(a).localeCompare(String(b)); })(x.arete, y.arete);
+    });
+    return out;
+  };
+
+  window.v171DescargarPlanilla = function () {
+    if (window.__V171_OFF) return;
+    var filas = window.v171AretesSinRfid();
+    if (!filas.length) {
+      if (typeof toast === 'function') toast('Todos los animales ya tienen chip RFID', 'info');
+      else alert('Todos los animales ya tienen chip RFID.');
+      return;
+    }
+    var cab = 'arete,rfid,lote,ultimo_peso_kg,raza';
+    var cuerpo = filas.map(function (f) {
+      return [_csv(f.arete), '', _csv(f.lote), _csv(f.peso), _csv(f.raza)].join(',');
+    });
+    /* BOM para que Excel en Windows respete los acentos */
+    var blob = new Blob(['﻿' + cab + '\n' + cuerpo.join('\n') + '\n'], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'aretes-sin-rfid_' + new Date().toISOString().slice(0, 10) + '.csv';
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { try { a.remove(); URL.revokeObjectURL(a.href); } catch (e) {} }, 200);
+    var msg = filas.length + ' arete(s) sin chip — completá la columna rfid y pegá la planilla acá';
+    if (typeof toast === 'function') toast(msg, 'success'); else console.log(msg);
+  };
+
+  /* inyectar el botón en la card de siembra (la arma el módulo v1.8.102) */
+  function v171BotonPlanilla() {
+    if (window.__V171_OFF) return;
+    var card = document.getElementById('rs-card');
+    if (!card || document.getElementById('v171-plantilla-btn')) return;
+    var ref = document.getElementById('rs-aplicar-btn');
+    if (!ref || !ref.parentElement) return;
+    var b = document.createElement('button');
+    b.id = 'v171-plantilla-btn';
+    b.className = 'btn btn-ghost btn-sm';
+    b.textContent = '⬇️ Descargar planilla';
+    b.title = 'CSV con los aretes que todavía no tienen chip. Completá la columna rfid y pegalo acá.';
+    b.onclick = window.v171DescargarPlanilla;
+    ref.parentElement.insertBefore(b, ref.nextSibling);
+    var n = window.v171AretesSinRfid().length;
+    var st = document.getElementById('rs-status');
+    if (st && !st.textContent) st.textContent = n ? (n + ' arete(s) sin chip') : 'todos tienen chip';
+  }
+  window.v171BotonPlanilla = v171BotonPlanilla;
+
+  try {
+    setTimeout(v171BotonPlanilla, 4000);
+    var t = setInterval(function () { if (document.getElementById('v171-plantilla-btn')) clearInterval(t); else v171BotonPlanilla(); }, 2500);
+    setTimeout(function () { clearInterval(t); }, 60000);
+  } catch (e) {}
+
+  console.log('[v1.8.171] planilla de aretes sin RFID — v171DescargarPlanilla()');
+})();
+
+</script>
+<script id="chip-fdxb-v18172">
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   v1.8.173 — EL CHIP FDX-B EN SUS DOS NOTACIONES
+
+   José, 16-08, probando el bastón: "el lector toma dos códigos del tag, ¿por
+   qué es así? yo cargué el que tiene el tag impreso físicamente".
+
+   No son dos códigos: es el MISMO chip escrito de dos formas.
+     964001070916990  → ISO 11784 decimal, 15 dígitos. Es el impreso en el
+                        arete y el que usa el padrón SINTRABOL.
+     F1003FD4E57E     → el mismo número en hexadecimal, 48 bits:
+                          · 10 bits altos = país/fabricante  → 964
+                          · 38 bits bajos = ID nacional      → 1.070.916.990
+                        964 + 001070916990 = 964001070916990 ✓
+
+   EL BUG
+   `normRfid` hacía `String(x).replace(/\D/g,'')` — le borraba las letras al
+   hex y dejaba "1003457", un número que no existe. Como normRfid es el único
+   punto por donde pasan los chips (10 llamadas: siembra, unicidad, captura,
+   marcaje, planilla de pesaje), arreglarlo acá arregla todo de una.
+
+   Ahora cualquiera de las dos notaciones se lleva a la forma canónica de 15
+   dígitos, así que ya no importa cómo esté configurado el bastón ni en qué
+   formato venga el padrón. Un animal sembrado en hex y escaneado en decimal
+   (o al revés) se encuentra igual.
+
+   Kill switch: __V172_OFF (vuelve al comportamiento viejo).
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var P38 = Math.pow(2, 38);
+
+  /* forma canónica: 15 dígitos ISO 11784 */
+  function v172Canon(x) {
+    var s = String(x == null ? '' : x).trim().replace(/[\s.\-_:]/g, '');
+    if (!s) return '';
+    if (window.__V172_OFF) return s.replace(/\D/g, '');
+    if (/^\d{15}$/.test(s)) return s;                          /* ya es ISO decimal */
+    if (/^[0-9A-Fa-f]{12}$/.test(s) && /[A-Fa-f]/.test(s)) {   /* hex crudo de 48 bits */
+      try {
+        var n = parseInt(s, 16);
+        if (isFinite(n) && n > 0) {
+          var pais = Math.floor(n / P38), nac = n - pais * P38;
+          if (pais > 0 && pais < 1024) {
+            return ('000' + pais).slice(-3) + ('000000000000' + nac).slice(-12);
+          }
+        }
+      } catch (e) {}
+    }
+    return s.replace(/\D/g, '');                               /* fallback: como antes */
+  }
+  window.v172Canon = v172Canon;
+
+  /* la vuelta: los 15 dígitos → hex, para poder cotejar con lo que muestra el bastón */
+  window.v172Hex = function (x) {
+    var d = v172Canon(x);
+    if (!/^\d{15}$/.test(d)) return '';
+    var pais = parseInt(d.slice(0, 3), 10), nac = parseInt(d.slice(3), 10);
+    var n = pais * P38 + nac;
+    var hex = '';
+    /* sin BigInt: se arma de a 4 bits desde abajo */
+    var resto = n;
+    while (resto > 0) { hex = '0123456789ABCDEF'[resto % 16] + hex; resto = Math.floor(resto / 16); }
+    while (hex.length < 12) hex = '0' + hex;
+    return hex;
+  };
+
+  /* ── reemplazar el único punto por donde pasan los chips ── */
+  if (typeof window.normRfid === 'function' && !window.normRfid.__v172) {
+    var w = function (x) { return v172Canon(x); };
+    w.__v172 = true;
+    window.normRfid = w;
+    try { if (typeof normRfid !== 'undefined') normRfid = w; } catch (e) {}
+  }
+
+  /* ── chips que no parecen FDX-B: los mutilados por el bug viejo ── */
+  window.v172ChipsRaros = function () {
+    var A = {};
+    try { A = (typeof getAnimalesDB === 'function') ? (getAnimalesDB() || {}) : JSON.parse(localStorage.getItem('e5m_animals') || '{}'); }
+    catch (e) { return []; }
+    var out = [];
+    Object.keys(A).forEach(function (lc) {
+      (A[lc] || []).forEach(function (a) {
+        if (!a || !a.rfid) return;
+        var raw = String(a.rfid).trim(), can = v172Canon(raw);
+        if (/^\d{15}$/.test(can)) return;                      /* está bien */
+        out.push({ animal: String(a.animal_id || a.id || ''), lote: lc, guardado: raw,
+                   canonico: can, largo: can.length,
+                   nota: can.length < 15 ? 'corto — puede ser un hex mutilado por el bug viejo' : 'largo inesperado' });
+      });
+    });
+    if (out.length) {
+      console.log('%c⚠ ' + out.length + ' chip(s) no tienen forma FDX-B de 15 dígitos:', 'color:#f0b429;font-weight:bold');
+      console.table(out);
+      console.log('   Si alguno es un hex que quedó mutilado, volvé a sembrarlo desde la card de Siembra.');
+    } else {
+      console.log('%c✓ Todos los chips cargados tienen forma FDX-B válida.', 'color:#3fb950');
+    }
+    return out;
+  };
+
+  console.log('[v1.8.172] chip FDX-B: hex y decimal son lo mismo — v172Canon() · v172Hex() · v172ChipsRaros()');
+})();
+
+</script>
+<script id="boton-planilla-v18173">
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   v1.8.173 — EL BOTÓN DE LA PLANILLA APARECE SIEMPRE
+
+   José, 16-08: "no agregaste el archivo de ejemplo acá" — la card de Siembra
+   mostraba solo Previsualizar y Aplicar, sin el ⬇️ Descargar planilla del
+   v1.8.171.
+
+   El botón SÍ estaba: lo que falló fue CUÁNDO lo intentaba poner. La card de
+   siembra la arma el módulo v1.8.102 recién cuando se entra a Configuración, y
+   mi inyector del v171 reintentaba cada 2,5 s durante 60 s desde el arranque.
+   Si abrías Configuración pasado ese minuto —o sea, casi siempre— la card ya
+   existía pero el inyector se había rendido.
+
+   Acá se cambia el poll con vencimiento por un MutationObserver: en cuanto la
+   card aparece en el DOM, el botón se agrega. No importa cuándo entres.
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  function poner() {
+    if (window.__V171_OFF || window.__V173_OFF) return false;
+    if (document.getElementById('v171-plantilla-btn')) return true;
+    var ref = document.getElementById('rs-aplicar-btn');
+    if (!ref || !ref.parentElement) return false;
+    if (typeof window.v171DescargarPlanilla !== 'function') return false;
+    var b = document.createElement('button');
+    b.id = 'v171-plantilla-btn';
+    b.className = 'btn btn-ghost btn-sm';
+    b.textContent = '⬇️ Descargar planilla';
+    b.title = 'CSV con los aretes que todavía no tienen chip. Completá la columna rfid y pegalo acá.';
+    b.onclick = window.v171DescargarPlanilla;
+    ref.parentElement.insertBefore(b, ref.nextSibling);
+    /* el conteo se refresca cada vez que se muestra la card, no una sola vez */
+    b.addEventListener('mouseenter', _refrescar);
+    setTimeout(_refrescar, 400);
+    function _refrescar() {
+      try {
+        var n = window.v171AretesSinRfid ? window.v171AretesSinRfid().length : 0;
+        var st = document.getElementById('rs-status');
+        if (st && (!st.textContent || /arete\(s\) sin chip|todos tienen chip/.test(st.textContent))) {
+          st.textContent = n ? (n + ' arete(s) sin chip') : 'todos tienen chip';
+        }
+      } catch (e) {}
+    }
+    console.log('[v1.8.173] botón de planilla agregado a la card de Siembra');
+    return true;
+  }
+  window.v173PonerBotonPlanilla = poner;
+
+  /* en cuanto la card exista, sin importar cuándo se entre a Configuración */
+  function vigilar() {
+    if (poner()) return;                       /* ya estaba */
+    if (!window.MutationObserver) {
+      setInterval(poner, 3000);                /* navegador viejo: poll sin vencimiento */
+      return;
+    }
+    var obs = new MutationObserver(function () {
+      if (poner()) { /* se queda observando: si re-renderizan la card, lo vuelve a poner */ }
+    });
+    try { obs.observe(document.body, { childList: true, subtree: true }); } catch (e) {}
+    window.__v173obs = obs;
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', vigilar);
+  else vigilar();
+
+  console.log('[v1.8.173] planilla de siembra: inyección por observador, sin vencimiento');
 })();
 
 </script>
