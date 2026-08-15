@@ -9936,6 +9936,20 @@ function saveTreatment() {
     cost:Math.round(totalUsed*(prod.unit_cost||0)*100)/100,
     retroactive: isRetroactive  // v1.4.61: marca para auditoría
   };
+  /* v1.8.168: guardar A QUE ANIMALES se les aplico. Con esto el costo sigue al
+     animal cuando se lo mueve de lote, y su historial muestra que recibio y
+     cuanto costo cada dosis (pedido de Jose 15-08). Si se trata a todo el lote
+     se guardan todos; si es una parte, se deja el conteo y el costo se reparte
+     entre los candidatos (marcado como estimado en el historial). */
+  try {
+    if (scope === 'lot' && lot_code) {
+      var _aLot = (typeof getAnimalesDB === 'function' ? (getAnimalesDB()||{}) : {})[lot_code] || [];
+      var _ids = _aLot.map(function(a){ return String((a.animal_id||a.id)||'').trim(); }).filter(Boolean);
+      if (_ids.length && _ids.length === count) t.animal_ids = _ids;
+      else if (_ids.length) { t.animal_ids_candidatos = _ids; t.animal_ids_parcial = true; }
+    }
+    if (typeof v168InvalidarCache === 'function') v168InvalidarCache();
+  } catch(eAT){ console.warn('[v1.8.168 animal_ids]', eAT); }
   db.treatments.push(t);
 
   // Auto alert if low stock
@@ -19608,7 +19622,17 @@ function _ahRenderPerformance(lot, pesajes, ventas, compras) {
   // Reusar lógica de _ahRenderCostos para no duplicar
   var products = db.products || [];
   var costoSanidadLote = 0;
-  (db.treatments || []).filter(function(t){ return t.lot_code === lot.code; }).forEach(function(t){
+  /* v1.8.168: la sanidad sigue al animal — si un animal se movio de TROPA 2 a T2,
+     su curacion cuenta en T2, no queda colgada en un lote vacio. */
+  var _v168ok = false;
+  try {
+    if (typeof v168SanidadDelLote === 'function' && !window.__V168_OFF) {
+      costoSanidadLote = v168SanidadDelLote(lot.code);
+      if (typeof v168Carry === 'function') costoSanidadLote += v168Carry(lot);
+      _v168ok = true;
+    }
+  } catch(eS168) { console.warn('[v1.8.168 sanidad]', eS168); }
+  (_v168ok ? [] : (db.treatments || []).filter(function(t){ return t.lot_code === lot.code; })).forEach(function(t){
     var costoT = parseFloat(t.cost || 0);
     if (costoT > 0) { costoSanidadLote += costoT; return; }
     var prod = products.find(function(p){ return p.id === t.product_id || p.name === t.product_name; });
@@ -32894,8 +32918,16 @@ function confirmarBulkMover() {
       animal_count: 0,
       avg_weight: 0,
       entry_date: date,
-      status: 'activo',
+      status: 'active',   /* v1.8.166: era 'activo' - el resto del sistema usa 'active' */
       provider: ((db.lots||[]).find(function(l){return l.code === fromLot;})||{}).provider || '',
+      /* v1.8.167: el costo sigue al animal. Sin esto el lote nuevo no tenia compra
+         de origen (la inversion valia 0) y sus cab-dias arrancaban de cero. */
+      cost_origin: (function(){
+        var _o = (db.lots||[]).find(function(l){ return l.code === fromLot; }) || {};
+        var _oe = (typeof v167EntradaReal === 'function') ? v167EntradaReal(_o) : (_o.entry_date || null);
+        return { from_lot: fromLot, date: date, entry_inherited: _oe || _o.entry_date || date,
+                 animal_count: 0, total_kg: 0, valor_bs: 0, via: 'bulk_move' };
+      })(),
       _createdViaBulkMove: true
     };
     db.lots.push(newLot);
@@ -32968,6 +33000,60 @@ function confirmarBulkMover() {
   if (!db.animal_movements) db.animal_movements = [];
   var weights = movedAnimals.map(function(m){return m.weight;}).filter(function(w){return w>0;});
   var avgW = weights.length ? weights.reduce(function(a,b){return a+b;},0) / weights.length : 0;
+  /* v1.8.168: al mover animales se escriben DOS asientos pareados —
+     ↑ en el destino (lo que entra) y ↓ en el origen (lo que sale). El valor de
+     un lote es la SUMA de sus asientos: si recibe dos traslados, suma los dos.
+     Ya no hay razon ni tope (era el bug que marco Jose el 15-08). */
+  try {
+    var _lotDest = (db.lots||[]).find(function(l){ return l.code === toLot; });
+    var _lotOrig = (db.lots||[]).find(function(l){ return l.code === fromLot; });
+    var _kg168 = weights.reduce(function(a,b){return a+b;},0);
+    var _cO168 = (db.compras_ganado||[]).find(function(c){ return c.lot_code === fromLot || (Array.isArray(c.lote_destinos) && c.lote_destinos.indexOf(fromLot) >= 0); });
+    var _cabO168 = _cO168 ? (parseInt(_cO168.animal_count || _cO168.cabezas || 0) || 0) : 0;
+    var _porCab168 = (_cO168 && _cabO168 > 0) ? ((parseFloat(_cO168.total)||0) / _cabO168) : 0;
+    if (!_porCab168 && _lotOrig && typeof v168ValorGanado === 'function') {
+      var _cabOrigActual = parseInt(_lotOrig.animal_count||0) || 0;
+      if (_cabOrigActual > 0) _porCab168 = v168ValorGanado(_lotOrig) / _cabOrigActual;
+    }
+    var _bs168 = Math.round(_porCab168 * movedIds.length * 100) / 100;
+    var _entHer = (typeof v168EntradaReal === 'function' && _lotOrig) ? v168EntradaReal(_lotOrig) : (_lotOrig && _lotOrig.entry_date);
+    if (_lotDest && _bs168 > 0) {
+      _lotDest.cost_ledger = Array.isArray(_lotDest.cost_ledger) ? _lotDest.cost_ledger : [];
+      _lotDest.cost_ledger.push({ tipo:'transferencia', fecha:date, from_lot:fromLot,
+        cab: movedIds.length, kg: Math.round(_kg168*10)/10, bs: _bs168,
+        entry_inherited: _entHer || date, ref: batchId, via:'bulk_move' });
+    }
+    if (_lotOrig && _bs168 > 0) {
+      _lotOrig.cost_ledger = Array.isArray(_lotOrig.cost_ledger) ? _lotOrig.cost_ledger : [];
+      _lotOrig.cost_ledger.push({ tipo:'salida', fecha:date, to_lot:toLot,
+        cab: -movedIds.length, kg: -Math.round(_kg168*10)/10, bs: -_bs168, ref: batchId, via:'bulk_move' });
+    }
+    /* la sal/alimento acumulada tambien viaja: prorrateo POR CABEZA (decision de
+       Jose 15-08), asiento pareado. La sanidad no entra aca: va atada al animal. */
+    if (typeof v168MoverCostoDirecto === 'function') {
+      try { v168MoverCostoDirecto(fromLot, toLot, movedIds.length, date, batchId); } catch(eMC){ console.warn('[v168 carry]', eMC); }
+    }
+    if (typeof v168InvalidarCache === 'function') v168InvalidarCache();
+  } catch(eL168) { console.warn('[v1.8.168 ledger]', eL168); }
+  /* v1.8.167: cost_origin se sigue escribiendo — otras 5 vistas lo usan para el linaje */
+  try {
+    var _lotDest = (db.lots||[]).find(function(l){ return l.code === toLot; });
+    if (_lotDest && _lotDest.cost_origin && _lotDest.cost_origin.via === 'bulk_move') {
+      var _co = _lotDest.cost_origin;
+      var _kg = weights.reduce(function(a,b){return a+b;},0);
+      var _orig = (db.lots||[]).find(function(l){ return l.code === fromLot; }) || {};
+      var _cOrig = (db.compras_ganado||[]).find(function(c){ return c.lot_code === _orig.code || (Array.isArray(c.lote_destinos) && c.lote_destinos.indexOf(_orig.code) >= 0); });
+      var _cabOrig = _cOrig ? (parseInt(_cOrig.animal_count || _cOrig.cabezas || 0) || 0) : 0;
+      var _porCab = (_cOrig && _cabOrig > 0) ? ((parseFloat(_cOrig.total)||0) / _cabOrig) : 0;
+      if (!_porCab && _orig.cost_origin && _orig.cost_origin.animal_count > 0) {
+        _porCab = (parseFloat(_orig.cost_origin.valor_bs)||0) / _orig.cost_origin.animal_count;
+      }
+      _co.animal_count = (parseInt(_co.animal_count,10)||0) + movedIds.length;
+      _co.total_kg = Math.round(((parseFloat(_co.total_kg)||0) + _kg) * 10) / 10;
+      _co.valor_bs = Math.round(((parseFloat(_co.valor_bs)||0) + _porCab * movedIds.length) * 100) / 100;
+      _co.batch_id = batchId;
+    }
+  } catch(eCO) { console.warn('[v1.8.167 cost_origin]', eCO); }
   db.animal_movements.push({
     id: batchId,
     date: date,
@@ -33850,6 +33936,15 @@ function verHistorialAnimal(animalId,lotCode){
       }
     });
   }
+
+  // 6) v1.8.168: curaciones que recibio este animal, con el costo por dosis y el
+  //    lote donde se le aplico. Para las viejas (sin animal_ids) se reconstruye
+  //    de _movements en que lote estaba el dia del tratamiento.
+  try {
+    if (typeof v168CuracionesDe === 'function') {
+      v168CuracionesDe(animalId).forEach(function(e){ events.push(e); });
+    }
+  } catch(eC168) { console.warn('[v1.8.168 historial]', eC168); }
 
   // Ordenar cronológicamente
   events.sort(function(a, b) {
@@ -46558,7 +46653,11 @@ setInterval(swSelectorRender, 5000); // auto-sanado si algo re-renderiza la topb
     lots.forEach(function (l) {
       if (!l || !l.code) return;
       codigosVivos[String(l.code).toLowerCase()] = l;
-      if (l.status === 'active') activos += parseInt(l.animal_count || 0) || 0;
+      /* v1.8.166: aceptar 'activo' Y 'active'. `confirmarBulkMover` creaba los lotes con
+         'activo' y el resto del índice ya acepta los dos (19 lugares) — esta línea era la
+         única que exigía 'active', y por eso la card decía "-585 cab" tras armar T1/T2. */
+      var _st166 = String(l.status || 'activo').toLowerCase();
+      if (_st166 === 'active' || _st166 === 'activo') activos += parseInt(l.animal_count || 0) || 0;
     });
     /* lotes que SÍ tuvieron alguna entrada registrada (compra directa, marcaje o parto) */
     var conEntrada = {};
@@ -49596,6 +49695,694 @@ try {
 })();
 
 /*__V163_END__*/
+</script>
+
+<script id="agro-usd-v18165">
+/*__V165_START__*/
+/* ═══════════════════════════════════════════════════════════════════════════
+   v1.8.165 — INSUMOS AGRO EN $US, CON EL Bs VIVO AL TC DEL DÍA
+
+   Pedido José 13-08 (al cargar el inventario de agroquímicos de Chaco Lejos):
+   "mostrar los costos en dólares, y lo que valdrían al tipo de cambio del día,
+   que ya tenemos la integración."
+
+   La integración es el chip 💱 del topbar: TC oficial BCB que el server v4.42+
+   manda en cada sync (localStorage e5m_tc_bcb). Este módulo la usa así:
+
+   · El insumo guarda `costo_usd` (la moneda REAL en la que se compra el agro).
+   · `costo` (Bs) se RECALCULA en cada arranque y después de cada sync con el
+     TC vigente — así el wizard de labores y el cuaderno de campo (que trabajan
+     en Bs) siempre costean al TC del día, sin tocar su código.
+   · Las labores YA GUARDADAS no cambian: congelaron su costo al registrarse,
+     como corresponde (esa compra se hizo a ese TC).
+   · La tabla de Insumos muestra "$us 7,10 · Bs 82,78" y el TC usado arriba.
+   · El formulario pasa a cargar el costo en $us. Si un insumo viejo solo tiene
+     Bs (sin costo_usd), se muestra y edita en Bs como siempre — nada se rompe.
+   · Sin TC todavía (primer arranque offline): se usa el `tc_carga` guardado y
+     se avisa; nunca se inventa un número.
+
+   Kill switch: __V165_OFF.
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  function _n(v) { var x = parseFloat(v); return isFinite(x) ? x : 0; }
+
+  function agTC() {
+    try {
+      var t = JSON.parse(localStorage.getItem('e5m_tc_bcb') || 'null');
+      if (t && _n(t.valor) > 0) return { valor: _n(t.valor), fecha: t.fecha || '', stale: !!t.stale };
+    } catch (e) {}
+    return null;
+  }
+  window.agTC = agTC;
+
+  /* ── Bs al día: recalcular costo desde costo_usd con el TC vigente ── */
+  function agActualizarBs(motivo) {
+    if (window.__V165_OFF) return 0;
+    var tc = agTC(); if (!tc) return 0;
+    var arr = (typeof db !== 'undefined' && db && Array.isArray(db.agro_insumos)) ? db.agro_insumos : [];
+    var n = 0;
+    arr.forEach(function (i) {
+      if (!i || i.costo_usd == null) return;
+      var bs = Math.round(_n(i.costo_usd) * tc.valor * 100) / 100;
+      if (_n(i.costo) !== bs) { i.costo = bs; i.tc_carga = tc.valor; n++; }
+    });
+    if (n) {
+      console.log('[v1.8.165] ' + n + ' insumo(s) agro re-valorizados a Bs con TC ' + tc.valor + (motivo ? ' (' + motivo + ')' : ''));
+      try { if (typeof saveDB === 'function') saveDB(); } catch (e) {}
+    }
+    return n;
+  }
+  window.agActualizarBs = agActualizarBs;
+
+  /* ── tabla de insumos: $us + Bs, y el TC en el título del modal ── */
+  if (typeof agRenderInsumos === 'function' && !agRenderInsumos.__v165) {
+    agRenderInsumos = (function (base) {
+      function w() {
+        if (window.__V165_OFF) return base.apply(this, arguments);
+        try {
+          var d = agGetDB(), tc = agTC(), html = '';
+          d.insumos.forEach(function (i) {
+            var costoTxt;
+            if (i.costo_usd != null) {
+              var bs = tc ? Math.round(_n(i.costo_usd) * tc.valor * 100) / 100 : _n(i.costo);
+              costoTxt = '<span style="color:var(--green)">$us ' + _n(i.costo_usd).toLocaleString('es-BO', { minimumFractionDigits: 2 }) + '</span>' +
+                         '<br><span style="color:var(--muted);font-size:11px">Bs ' + bs.toLocaleString('es-BO', { minimumFractionDigits: 2 }) + '</span>';
+            } else {
+              costoTxt = _n(i.costo) ? ('Bs ' + _n(i.costo).toLocaleString('es-BO', { minimumFractionDigits: 2 })) :
+                         '<span style="color:var(--amber2)" title="' + String(i.obs || 'sin precio').replace(/"/g, '&quot;') + '">⚠ sin precio</span>';
+            }
+            var nom = String(i.nombre || '');
+            if (i.principio_activo) nom += '<br><span style="color:var(--muted);font-size:10px">' + String(i.principio_activo) + '</span>';
+            if (i.categoria) nom = '<span style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.5px">' + i.categoria + '</span><br>' + nom;
+            html += '<tr><td>' + nom + '</td><td>' + (i.unidad || '') + '</td><td class="num">' + costoTxt + '</td>' +
+                    '<td class="num">' + _n(i.stock).toLocaleString('es-BO') + '</td>' +
+                    '<td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="agEditInsumo(' + i.id + ')">✏️</button> ' +
+                    '<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agDelInsumo(' + i.id + ')">🗑</button></td></tr>';
+          });
+          var tb = agEl('agi-tbody');
+          if (tb) tb.innerHTML = html || '<tr><td colspan="5" class="empty">Sin insumos. Cargá el primero abajo.</td></tr>';
+          /* chip del TC en el modal */
+          var t = document.getElementById('agi-form-title');
+          if (t && t.parentNode && !document.getElementById('agi-tc-chip')) {
+            var chip = document.createElement('div');
+            chip.id = 'agi-tc-chip';
+            chip.style.cssText = 'font-size:11px;color:var(--muted);margin:2px 0 6px';
+            t.parentNode.insertBefore(chip, t.nextSibling);
+          }
+          var chipEl = document.getElementById('agi-tc-chip');
+          if (chipEl) chipEl.innerHTML = tc
+            ? ('💱 TC BCB: <b>Bs ' + tc.valor.toLocaleString('es-BO', { minimumFractionDigits: 2 }) + '</b> por $us' + (tc.fecha ? ' · ' + tc.fecha : '') + (tc.stale ? ' · <span style="color:var(--amber2)">sin actualizar hoy</span>' : ''))
+            : '<span style="color:var(--amber2)">💱 Sin TC todavía — los Bs se actualizan en el próximo sync</span>';
+          return;
+        } catch (e) { console.warn('[v165 insumos]', e); return base.apply(this, arguments); }
+      }
+      w.__v165 = true;
+      return w;
+    })(agRenderInsumos);
+    window.agRenderInsumos = agRenderInsumos;
+  }
+
+  /* ── el formulario carga el costo en $US ── */
+  function labelCosto() {
+    try {
+      var inp = agEl('agi-costo'); if (!inp) return;
+      var lab = inp.closest('div') && inp.closest('div').querySelector('.form-label');
+      if (lab && !window.__V165_OFF) lab.textContent = 'Costo ($us por unidad) *';
+    } catch (e) {}
+  }
+  if (typeof agOpenInsumos === 'function' && !agOpenInsumos.__v165) {
+    agOpenInsumos = (function (base) {
+      function w() { var r = base.apply(this, arguments); labelCosto(); return r; }
+      w.__v165 = true; return w;
+    })(agOpenInsumos);
+    window.agOpenInsumos = agOpenInsumos;
+  }
+  if (typeof agEditInsumo === 'function' && !agEditInsumo.__v165) {
+    agEditInsumo = (function (base) {
+      function w(id) {
+        var r = base.apply(this, arguments);
+        try {
+          if (window.__V165_OFF) return r;
+          var d = agGetDB(), i = agById(d.insumos, id);
+          /* si el insumo es en USD, el input edita el USD (base puso el Bs) */
+          if (i && i.costo_usd != null) agEl('agi-costo').value = i.costo_usd;
+        } catch (e) {}
+        return r;
+      }
+      w.__v165 = true; return w;
+    })(agEditInsumo);
+    window.agEditInsumo = agEditInsumo;
+  }
+  if (typeof agSaveInsumo === 'function' && !agSaveInsumo.__v165) {
+    agSaveInsumo = (function (base) {
+      function w() {
+        if (window.__V165_OFF) return base.apply(this, arguments);
+        try {
+          var d = agGetDB(), id = agEl('agi-id').value;
+          var val = parseFloat(agEl('agi-costo').value);
+          var tc = agTC();
+          var i = id ? agById(d.insumos, id) : null;
+          var esUsd = (i && i.costo_usd != null) || !i;   /* nuevos nacen en USD; viejos-Bs siguen en Bs */
+          if (esUsd && !isNaN(val) && val >= 0 && tc) {
+            /* dejar que el base valide y guarde, pero con el Bs ya convertido…
+               truco simple: guardamos nosotros el par usd/bs DESPUÉS del base */
+            var r0 = base.apply(this, arguments);
+            var nombre = null;
+            try { nombre = (id ? agById(d.insumos, id) : d.insumos[d.insumos.length - 1]); } catch (e) {}
+            if (nombre) {
+              nombre.costo_usd = val;
+              nombre.tc_carga = tc.valor;
+              nombre.costo = Math.round(val * tc.valor * 100) / 100;
+              try { if (typeof agSaveDB === 'function') agSaveDB(); } catch (e) {}
+              try { agRenderInsumos(); } catch (e) {}
+            }
+            return r0;
+          }
+        } catch (e) { console.warn('[v165 save]', e); }
+        return base.apply(this, arguments);
+      }
+      w.__v165 = true; return w;
+    })(agSaveInsumo);
+    window.agSaveInsumo = agSaveInsumo;
+  }
+
+  /* ── arranque + después de cada sync ── */
+  try {
+    setTimeout(function () { agActualizarBs('arranque'); }, 5000);
+    if (typeof pullFromRailwayDesktop === 'function' && !pullFromRailwayDesktop.__v165) {
+      pullFromRailwayDesktop = (function (base) {
+        function w() {
+          var r = base.apply(this, arguments);
+          try { setTimeout(function () { agActualizarBs('post-sync'); }, 6000); } catch (e) {}
+          return r;
+        }
+        w.__v165 = true; return w;
+      })(pullFromRailwayDesktop);
+      window.pullFromRailwayDesktop = pullFromRailwayDesktop;
+    }
+  } catch (e) {}
+
+  console.log('[v1.8.165] insumos agro en $us · Bs al TC BCB del día');
+})();
+
+/*__V165_END__*/
+</script>
+
+<script id="status-lote-v18166">
+/*__V166_START__*/
+/* ═══════════════════════════════════════════════════════════════════════════
+   v1.8.166 — UN SOLO ESTADO PARA LOS LOTES ACTIVOS
+
+   Salió de auditar la reorganización de 5M del 14-08 (armado de T1/T2/T3):
+   los lotes T1 y T2 quedaron con `status: "activo"` y el resto del sistema usa
+   `"active"`. No fue un error de César — `confirmarBulkMover` (mover en bloque,
+   la función con la que se armaron) creaba el lote con "activo", igual que el
+   `lot_split` del server. El índice acepta los dos en 19 lugares, pero la
+   conciliación del Kardex del v1.8.158 exigía "active": con 585 cabezas en
+   lotes "activo", la card decía "⚠ diferencia −585 cab" con el inventario
+   perfectamente sano.
+
+   Este paquete corta el problema por los tres lados:
+     ① la conciliación acepta "activo" y "active"  (edición in-place)
+     ② confirmarBulkMover pasa a escribir "active" (edición in-place)
+     ③ este módulo NORMALIZA al vuelo lo que ya está escrito y lo que llegue
+        de la PWA, el bot o el `lot_split` del server — que siguen mandando
+        "activo". Corre al arranque y después de cada sync.
+
+   Nada de esto cambia qué lote está activo: solo unifica cómo se escribe.
+   Kill switch: __V166_OFF.
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  function normalizarEstados(motivo) {
+    if (window.__V166_OFF) return 0;
+    var lots = (typeof db !== 'undefined' && db && Array.isArray(db.lots)) ? db.lots : [];
+    var n = 0;
+    lots.forEach(function (l) {
+      if (l && String(l.status || '').toLowerCase() === 'activo') { l.status = 'active'; n++; }
+    });
+    if (n) {
+      console.log('[v1.8.166] ' + n + ' lote(s) normalizados "activo" → "active"' + (motivo ? ' (' + motivo + ')' : ''));
+      try { if (typeof saveDB === 'function') saveDB(); } catch (e) {}
+      try { if (typeof replaceTableInRailway === 'function') replaceTableInRailway('lots', db.lots || []); } catch (e) {}
+      try { if (typeof renderLotes === 'function') renderLotes(); } catch (e) {}
+    }
+    return n;
+  }
+  window.normalizarEstadosLote = normalizarEstados;
+
+  /* después de cada pull (la PWA/bot/lot_split pueden traer "activo" de nuevo) */
+  if (typeof pullFromRailwayDesktop === 'function' && !pullFromRailwayDesktop.__v166) {
+    pullFromRailwayDesktop = (function (base) {
+      function w() {
+        var r = base.apply(this, arguments);
+        try { setTimeout(function () { normalizarEstados('post-sync'); }, 6000); } catch (e) {}
+        return r;
+      }
+      w.__v166 = true; return w;
+    })(pullFromRailwayDesktop);
+    window.pullFromRailwayDesktop = pullFromRailwayDesktop;
+  }
+
+  try { setTimeout(function () { normalizarEstados('arranque'); }, 5000); } catch (e) {}
+  console.log('[v1.8.166] estado de lotes unificado en "active"');
+})();
+
+/*__V166_END__*/
+</script>
+
+<script id="costo-asientos-v18168">
+/* ═══════════════════════════════════════════════════════════════════════════
+   v1.8.168 — EL COSTO SIGUE AL ANIMAL (modelo de asientos)
+
+   Reemplaza al v1.8.167, que José frenó con dos objeciones correctas:
+
+   ① "si el lote tiene más cabezas, claro que se debe incrementar el prorrateo"
+      Tenía razón. El v167 topaba la herencia en ratio 1 para no contar dos
+      veces las cabezas propias de T3 — pero el tope rompe el caso de un lote
+      que recibe DOS traslados: el segundo entra valiendo cero, en silencio.
+      La causa no era la fórmula: era que `cost_origin` es UN campo tratando de
+      representar todo el costo de un lote. Un lote no tiene un origen, tiene
+      VARIOS ASIENTOS. Acá el valor es la SUMA de los asientos — sin razón y
+      sin tope.
+
+   ② "¿por qué no podemos re-atribuir la sal y las curaciones al lote nuevo?"
+      También tenía razón, y mi objeción ("sería reescribir historia") era
+      floja: el costo sigue al animal y el REGISTRO conserva la procedencia.
+      La prueba estaba en mi propio diagnóstico — Bs 4.364 de sanidad y 2.640 kg
+      de sal colgados de lotes VACÍOS. Eso no es historia preservada, es costo
+      desaparecido del análisis.
+
+   Las dos decisiones de José se combinan en un solo modelo coherente:
+
+     · SANIDAD → se ata al ANIMAL (animal_ids). Exacta, sin prorrateo: el costo
+       viaja solo, porque está pegado al animal. Y el historial del animal pasa
+       a mostrar qué recibió y cuánto costó cada dosis.
+     · SAL / ALIMENTO → no se puede atribuir por animal (es consumo colectivo),
+       así que viaja como ASIENTO PAREADO prorrateado POR CABEZA al momento del
+       traslado (↓ en el origen, ↑ en el destino). La suma total no cambia.
+
+   Kill switch: __V168_OFF.
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  function _n(v) { var x = parseFloat(v); return isFinite(x) ? x : 0; }
+  function _i(v) { var x = parseInt(v, 10); return isFinite(x) ? x : 0; }
+  function _T(t) { return (typeof db !== 'undefined' && db && Array.isArray(db[t])) ? db[t] : []; }
+  function _lot(c) { return _T('lots').find(function (l) { return l && l.code === c; }) || null; }
+  function _activo(l) { var s = String((l && l.status) || 'activo').toLowerCase(); return s === 'active' || s === 'activo'; }
+  function _fecha(x) { return String(x || '').slice(0, 10); }
+
+  /* ═════════════════════ ① EL LEDGER DE GANADO ═════════════════════ */
+
+  /* compras que apuntan a este lote */
+  function v168ComprasDe(code) {
+    return _T('compras_ganado').filter(function (c) {
+      return c.lot_code === code || (Array.isArray(c.lote_destinos) && c.lote_destinos.indexOf(code) >= 0);
+    });
+  }
+
+  /* Asientos de valor de un lote. Si el lote no tiene `cost_ledger` explícito,
+     se sintetiza desde lo que ya hay: su compra + el cost_origin viejo.
+     NUNCA se cuenta la compra dos veces: si el ledger ya trae un asiento
+     tipo 'compra' con el mismo ref, no se agrega. */
+  function v168Ledger(lot) {
+    if (!lot) return [];
+    var out = [], vistos = {};
+    (Array.isArray(lot.cost_ledger) ? lot.cost_ledger : []).forEach(function (e) {
+      if (!e) return;
+      out.push(e);
+      if (e.tipo === 'compra' && e.ref != null) vistos['c' + e.ref] = 1;
+      if (e.tipo === 'transferencia' && e.ref != null) vistos['t' + e.ref] = 1;
+    });
+    /* compra propia */
+    v168ComprasDe(lot.code).forEach(function (c) {
+      if (c.id != null && vistos['c' + c.id]) return;
+      var bs = _n(c.total), cab = _i(c.animal_count || c.cabezas);
+      if (bs <= 0 || cab <= 0) return;
+      out.push({ tipo: 'compra', fecha: _fecha(c.date || c.fecha), cab: cab,
+                 kg: _n(c.weight || c.total_kg), bs: bs, ref: c.id, _sintetizado: true });
+    });
+    /* cost_origin viejo (v167 / lot_split del server / script de reparación) */
+    var co = lot.cost_origin;
+    if (co && _n(co.valor_bs) > 0 && _i(co.animal_count) > 0 && !vistos['t' + (co.batch_id || co.date)]) {
+      var yaEstá = out.some(function (e) { return e.tipo === 'transferencia' && e._deCostOrigin; });
+      if (!yaEstá) {
+        out.push({ tipo: 'transferencia', fecha: _fecha(co.date), from_lot: co.from_lot,
+                   cab: _i(co.animal_count), kg: _n(co.total_kg), bs: _n(co.valor_bs),
+                   entry_inherited: co.entry_inherited, origenes: co.origenes,
+                   ref: co.batch_id || null, _deCostOrigin: true, _sintetizado: true });
+      }
+    }
+    return out;
+  }
+  window.v168Ledger = v168Ledger;
+
+  /* Valor del ganado de un lote = SUMA de sus asientos.
+     Sin tope y sin razón: si recibió dos traslados, suma los dos.
+     Único ajuste: si hoy tiene MENOS cabezas que el saldo del ledger (muerte o
+     baja sin asiento), se prorratea hacia abajo sobre TODO el stack. */
+  function v168ValorGanado(lot) {
+    if (window.__V168_OFF || !lot) return 0;
+    var L = v168Ledger(lot), bs = 0, cab = 0;
+    L.forEach(function (e) { bs += _n(e.bs); cab += _i(e.cab); });
+    if (bs <= 0) return 0;
+    var hoy = _i(lot.animal_count);
+    if (cab > 0 && hoy > 0 && hoy < cab) bs = bs * (hoy / cab);
+    return bs;
+  }
+  window.v168ValorGanado = v168ValorGanado;
+
+  /* saldo de cabezas según el ledger — para diagnóstico */
+  function v168SaldoCab(lot) {
+    var c = 0; v168Ledger(lot).forEach(function (e) { c += _i(e.cab); }); return c;
+  }
+  window.v168SaldoCab = v168SaldoCab;
+
+  /* ═════════════════════ ② ANTIGÜEDAD HEREDADA ═════════════════════ */
+
+  /* Fecha de entrada REAL: la más vieja de los asientos que aportaron cabezas.
+     Un animal transferido conserva la antigüedad que traía. */
+  function v168EntradaReal(lot, _saltos) {
+    _saltos = _saltos || 0;
+    if (!lot || _saltos > 6) return lot ? lot.entry_date : null;
+    var mejor = null;
+    v168Ledger(lot).forEach(function (e) {
+      if (_i(e.cab) <= 0) return;
+      var f = e.entry_inherited || null;
+      if (!f && e.from_lot) {
+        var padre = _lot(e.from_lot);
+        if (padre && padre !== lot) f = v168EntradaReal(padre, _saltos + 1);
+      }
+      if (!f) f = e.fecha;
+      f = _fecha(f);
+      if (f && (!mejor || f < mejor)) mejor = f;
+    });
+    return mejor || lot.entry_date;
+  }
+  window.v168EntradaReal = v168EntradaReal;
+
+  /* ═════════════════════ ③ EL ANIMAL Y SU LOTE EN EL TIEMPO ═════════════════════ */
+
+  function _animalesDB() {
+    try { return (typeof getAnimalesDB === 'function') ? (getAnimalesDB() || {}) : {}; } catch (e) { return {}; }
+  }
+
+  /* ¿en qué lote estaba este animal en tal fecha? Se reconstruye de _movements,
+     que es lo que el desktop ya viene grabando en cada traslado. */
+  function v168LoteEnFecha(a, loteActual, fecha) {
+    if (!a) return loteActual;
+    var f = _fecha(fecha);
+    var movs = (Array.isArray(a._movements) ? a._movements.slice() : [])
+      .filter(function (m) { return m && (m.from_lot || m.to_lot); })
+      .sort(function (x, y) { return _fecha(x.date).localeCompare(_fecha(y.date)); });
+    if (!movs.length) return loteActual;
+    if (f && f < _fecha(movs[0].date)) return movs[0].from_lot || loteActual;
+    for (var i = movs.length - 1; i >= 0; i--) {
+      if (!f || _fecha(movs[i].date) <= f) return movs[i].to_lot || loteActual;
+    }
+    return loteActual;
+  }
+  window.v168LoteEnFecha = v168LoteEnFecha;
+
+  /* índice animal → lote actual (una sola pasada, cacheado por firma) */
+  var _cacheIdx = null, _cacheFirma = '';
+  function _firma() {
+    var A = _animalesDB(), n = 0;
+    Object.keys(A).forEach(function (k) { n += (A[k] || []).length; });
+    return n + '|' + _T('treatments').length + '|' + _T('lots').length;
+  }
+
+  /* ═════════════════════ ④ SANIDAD ATADA AL ANIMAL ═════════════════════ */
+
+  /* Costo de un tratamiento (usa t.cost; si falta, dosis × unit_cost) */
+  function v168CostoTrat(t) {
+    var c = _n(t && t.cost);
+    if (c > 0) return c;
+    var prod = _T('products').find(function (p) { return p.id === t.product_id || p.name === t.product_name; });
+    var uc = prod ? _n(prod.unit_cost || prod.cost) : 0;
+    return uc > 0 ? _n(t.total || (_n(t.dose) * _i(t.count))) * uc : 0;
+  }
+  window.v168CostoTrat = v168CostoTrat;
+
+  /* Índice: para cada tratamiento, a qué animales corresponde y con qué costo
+     por dosis; y para cada lote, cuánta sanidad le toca HOY.
+
+     Prioridad de atribución:
+       1. t.animal_ids  → lo que graba el v1.8.168 hacia adelante (exacto)
+       2. t.animal_id   → tratamiento individual (exacto)
+       3. reconstrucción por _movements: qué animales estaban en t.lot_code el
+          día t.applied_at (histórico). Si los candidatos no coinciden con
+          t.count, se reparte entre los candidatos y se marca _aprox.
+       4. sin candidatos → queda en el lote original (no se pierde)          */
+  function v168IndiceSanidad() {
+    if (window.__V168_OFF) return { porAnimal: {}, porLote: {}, porTrat: {} };
+    var f = _firma();
+    if (_cacheIdx && _cacheFirma === f) return _cacheIdx;
+
+    var A = _animalesDB();
+    var todos = [];                       /* {a, lote} */
+    Object.keys(A).forEach(function (lc) {
+      (A[lc] || []).forEach(function (a) { if (a) todos.push({ a: a, lote: lc }); });
+    });
+    function _aid(a) { return String((a && (a.animal_id || a.id)) || '').trim(); }
+    var porId = {};
+    todos.forEach(function (x) { var k = _aid(x.a); if (k) porId[k] = x; });
+
+    var porAnimal = {}, porLote = {}, porTrat = {};
+
+    _T('treatments').forEach(function (t) {
+      if (!t) return;
+      var costo = v168CostoTrat(t);
+      var fecha = _fecha(t.applied_at || t.date || t.fecha || t.created_at);
+      var destinatarios = [], aprox = false, via = '';
+
+      if (Array.isArray(t.animal_ids) && t.animal_ids.length) {
+        via = 'animal_ids';
+        t.animal_ids.forEach(function (id) { var x = porId[String(id).trim()]; if (x) destinatarios.push(x); });
+      } else if (t.animal_id) {
+        via = 'individual';
+        var x1 = porId[String(t.animal_id).trim()]; if (x1) destinatarios.push(x1);
+      } else if (t.lot_code) {
+        via = 'reconstruido';
+        todos.forEach(function (x) {
+          if (v168LoteEnFecha(x.a, x.lote, fecha) === t.lot_code) destinatarios.push(x);
+        });
+        var esperados = _i(t.count);
+        if (esperados > 0 && destinatarios.length !== esperados) aprox = true;
+      }
+
+      var dosis = destinatarios.length > 0 ? costo / destinatarios.length : 0;
+      porTrat[t.id] = { costo: costo, animales: destinatarios.length, porDosis: dosis, via: via, aprox: aprox, fecha: fecha };
+
+      if (!destinatarios.length) {
+        /* no se pudo atribuir → se queda donde estaba, no se pierde plata */
+        if (t.lot_code) porLote[t.lot_code] = (porLote[t.lot_code] || 0) + costo;
+        return;
+      }
+      destinatarios.forEach(function (x) {
+        var k = _aid(x.a);
+        (porAnimal[k] = porAnimal[k] || []).push({ t: t, bs: dosis, aprox: aprox, fecha: fecha });
+        porLote[x.lote] = (porLote[x.lote] || 0) + dosis;
+      });
+    });
+
+    _cacheIdx = { porAnimal: porAnimal, porLote: porLote, porTrat: porTrat };
+    _cacheFirma = f;
+    return _cacheIdx;
+  }
+  window.v168IndiceSanidad = v168IndiceSanidad;
+  window.v168InvalidarCache = function () { _cacheIdx = null; _cacheFirma = ''; };
+
+  /* sanidad que le toca hoy a un lote (el costo ya siguió al animal) */
+  function v168SanidadDelLote(code) {
+    if (window.__V168_OFF) {
+      var s = 0; _T('treatments').forEach(function (t) { if (t.lot_code === code) s += v168CostoTrat(t); });
+      return s;
+    }
+    return _n(v168IndiceSanidad().porLote[code]);
+  }
+  window.v168SanidadDelLote = v168SanidadDelLote;
+
+  /* ═════════════════════ ⑤ SAL / ALIMENTO: ASIENTO PAREADO ═════════════════════ */
+
+  /* Costo directo acumulado que el lote arrastra por traslados.
+     `cost_carry` son asientos pareados: negativo en el origen, positivo en el
+     destino. La suma sobre todos los lotes es CERO — no se duplica nada. */
+  function v168Carry(lot) {
+    if (window.__V168_OFF || !lot || !Array.isArray(lot.cost_carry)) return 0;
+    var s = 0; lot.cost_carry.forEach(function (e) { s += _n(e && e.bs); }); return s;
+  }
+  window.v168Carry = v168Carry;
+
+  function v168CarryDetalle(lot) {
+    return (lot && Array.isArray(lot.cost_carry)) ? lot.cost_carry.slice() : [];
+  }
+  window.v168CarryDetalle = v168CarryDetalle;
+
+  /* Calcula y escribe el asiento pareado al mover N cabezas de un lote a otro.
+     Prorrateo POR CABEZA (decisión de José): lo que se lleva es
+        costo directo acumulado × (cabezas movidas / cabezas al momento)     */
+  function v168MoverCostoDirecto(origenCode, destinoCode, cabMovidas, fecha, batchId) {
+    if (window.__V168_OFF) return null;
+    var o = _lot(origenCode), d = _lot(destinoCode);
+    if (!o || !d || !(cabMovidas > 0)) return null;
+    var cabOrigen = _i(o.animal_count);
+    if (cabOrigen <= 0) return null;
+    var r = cabMovidas / cabOrigen;
+    if (r > 1) r = 1;
+
+    /* pool directo del origen HOY: sal/alimento valorizado + lo que ya arrastraba.
+       La sanidad NO entra: viaja sola, atada al animal. */
+    var sal = 0;
+    try { if (typeof v163Valorizar === 'function') { var v = v163Valorizar(origenCode, null, null); sal = _n(v && (v.total || v.bs)); } } catch (e) {}
+    var pool = sal + v168Carry(o);
+    var monto = pool * r;
+    if (!(Math.abs(monto) > 0.01)) return null;
+
+    var f = _fecha(fecha || (typeof localDate === 'function' ? localDate() : new Date().toISOString()));
+    var base = { fecha: f, cab: cabMovidas, batch_id: batchId || null, base: 'por_cabeza',
+                 detalle: { sal: sal * r, arrastre: v168Carry(o) * r } };
+    o.cost_carry = Array.isArray(o.cost_carry) ? o.cost_carry : [];
+    d.cost_carry = Array.isArray(d.cost_carry) ? d.cost_carry : [];
+    o.cost_carry.push(Object.assign({ tipo: 'salida', to_lot: destinoCode, bs: -monto }, base));
+    d.cost_carry.push(Object.assign({ tipo: 'entrada', from_lot: origenCode, bs: monto }, base));
+    return monto;
+  }
+  window.v168MoverCostoDirecto = v168MoverCostoDirecto;
+
+  /* ═════════════════════ ⑥ ENGANCHES AL MOTOR DE COSTOS ═════════════════════ */
+
+  /* (a) período y cab-días del rebaño con la entrada heredada */
+  function v168ConRebañoNormalizado(fn) {
+    if (window.__V168_OFF) return fn();
+    var L = _T('lots'), backup = L.map(function (l) { return l.entry_date; });
+    try {
+      L.forEach(function (l) { var r = v168EntradaReal(l); if (r) l.entry_date = r; });
+      return fn();
+    } finally { L.forEach(function (l, i) { l.entry_date = backup[i]; }); }
+  }
+  window.v168ConRebañoNormalizado = v168ConRebañoNormalizado;
+
+  if (typeof _ahCalcularIndirectos === 'function' && !_ahCalcularIndirectos.__v168) {
+    _ahCalcularIndirectos = (function (base) {
+      function w(lot, ventas, compras) {
+        if (window.__V168_OFF || !lot) return base.apply(this, arguments);
+        var real = v168EntradaReal(lot);
+        if (!real || _fecha(real) === _fecha(lot.entry_date)) return base.apply(this, arguments);
+        var falso = Object.create(Object.getPrototypeOf(lot));
+        Object.keys(lot).forEach(function (k) { falso[k] = lot[k]; });
+        falso.entry_date = real;
+        var self = this, args = [falso, ventas, compras];
+        var r = v168ConRebañoNormalizado(function () { return base.apply(self, args); });
+        if (r) { r._entradaHeredada = real; r._entradaPapel = lot.entry_date; }
+        return r;
+      }
+      w.__v168 = true; return w;
+    })(_ahCalcularIndirectos);
+    window._ahCalcularIndirectos = _ahCalcularIndirectos;
+  }
+
+  if (typeof window._lotCostoKgProducido === 'function' && !window._lotCostoKgProducido.__v168) {
+    window._lotCostoKgProducido = (function (base) {
+      function w() { var a = arguments, self = this; return v168ConRebañoNormalizado(function () { return base.apply(self, a); }); }
+      w.__v168 = true; return w;
+    })(window._lotCostoKgProducido);
+  }
+
+  /* (b) sanidad directa del Análisis Histórico: en vez de los tratamientos con
+     lot_code == este lote, los que corresponden a los animales que hoy están
+     acá. Se le pasa una lista sintética con el costo ya atribuido. */
+  if (typeof _ahRenderCostos === 'function' && !_ahRenderCostos.__v168) {
+    _ahRenderCostos = (function (base) {
+      function w(lot, treatments, mant, ventas, compras) {
+        if (window.__V168_OFF || !lot) return base.apply(this, arguments);
+        var idx = v168IndiceSanidad();
+        var propios = [];
+        _T('treatments').forEach(function (t) {
+          var info = idx.porTrat[t.id]; if (!info || !info.animales) return;
+          /* ¿cuántos de los animales de este tratamiento están hoy en este lote? */
+          var n = 0, A = _animalesDB()[lot.code] || [];
+          var ids = {}; A.forEach(function (a) { ids[String((a.animal_id || a.id) || '').trim()] = 1; });
+          Object.keys(idx.porAnimal).forEach(function (k) {
+            if (!ids[k]) return;
+            (idx.porAnimal[k] || []).forEach(function (e) { if (e.t === t) n++; });
+          });
+          if (n > 0) propios.push(Object.assign({}, t, { cost: info.porDosis * n, _v168: true, _cab: n }));
+        });
+        /* + el arrastre de sal/alimento que vino con los animales */
+        var carry = v168Carry(lot);
+        if (Math.abs(carry) > 0.01) {
+          propios.push({ id: '_carry_' + lot.code, product_name: 'Costo directo heredado por traslado',
+                         cost: carry, applied_at: _fecha(lot.entry_date), _v168: true, _carry: true });
+        }
+        return base.call(this, lot, propios, mant, ventas, compras);
+      }
+      w.__v168 = true; return w;
+    })(_ahRenderCostos);
+    window._ahRenderCostos = _ahRenderCostos;
+  }
+
+  /* (c) inversión vigente del header = Σ valor de los asientos de cada lote */
+  function v168InversionTotal() {
+    var t = 0;
+    _T('lots').forEach(function (l) {
+      if (!_activo(l) || !_i(l.animal_count)) return;
+      t += v168ValorGanado(l);
+    });
+    return t;
+  }
+  window.v168InversionTotal = v168InversionTotal;
+
+  if (typeof renderTopbarSummary === 'function' && !renderTopbarSummary.__v168) {
+    renderTopbarSummary = (function (base) {
+      function w() {
+        var r = base.apply(this, arguments);
+        try {
+          if (window.__V168_OFF) return r;
+          var tot = v168InversionTotal();
+          var el = document.getElementById('tbs-valor');
+          if (el && tot > 0) {
+            el.textContent = 'Bs ' + (tot >= 1e6 ? (tot / 1e6).toFixed(1) + 'M' : Math.round(tot).toLocaleString('es-BO'));
+            el.title = 'Suma de los asientos de cada lote (compra + traslados recibidos − salidas)';
+          }
+        } catch (e) { console.warn('[v168 inversión]', e); }
+        return r;
+      }
+      w.__v168 = true; return w;
+    })(renderTopbarSummary);
+    window.renderTopbarSummary = renderTopbarSummary;
+  }
+
+  /* ═════════════════════ ⑦ EL HISTORIAL DEL ANIMAL ═════════════════════ */
+
+  /* José: "que en el historial del animal se pueda ver qué tratamientos recibió,
+     y aparte el costo de cada dosis". Se inyectan las curaciones en la línea de
+     tiempo que ya arma verHistorialAnimal, con el lote donde se aplicó. */
+  window.v168CuracionesDe = function (animalId) {
+    var idx = v168IndiceSanidad();
+    return (idx.porAnimal[String(animalId).trim()] || []).map(function (e) {
+      return {
+        date: e.fecha,
+        icon: '💉',
+        type: 'CURACIÓN',
+        color: 'var(--red, #ef4444)',
+        title: (e.t.product_name || 'Tratamiento') + (e.t.diagnosis ? ' — ' + e.t.diagnosis : ''),
+        sub: 'Bs ' + e.bs.toFixed(2) + '/dosis' +
+             (e.t.dose ? ' · ' + e.t.dose + ' ' + (e.t.unit || '') : '') +
+             (e.t.lot_code ? ' · aplicado en ' + e.t.lot_code : '') +
+             (e.aprox ? ' · (costo estimado)' : '')
+      };
+    });
+  };
+
+  console.log('[v1.8.168] costo por asientos + sanidad atada al animal — activo');
+})();
+
 </script>
 
 </body>
