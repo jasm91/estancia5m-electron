@@ -8803,6 +8803,16 @@ function renderLotes() {
       btnMover = '<button class="btn btn-primary btn-sm" onclick="openMarcarCuarentena(\''+(lot.code||'').replace(/'/g,"\\'")+'\')" style="background:#A855F7;border-color:#A855F7" title="Marcar IDs y pesos individuales">📝 Marcar</button>';
     } else if (isMarcado || isInactive || isEmpty) {
       btnMover = ''; // sin botón
+      /* v1.8.170: archivar un lote vacio (o reactivarlo) desde la pantalla.
+         Antes esto era v169Inactivar() en la consola — Cesar no abre DevTools. */
+      var _esArch = (lotStatusLower === 'inactivo' || lotStatusLower === 'inactive');
+      var _esVend = (lotStatusLower === 'vendido' || lotStatusLower === 'sold');
+      var _cod = (lot.code||'').replace(/'/g,"\\'");
+      if (_esArch) {
+        btnFusionar = '<button class="btn btn-ghost btn-sm" onclick="reactivarLoteUI(\''+_cod+'\')" title="Volver a ponerlo en Activos">♻️ Reactivar</button>';
+      } else if (isEmpty && !isMarcado && !_esVend && typeof archivarLoteUI === 'function') {
+        btnFusionar = '<button class="btn btn-ghost btn-sm" onclick="archivarLoteUI(\''+_cod+'\')" title="Sacarlo de Activos y liberar el potrero. No borra nada: el historial se sigue leyendo.">📦 Archivar</button>';
+      }
     } else {
       btnMover = '<button class="btn btn-ghost btn-sm" onclick="openMoveLot(\''+(lot.code||'').replace(/'/g,"\\'")+'\')">Mover</button>';
       // v1.8.2: fusionar disponible solo si hay >=2 lotes activos con animales
@@ -8920,6 +8930,8 @@ function lotStatusBadge(lot) {
   if(lot.status==='fusionado') return'<span class="bdg" style="background:rgba(88,166,255,.15);color:#58a6ff;border:1px solid #58a6ff" title="Fusionado en '+(lot.fused_into||'?')+'">🔀 Fusionado → '+(lot.fused_into||'?')+'</span>';
   if(lot.status==='cuarentena') return'<span class="bdg" style="background:rgba(168,85,247,.15);color:#A855F7;border:1px solid #A855F7">🚧 Cuarentena</span>';
   if(lot.status==='marcado_completo') return'<span class="bdg" style="background:rgba(107,114,128,.15);color:#9CA3AF;border:1px solid #6B7280">📦 Marcado</span>';
+  /* v1.8.170: lote vacio archivado — fuera de Activos, entero para el historial */
+  if(lot.status==='inactivo' || lot.status==='inactive') return'<span class="bdg" style="background:rgba(139,148,158,.15);color:#8b949e;border:1px solid #6e7681" title="Archivado'+(lot.inactivo_at?' el '+String(lot.inactivo_at).slice(0,10):'')+(lot.inactivo_paddock?' · potrero liberado: '+lot.inactivo_paddock:'')+'. Su historial se sigue leyendo.">📦 Archivado</span>';
   const alerts = db.alerts.filter(a=>!a.resolved&&a.lot_code===lot.code);
   if(alerts.length) return'<span class="bdg bdg-amber">⚠ Alerta</span>';
   return'<span class="bdg bdg-green">✓ Activo</span>';
@@ -33845,7 +33857,8 @@ function verHistorialAnimal(animalId,lotCode){
       type: 'COMPRA',
       color: 'var(--blue)',
       title: 'Ingreso al sistema → ' + originalLot,
-      sub: 'Proveedor: ' + (compra.provider || '-') +
+      /* v1.8.170: el campo real es `proveedor`; leer `provider` daba "Proveedor: -" */
+      sub: 'Proveedor: ' + (compra.proveedor || compra.provider || '-') +
            (pricePerHead > 0 ? ' · Bs ' + pricePerHead.toLocaleString() + '/cab' : '') +
            (compra.weight ? ' · ~' + Math.round(compra.weight) + ' kg' : '')
     });
@@ -49973,7 +49986,7 @@ try {
 
 <script id="costo-asientos-v18168">
 /* ═══════════════════════════════════════════════════════════════════════════
-   v1.8.169 — EL COSTO SIGUE AL ANIMAL (modelo de asientos)
+   v1.8.170 — EL COSTO SIGUE AL ANIMAL (modelo de asientos)
 
    Reemplaza al v1.8.167, que José frenó con dos objeciones correctas:
 
@@ -50150,7 +50163,7 @@ try {
      por dosis; y para cada lote, cuánta sanidad le toca HOY.
 
      Prioridad de atribución:
-       1. t.animal_ids  → lo que graba el v1.8.169 hacia adelante (exacto)
+       1. t.animal_ids  → lo que graba el v1.8.170 hacia adelante (exacto)
        2. t.animal_id   → tratamiento individual (exacto)
        3. reconstrucción por _movements: qué animales estaban en t.lot_code el
           día t.applied_at (histórico). Si los candidatos no coinciden con
@@ -50410,7 +50423,7 @@ try {
 </script>
 <script id="origen-animal-v18169">
 /* ═══════════════════════════════════════════════════════════════════════════
-   v1.8.169 — EL ANIMAL NO PIERDE DE DÓNDE VINO
+   v1.8.170 — EL ANIMAL NO PIERDE DE DÓNDE VINO
 
    Pregunta de José 15-08, mirando la trazabilidad del animal 1678:
    "el animal trasladado pierde el historial de desde dónde se compró, ¿esto no
@@ -50567,7 +50580,7 @@ try {
 })();
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   v1.8.169 · parte ② — QUE NADA SE PIERDA EN SILENCIO
+   v1.8.170 · parte ② — QUE NADA SE PIERDA EN SILENCIO
    Dos avisos que faltaban y que hicieron que José desconfiara de los números
    (con razón, las dos veces).
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -50713,7 +50726,7 @@ try {
 })();
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   v1.8.169 · parte ③ — LOTES VACÍOS EN "INACTIVO" (idea de José, 15-08)
+   v1.8.170 · parte ③ — LOTES VACÍOS EN "INACTIVO" (idea de José, 15-08)
 
    "estos lotes que van quedando vacíos, para poder jalar la historia
     correctamente, que se pueda poner como inactivos, bajo la condición de que
@@ -50858,6 +50871,128 @@ try {
   console.log('[v1.8.169] archivar lotes vacíos — v169Candidatos() · v169Inactivar() · v169Reactivar(code)');
 })();
 
+
+</script>
+<script id="archivar-lotes-v18170">
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   v1.8.170 — ARCHIVAR LOTES DESDE LA PANTALLA (y dos arreglos de datos)
+
+   José, 15-08: "un comando de consola no es una función del sistema — César no
+   va a abrir DevTools". Correcto. El v1.8.170 dejó `v169Inactivar()` en la
+   consola; acá pasa a ser un botón en la pestaña Lotes:
+
+     · un lote ACTIVO con 0 animales muestra 📦 Archivar (con confirmación)
+     · un lote ARCHIVADO aparece en el filtro "Todos" con ♻️ Reactivar
+
+   Nada de esto borra: archivar es cambiar el status a `inactivo`, que el índice
+   ya trata como "no vivo" en 8 lugares y que NINGUNA búsqueda de lote filtra.
+   El linaje, el kardex, las curaciones y la cadena de compras siguen enteros.
+
+   Además:
+   ① El proveedor en la ficha del animal. El código leía `compra.provider` y el
+      campo real es `compra.proveedor` — por eso decía "Proveedor: -" aunque el
+      dato estaba. Tercer caso del mismo tipo (vet_products/products,
+      field_activities/activities).
+   ② Aviso de productos de sanidad usados con costo unitario en CERO. En 5M son
+      10 productos que arrastran 43 de los 94 tratamientos: casi la mitad de las
+      curaciones valen Bs 0 en el análisis y no había forma de darse cuenta.
+
+   Kill switch: __V170_OFF.
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+  function _T(t) { return (typeof db !== 'undefined' && db && Array.isArray(db[t])) ? db[t] : []; }
+  function _i(v) { var x = parseInt(v, 10); return isFinite(x) ? x : 0; }
+  function _n(v) { var x = parseFloat(v); return isFinite(x) ? x : 0; }
+
+  /* ── ① archivar / reactivar desde la UI ── */
+  window.archivarLoteUI = function (code) {
+    if (window.__V170_OFF) return;
+    var l = _T('lots').find(function (x) { return x && x.code === code; });
+    if (!l) { if (typeof toast === 'function') toast('No encontré el lote ' + code, 'error'); return; }
+    if (typeof v169EstaVacio === 'function' && !v169EstaVacio(l)) {
+      if (typeof toast === 'function') toast('El lote ' + code + ' todavía tiene animales', 'error');
+      return;
+    }
+    var mov = _T('animal_movements').filter(function (m) { return m && (m.from_lot === code || m.to_lot === code); }).length;
+    var msg = 'Archivar el lote ' + code + '\n\n' +
+      'Está vacío (0 animales). Al archivarlo:\n' +
+      '  · sale de la lista de Activos\n' +
+      '  · libera el potrero' + (l.paddock ? ' ' + l.paddock : '') + '\n' +
+      '  · NO se borra nada: su historial, sus compras y sus ' + mov + ' movimiento(s)\n' +
+      '    se siguen leyendo igual\n\n' +
+      'Lo vas a ver en el filtro "Todos", con un botón para reactivarlo.\n' +
+      'Y si vuelve a recibir animales, se reactiva solo.\n\n¿Archivar?';
+    if (!confirm(msg)) return;
+    if (typeof v169Inactivar === 'function') v169Inactivar({ solo: [code] });
+    if (typeof toast === 'function') toast('Lote ' + code + ' archivado', 'success');
+    try { if (typeof renderLotes === 'function') renderLotes(); } catch (e) {}
+  };
+
+  window.reactivarLoteUI = function (code) {
+    if (window.__V170_OFF) return;
+    var l = _T('lots').find(function (x) { return x && x.code === code; });
+    if (!l) return;
+    if (!confirm('Reactivar el lote ' + code + '?\n\nVuelve a la lista de Activos' +
+                 (l.inactivo_paddock ? ' y recupera el potrero ' + l.inactivo_paddock : '') + '.')) return;
+    if (typeof v169Reactivar === 'function') v169Reactivar(code);
+    if (typeof toast === 'function') toast('Lote ' + code + ' reactivado', 'success');
+    try { if (typeof renderLotes === 'function') renderLotes(); } catch (e) {}
+  };
+
+  /* ── ② productos de sanidad usados pero sin costo cargado ── */
+  window.v170ProductosSinCosto = function () {
+    if (window.__V170_OFF) return { productos: [], tratamientos: 0 };
+    var prods = {}; (_T('products').length ? _T('products') : _T('vet_products')).forEach(function (p) { if (p && p.id != null) prods[p.id] = p; });
+    var det = {}, n = 0;
+    _T('treatments').forEach(function (t) {
+      if (!t || _n(t.cost) > 0) return;
+      var p = prods[t.product_id] || {};
+      if (_n(p.unit_cost || p.cost) > 0) return;      /* tiene costo: el 0 es por otra razón */
+      var nom = p.name || t.product_name || '?';
+      var d = det[nom] || (det[nom] = { producto: nom, tratamientos: 0, consumido: 0, unidad: p.unit || '', stock: p.stock_qty });
+      d.tratamientos++; d.consumido += _n(t.total); n++;
+    });
+    var lista = Object.keys(det).map(function (k) { det[k].consumido = Math.round(det[k].consumido * 10) / 10; return det[k]; })
+      .sort(function (a, b) { return b.tratamientos - a.tratamientos; });
+    return { productos: lista, tratamientos: n };
+  };
+
+  /* se suma al chip de avisos del v169 */
+  if (typeof window.v169Avisar === 'function' && !window.v169Avisar.__v170) {
+    var _av = window.v169Avisar;
+    var w = function () {
+      _av.apply(this, arguments);
+      try {
+        if (window.__V170_OFF) return;
+        var s = window.v170ProductosSinCosto();
+        if (!s.tratamientos) return;
+        var box = document.getElementById('v169-aviso');
+        if (!box) {
+          var el = document.getElementById('tbs-valor');
+          if (!el || !el.parentNode) return;
+          box = document.createElement('span');
+          box.id = 'v169-aviso';
+          box.style.cssText = 'margin-left:8px;padding:1px 7px;border-radius:9px;font-size:10px;font-weight:700;' +
+                              'background:rgba(240,180,41,.16);color:#f0b429;border:1px solid rgba(240,180,41,.4);cursor:help';
+          el.parentNode.appendChild(box);
+        }
+        var txt = box.textContent ? box.textContent + ' · ' : '';
+        box.textContent = txt + '⚠ ' + s.tratamientos + ' curaciones sin costo';
+        box.title = (box.title ? box.title + '\n\n' : '') +
+          s.productos.length + ' producto(s) de sanidad se usaron pero tienen costo unitario en 0 en Stock, ' +
+          'así que ' + s.tratamientos + ' tratamiento(s) valen Bs 0 en el análisis.\n' +
+          s.productos.slice(0, 6).map(function (p) { return '· ' + p.producto + ' (' + p.tratamientos + ' trat.)'; }).join('\n') +
+          '\n\nConsola: v170ProductosSinCosto()';
+      } catch (e) { console.warn('[v170 aviso]', e); }
+    };
+    w.__v170 = true;
+    window.v169Avisar = w;
+  }
+
+  console.log('[v1.8.170] archivar lotes desde la pantalla · v170ProductosSinCosto()');
+})();
 
 </script>
 
