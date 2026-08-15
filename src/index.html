@@ -33821,8 +33821,19 @@ function verHistorialAnimal(animalId,lotCode){
 
   // 1) Compra: buscar en db.compras_ganado el lote donde nació en el sistema
   // El lote original es el primero de _movements (si existe) o el actual.
-  var originalLot = (a && a._movements && a._movements.length > 0) ? a._movements[0].from_lot : lotCode;
-  var compra = (db.compras_ganado || []).find(function(c) {
+  /* v1.8.169: el server NO guarda a._movements (0 de 902 animales lo tienen). El
+     historial real esta en db.animal_movements. Antes se caia al lote ACTUAL y,
+     como los lotes armados por traslado no tienen compra propia, el animal perdia
+     su fila de COMPRA: sin proveedor, sin fecha de ingreso y sin precio. */
+  var originalLot = (typeof v169LoteOrigen === 'function')
+    ? v169LoteOrigen((a && (a.animal_id || a.id)) || animalId, a, lotCode)
+    : ((a && a._movements && a._movements.length > 0) ? a._movements[0].from_lot : lotCode);
+  var compra = null;
+  if (typeof v169CompraDe === 'function') {
+    var _hit = v169CompraDe((a && (a.animal_id || a.id)) || animalId, a, lotCode);
+    if (_hit) { compra = _hit.compra; originalLot = _hit.lote || originalLot; }
+  }
+  if (!compra) compra = (db.compras_ganado || []).find(function(c) {
     return c.lot_code === originalLot ||
            (Array.isArray(c.lote_destinos) && c.lote_destinos.indexOf(originalLot) >= 0);
   });
@@ -33865,6 +33876,12 @@ function verHistorialAnimal(animalId,lotCode){
       _pushMov(m.date, m.from_lot, m.to_lot,
         (m.weight_at_move ? m.weight_at_move + ' kg al momento' : '') +
         (m.reason ? ' · ' + m.reason : ''));
+    });
+  }
+  /* v1.8.169: la fuente real de traslados es db.animal_movements */
+  if (typeof v169Timeline === 'function') {
+    v169Timeline((a && (a.animal_id || a.id)) || animalId, a).forEach(function(m) {
+      _pushMov(m.date, m.from_lot, m.to_lot, (m.by ? 'por ' + m.by : '') + (m.reason ? ' · ' + m.reason : ''));
     });
   }
   (db.animal_movements || []).forEach(function(m) {
@@ -49956,7 +49973,7 @@ try {
 
 <script id="costo-asientos-v18168">
 /* ═══════════════════════════════════════════════════════════════════════════
-   v1.8.168 — EL COSTO SIGUE AL ANIMAL (modelo de asientos)
+   v1.8.169 — EL COSTO SIGUE AL ANIMAL (modelo de asientos)
 
    Reemplaza al v1.8.167, que José frenó con dos objeciones correctas:
 
@@ -50133,7 +50150,7 @@ try {
      por dosis; y para cada lote, cuánta sanidad le toca HOY.
 
      Prioridad de atribución:
-       1. t.animal_ids  → lo que graba el v1.8.168 hacia adelante (exacto)
+       1. t.animal_ids  → lo que graba el v1.8.169 hacia adelante (exacto)
        2. t.animal_id   → tratamiento individual (exacto)
        3. reconstrucción por _movements: qué animales estaban en t.lot_code el
           día t.applied_at (histórico). Si los candidatos no coinciden con
@@ -50169,8 +50186,12 @@ try {
         var x1 = porId[String(t.animal_id).trim()]; if (x1) destinatarios.push(x1);
       } else if (t.lot_code) {
         via = 'reconstruido';
+        /* v1.8.169: por window, para que tome el override que lee animal_movements
+           (el server no guarda a._movements y la llamada directa se quedaba con la
+           version vieja atrapada en este closure). */
+        var _lef = (typeof window.v168LoteEnFecha === 'function') ? window.v168LoteEnFecha : v168LoteEnFecha;
         todos.forEach(function (x) {
-          if (v168LoteEnFecha(x.a, x.lote, fecha) === t.lot_code) destinatarios.push(x);
+          if (_lef(x.a, x.lote, fecha) === t.lot_code) destinatarios.push(x);
         });
         var esperados = _i(t.count);
         if (esperados > 0 && destinatarios.length !== esperados) aprox = true;
@@ -50227,11 +50248,14 @@ try {
   /* Calcula y escribe el asiento pareado al mover N cabezas de un lote a otro.
      Prorrateo POR CABEZA (decisión de José): lo que se lleva es
         costo directo acumulado × (cabezas movidas / cabezas al momento)     */
-  function v168MoverCostoDirecto(origenCode, destinoCode, cabMovidas, fecha, batchId) {
+  function v168MoverCostoDirecto(origenCode, destinoCode, cabMovidas, fecha, batchId, cabBase) {
     if (window.__V168_OFF) return null;
     var o = _lot(origenCode), d = _lot(destinoCode);
     if (!o || !d || !(cabMovidas > 0)) return null;
-    var cabOrigen = _i(o.animal_count);
+    /* cabBase = cabezas que tenia el origen al momento del traslado. Se pasa explicito
+       cuando se reconstruye historia (el lote hoy puede estar en 0). NUNCA se toca
+       lot.animal_count para simularlo: ese campo ya nos dio bastantes problemas. */
+    var cabOrigen = (cabBase != null && _i(cabBase) > 0) ? _i(cabBase) : _i(o.animal_count);
     if (cabOrigen <= 0) return null;
     var r = cabMovidas / cabOrigen;
     if (r > 1) r = 1;
@@ -50382,6 +50406,458 @@ try {
 
   console.log('[v1.8.168] costo por asientos + sanidad atada al animal — activo');
 })();
+
+</script>
+<script id="origen-animal-v18169">
+/* ═══════════════════════════════════════════════════════════════════════════
+   v1.8.169 — EL ANIMAL NO PIERDE DE DÓNDE VINO
+
+   Pregunta de José 15-08, mirando la trazabilidad del animal 1678:
+   "el animal trasladado pierde el historial de desde dónde se compró, ¿esto no
+    va a romper la historia completa?"
+   Sí la rompía. Y la causa explica de una vez tres cosas que veníamos peleando.
+
+   LA CAUSA
+   El server NO guarda `_movements` dentro de cada animal: 0 de 902 lo tienen.
+   El historial real de lotes vive en la tabla `animal_movements` (una fila por
+   animal por traslado, con from_lot / to_lot / date). Pero varias partes del
+   código leen `a._movements`, que después de un sync viene vacío.
+
+   QUÉ SE ROMPÍA
+   ① La ficha del animal calculaba el lote de origen así:
+        originalLot = a._movements[0].from_lot  ||  lote_actual
+      Con `_movements` vacío caía al lote ACTUAL. Y como T1/T2/T3 no tienen
+      compra propia, no encontraba ninguna → desaparecía la fila 🐂 COMPRA.
+      El animal 1678 quedaba sin proveedor, sin fecha de ingreso y sin precio.
+   ② `v168LoteEnFecha` (v1.8.168) también leía `_movements`, así que para CADA
+      animal devolvía siempre el lote actual → las curaciones viejas nunca se
+      re-atribuían. Por eso la sanidad de T1 daba Bs 0 y `vincularCuraciones()`
+      no escribía nada.
+   ③ Cualquier reporte que quisiera saber dónde estuvo un animal.
+
+   QUÉ HACE ESTE PAQUETE
+   Un solo helper — `v169Timeline(animalId, loteActual)` — que arma la línea de
+   tiempo de lotes juntando `db.animal_movements` (fuente real) con
+   `a._movements` (por si existe localmente), deduplicado y ordenado. Todo lo
+   demás pasa a leer de ahí.
+
+   Y la ficha del animal ahora busca la compra siguiendo la cadena hacia atrás:
+   T2 → Tropa 1 → CUAR-001 → compra de EL REFUGIO. Si el lote de origen fue una
+   cuarentena, la encuentra igual.
+
+   Kill switch: __V169_OFF.
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  function _T(t) { return (typeof db !== 'undefined' && db && Array.isArray(db[t])) ? db[t] : []; }
+  function _f(x) { return String(x || '').slice(0, 10); }
+  function _id(x) { return String(x == null ? '' : x).trim(); }
+
+  /* ── índice animal_id → movimientos, armado una sola vez por firma ── */
+  var _idx = null, _firma = '';
+  function _construir() {
+    var f = _T('animal_movements').length + '|' + _T('lots').length;
+    if (_idx && _firma === f) return _idx;
+    var M = {};
+    _T('animal_movements').forEach(function (m) {
+      if (!m) return;
+      var ids = [];
+      if (m.animal_id != null && m.animal_id !== '') ids.push(_id(m.animal_id));
+      if (Array.isArray(m.animal_ids)) m.animal_ids.forEach(function (x) { ids.push(_id(x)); });
+      ids.forEach(function (k) {
+        if (!k) return;
+        (M[k] = M[k] || []).push({ date: _f(m.date), from_lot: m.from_lot, to_lot: m.to_lot,
+                                   by: m.by, reason: m.reason || m.motivo || '' });
+      });
+    });
+    _idx = M; _firma = f; return M;
+  }
+  window.v169InvalidarCache = function () { _idx = null; _firma = ''; };
+
+  /* Línea de tiempo de lotes de un animal: animal_movements + a._movements,
+     deduplicada por fecha|origen|destino y ordenada. */
+  function v169Timeline(animalId, animalObj) {
+    if (window.__V169_OFF) return (animalObj && Array.isArray(animalObj._movements)) ? animalObj._movements.slice() : [];
+    var out = [], visto = {};
+    function add(m) {
+      if (!m || (!m.from_lot && !m.to_lot)) return;
+      var k = _f(m.date) + '|' + (m.from_lot || '') + '|' + (m.to_lot || '');
+      if (visto[k]) return;
+      visto[k] = 1;
+      out.push({ date: _f(m.date), from_lot: m.from_lot, to_lot: m.to_lot, by: m.by, reason: m.reason || '' });
+    }
+    (_construir()[_id(animalId)] || []).forEach(add);
+    if (animalObj && Array.isArray(animalObj._movements)) animalObj._movements.forEach(add);
+    out.sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+    return out;
+  }
+  window.v169Timeline = v169Timeline;
+
+  /* Lote donde ENTRÓ al sistema (el from_lot del primer traslado) */
+  function v169LoteOrigen(animalId, animalObj, loteActual) {
+    var t = v169Timeline(animalId, animalObj);
+    return (t.length && t[0].from_lot) ? t[0].from_lot : loteActual;
+  }
+  window.v169LoteOrigen = v169LoteOrigen;
+
+  /* Compra de origen: sigue la cadena de lotes hacia atrás (T2 → Tropa 1 →
+     CUAR-001) usando cost_origin/cost_ledger y los propios movimientos. */
+  function v169CompraDe(animalId, animalObj, loteActual, _saltos) {
+    _saltos = _saltos || 0;
+    var C = _T('compras_ganado');
+    function buscar(code) {
+      if (!code) return null;
+      return C.find(function (c) {
+        if (c.lot_code === code) return true;
+        if (Array.isArray(c.lote_destinos) && c.lote_destinos.indexOf(code) >= 0) return true;
+        /* tolerar diferencias de mayúsculas: hay compras que dicen "TROPA 1" y el lote es "Tropa 1" */
+        var lc = String(code).toLowerCase();
+        if (String(c.lot_code || '').toLowerCase() === lc) return true;
+        return Array.isArray(c.lote_destinos) && c.lote_destinos.some(function (d) { return String(d).toLowerCase() === lc; });
+      }) || null;
+    }
+    var cadena = [];
+    var t = v169Timeline(animalId, animalObj);
+    /* de más viejo a más nuevo: el origen del primer traslado es lo más cercano a la compra */
+    t.forEach(function (m) { if (m.from_lot && cadena.indexOf(m.from_lot) < 0) cadena.push(m.from_lot); });
+    if (loteActual && cadena.indexOf(loteActual) < 0) cadena.push(loteActual);
+    for (var i = 0; i < cadena.length; i++) {
+      var c = buscar(cadena[i]);
+      if (c) return { compra: c, lote: cadena[i] };
+    }
+    /* último intento: subir por cost_origin/cost_ledger del lote de origen */
+    var code = cadena[0] || loteActual, n = 0;
+    while (code && n < 6) {
+      var lot = _T('lots').find(function (l) { return l && l.code === code; });
+      if (!lot) break;
+      var padre = (lot.cost_origin && lot.cost_origin.from_lot) ||
+                  (Array.isArray(lot.cost_ledger) && (lot.cost_ledger.find(function (e) { return e && e.from_lot; }) || {}).from_lot);
+      if (!padre || padre === code) break;
+      var c2 = buscar(padre);
+      if (c2) return { compra: c2, lote: padre };
+      code = padre; n++;
+    }
+    return null;
+  }
+  window.v169CompraDe = v169CompraDe;
+
+  /* ── ① reemplazar v168LoteEnFecha para que use la tabla real ── */
+  if (typeof window.v168LoteEnFecha === 'function' && !window.v168LoteEnFecha.__v169) {
+    var _base168 = window.v168LoteEnFecha;
+    var w = function (a, loteActual, fecha) {
+      if (window.__V169_OFF) return _base168.apply(this, arguments);
+      var aid = _id(a && (a.animal_id || a.id));
+      var t = v169Timeline(aid, a);
+      if (!t.length) return loteActual;
+      var f = _f(fecha);
+      if (f && f < _f(t[0].date)) return t[0].from_lot || loteActual;
+      for (var i = t.length - 1; i >= 0; i--) {
+        if (!f || _f(t[i].date) <= f) return t[i].to_lot || loteActual;
+      }
+      return loteActual;
+    };
+    w.__v169 = true;
+    window.v168LoteEnFecha = w;
+    try { if (typeof v168InvalidarCache === 'function') v168InvalidarCache(); } catch (e) {}
+  }
+
+  console.log('[v1.8.169] el animal conserva su origen — timeline desde animal_movements ('
+    + _T('animal_movements').length + ' registros)');
+})();
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   v1.8.169 · parte ② — QUE NADA SE PIERDA EN SILENCIO
+   Dos avisos que faltaban y que hicieron que José desconfiara de los números
+   (con razón, las dos veces).
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+  function _T(t) { return (typeof db !== 'undefined' && db && Array.isArray(db[t])) ? db[t] : []; }
+  function _i(v) { var x = parseInt(v, 10); return isFinite(x) ? x : 0; }
+  function _n(v) { var x = parseFloat(v); return isFinite(x) ? x : 0; }
+  function _act(l) { var s = String((l && l.status) || 'activo').toLowerCase(); return s === 'active' || s === 'activo'; }
+
+  /* ── ⓐ compras huérfanas: plata de compra en lotes sin cabezas ──
+     El 15-08 la inversión cayó de Bs 4,3M a Bs 101.084 sin un solo aviso: todas
+     las compras apuntaban a lotes que habían quedado en cero. Una compra puede
+     dejar de contar (lote vendido), pero NUNCA en silencio. */
+  function v169ComprasHuerfanas() {
+    if (window.__V169_OFF) return { total: 0, det: [] };
+    var lots = {}; _T('lots').forEach(function (l) { if (l && l.code) lots[l.code] = l; });
+    var det = [], total = 0;
+    _T('compras_ganado').forEach(function (c) {
+      var bs = _n(c.total); if (bs <= 0) return;
+      var destinos = [c.lot_code].concat(Array.isArray(c.lote_destinos) ? c.lote_destinos : []).filter(Boolean);
+      var cab = 0, vendido = false;
+      destinos.forEach(function (d) {
+        var l = lots[d]; if (!l) return;
+        var st = String(l.status || '').toLowerCase();
+        if (st === 'vendido' || st === 'sold') vendido = true;
+        if (_act(l)) cab += _i(l.animal_count);
+      });
+      if (cab > 0) return;                       /* cuenta: hay cabezas vivas */
+      if (vendido) return;                       /* correcto: se vendió */
+      /* ¿el valor se fue por un asiento de salida? entonces no está huérfano */
+      var conSalida = destinos.some(function (d) {
+        var l = lots[d];
+        return l && Array.isArray(l.cost_ledger) && l.cost_ledger.some(function (e) { return e && e.tipo === 'salida'; });
+      });
+      if (conSalida) return;
+      total += bs;
+      det.push({ proveedor: c.provider || c.proveedor || '?', Bs: Math.round(bs),
+                 'apunta a': destinos.join(' · '), fecha: String(c.date || c.fecha || '').slice(0, 10) });
+    });
+    return { total: total, det: det };
+  }
+  window.v169ComprasHuerfanas = v169ComprasHuerfanas;
+
+  /* ── ⓑ lotes cuyo animal_count no coincide con sus animales ──
+     Las 729 cabezas fantasma vivieron días sin que nada las marcara. */
+  function v169LotesDescuadrados() {
+    if (window.__V169_OFF) return [];
+    var A = {};
+    try { A = (typeof getAnimalesDB === 'function') ? (getAnimalesDB() || {}) : {}; } catch (e) {}
+    var out = [];
+    _T('lots').forEach(function (l) {
+      if (!l || !_act(l)) return;
+      if (!Object.prototype.hasOwnProperty.call(A, l.code)) return;   /* sin lista: no opinamos */
+      var lista = (A[l.code] || []).length, cnt = _i(l.animal_count);
+      if (lista !== cnt) out.push({ lote: l.code, animal_count: cnt, 'animales reales': lista, diferencia: cnt - lista });
+    });
+    return out;
+  }
+  window.v169LotesDescuadrados = v169LotesDescuadrados;
+
+  /* ── el aviso en el header, al lado de la inversión ── */
+  function v169Avisar() {
+    if (window.__V169_OFF) return;
+    try {
+      var h = v169ComprasHuerfanas(), d = v169LotesDescuadrados();
+      var el = document.getElementById('tbs-valor');
+      if (!el || !el.parentNode) return;
+      var box = document.getElementById('v169-aviso');
+      if (!h.total && !d.length) { if (box) box.remove(); return; }
+      if (!box) {
+        box = document.createElement('span');
+        box.id = 'v169-aviso';
+        box.style.cssText = 'margin-left:8px;padding:1px 7px;border-radius:9px;font-size:10px;font-weight:700;' +
+                            'background:rgba(248,81,73,.16);color:#f85149;border:1px solid rgba(248,81,73,.4);cursor:help';
+        el.parentNode.appendChild(box);
+      }
+      var partes = [], tip = [];
+      if (h.total) {
+        partes.push('⚠ Bs ' + (h.total >= 1e6 ? (h.total / 1e6).toFixed(1) + 'M' : Math.round(h.total).toLocaleString('es-BO')) + ' sin contar');
+        tip.push(h.det.length + ' compra(s) apuntan a lotes sin cabezas y sin asiento de salida — su valor NO está en la inversión. Consola: v169ComprasHuerfanas()');
+      }
+      if (d.length) {
+        var dif = d.reduce(function (s, x) { return s + Math.abs(x.diferencia); }, 0);
+        partes.push('⚠ ' + dif + ' cab');
+        tip.push(d.length + ' lote(s) con animal_count distinto de sus animales reales. Consola: v169LotesDescuadrados()');
+      }
+      box.textContent = partes.join(' · ');
+      box.title = tip.join('\n\n');
+    } catch (e) { console.warn('[v169 aviso]', e); }
+  }
+  window.v169Avisar = v169Avisar;
+
+  if (typeof renderTopbarSummary === 'function' && !renderTopbarSummary.__v169) {
+    renderTopbarSummary = (function (base) {
+      function w() { var r = base.apply(this, arguments); try { v169Avisar(); } catch (e) {} return r; }
+      w.__v169 = true; return w;
+    })(renderTopbarSummary);
+    window.renderTopbarSummary = renderTopbarSummary;
+  }
+  try { setTimeout(v169Avisar, 7000); } catch (e) {}
+
+  /* ── ⓒ el saldo de apertura del Kardex deja de ser una tautología ──
+     v1.8.158 hacía:  apertura = activos − saldoMov;  cierra = (saldoMov + apertura) === activos
+     …que es verdadero SIEMPRE. Cualquier descuadre se rebautizaba "saldo de
+     apertura" y la card salía verde. Acá el saldo de apertura se CONGELA la
+     primera vez y después se compara contra ese número fijo. */
+  var K = 'e5m_kardex_apertura';
+  function v169Apertura() {
+    try { var v = JSON.parse(localStorage.getItem(K) || 'null'); return (v && typeof v.cab === 'number') ? v : null; } catch (e) { return null; }
+  }
+  window.v169Apertura = v169Apertura;
+  window.v169FijarApertura = function (cab, nota) {
+    var v = { cab: _i(cab), at: new Date().toISOString(), nota: nota || 'fijado a mano' };
+    localStorage.setItem(K, JSON.stringify(v));
+    console.log('%c✓ Saldo de apertura fijado en ' + v.cab + ' cab.', 'color:#3fb950;font-weight:bold');
+    try { if (typeof renderKardexEstancia === 'function') renderKardexEstancia(); } catch (e) {}
+    return v;
+  };
+
+  if (typeof window.v158ConciliarKardex === 'function' && !window.v158ConciliarKardex.__v169) {
+    window.v158ConciliarKardex = (function (base) {
+      function w() {
+        var c = base.apply(this, arguments);
+        if (window.__V169_OFF || !c) return c;
+        var fija = v169Apertura();
+        if (!fija) {                       /* primera vez: se congela lo que haya hoy */
+          fija = { cab: _i(c.apertura > 0 ? c.apertura : 0), at: new Date().toISOString(), nota: 'congelado automáticamente' };
+          try { localStorage.setItem(K, JSON.stringify(fija)); } catch (e) {}
+          console.log('[v1.8.169] saldo de apertura congelado en ' + fija.cab + ' cab — de acá en más la conciliación puede fallar de verdad');
+        }
+        c.aperturaFija = fija.cab;
+        c.apertura = fija.cab;             /* el render la muestra */
+        c.diferencia = c.inventario - (c.saldoMov + fija.cab);
+        c.cierra = Math.abs(c.diferencia) < 0.5;
+        return c;
+      }
+      w.__v169 = true; return w;
+    })(window.v158ConciliarKardex);
+  }
+
+  console.log('[v1.8.169] avisos activos — v169ComprasHuerfanas() · v169LotesDescuadrados() · v169Apertura()');
+})();
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   v1.8.169 · parte ③ — LOTES VACÍOS EN "INACTIVO" (idea de José, 15-08)
+
+   "estos lotes que van quedando vacíos, para poder jalar la historia
+    correctamente, que se pueda poner como inactivos, bajo la condición de que
+    estén vacíos y no se reflejen en los lotes activos, pero que el programa
+    pueda jalar la información"
+
+   Es la decisión correcta y el estado ya existe: el índice trata `inactivo`
+   como "no vivo" en 8 lugares (header, conteos, rotaciones, dashboard), pero
+   NINGUNA búsqueda de lote filtra por status. O sea: desaparece de las vistas
+   de hacienda viva y sigue entero para el linaje, el kardex, las curaciones y
+   la cadena de compras. Justo lo que pediste.
+
+   LAS TRES CONDICIONES — se verifican en código, no a mano:
+     ① animal_count === 0
+     ② su lista de animales está vacía (o no existe)
+     ③ no tiene animales que lleguen después (se revisa animal_movements)
+
+   Y se REACTIVA solo: si un lote inactivo vuelve a tener animales, pasa a
+   "active" en el próximo arranque o sync. Inactivar no es cerrar: es archivar.
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+  function _T(t) { return (typeof db !== 'undefined' && db && Array.isArray(db[t])) ? db[t] : []; }
+  function _i(v) { var x = parseInt(v, 10); return isFinite(x) ? x : 0; }
+  function _listas() {
+    try { return (typeof getAnimalesDB === 'function') ? (getAnimalesDB() || {}) : JSON.parse(localStorage.getItem('e5m_animals') || '{}'); }
+    catch (e) { return {}; }
+  }
+  function _vivo(l) { var s = String((l && l.status) || 'activo').toLowerCase(); return s === 'active' || s === 'activo'; }
+  function _inactivo(l) { var s = String((l && l.status) || '').toLowerCase(); return s === 'inactivo' || s === 'inactive'; }
+
+  /* ¿este lote está realmente vacío? */
+  function v169EstaVacio(l) {
+    if (!l) return false;
+    if (_i(l.animal_count) !== 0) return false;
+    var A = _listas();
+    if (Object.prototype.hasOwnProperty.call(A, l.code) && (A[l.code] || []).length > 0) return false;
+    return true;
+  }
+  window.v169EstaVacio = v169EstaVacio;
+
+  function v169Candidatos() {
+    return _T('lots').filter(function (l) { return _vivo(l) && v169EstaVacio(l); })
+      .map(function (l) {
+        var mov = _T('animal_movements').filter(function (m) { return m && (m.from_lot === l.code || m.to_lot === l.code); }).length;
+        return { lote: l.code, potrero: l.paddock || '-', entrada: l.entry_date,
+                 'movimientos en su historia': mov, 'compras que lo referencian':
+                   _T('compras_ganado').filter(function (c) {
+                     return c.lot_code === l.code || (Array.isArray(c.lote_destinos) && c.lote_destinos.indexOf(l.code) >= 0);
+                   }).length };
+      });
+  }
+  window.v169Candidatos = v169Candidatos;
+
+  /* Archivar: status inactivo. NO borra nada y no toca el historial. */
+  function v169Inactivar(opts) {
+    opts = opts || {};
+    if (window.__V169_OFF) { console.warn('v169 apagado'); return; }
+    var cambios = [], A = _listas();
+    _T('lots').forEach(function (l) {
+      if (!_vivo(l) || !v169EstaVacio(l)) return;
+      if (opts.excepto && opts.excepto.indexOf(l.code) >= 0) return;
+      if (opts.solo && opts.solo.indexOf(l.code) < 0) return;
+      cambios.push({ lote: l.code, 'potrero liberado': l.paddock || '-' });
+      l.status = 'inactivo';
+      l.inactivo_at = new Date().toISOString();
+      l.inactivo_paddock = l.paddock || '';     /* se guarda por si hay que revertir */
+      if (opts.mantenerPotrero !== true) l.paddock = '';
+      l.updated_at = new Date().toISOString();
+      /* cerrar la rotación abierta para liberar el potrero de verdad */
+      if (opts.mantenerPotrero !== true) {
+        _T('rotation_history').forEach(function (r) {
+          if (r && r.lot_code === l.code && !r.exit_date) {
+            r.exit_date = (typeof localDate === 'function') ? localDate() : new Date().toISOString().slice(0, 10);
+            r.exit_at = new Date().toISOString();
+            r.reason = (r.reason ? r.reason + ' · ' : '') + 'lote archivado (vacío)';
+          }
+        });
+      }
+    });
+    if (!cambios.length) { console.log('No hay lotes vacíos para archivar.'); return; }
+    console.log('%c✓ ' + cambios.length + ' lote(s) archivados como "inactivo" — siguen enteros para el historial:', 'color:#3fb950;font-weight:bold');
+    console.table(cambios);
+    if (typeof saveDB === 'function') saveDB(true);
+    try { if (typeof replaceTableInRailway === 'function') { replaceTableInRailway('lots', db.lots || []); replaceTableInRailway('rotation_history', db.rotation_history || []); } } catch (e) {}
+    ['renderLotes', 'renderRotacion', 'renderTopbarSummary', 'renderDashboard'].forEach(function (f) {
+      try { if (typeof window[f] === 'function') window[f](); } catch (e) {}
+    });
+    console.log('   Los ves en Lotes → "Todos". Revertir: v169Reactivar("Tropa 1")');
+  }
+  window.v169Inactivar = v169Inactivar;
+
+  function v169Reactivar(code) {
+    var l = _T('lots').find(function (x) { return x && x.code === code; });
+    if (!l) { console.warn('No existe el lote ' + code); return; }
+    l.status = 'active';
+    if (!l.paddock && l.inactivo_paddock) l.paddock = l.inactivo_paddock;
+    l.updated_at = new Date().toISOString();
+    delete l.inactivo_at;
+    if (typeof saveDB === 'function') saveDB(true);
+    console.log('%c✓ ' + code + ' reactivado' + (l.paddock ? ' en ' + l.paddock : ''), 'color:#3fb950;font-weight:bold');
+    try { if (typeof renderLotes === 'function') renderLotes(); } catch (e) {}
+  }
+  window.v169Reactivar = v169Reactivar;
+
+  /* Reactivación automática: un lote archivado que vuelve a tener animales
+     no puede quedarse invisible. Corre al arranque y después de cada sync. */
+  function v169RevisarArchivados(motivo) {
+    if (window.__V169_OFF) return 0;
+    var A = _listas(), n = 0;
+    _T('lots').forEach(function (l) {
+      if (!_inactivo(l)) return;
+      var tiene = _i(l.animal_count) > 0 || ((A[l.code] || []).length > 0);
+      if (!tiene) return;
+      l.status = 'active';
+      if (!l.paddock && l.inactivo_paddock) l.paddock = l.inactivo_paddock;
+      l.updated_at = new Date().toISOString();
+      n++;
+      console.log('[v1.8.169] ' + l.code + ' volvió a tener animales → reactivado' + (motivo ? ' (' + motivo + ')' : ''));
+    });
+    if (n) {
+      try { if (typeof saveDB === 'function') saveDB(true); } catch (e) {}
+      try { if (typeof renderLotes === 'function') renderLotes(); } catch (e) {}
+    }
+    return n;
+  }
+  window.v169RevisarArchivados = v169RevisarArchivados;
+
+  if (typeof pullFromRailwayDesktop === 'function' && !pullFromRailwayDesktop.__v169) {
+    pullFromRailwayDesktop = (function (base) {
+      function w() {
+        var r = base.apply(this, arguments);
+        try { setTimeout(function () { v169RevisarArchivados('post-sync'); }, 6500); } catch (e) {}
+        return r;
+      }
+      w.__v169 = true; return w;
+    })(pullFromRailwayDesktop);
+    window.pullFromRailwayDesktop = pullFromRailwayDesktop;
+  }
+  try { setTimeout(function () { v169RevisarArchivados('arranque'); }, 5500); } catch (e) {}
+
+  console.log('[v1.8.169] archivar lotes vacíos — v169Candidatos() · v169Inactivar() · v169Reactivar(code)');
+})();
+
 
 </script>
 
