@@ -70,6 +70,12 @@ body{background:var(--bg);color:var(--text);font-family:Inter,'Segoe UI Emoji','
 
 /* SIDEBAR — v1.4.71 premium look */
 .sidebar{background:var(--sur);border-right:1px solid var(--bor);padding:14px 0 18px;position:sticky;top:56px;height:calc(100vh - 56px);overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;overscroll-behavior:contain} /* v1.8.106c: la rueda sobre el sidebar scrollea SOLO el sidebar (no encadena a la página) */
+/* v1.8.174 · menu-scroll-v18175: el sidebar es flex column y sus hijos tenian
+   flex-shrink:1 → cuando el menu no entraba, en vez de aparecer la barra de scroll
+   las secciones se COMPRIMIAN y, como .nav-sec-body tiene overflow:hidden, se comian
+   los ultimos items (Opciones Rapidas, Cabana...). Con shrink:0 el contenido desborda
+   y el overflow-y:auto que ya estaba hace su trabajo: el menu scrollea solo. */
+.sidebar > *{flex-shrink:0}
 .sidebar::-webkit-scrollbar{width:6px}
 .sidebar::-webkit-scrollbar-track{background:transparent}
 .sidebar::-webkit-scrollbar-thumb{background:var(--bor);border-radius:3px}
@@ -91,7 +97,7 @@ body{background:var(--bg);color:var(--text);font-family:Inter,'Segoe UI Emoji','
 .nav-lbl{font-family:DM Mono,monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#7D8590;font-weight:600;transition:opacity .15s,height .25s;overflow:hidden;white-space:nowrap;flex:1;text-align:left}
 .nav-lbl-chevron{font-size:10px;color:#7D8590;transition:transform .2s;line-height:1;flex-shrink:0;margin-left:8px}
 .nav-sec.collapsed .nav-lbl-chevron{transform:rotate(-90deg)}
-.nav-sec-body{display:flex;flex-direction:column;gap:1px;overflow:hidden;transition:max-height .25s ease-out,opacity .15s;max-height:600px}
+.nav-sec-body{display:flex;flex-direction:column;gap:1px;overflow:hidden;transition:max-height .25s ease-out,opacity .15s;max-height:1400px} /* v1.8.174: 600px cortaba secciones largas */
 .nav-sec.collapsed .nav-sec-body{max-height:0;opacity:0;pointer-events:none}
 .app.sidebar-collapsed .nav-lbl-btn{display:none}
 .app.sidebar-collapsed .nav-sec-body{max-height:none !important;opacity:1 !important;pointer-events:auto !important}
@@ -696,10 +702,110 @@ function navIdleReset() {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', arm, { once: true });
   else arm();
 })();
+/* ═══════════════════════════════════════════════════════════════════════
+   v1.8.175 · menu-scroll-v18175
+   Igual que la 174 (el arreglo del menu) + tres cosas para poder VERIFICAR
+   desde adentro que el HTML que corre es este y no una copia vieja:
+     · banner en consola al arrancar
+     · sello de build en la card Informacion, al lado de la version
+     · v175Diag() : mide el menu y dice si quedan opciones tapadas
+   ═══════════════════════════════════════════════════════════════════════ */
+window.E5M_HTML_BUILD = '1.8.175';
+
+window.v175Diag = function () {
+  var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
+  if (!sb) { console.error('[v1.8.175] no encuentro el sidebar'); return null; }
+  var secs = [].slice.call(document.querySelectorAll('.nav-sec'));
+  function siguienteVisible(i) {
+    for (var k = i + 1; k < secs.length; k++) {
+      if (secs[k].offsetParent !== null && secs[k].getBoundingClientRect().height > 0) return secs[k];
+    }
+    return null;
+  }
+  var tapados = [];
+  secs.forEach(function (sec, i) {
+    var body = sec.querySelector('.nav-sec-body');
+    if (!body || sec.classList.contains('collapsed') || sec.offsetParent === null) return;
+    var next = siguienteVisible(i), bb = body.getBoundingClientRect().bottom;
+    [].slice.call(body.children).forEach(function (ch) {
+      var r = ch.getBoundingClientRect();
+      if (r.height <= 0) return;
+      if ((next && r.bottom > next.getBoundingClientRect().top + 1) || r.bottom > bb + 1) {
+        tapados.push(sec.getAttribute('data-sec') + ' → ' + (ch.textContent || '').trim().slice(0, 24));
+      }
+    });
+  });
+  var shrink = [].slice.call(sb.children).map(function (c) { return getComputedStyle(c).flexShrink; });
+  var r = {
+    build_del_html: window.E5M_HTML_BUILD,
+    arreglo_activo: shrink.every(function (x) { return x === '0'; }),
+    menu_scrollea: sb.scrollHeight > sb.clientHeight + 1,
+    alto_visible: sb.clientHeight,
+    alto_del_contenido: sb.scrollHeight,
+    secciones_abiertas: secs.filter(function (x) { return !x.classList.contains('collapsed'); }).length + ' de ' + secs.length,
+    opciones_tapadas: tapados.length,
+    cuales: tapados
+  };
+  console.log('%c[v1.8.175] diagnóstico del menú', 'color:#d4a76a;font-weight:700', r);
+  if (!r.arreglo_activo) console.warn('[v1.8.175] el CSS del arreglo NO está aplicado — el index.html que corre es viejo');
+  else if (r.opciones_tapadas) console.warn('[v1.8.175] siguen tapadas ' + r.opciones_tapadas + ' opciones:', tapados);
+  else console.log('%c[v1.8.175] menú OK — ninguna opción tapada', 'color:#39d353;font-weight:700');
+  return r;
+};
+
+/* sello de build al lado de la Version, en Configuración → Informacion.
+   Si acá dice 1.8.175 el HTML es el nuevo; la Version sale de package.json
+   y puede decir otra cosa si el copiado quedó a medias. */
+(function v175Sello() {
+  function poner() {
+    try {
+      var el = null;
+      var nodos = document.querySelectorAll('#info-version, [id*="version"], .info-row, td, div');
+      for (var i = 0; i < nodos.length && !el; i++) {
+        var t = (nodos[i].textContent || '').trim();
+        if (/^1\.8\.\d+$/.test(t) && nodos[i].children.length === 0) el = nodos[i];
+      }
+      if (!el || el.__v175) return;
+      el.__v175 = true;
+      var b = document.createElement('span');
+      b.textContent = ' · html ' + window.E5M_HTML_BUILD;
+      b.style.cssText = 'color:#39d353;font-size:11px;margin-left:6px;font-family:inherit';
+      b.title = 'Build del index.html que está corriendo';
+      el.appendChild(b);
+    } catch (e) {}
+  }
+  var obs = new MutationObserver(poner);
+  function arm() { poner(); obs.observe(document.body, { childList: true, subtree: true }); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', arm, { once: true });
+  else arm();
+})();
+
+console.log('%c[v1.8.175] menú lateral con scroll propio · html build ' + window.E5M_HTML_BUILD + ' · v175Diag()',
+            'color:#d4a76a;font-weight:700');
+
+/* v1.8.174: con el menu ya scrolleable, la pagina activa puede quedar fuera de vista.
+   Se la trae al centro, sin pelear con el scroll que el usuario esta haciendo. */
+function v174ScrollNavActivo(suave) {
+  if (window.__V174_OFF) return;
+  try {
+    var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
+    var act = sb && sb.querySelector('.nav-btn.active');
+    if (!sb || !act) return;
+    if (sb.scrollHeight <= sb.clientHeight) return;      /* entra todo: no hay nada que hacer */
+    var r = act.getBoundingClientRect(), rs = sb.getBoundingClientRect();
+    if (r.top >= rs.top && r.bottom <= rs.bottom) return; /* ya se ve */
+    var destino = sb.scrollTop + (r.top - rs.top) - (sb.clientHeight / 2) + (r.height / 2);
+    if (sb.scrollTo) sb.scrollTo({ top: Math.max(0, destino), behavior: suave ? 'smooth' : 'auto' });
+    else sb.scrollTop = Math.max(0, destino);
+  } catch (e) {}
+}
+window.v174ScrollNavActivo = v174ScrollNavActivo;
+
 function toggleNavSec(secKey) {
   var sec = document.querySelector('.nav-sec[data-sec="' + secKey + '"]');
   if (!sec) return;
   sec.classList.toggle('collapsed');
+  setTimeout(function(){ v174ScrollNavActivo(true); }, 280);   /* v1.8.174: despues de la animacion */
   // Persistir estado por sección
   try {
     var collapsed = JSON.parse(localStorage.getItem('e5m_nav_collapsed_secs') || '{}');
