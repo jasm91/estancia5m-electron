@@ -710,7 +710,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.178'; // calendario-v18177 linea-v18178
+window.E5M_HTML_BUILD = '1.8.179'; // calendario-v18177 linea-v18178 tareas-v18179
 
 window.v175Diag = function () {
   var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
@@ -7896,6 +7896,7 @@ function pullFromRailwayDesktop(thenPush) {
         { local: 'agro_parcelas',  remote: remote.agro_parcelas },   // v1.8.99 agro
         { local: 'agro_campanas',  remote: remote.agro_campanas },   // v1.8.99 agro
         { local: 'agro_labores',   remote: remote.agro_labores },    // v1.8.99 agro
+        { local: 'agro_jornadas',  remote: remote.agro_jornadas },   // v1.8.179 tareas multi-dia (server v4.44)
         { local: 'agro_insumos',   remote: remote.agro_insumos },    // v1.8.99 agro
         { local: 'repro_semen',    remote: remote.repro_semen },     // v1.8.99 cabana
         { local: 'repro_te',       remote: remote.repro_te },        // v1.8.99 cabana
@@ -43581,6 +43582,7 @@ function agPush(){
       replaceTableInRailway('agro_parcelas', db.agro_parcelas || []);
       replaceTableInRailway('agro_campanas', db.agro_campanas || []);
       replaceTableInRailway('agro_labores', db.agro_labores || []);
+      if (Array.isArray(db.agro_jornadas) && db.agro_jornadas.length) replaceTableInRailway('agro_jornadas', db.agro_jornadas); /* v1.8.179 (append en server v4.44) */
       replaceTableInRailway('agro_insumos', db.agro_insumos || []);
     }
   } catch(e){ console.warn('[agro] push (se reintenta en el proximo sync)', e); }
@@ -43957,6 +43959,21 @@ function agwOpen(execId,mode,tipoPreset){
     }
   }
   if(tipoPreset) agwSetTipo(tipoPreset);
+  /* v1.8.179: en exec el tipo ya viene de la actividad — el selector se oculta */
+  try {
+    var _tw=agEl('agw-tiles');
+    if(_tw){
+      var _lock = AGW.mode==='exec' && !!AGW.tipo;
+      _tw.style.display=_lock?'none':'';
+      var _lb=_tw.previousElementSibling; if(_lb&&_lb.classList&&_lb.classList.contains('form-label')) _lb.style.display=_lock?'none':'';
+      var _fx=agEl('agw-tipo-fijo');
+      if(_lock){
+        if(!_fx){ _fx=document.createElement('div'); _fx.id='agw-tipo-fijo'; _tw.parentNode.insertBefore(_fx,_tw); }
+        _fx.style.cssText='display:block;margin-bottom:4px';
+        _fx.innerHTML='<span class="agcal-chip" style="font-size:13px;padding:5px 14px">'+(LABOR_TIPOS[AGW.tipo]||AGW.tipo)+'</span> <span style="color:var(--muted);font-size:12px">— ya viene del plan</span>';
+      } else if(_fx) _fx.style.display='none';
+    }
+  } catch(e179){}
   agwRender(); window.agOpenModal('agw-modal');
 }
 function agwSetTipo(t){
@@ -45159,11 +45176,12 @@ document.addEventListener('click', function(ev){
     var plan = agcalPlanDe(d, campId), hoy = agHoy();
     var hechas = plan.filter(function (l) { return l.estado === 'ejecutada'; });
     var pend = plan.filter(function (l) { return l.estado === 'planificada'; });
+    var curso = plan.filter(function (l) { return l.estado === 'en_curso'; }); /* v1.8.179 */
     var venc = pend.filter(function (l) { return l.fecha && String(l.fecha).slice(0, 10) < hoy; });
     var prox = pend.filter(function (l) { return l.fecha && String(l.fecha).slice(0, 10) >= hoy; }).sort(function (a, b) { return String(a.fecha).localeCompare(String(b.fecha)); });
     var sinF = pend.filter(function (l) { return !l.fecha; });
     var sinCostos = hechas.filter(function (l) { return l.tachado_rapido && l.con_costo !== false && !(l.insumos || []).length && !l.hmaq && !l.diesel_l; });
-    return { total: plan.length, hechas: hechas, vencidas: venc, proximas: prox, sinFecha: sinF, sinCostos: sinCostos,
+    return { total: plan.length, hechas: hechas, enCurso: curso, vencidas: venc, proximas: prox, sinFecha: sinF, sinCostos: sinCostos,
       pct: plan.length ? Math.round(hechas.length * 100 / plan.length) : 0 };
   }
   /* ── UI ── */
@@ -45381,7 +45399,7 @@ document.addEventListener('click', function(ev){
   window.agcalTplAdd = agcalTplAdd; window.agcalTplDel = agcalTplDel; window.AGCAL_TPL_EDIT = AGCAL_TPL_EDIT;
   window.agcalGuardarUbicacion = agcalGuardarUbicacion;
   /* v1.8.177: helpers para el módulo calendario-v18177 (fuera del closure) */
-  window.__v177H = { campSel: agcalCampSel, campLabel: campLabel, campHa: campHa, laborCosto: laborCosto, agFecha: agFecha, escA: escA, fmtA: fmtA, agEl: agEl, agHoy: agHoy, TIPOS: LABOR_TIPOS };
+  window.__v177H = { campSel: agcalCampSel, campLabel: campLabel, campHa: campHa, laborCosto: laborCosto, agFecha: agFecha, escA: escA, fmtA: fmtA, agEl: agEl, agHoy: agHoy, TIPOS: LABOR_TIPOS, saveDB: agSaveDB, toast: agToast, addDias: agcalAddDias };
   Object.defineProperty(window, 'AGCAL_TPL_EDIT', { get: function () { return AGCAL_TPL_EDIT; }, configurable: true });
   window.__agcal = { seed: AGCAL_SEED, addDias: agcalAddDias, generar: agcalGenerar, recalcular: agcalRecalcular, estado: agcalEstado, tachar: agcalTachar, plantilla: agcalPlantilla, planDe: agcalPlanDe };
   function agcalBoot() {
@@ -51753,7 +51771,7 @@ try {
 <script id="v177-calendario">
 /*__V177_START__*/
 /* ═══════════════════════════════════════════════════════════════════════════
-   v1.8.178 — calendario-v18177 + linea-v18178
+   v1.8.179 — calendario-v18177 + linea-v18178 + tareas-v18179
    Rediseño visual (elegido por José 18-08 sobre renders):
    · Plan de campaña (📅 Calendario): tabs 📅 CALENDARIO (mensual literal,
      como SG Ventas — chips con color por tipo, tira de vencidas, HOY marcado,
@@ -51860,7 +51878,17 @@ try {
       '.v178-overlay{position:absolute;left:132px;right:0;top:0;bottom:0;pointer-events:none}' +
       '.v178-line{position:absolute;top:-22px;bottom:0;width:2px}' +
       '.v178-line span{position:absolute;top:0;transform:translate(-50%,-100%);font-size:10.5px;font-weight:800;white-space:nowrap;padding-bottom:2px}' +
-      '.v178-sinf{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin-top:10px}';
+      '.v178-sinf{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin-top:10px}' +
+      '.v177-ev.curso{background:rgba(227,179,65,.13);color:var(--amber2,#e3b341)}' +
+      '.v178-pill.curso{box-shadow:0 0 0 2px var(--amber2,#e3b341)}' +
+      '.v177-card.curso{border-left:3px solid var(--amber2,#e3b341)}' +
+      '.pill.c179{background:rgba(227,179,65,.16);color:var(--amber2,#e3b341)}' +
+      '#v179-modal{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55)}' +
+      '#v179-modal .v179-box{background:var(--sur,#161b22);border:1px solid var(--bor);border-radius:14px;padding:18px 20px;width:440px;max-width:92vw;box-shadow:0 18px 50px rgba(0,0,0,.5)}' +
+      '#v179-modal h3{margin:0 0 4px;font-size:15px}' +
+      '#v179-modal .sub179{font-size:12px;color:var(--muted);margin-bottom:12px}' +
+      '#v179-modal label{display:block;font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--muted);margin:10px 0 4px}' +
+      '#v179-modal input{width:100%;box-sizing:border-box;background:var(--sur2,#21262d);border:1px solid var(--bor);border-radius:8px;color:var(--text,#e6edf3);padding:8px 10px;font-size:13px}';
     document.head.appendChild(st);
   }
 
@@ -51889,9 +51917,10 @@ try {
     var h = H();
     var done = l.estado === 'ejecutada';
     var venc = esVenc(l, hoy);
+    var curso = l.estado === 'en_curso';
     var name = tNombre(l);
-    var cls = 'v177-ev' + (done ? ' done' : venc ? ' venc' : '');
-    var click = done ? '' : ' onclick="agEjecutarLabor(' + l.id + ')"';
+    var cls = 'v177-ev' + (done ? ' done' : venc ? ' venc' : curso ? ' curso' : '');
+    var click = done ? '' : curso ? ' onclick="v179JornadaOpen(\'' + l.id + '\')"' : ' onclick="agEjecutarLabor(' + l.id + ')"';
     return '<span class="' + cls + '" style="border-left-color:' + tCol(l.tipo) + '"' + click + ' title="' + h.escA(name) + (l.fecha ? ' · ' + h.agFecha(l.fecha) : '') + '">' + (done ? '✓ ' : '') + tIco(l.tipo) + ' ' + h.escA(name) + '</span>';
   }
 
@@ -51936,9 +51965,10 @@ try {
     else if (l.fecha) { var n2 = dias(l.fecha) - dias(hoy); when = n2 === 0 ? '<b>hoy</b>' : 'en ' + n2 + ' días'; }
     else when = h.escA(l.etapa || 'cuando toque — no vence');
     var acts = '';
-    if (l.estado === 'planificada') acts = '<button class="btn btn-ghost btn-sm" title="Hecha rápida (sin costos)" onclick="agcalTachar(' + l.id + ')">✔</button> <button class="btn btn-primary btn-sm" onclick="agEjecutarLabor(' + l.id + ')">▶ Registrar</button>';
+    if (l.estado === 'planificada') acts = '<button class="btn btn-ghost btn-sm" onclick="v179Iniciar(\'' + l.id + '\')">▶ Iniciar</button> <button class="btn btn-ghost btn-sm" title="Hecha rápida (sin costos)" onclick="agcalTachar(' + l.id + ')">✔</button> <button class="btn btn-primary btn-sm" onclick="agEjecutarLabor(' + l.id + ')">▶ Registrar</button>';
+    else if (l.estado === 'en_curso') { acts = '<button class="btn btn-primary btn-sm" onclick="v179JornadaOpen(\'' + l.id + '\')">➕ Jornada</button> <button class="btn btn-ghost btn-sm" onclick="v179Cerrar(\'' + l.id + '\')">✔ Cerrar</button>'; when = '⏳ ' + v179DiasTxt(l); }
     else if (faltanCostos(l)) acts = '<button class="btn btn-ghost btn-sm" onclick="agEjecutarLabor(' + l.id + ')">⚠ Completar costos</button>';
-    return '<div class="v177-card' + (kind === 'venc' ? ' venc' : '') + (done ? ' done' : '') + '">' +
+    return '<div class="v177-card' + (kind === 'venc' ? ' venc' : '') + (l.estado === 'en_curso' ? ' curso' : '') + (done ? ' done' : '') + '">' +
       '<div class="v177-date"><b' + (kind === 'venc' ? ' style="color:var(--red,#f85149)"' : '') + '>' + dd + '</b><span>' + mm + '</span></div>' +
       '<div class="v177-tico" style="background:' + col + '22;border:1px solid ' + col + '55">' + tIco(l.tipo) + '</div>' +
       '<div class="v177-main"><b>' + (done ? '<s>' : '') + h.escA(name) + (done ? '</s>' : '') + '</b><span class="v177s">' + when + '</span></div>' +
@@ -51980,15 +52010,15 @@ try {
       var orden = evs.slice().sort(function (a, b) { return String(a.fecha).localeCompare(String(b.fecha)); });
       var prevPct = -999, prevLane = 1, dosCarriles = false;
       var pills = orden.map(function (l) {
-        var done = l.estado === 'ejecutada', venc = esVenc(l, hoy), col = tCol(l.tipo);
+        var done = l.estado === 'ejecutada', venc = esVenc(l, hoy), curso = l.estado === 'en_curso', col = tCol(l.tipo);
         var p = pct(dias(l.fecha));
         var lane = 0;
         if (p - prevPct < 12 && prevLane === 0) { lane = 1; dosCarriles = true; }
         prevPct = p; prevLane = lane;
         var ofs = offTxtSafe(l, c), nom = tNombre(l);
         var txt = h.escA(nom.length > 16 ? nom.slice(0, 15) + '…' : nom) + (ofs ? ' · ' + ofs : '');
-        var click = done ? '' : ' onclick="agEjecutarLabor(' + l.id + ')"';
-        return '<span class="v178-pill' + (done ? ' done' : '') + (venc ? ' venc' : '') + '" style="left:' + p + '%;top:' + (lane ? '74%' : '26%') + ';border-color:' + col + ';color:' + col + '"' + click +
+        var click = done ? '' : curso ? ' onclick="v179JornadaOpen(\'' + l.id + '\')"' : ' onclick="agEjecutarLabor(' + l.id + ')"';
+        return '<span class="v178-pill' + (done ? ' done' : '') + (venc ? ' venc' : '') + (curso ? ' curso' : '') + '" style="left:' + p + '%;top:' + (lane ? '74%' : '26%') + ';border-color:' + col + ';color:' + col + '"' + click +
           ' title="' + h.escA(nom) + ' · ' + h.agFecha(l.fecha) + (done ? ' · hecha' : venc ? ' · VENCIDA' : '') + '">' + (done ? '✓ ' : '') + txt + '</span>';
       }).join('');
       if (esCos) pills += '<span class="v178-pill est" style="left:' + pct(d1 - 18) + '%;top:26%;border-color:#d4a017;color:#d4a017" title="Cosecha sin fecha — estimada">est. ' + TL_MES[new Date((d1 - 18) * 86400000).getMonth()] + '</span>';
@@ -51997,8 +52027,9 @@ try {
     /* líneas verticales: HOY (ámbar) + germinación (verde, si está registrada) */
     var lines = '';
     if (dHoy >= d0 && dHoy <= d1) lines += '<div class="v178-line" style="left:' + pct(dHoy) + '%;background:var(--amber2,#e3b341)"><span style="color:var(--amber2,#e3b341)">HOY</span></div>';
-    var germ = plan.find(function (l) { return /germin|emergencia/i.test(l.nombre || '') && l.fecha && l.estado === 'ejecutada'; });
-    if (germ) lines += '<div class="v178-line" style="left:' + pct(dias(germ.fecha)) + '%;background:var(--green,#3fb950)"><span style="color:var(--green,#3fb950)">🌿 germinó</span></div>';
+    var germLab = plan.find(function (l) { return /germin|emergencia/i.test(l.nombre || '') && l.fecha && l.estado === 'ejecutada'; });
+    var germF = (c && c.germinacion_fecha) ? c.germinacion_fecha : (germLab ? germLab.fecha : null);
+    if (germF && dias(germF) >= d0 && dias(germF) <= d1) lines += '<div class="v178-line" style="left:' + pct(dias(germF)) + '%;background:var(--green,#3fb950)"><span style="color:var(--green,#3fb950)">🌿 germinó</span></div>';
     /* sin fecha */
     var sinF = plan.filter(function (l) { return !l.fecha && l.estado === 'planificada' && l.tipo !== 'cosecha'; });
     var sinFHtml = sinF.length ? '<div class="v178-sinf">⬜ cuando toque:' + sinF.map(function (l) {
@@ -52015,6 +52046,10 @@ try {
     var semana = st.proximas.filter(function (l) { return String(l.fecha).slice(0, 10) <= limIso; });
     var luego = st.proximas.filter(function (l) { return String(l.fecha).slice(0, 10) > limIso; });
     var html = '';
+    if (st.enCurso && st.enCurso.length) {
+      html += '<div class="v177-sec" style="color:var(--amber2,#e3b341)">⏳ EN CURSO</div>';
+      html += st.enCurso.map(function (l) { return cardAg(l, c, 'curso', hoy); }).join('');
+    }
     if (st.vencidas.length) {
       html += '<div class="v177-sec" style="color:var(--red,#f85149)">🔴 VENCIDAS — RESOLVER PRIMERO</div>';
       st.vencidas.slice().sort(function (a, b) { return String(a.fecha).localeCompare(String(b.fecha)); }).forEach(function (l) { html += cardAg(l, c, 'venc', hoy); });
@@ -52048,6 +52083,8 @@ try {
       var d = window.agGetDB(), c = window.agById(d.campanas, campId);
       var st = window.__agcal.estado(d, campId);
       var hoy = h.agHoy();
+      var plan_ = window.__agcal.planDe(d, campId);
+      window.__v179CampSel = campId;
       if (!st.total) {
         res.innerHTML = '<b>' + h.escA(h.campLabel(d, c)) + '</b> todavía no tiene plan. ' + (c && c.siembra_plan ? 'Tocá <b>📅 Generar plan</b> — se crean ' + ((window.__agcal.plantilla().actividades || []).length) + ' actividades ancladas a la siembra del ' + h.agFecha(c.siembra_plan) + '.' : '⚠ Primero poné la <b>fecha de siembra planificada</b> en la campaña (✏️ en Campañas).');
         tabs.innerHTML = ''; strip.innerHTML = ''; body.innerHTML = '';
@@ -52058,10 +52095,11 @@ try {
         '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:baseline">' +
         '<b>' + h.escA(h.campLabel(d, c)) + '</b>' +
         '<span><b class="agm-ok">' + st.hechas.length + '/' + st.total + ' hechas (' + st.pct + '%)</b>' +
+        (st.enCurso && st.enCurso.length ? ' · <span style="color:var(--amber2,#e3b341);font-weight:700">' + st.enCurso.length + ' en curso ⏳</span>' : '') +
         (st.vencidas.length ? ' · <span class="agcal-venc">' + st.vencidas.length + ' vencida' + (st.vencidas.length > 1 ? 's' : '') + ' 🔴</span>' : '') +
         (st.sinCostos.length ? ' · <span class="agm-pend">' + st.sinCostos.length + ' sin costos ⚠</span>' : '') + '</span></div>' +
         '<div class="agcal-bar"><i style="background:var(--green,#3fb950);width:' + st.pct + '%"></i><i style="background:var(--red,#f85149);width:' + Math.round(st.vencidas.length * 100 / st.total) + '%"></i></div>' +
-        '<div style="font-size:11px;color:var(--muted)">siembra ' + (c && c.siembra_plan ? h.agFecha(c.siembra_plan) : '—') + ' · los plazos se calculan desde ahí</div>';
+        '<div style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span>siembra ' + (c && c.siembra_plan ? h.agFecha(c.siembra_plan) : '—') + (c && c.siembra_fecha_real ? ' · real ' + h.agFecha(c.siembra_fecha_real) : '') + ' · los plazos se calculan desde ahí</span>' + v179GermHtml(c, plan_) + '</div>';
       /* tabs + nav */
       ensureMes();
       var mesNom = MESES_L[ST.m] + ' ' + ST.y;
@@ -52076,8 +52114,7 @@ try {
           st.vencidas.map(function (l) { return '<span class="v177-vchip" onclick="agEjecutarLabor(' + l.id + ')">' + tIco(l.tipo) + ' ' + h.escA(tNombre(l)) + ' · ' + ddmm(l.fecha) + '</span>'; }).join('') +
           '<button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="v177Tab(\'agenda\')">Resolver →</button></div>';
       } else strip.innerHTML = '';
-      var plan = window.__agcal.planDe(d, campId);
-      body.innerHTML = (ST.tab === 'cal') ? calHTML(plan, hoy) : (ST.tab === 'agenda') ? agendaHTML(st, c, hoy) : lineaHTML(plan, c, hoy);
+      body.innerHTML = (ST.tab === 'cal') ? calHTML(plan_, hoy) : (ST.tab === 'agenda') ? agendaHTML(st, c, hoy) : lineaHTML(plan_, c, hoy);
       return true;
     } catch (e) {
       try { console.warn('[v177-cal] caída — vuelve la tabla vieja', e); var tb2 = h.agEl('agcal-tbody'); if (tb2) { var p2 = tb2.closest('.panel'); if (p2) p2.style.display = ''; } var w2 = h.agEl('v177-wrap'); if (w2) w2.style.display = 'none'; } catch (e2) {}
@@ -52093,6 +52130,8 @@ try {
     if (l.tipo === 'maquinaria' && !ins) ins = (l.notas || '');
     var extra = [];
     if (l.maquina) extra.push('🚜 ' + l.maquina + (l.implemento ? ' + ' + l.implemento : ''));
+    var js179 = v179Jornadas(l.id);
+    if (js179.length) extra.push(js179.length + ' jornada' + (js179.length === 1 ? '' : 's') + ' · ' + h.fmtA(v179HaDe(js179), 1) + (l.ha_objetivo ? '/' + h.fmtA(l.ha_objetivo, 1) : '') + ' ha');
     if (l.resp) extra.push(l.resp);
     var s = [ins, extra.join(' · ')].filter(Boolean).join(' · ');
     if (!s && l.estado === 'planificada') s = 'planificada · insumos por definir';
@@ -52138,10 +52177,11 @@ try {
           var venc = esVenc(l, hoy);
           var cost = h.laborCosto(l);
           var acts = '';
-          if (l.estado === 'planificada') acts += '<button class="btn btn-primary btn-sm" onclick="agEjecutarLabor(' + l.id + ')">▶ Ejecutar</button> ';
+          if (l.estado === 'planificada') acts += '<button class="btn btn-primary btn-sm" onclick="v179Iniciar(\'' + l.id + '\')">▶ Iniciar</button> <button class="btn btn-ghost btn-sm" onclick="agEjecutarLabor(' + l.id + ')">✔ En un día</button> ';
+          else if (l.estado === 'en_curso') acts += '<button class="btn btn-primary btn-sm" onclick="v179JornadaOpen(\'' + l.id + '\')">➕ Jornada</button> <button class="btn btn-ghost btn-sm" onclick="v179Cerrar(\'' + l.id + '\')">✔ Cerrar</button> ';
           else if (faltanCostos(l)) acts += '<button class="btn btn-ghost btn-sm" onclick="agEjecutarLabor(' + l.id + ')">⚠ costos</button> ';
           acts += '<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agDelLabor(' + l.id + ')">🗑</button>';
-          var pill = l.estado === 'ejecutada' ? '<span class="pill g">Ejecutada</span>' : (venc ? '<span class="pill r">Vencida</span>' : '<span class="pill a">Planificada</span>');
+          var pill = l.estado === 'ejecutada' ? '<span class="pill g">Ejecutada</span>' : l.estado === 'en_curso' ? '<span class="pill c179">⏳ ' + v179DiasTxt(l) + '</span>' : (venc ? '<span class="pill r">Vencida</span>' : '<span class="pill a">Planificada</span>');
           var ofs = offTxtSafe(l, c);
           html += '<div class="v177-lb">' +
             '<div class="v177f"><b' + (venc ? ' style="color:var(--red,#f85149)"' : '') + '>' + ddmm(l.fecha) + '</b>' + (ofs ? '<span>' + ofs + '</span>' : '') + '</div>' +
@@ -52162,16 +52202,267 @@ try {
   }
   window.v177Lab = { render: labRender };
 
+
+  /* ═══════════════ v1.8.179 — TAREAS MULTI-DÍA (tareas-v18179) ═══════════════
+     ▶ Iniciar → en_curso → ➕ Jornada {fecha, ha, horas, diésel} → ✔ Cerrar.
+     Jornadas en db.agro_jornadas (append en server v4.44); el stock se descuenta
+     POR JORNADA (dosis × ha) — acá local, el server autoritativo.
+     Cierre de SIEMBRA fija siembra_fecha_real; 🌿 germinación re-ancla el plan. */
+  var GERM_ESPERADA_DIAS = 7; /* la planilla real: emergencia ≈ S+7 */
+  function _DB() { try { return (typeof db !== 'undefined' && db) ? db : window.db; } catch (e) { return window.db; } }
+  function v179DB() { if (!Array.isArray(_DB().agro_jornadas)) _DB().agro_jornadas = []; return _DB().agro_jornadas; }
+  function v179Jornadas(laborId) {
+    return v179DB().filter(function (j) { return j && String(j.labor_id) === String(laborId); })
+      .sort(function (a, b) { return String(a.fecha || '').localeCompare(String(b.fecha || '')); });
+  }
+  function v179HaDe(js) { var t = 0; js.forEach(function (j) { t += Number(j.ha) || 0; }); return Math.round(t * 100) / 100; }
+  function v179DiasTxt(l) {
+    if (!l.fecha_inicio) return 'en curso';
+    var d = Math.max(0, Math.round((Date.now() - new Date(l.fecha_inicio).getTime()) / 86400000));
+    return d >= 4 ? '⚠ ' + d + ' días en curso' : 'en curso' + (d ? ' · ' + d + 'd' : '');
+  }
+  window.v179Iniciar = function (id) {
+    var h = H(); var d = window.agGetDB(); var l = window.agById(d.labores, id);
+    if (!l || l.estado !== 'planificada') return;
+    if (!confirm('¿Iniciar "' + (l.nombre || l.tipo) + '"?\n\nQueda EN CURSO: una jornada por día trabajado (ha, horas, diésel) y se cierra al final. Cualquiera del equipo puede cerrarla.')) return;
+    var c = window.agById(d.campanas, l.campana_id);
+    l.estado = 'en_curso';
+    l.fecha_inicio = new Date().toISOString();
+    if (!l.ha_objetivo && c) l.ha_objetivo = h.campHa(d, c);
+    l.updated_at = new Date().toISOString();
+    if (c && c.estado === 'planificada') c.estado = 'en_curso';
+    h.saveDB();
+    try { window.agRenderAll(); } catch (e) {}
+    h.toast('▶ ' + (l.nombre || l.tipo) + ' EN CURSO — cargá una jornada por día', 'success');
+  };
+  function v179Modal(html) {
+    var m = document.getElementById('v179-modal');
+    if (!m) { m = document.createElement('div'); m.id = 'v179-modal'; document.body.appendChild(m); }
+    m.innerHTML = '<div class="v179-box">' + html + '</div>';
+    m.style.display = 'flex';
+    m.onclick = function (ev) { if (ev.target === m) window.v179ModalClose(); };
+  }
+  window.v179ModalClose = function () { var m = document.getElementById('v179-modal'); if (m) m.style.display = 'none'; };
+  var _v179Labor = null;
+  window.v179JornadaOpen = function (id) {
+    var h = H(); var d = window.agGetDB(); var l = window.agById(d.labores, id);
+    if (!l) return;
+    if (l.estado === 'planificada') { window.v179Iniciar(id); d = window.agGetDB(); l = window.agById(d.labores, id); if (!l || l.estado !== 'en_curso') return; }
+    _v179Labor = id;
+    var js = v179Jornadas(id), haH = v179HaDe(js);
+    var falta = l.ha_objetivo ? Math.max(0, Math.round((l.ha_objetivo - haH) * 10) / 10) : '';
+    v179Modal(
+      '<h3>➕ Jornada — ' + h.escA(l.nombre || l.tipo) + '</h3>' +
+      '<div class="sub179">' + js.length + ' jornada' + (js.length === 1 ? '' : 's') + ' previas · ' + h.fmtA(haH, 1) + (l.ha_objetivo ? '/' + h.fmtA(l.ha_objetivo, 1) : '') + ' ha' + ((l.insumos || []).length ? ' · los insumos se descuentan solos (dosis × ha del día)' : '') + '</div>' +
+      '<label>FECHA</label><input type="date" id="v179-jn-fecha" value="' + h.agHoy() + '">' +
+      '<div style="display:flex;gap:10px"><div style="flex:1"><label>HECTÁREAS</label><input type="number" step="any" min="0" id="v179-jn-ha" placeholder="' + (falta !== '' ? 'faltan ' + falta : '0') + '"></div>' +
+      '<div style="flex:1"><label>HORAS MÁQUINA</label><input type="number" step="any" min="0" id="v179-jn-hs" placeholder="0"></div></div>' +
+      '<label>DIÉSEL (L — opcional)</label><input type="number" step="any" min="0" id="v179-jn-diesel" placeholder="0">' +
+      '<label>NOTAS</label><input id="v179-jn-notas" placeholder="Opcional">' +
+      '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">' +
+      '<button class="btn btn-ghost" onclick="v179ModalClose()">Cancelar</button>' +
+      '<button class="btn btn-primary" onclick="v179JornadaGuardar()">💾 Guardar jornada</button></div>'
+    );
+  };
+  window.v179JornadaGuardar = function () {
+    var h = H(); var d = window.agGetDB(); var l = window.agById(d.labores, _v179Labor);
+    if (!l) { window.v179ModalClose(); return; }
+    var g = function (i) { return parseFloat((document.getElementById(i) || {}).value) || 0; };
+    var ha = g('v179-jn-ha'), hs = g('v179-jn-hs'), dl = g('v179-jn-diesel');
+    var fecha = (document.getElementById('v179-jn-fecha') || {}).value || h.agHoy();
+    if (ha <= 0 && hs <= 0 && dl <= 0) { h.toast('Cargá al menos hectáreas, horas o diésel', 'error'); return; }
+    var now = new Date().toISOString();
+    var j = { id: 'dj-' + Date.now() + '-' + Math.floor(Math.random() * 999), labor_id: l.id, fecha: fecha, ha: ha, horas_maq: hs, diesel_l: dl,
+      notas: ((document.getElementById('v179-jn-notas') || {}).value || '').trim(), resp: l.resp || '', by: 'Desktop', source: 'desktop', created_at: now, updated_at: now };
+    v179DB().push(j);
+    /* descuento local por jornada (el server v4.44 es autoritativo; los stamps evitan doble) */
+    if (ha > 0) (l.insumos || []).forEach(function (r) {
+      var q = Math.round((Number(r.dosis) || 0) * ha * 100) / 100; if (!q) return;
+      var sid = String(r.insumo_id || '');
+      if (/^S/.test(sid)) { var pp = (_DB().products || []).find(function (p) { return String(p.id) === sid.slice(1); }); if (pp) { pp.stock_qty = Math.max(0, Math.round(((Number(pp.stock_qty) || 0) - q) * 100) / 100); pp.stock_updated_at = now; } }
+      else { var ins = (_DB().agro_insumos || []).find(function (p) { return String(p.id) === sid; }); if (ins) { ins.stock = Math.max(0, Math.round(((Number(ins.stock) || 0) - q) * 100) / 100); ins.updated_at = now; } }
+    });
+    /* agregados de la tarea = suma de jornadas; insumos re-totalizados a las ha reales */
+    var js = v179Jornadas(l.id);
+    var haT = 0, hsT = 0, dlT = 0;
+    js.forEach(function (x) { haT += Number(x.ha) || 0; hsT += Number(x.horas_maq) || 0; dlT += Number(x.diesel_l) || 0; });
+    l.ha = Math.round(haT * 100) / 100; l.hmaq = Math.round(hsT * 100) / 100; l.diesel = Math.round(dlT * 100) / 100;
+    if (haT > 0) (l.insumos || []).forEach(function (r) {
+      var i = window.agById(d.insumos, r.insumo_id);
+      r.total = Math.round((Number(r.dosis) || 0) * haT * 100) / 100;
+      r.costo = Math.round(r.total * (i ? (Number(i.costo) || 0) : 0) * 100) / 100;
+    });
+    l.updated_at = now;
+    h.saveDB();
+    window.v179ModalClose();
+    try { window.agRenderAll(); } catch (e) {}
+    h.toast('✓ Jornada: ' + h.fmtA(ha, 1) + ' ha' + (dl ? ' · ⛽' + h.fmtA(dl, 0) + ' L' : ''), 'success');
+  };
+  window.v179Cerrar = function (id) {
+    var h = H(); var d = window.agGetDB(); var l = window.agById(d.labores, id);
+    if (!l || l.estado !== 'en_curso') return;
+    var js = v179Jornadas(id);
+    if (!confirm('¿Cerrar "' + (l.nombre || l.tipo) + '"?\n\n' + js.length + ' jornada(s) · ' + h.fmtA(l.ha || 0, 1) + ' ha registradas.')) return;
+    var now = new Date().toISOString();
+    l.estado = 'ejecutada'; l.fecha_fin = now;
+    l.fecha = js.length ? js[js.length - 1].fecha : (l.fecha || h.agHoy());
+    l.tachado_rapido = false; l.updated_at = now;
+    var extra = '';
+    if (l.tipo === 'siembra') {
+      var c = window.agById(d.campanas, l.campana_id);
+      if (c) { c.siembra_fecha_real = l.fecha; c.updated_at = now; }
+      extra = ' · 🌱 siembra real ' + h.agFecha(l.fecha) + ' — el próximo hito es 🌿 la germinación (re-ancla el plan)';
+    }
+    h.saveDB();
+    try { window.agRenderAll(); } catch (e) {}
+    h.toast('✔ Cerrada: ' + h.fmtA(l.ha || 0, 1) + ' ha en ' + js.length + ' jornada(s)' + extra, 'success');
+  };
+
+  /* ═══ 🌿 GERMINACIÓN — hito de la campaña + recálculo del set post-siembra ═══ */
+  function v179GermHtml(c, plan) {
+    var h = H();
+    if (!c) return '';
+    if (c.germinacion_fecha) return '<span style="color:var(--green,#3fb950);font-weight:700">🌿 germinó ' + h.agFecha(c.germinacion_fecha) + (c.emergencia_pct ? ' (' + c.emergencia_pct + '%)' : '') + '</span>';
+    var sembro = c.siembra_fecha_real || (plan || []).some(function (l) { return l.tipo === 'siembra' && l.estado === 'ejecutada'; }) ||
+      (c.siembra_plan && String(c.siembra_plan).slice(0, 10) <= h.agHoy());
+    if (!sembro) return '';
+    return '<button class="btn btn-ghost btn-sm" onclick="v179GermOpen()">🌿 Registrar germinación</button>';
+  }
+  window.v179GermOpen = function () {
+    var h = H(); var d = window.agGetDB(); var c = window.agById(d.campanas, window.__v179CampSel);
+    if (!c) return;
+    v179Modal(
+      '<h3>🌿 Registrar germinación</h3>' +
+      '<div class="sub179">' + h.escA(h.campLabel(d, c)) + ' — la fecha real re-ancla las actividades post-siembra</div>' +
+      '<label>FECHA REAL</label><input type="date" id="v179-germ-fecha" value="' + h.agHoy() + '">' +
+      '<label>% DE EMERGENCIA (opcional)</label><input type="number" min="0" max="100" id="v179-germ-pct" placeholder="Ej: 85">' +
+      '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">' +
+      '<button class="btn btn-ghost" onclick="v179ModalClose()">Cancelar</button>' +
+      '<button class="btn btn-primary" onclick="v179GermGuardar()">🌿 Registrar</button></div>'
+    );
+  };
+  window.v179GermGuardar = function () {
+    var h = H(); var d = window.agGetDB(); var c = window.agById(d.campanas, window.__v179CampSel);
+    if (!c) { window.v179ModalClose(); return; }
+    var f = (document.getElementById('v179-germ-fecha') || {}).value;
+    if (!f) { h.toast('Falta la fecha', 'error'); return; }
+    c.germinacion_fecha = f;
+    var pct = parseFloat((document.getElementById('v179-germ-pct') || {}).value);
+    if (!isNaN(pct) && pct > 0) c.emergencia_pct = pct;
+    c.updated_at = new Date().toISOString();
+    /* re-anclar: delta vs lo esperado (siembra real + 7); solo pendientes post-siembra */
+    var ref = c.siembra_fecha_real || c.siembra_plan;
+    var pend = window.__agcal.planDe(d, c.id).filter(function (l) { return l.estado === 'planificada' && l.offset_dias != null && l.offset_dias > 0 && l.fecha; });
+    var delta = ref ? (dias(f) - (dias(ref) + GERM_ESPERADA_DIAS)) : 0;
+    if (pend.length && delta !== 0 &&
+        confirm('La germinación llegó ' + (delta > 0 ? delta + ' día(s) tarde' : Math.abs(delta) + ' día(s) antes') + ' vs lo esperado (siembra + ' + GERM_ESPERADA_DIAS + ').\n\n¿Correr las ' + pend.length + ' actividades post-siembra pendientes ' + (delta > 0 ? '+' : '') + delta + ' día(s)?')) {
+      pend.forEach(function (l) { l.fecha = h.addDias(l.fecha, delta); l.updated_at = new Date().toISOString(); });
+      h.toast('🌿 Germinación registrada — ' + pend.length + ' actividades re-ancladas', 'success');
+    } else {
+      h.toast('🌿 Germinación registrada', 'success');
+    }
+    h.saveDB();
+    window.v179ModalClose();
+    try { window.agRenderAll(); } catch (e) {}
+  };
+
+  /* ═══ 🛒 COMPRAS — último precio + USD/TC BCB + actualizar costo (pedido 18-08) ═══ */
+  function _f2(n) { return (n == null || isNaN(n)) ? '—' : Number(n).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function _fShort(iso) { if (!iso) return ''; var p = String(iso).split('-'); return p.length >= 3 ? p[2] + '/' + p[1] + '/' + p[0].slice(2) : iso; }
+  if (typeof window.onPurProductChange === 'function') {
+    window.onPurProductChange = (function (base) { return function (v) {
+      base(v);
+      try {
+        var prod = (v && v !== 'otro') ? (_DB().products || []).find(function (p) { return String(p.id) === String(v); }) : null;
+        var box = document.getElementById('pur-stock-info');
+        var usdBox = document.getElementById('v179-pur-usd-box');
+        if (!prod) { if (usdBox) usdBox.style.display = 'none'; var old = document.getElementById('v179-pur-ult'); if (old) old.remove(); return; }
+        /* última compra del producto */
+        var compras = (_DB().purchases || []).filter(function (r) { return r && String(r.product_id) === String(prod.id); })
+          .sort(function (a, b) { return String(b.date || '').localeCompare(String(a.date || '')); });
+        var ult = compras[0];
+        if (box) {
+          var extra = document.getElementById('v179-pur-ult');
+          if (!extra) { extra = document.createElement('div'); extra.id = 'v179-pur-ult'; box.appendChild(extra); }
+          extra.style.cssText = 'margin-top:7px;padding-top:7px;border-top:1px dashed var(--bor)';
+          extra.innerHTML = '🧾 Última compra: ' + (ult
+            ? '<b>Bs ' + _f2(ult.unit_price) + '/' + (ult.unit || 'u') + '</b> · ' + _fShort(ult.date) + (ult.supplier ? ' · ' + ult.supplier : '') + (ult.usd_price ? ' · $' + _f2(ult.usd_price) + ' al TC ' + _f2(ult.tc) : '')
+            : (prod.usd_cost ? 'inventario: $' + _f2(prod.usd_cost) + ' al TC ' + _f2(prod.tc_import || 6.96) : 'sin compras registradas')) +
+            ' · costo en sistema: <b>Bs ' + _f2(prod.unit_cost) + '</b>';
+          box.style.display = 'block';
+        }
+        /* insumo agrícola → compra en USD al TC del día (acordado) */
+        var esAgro = (typeof window.v176Ambito === 'function') && window.v176Ambito(prod) === 'agro';
+        if (!usdBox) {
+          var priceEl = document.getElementById('pur-price');
+          var row = priceEl && priceEl.closest ? priceEl.closest('.form-row') : null;
+          if (row) {
+            usdBox = document.createElement('div'); usdBox.id = 'v179-pur-usd-box';
+            usdBox.innerHTML = '<div class="form-row"><div class="form-group"><label class="form-label">$ por unidad (agro)</label><input class="form-input" type="number" step="0.01" min="0" id="v179-pur-usd" placeholder="0.00"></div>' +
+              '<div class="form-group"><label class="form-label">TC del día</label><input class="form-input" type="number" step="0.01" min="0" id="v179-pur-tc" placeholder="TC BCB"></div></div>' +
+              '<div id="v179-pur-tc-hint" style="font-size:11px;color:var(--muted);margin:-6px 0 10px"></div>';
+            row.parentNode.insertBefore(usdBox, row);
+            var recalc = function () {
+              var u = parseFloat((document.getElementById('v179-pur-usd') || {}).value) || 0;
+              var t = parseFloat((document.getElementById('v179-pur-tc') || {}).value) || 0;
+              if (u > 0 && t > 0) { var pe = document.getElementById('pur-price'); if (pe) { pe.value = Math.round(u * t * 100) / 100; if (typeof window.calcPurTotal === 'function') window.calcPurTotal(); } }
+            };
+            document.getElementById('v179-pur-usd').addEventListener('input', recalc);
+            document.getElementById('v179-pur-tc').addEventListener('input', recalc);
+          }
+        }
+        if (usdBox) {
+          usdBox.style.display = esAgro ? 'block' : 'none';
+          if (esAgro) {
+            var tc = null; try { tc = JSON.parse(localStorage.getItem('e5m_tc_bcb') || 'null'); } catch (e) {}
+            var tcE = document.getElementById('v179-pur-tc');
+            if (tcE && !tcE.value && tc && tc.valor) tcE.value = tc.valor;
+            var hint = document.getElementById('v179-pur-tc-hint');
+            if (hint) hint.textContent = (tc && tc.valor) ? ('TC oficial BCB' + (tc.fecha ? ' del ' + tc.fecha : '') + ': ' + _f2(tc.valor) + ' — cargás $ y el precio en Bs se calcula solo') : 'Sin TC del server — cargalo a mano';
+          }
+        }
+      } catch (e) { console.warn('[v179-compras]', e); }
+    }; })(window.onPurProductChange);
+  }
+  if (typeof window.savePurchase === 'function') {
+    window.savePurchase = (function (base) { return function () {
+      var pid = (document.getElementById('pur-product-link') || {}).value || '';
+      var price = parseFloat((document.getElementById('pur-price') || {}).value) || 0;
+      var usd = parseFloat((document.getElementById('v179-pur-usd') || {}).value) || 0;
+      var tc = parseFloat((document.getElementById('v179-pur-tc') || {}).value) || 0;
+      var antes = (_DB().purchases || []).length;
+      base();
+      try {
+        if ((_DB().purchases || []).length === antes) return; /* validación falló, no guardó */
+        var rec = _DB().purchases[_DB().purchases.length - 1];
+        if (usd > 0 && tc > 0) { rec.usd_price = usd; rec.tc = tc; if (typeof window.saveDB === 'function') window.saveDB(); }
+        var uEl = document.getElementById('v179-pur-usd'); if (uEl) uEl.value = '';
+        var prod = (pid && pid !== 'otro') ? (_DB().products || []).find(function (p) { return String(p.id) === String(pid); }) : null;
+        if (prod && price > 0 && Math.abs((Number(prod.unit_cost) || 0) - price) > 0.009) {
+          if (confirm('El costo de "' + prod.name + '" en el sistema es Bs ' + _f2(prod.unit_cost) + ' y compraste a Bs ' + _f2(price) + '.\n\n¿Actualizar el costo del producto al precio nuevo? (las próximas labores y valuaciones usan este costo)')) {
+            prod.unit_cost = price;
+            if (usd > 0 && tc > 0) { prod.usd_cost = usd; prod.tc_import = tc; }
+            prod.updated_at = new Date().toISOString();
+            if (typeof window.saveDB === 'function') window.saveDB();
+            if (typeof window.replaceTableInRailway === 'function') window.replaceTableInRailway('vet_products', _DB().products || []);
+            if (typeof window.renderStock === 'function') try { window.renderStock(); } catch (e2) {}
+          }
+        }
+      } catch (e) { console.warn('[v179-compras]', e); }
+    }; })(window.savePurchase);
+  }
+
   window.v177Diag = function () {
     var h = H();
     var out = {
       helpers: !!h, off: off(), tab: ST.tab, mes: (ST.y != null ? ST.y + '-' + (ST.m + 1) : '(hoy)'),
-      calWrap: !!document.getElementById('v177-wrap'), labWrap: !!document.getElementById('v177-labores')
+      calWrap: !!document.getElementById('v177-wrap'), labWrap: !!document.getElementById('v177-labores'),
+      jornadas: (window.db && _DB().agro_jornadas || []).length, enCurso: (_DB() && _DB().agro_labores || []).filter(function (l) { return l && l.estado === 'en_curso'; }).length
     };
     try { console.table([out]); } catch (e) { console.log(out); }
     return out;
   };
-  try { console.log('%c[v1.8.178] línea de campaña + calendario + agenda en el plan · labores por campaña — v177Diag() · kill: __V177_OFF', 'color:#3fb950;font-weight:bold'); } catch (e) {}
+  try { console.log('%c[v1.8.179] tareas multi-día (Iniciar→Jornadas→Cerrar) + germinación + línea/calendario/agenda + labores L1 + compras con último precio — v177Diag() · kill: __V177_OFF', 'color:#3fb950;font-weight:bold'); } catch (e) {}
 })();
 /*__V177_END__*/
 
