@@ -710,7 +710,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.177'; // calendario-v18177
+window.E5M_HTML_BUILD = '1.8.178'; // calendario-v18177 linea-v18178
 
 window.v175Diag = function () {
   var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
@@ -51753,7 +51753,7 @@ try {
 <script id="v177-calendario">
 /*__V177_START__*/
 /* ═══════════════════════════════════════════════════════════════════════════
-   v1.8.177 — calendario-v18177
+   v1.8.178 — calendario-v18177 + linea-v18178
    Rediseño visual (elegido por José 18-08 sobre renders):
    · Plan de campaña (📅 Calendario): tabs 📅 CALENDARIO (mensual literal,
      como SG Ventas — chips con color por tipo, tira de vencidas, HOY marcado,
@@ -51841,14 +51841,33 @@ try {
       '.v177-lb .v177m{flex:1;min-width:0}' +
       '.v177-lb .v177m b{font-size:13px;display:block;margin:0;line-height:1.35}' +
       '.v177-lb .v177m .v177s{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0;padding:0;line-height:1.4}' +
-      '.v177-lb .v177n{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12.5px;min-width:70px;text-align:right}';
+      '.v177-lb .v177n{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12.5px;min-width:70px;text-align:right}' +
+      /* línea de campaña (opción B — v18178) */
+      '.v178-tl{margin-top:4px}' +
+      '.v178-months{position:relative;height:20px;margin-left:132px;border-bottom:1px solid var(--bor)}' +
+      '.v178-mtick{position:absolute;top:0;font-size:10px;color:var(--muted);transform:translateX(-2px);border-left:1px solid var(--bor);padding:1px 0 3px 4px;height:100%}' +
+      '.v178-rows{position:relative}' +
+      '.v178-row{display:flex;align-items:center;margin:8px 0}' +
+      '.v178-lbl{width:132px;min-width:132px;font-size:12px;color:var(--text,#e6edf3);font-weight:600}' +
+      '.v178-lbl .v177-dot{margin-right:6px}' +
+      '.v178-track{flex:1;position:relative;height:38px;background:var(--sur,#161b22);border:1px solid var(--bor);border-radius:9px}' +
+      '.v178-track:not(.dos) .v178-pill{top:50% !important}' +
+      '.v178-track.dos{height:64px}' +
+      '.v178-pill{position:absolute;top:50%;transform:translate(-50%,-50%);white-space:nowrap;font-size:11px;font-weight:700;padding:3px 10px;border-radius:14px;border:1.5px solid;cursor:pointer;background:var(--sur2,#21262d);max-width:170px;overflow:hidden;text-overflow:ellipsis}' +
+      '.v178-pill.venc{box-shadow:0 0 0 2px var(--red,#f85149)}' +
+      '.v178-pill.done{opacity:.5;text-decoration:line-through;cursor:default}' +
+      '.v178-pill.est{border-style:dashed;cursor:default;font-weight:600}' +
+      '.v178-overlay{position:absolute;left:132px;right:0;top:0;bottom:0;pointer-events:none}' +
+      '.v178-line{position:absolute;top:-22px;bottom:0;width:2px}' +
+      '.v178-line span{position:absolute;top:0;transform:translate(-50%,-100%);font-size:10.5px;font-weight:800;white-space:nowrap;padding-bottom:2px}' +
+      '.v178-sinf{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin-top:10px}';
     document.head.appendChild(st);
   }
 
   /* ═══════════════════ PLAN DE CAMPAÑA: CALENDARIO + AGENDA ═══════════════════ */
-  var ST = { tab: 'cal', y: null, m: null };
+  var ST = { tab: 'linea', y: null, m: null };
   function ensureMes() { if (ST.y == null || ST.m == null) { var h = new Date(); ST.y = h.getFullYear(); ST.m = h.getMonth(); } }
-  window.v177Tab = function (t) { ST.tab = (t === 'agenda') ? 'agenda' : 'cal'; render(); };
+  window.v177Tab = function (t) { ST.tab = (t === 'agenda' || t === 'cal') ? t : 'linea'; render(); };
   window.v177Nav = function (dm) { ensureMes(); var d = new Date(ST.y, ST.m + dm, 1); ST.y = d.getFullYear(); ST.m = d.getMonth(); render(); };
   window.v177HoyBtn = function () { ST.y = null; ST.m = null; ensureMes(); render(); };
 
@@ -51928,6 +51947,68 @@ try {
   }
   function offTxtSafe(l, c) { try { return offTxt(l, c); } catch (e) { return ''; } }
 
+  /* ═══ opción B — línea de campaña (linea-v18178) ═══ */
+  var TL_MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  function lineaHTML(plan, c, hoy) {
+    var h = H();
+    var conF = plan.filter(function (l) { return l.fecha; });
+    if (!conF.length) return '<div class="empty">El plan no tiene actividades con fecha todavía.</div>';
+    var ds = conF.map(function (l) { return dias(l.fecha); });
+    var d0 = Math.min.apply(null, ds) - 8, d1 = Math.max.apply(null, ds);
+    var dHoy = dias(hoy);
+    /* la cosecha sin fecha estira el eje ~40 días para la píldora "est." */
+    var cosSinF = plan.filter(function (l) { return l.tipo === 'cosecha' && !l.fecha; });
+    d1 = Math.max(d1, dHoy) + (cosSinF.length ? 45 : 12);
+    var span = Math.max(1, d1 - d0);
+    function pct(nd) { return Math.max(0, Math.min(100, (nd - d0) * 100 / span)); }
+    /* meses del eje */
+    var months = '';
+    var mCur = new Date(d0 * 86400000); mCur = new Date(mCur.getFullYear(), mCur.getMonth() + 1, 1);
+    while (dias(mCur.getFullYear() + '-' + ('0' + (mCur.getMonth() + 1)).slice(-2) + '-01') < d1) {
+      var mIso = mCur.getFullYear() + '-' + ('0' + (mCur.getMonth() + 1)).slice(-2) + '-01';
+      months += '<span class="v178-mtick" style="left:' + pct(dias(mIso)) + '%">' + TL_MES[mCur.getMonth()] + '</span>';
+      mCur = new Date(mCur.getFullYear(), mCur.getMonth() + 1, 1);
+    }
+    /* filas por tipo (solo los presentes, en orden fijo) */
+    var ORDEN = ['fertilizacion', 'fumigada', 'siembra', 'cosecha', 'otra', 'maquinaria'];
+    var NOM = { fertilizacion: 'Fertilización', fumigada: 'Fumigación', siembra: 'Siembra', cosecha: 'Cosecha', otra: 'Otras', maquinaria: 'Maquinaria' };
+    var rows = '';
+    ORDEN.forEach(function (tipo) {
+      var evs = conF.filter(function (l) { return l.tipo === tipo; });
+      var esCos = tipo === 'cosecha' && cosSinF.length;
+      if (!evs.length && !esCos) return;
+      var orden = evs.slice().sort(function (a, b) { return String(a.fecha).localeCompare(String(b.fecha)); });
+      var prevPct = -999, prevLane = 1, dosCarriles = false;
+      var pills = orden.map(function (l) {
+        var done = l.estado === 'ejecutada', venc = esVenc(l, hoy), col = tCol(l.tipo);
+        var p = pct(dias(l.fecha));
+        var lane = 0;
+        if (p - prevPct < 12 && prevLane === 0) { lane = 1; dosCarriles = true; }
+        prevPct = p; prevLane = lane;
+        var ofs = offTxtSafe(l, c), nom = tNombre(l);
+        var txt = h.escA(nom.length > 16 ? nom.slice(0, 15) + '…' : nom) + (ofs ? ' · ' + ofs : '');
+        var click = done ? '' : ' onclick="agEjecutarLabor(' + l.id + ')"';
+        return '<span class="v178-pill' + (done ? ' done' : '') + (venc ? ' venc' : '') + '" style="left:' + p + '%;top:' + (lane ? '74%' : '26%') + ';border-color:' + col + ';color:' + col + '"' + click +
+          ' title="' + h.escA(nom) + ' · ' + h.agFecha(l.fecha) + (done ? ' · hecha' : venc ? ' · VENCIDA' : '') + '">' + (done ? '✓ ' : '') + txt + '</span>';
+      }).join('');
+      if (esCos) pills += '<span class="v178-pill est" style="left:' + pct(d1 - 18) + '%;top:26%;border-color:#d4a017;color:#d4a017" title="Cosecha sin fecha — estimada">est. ' + TL_MES[new Date((d1 - 18) * 86400000).getMonth()] + '</span>';
+      rows += '<div class="v178-row"><div class="v178-lbl"><i class="v177-dot" style="background:' + tCol(tipo) + '"></i>' + NOM[tipo] + '</div><div class="v178-track' + (dosCarriles ? ' dos' : '') + '">' + pills + '</div></div>';
+    });
+    /* líneas verticales: HOY (ámbar) + germinación (verde, si está registrada) */
+    var lines = '';
+    if (dHoy >= d0 && dHoy <= d1) lines += '<div class="v178-line" style="left:' + pct(dHoy) + '%;background:var(--amber2,#e3b341)"><span style="color:var(--amber2,#e3b341)">HOY</span></div>';
+    var germ = plan.find(function (l) { return /germin|emergencia/i.test(l.nombre || '') && l.fecha && l.estado === 'ejecutada'; });
+    if (germ) lines += '<div class="v178-line" style="left:' + pct(dias(germ.fecha)) + '%;background:var(--green,#3fb950)"><span style="color:var(--green,#3fb950)">🌿 germinó</span></div>';
+    /* sin fecha */
+    var sinF = plan.filter(function (l) { return !l.fecha && l.estado === 'planificada' && l.tipo !== 'cosecha'; });
+    var sinFHtml = sinF.length ? '<div class="v178-sinf">⬜ cuando toque:' + sinF.map(function (l) {
+      return '<span class="agcal-chip" style="cursor:pointer" onclick="agEjecutarLabor(' + l.id + ')">' + tIco(l.tipo) + ' ' + h.escA(tNombre(l)) + '</span>';
+    }).join('') + '</div>' : '';
+    return '<div class="v178-tl"><div class="v178-months">' + months + '</div>' +
+      '<div class="v178-rows">' + rows + '<div class="v178-overlay">' + lines + '</div></div>' + sinFHtml +
+      '<div class="v177-leg" style="margin-top:10px"><span>aro rojo = vencida</span><span style="color:var(--amber2,#e3b341)">│ ámbar = hoy</span><span style="color:var(--green,#3fb950)">│ verde = germinación</span><span>click en una píldora abre ▶ Registrar</span></div></div>';
+  }
+
   function agendaHTML(st, c, hoy) {
     var lim = new Date(); lim.setDate(lim.getDate() + 7);
     var limIso = lim.getFullYear() + '-' + ('0' + (lim.getMonth() + 1)).slice(-2) + '-' + ('0' + lim.getDate()).slice(-2);
@@ -51985,6 +52066,7 @@ try {
       ensureMes();
       var mesNom = MESES_L[ST.m] + ' ' + ST.y;
       tabs.innerHTML =
+        '<button class="v177-tab' + (ST.tab === 'linea' ? ' on' : '') + '" onclick="v177Tab(\'linea\')">📈 Línea de campaña</button>' +
         '<button class="v177-tab' + (ST.tab === 'cal' ? ' on' : '') + '" onclick="v177Tab(\'cal\')">📅 Calendario</button>' +
         '<button class="v177-tab' + (ST.tab === 'agenda' ? ' on' : '') + '" onclick="v177Tab(\'agenda\')">📋 Agenda</button>' +
         (ST.tab === 'cal' ? '<span class="v177-mnav"><b>' + mesNom + '</b><button class="v177-mbtn" onclick="v177Nav(-1)">‹</button><button class="v177-mbtn" onclick="v177HoyBtn()">Hoy</button><button class="v177-mbtn" onclick="v177Nav(1)">›</button></span>' : '');
@@ -51995,7 +52077,7 @@ try {
           '<button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="v177Tab(\'agenda\')">Resolver →</button></div>';
       } else strip.innerHTML = '';
       var plan = window.__agcal.planDe(d, campId);
-      body.innerHTML = (ST.tab === 'cal') ? calHTML(plan, hoy) : agendaHTML(st, c, hoy);
+      body.innerHTML = (ST.tab === 'cal') ? calHTML(plan, hoy) : (ST.tab === 'agenda') ? agendaHTML(st, c, hoy) : lineaHTML(plan, c, hoy);
       return true;
     } catch (e) {
       try { console.warn('[v177-cal] caída — vuelve la tabla vieja', e); var tb2 = h.agEl('agcal-tbody'); if (tb2) { var p2 = tb2.closest('.panel'); if (p2) p2.style.display = ''; } var w2 = h.agEl('v177-wrap'); if (w2) w2.style.display = 'none'; } catch (e2) {}
@@ -52089,7 +52171,7 @@ try {
     try { console.table([out]); } catch (e) { console.log(out); }
     return out;
   };
-  try { console.log('%c[v1.8.177] calendario mensual + agenda en el plan · labores por campaña — v177Diag() · kill: __V177_OFF', 'color:#3fb950;font-weight:bold'); } catch (e) {}
+  try { console.log('%c[v1.8.178] línea de campaña + calendario + agenda en el plan · labores por campaña — v177Diag() · kill: __V177_OFF', 'color:#3fb950;font-weight:bold'); } catch (e) {}
 })();
 /*__V177_END__*/
 
