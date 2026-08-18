@@ -710,7 +710,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.175';
+window.E5M_HTML_BUILD = '1.8.176';
 
 window.v175Diag = function () {
   var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
@@ -5701,9 +5701,32 @@ function orMarcajeGo(){
         <option value="herramienta">Herramientas</option>
         <option value="repuesto">Repuestos</option>
       </optgroup>
+      <optgroup label="Agrícolas">
+        <option value="herbicida">Herbicida</option>
+        <option value="fungicida">Fungicida</option>
+        <option value="insecticida">Insecticida</option>
+        <option value="fertilizante">Fertilizante</option>
+        <option value="semilla">Semilla</option>
+        <option value="coadyuvante">Coadyuvante</option>
+        <option value="tratamiento_semilla">Tratamiento de semilla</option>
+        <option value="bacterias">Bacterias / Inoculante</option>
+      </optgroup>
       <option value="otro">Otro</option>
     </select>
   </div>
+</div>
+<!-- v1.8.176 stock-unico-v18176: el ambito decide en que lista aparece (no quien lo consume) -->
+<div class="form-row">
+  <div class="form-group"><label class="form-label">Ámbito</label>
+    <select class="form-select" id="prod-ambito" onchange="v176AmbitoHint()">
+      <option value="">Auto (según el tipo)</option>
+      <option value="ganaderia">🐂 Ganadería</option>
+      <option value="agro">🌾 Agro</option>
+      <option value="ambos">🔁 Ambos</option>
+    </select>
+    <div id="prod-ambito-hint" style="font-size:10.5px;color:var(--muted);margin-top:3px">Ganadería aparece en Stock · Agro en Stock Agro y en las labores · Ambos en los dos</div>
+  </div>
+  <div class="form-group"></div>
 </div>
 <div class="form-row">
   <div class="form-group"><label class="form-label">Unidad</label>
@@ -10327,6 +10350,8 @@ function _stockGetFilteredList() {
   var sort = (document.getElementById('stock-sort') || {}).value || 'critical';
 
   return products.filter(function(p){
+    /* v1.8.176: lo tageado Agro vive en Agricultura → Stock Agro, no aca */
+    if (!window.__V176_OFF && typeof v176Ambito === 'function' && v176Ambito(p) === 'agro') return false;
     // Filtro de categoría
     if (_stockSelectedCategory !== 'all') {
       var cat = _stockGetCategory(p);
@@ -10744,6 +10769,7 @@ function renderStock() {
   _stockRenderChips();
   var items = _stockGetFilteredList();
   _stockRenderList(items);
+  try { if (typeof v176StockAviso === 'function') v176StockAviso(); } catch (e) {} /* v1.8.176 */
   if (typeof renderConteoHistory === 'function') try { renderConteoHistory(); } catch(e){}
 }
 
@@ -10847,6 +10873,8 @@ function openNewProduct() {
   editingProductId = null;
   document.getElementById('prod-name').value = '';
   document.getElementById('prod-type').value = 'antiparasitario';
+  var _am = document.getElementById('prod-ambito'); if (_am) { _am.value = ''; } /* v1.8.176 */
+  if (typeof v176AmbitoHint === 'function') v176AmbitoHint();
   document.getElementById('prod-unit').value = 'ml';
   document.getElementById('prod-stock').value = 0;
   document.getElementById('prod-min').value = 0;
@@ -10865,6 +10893,8 @@ function openEditProduct(id) {
   editingProductId = p.id;
   document.getElementById('prod-name').value = p.name || '';
   document.getElementById('prod-type').value = p.type || 'otro';
+  var _am = document.getElementById('prod-ambito'); if (_am) { _am.value = p.ambito || ''; } /* v1.8.176 */
+  if (typeof v176AmbitoHint === 'function') v176AmbitoHint();
   document.getElementById('prod-unit').value = p.unit || 'ml';
   document.getElementById('prod-stock').value = p.stock_qty || 0;
   document.getElementById('prod-min').value = p.stock_min || 0;
@@ -10890,7 +10920,10 @@ function saveProduct() {
     dose_per_50kg: parseFloat(document.getElementById('prod-dose').value) || null,
     unit_cost: parseFloat(document.getElementById('prod-cost').value) || 0,
     expiry_date: document.getElementById('prod-expiry').value || null,
-    supplier: document.getElementById('prod-supplier').value
+    supplier: document.getElementById('prod-supplier').value,
+    /* v1.8.176: se guarda SIEMPRE resuelto (elegido o inferido del tipo) para que
+       viaje al server y el bot/las PWA lo vean sin re-inferir */
+    ambito: (document.getElementById('prod-ambito')||{}).value || v176Ambito({ type: document.getElementById('prod-type').value })
   };
   
   if (editingProductId !== null) {
@@ -43529,7 +43562,12 @@ function agGetDB(){
   if (!Array.isArray(db.agro_campanas)) db.agro_campanas = [];
   if (!Array.isArray(db.agro_labores)) db.agro_labores = [];
   if (!Array.isArray(db.agro_insumos)) db.agro_insumos = [];
-  return { parcelas:db.agro_parcelas, campanas:db.agro_campanas, labores:db.agro_labores, insumos:db.agro_insumos, cultivos:AG_CULTIVOS };
+  /* v1.8.176: catalogo UNIFICADO — productos del stock con ambito agro entran como
+     vistas 'S<id>' (solo lectura) DELANTE; los legacy al final POR REFERENCIA, asi
+     la capa v165 (USD) que toma d.insumos[len-1] sigue viendo el recien creado. */
+  var _ins = db.agro_insumos;
+  if (!window.__V176_OFF && typeof window.v176CatalogoInsumos === 'function') _ins = window.v176CatalogoInsumos(db.agro_insumos);
+  return { parcelas:db.agro_parcelas, campanas:db.agro_campanas, labores:db.agro_labores, insumos:_ins, cultivos:AG_CULTIVOS };
 }
 function agNextId(arr){ var m=0; (arr||[]).forEach(function(x){ var n=parseInt(x.id,10); if(n>m)m=n; }); return m+1; }
 function agSaveDB(){
@@ -43810,8 +43848,14 @@ function agOpenInsumos(){ agRenderInsumos(); agInsumoFormReset(); window.agOpenM
 function agRenderInsumos(){
   var d=agGetDB(), html='';
   d.insumos.forEach(function(i){
-    html+='<tr><td>'+escA(i.nombre)+'</td><td>'+escA(i.unidad)+'</td><td class="num">'+fmtA(i.costo,2)+'</td><td class="num">'+fmtA(i.stock,1)+'</td>'+
-      '<td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="agEditInsumo('+i.id+')">✏️</button> <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agDelInsumo('+i.id+')">🗑</button></td></tr>';
+    /* v1.8.176: ids como string (los del stock son 'S<id>') + badge de origen */
+    var idq=JSON.stringify(String(i.id));
+    var badge=i._stock?' <span style="font-size:9px;background:rgba(63,185,80,.15);color:var(--green);padding:1px 6px;border-radius:8px">📦 Stock</span>':'';
+    var acc=i._stock
+      ? '<button class="btn btn-ghost btn-sm" title="Se edita en Stock" onclick="agEditInsumo('+idq+')">✏️</button>'
+      : '<button class="btn btn-ghost btn-sm" onclick="agEditInsumo('+idq+')">✏️</button> <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agDelInsumo('+idq+')">🗑</button>';
+    html+='<tr><td>'+escA(i.nombre)+badge+'</td><td>'+escA(i.unidad)+'</td><td class="num">'+fmtA(i.costo,2)+'</td><td class="num">'+fmtA(i.stock,1)+'</td>'+
+      '<td style="white-space:nowrap">'+acc+'</td></tr>';
   });
   var tb=agEl('agi-tbody'); if(tb) tb.innerHTML= html || '<tr><td colspan="5" class="empty">Sin insumos. Cargá el primero abajo.</td></tr>';
 }
@@ -43821,6 +43865,11 @@ function agInsumoFormReset(){
   agEl('agi-costo').value=''; agEl('agi-stock').value='0';
 }
 function agEditInsumo(id){
+  if(/^S/.test(String(id))){ /* v1.8.176: es un producto del stock general */
+    try{ window.agCloseModal && agCloseModal('ag-modal-insumos'); }catch(e){}
+    if(typeof openEditProduct==='function') openEditProduct(String(id).slice(1));
+    return;
+  }
   var d=agGetDB(), i=agById(d.insumos,id); if(!i)return;
   agEl('agi-form-title').textContent='✏️ Editar: '+i.nombre;
   agEl('agi-id').value=i.id; agEl('agi-nombre').value=i.nombre; agEl('agi-unidad').value=i.unidad;
@@ -43828,16 +43877,18 @@ function agEditInsumo(id){
 }
 function agSaveInsumo(){
   var d=agGetDB(), id=agEl('agi-id').value;
+  if(/^S/.test(String(id))){ agToast('Ese producto vive en el Stock general — editalo desde Stock','info'); return; } /* v1.8.176 */
   var nombre=agEl('agi-nombre').value.trim(), unidad=agEl('agi-unidad').value;
   var costo=parseFloat(agEl('agi-costo').value), stock=parseFloat(agEl('agi-stock').value)||0;
   if(!nombre||isNaN(costo)||costo<0){ agToast('Nombre y costo son obligatorios','error'); return; }
   var dup=d.insumos.some(function(i){ return String(i.nombre).toLowerCase()===nombre.toLowerCase() && String(i.id)!==String(id); });
   if(dup){ agToast('Ya existe un insumo con ese nombre','error'); return; }
   if(id){ var i=agById(d.insumos,id); i.nombre=nombre;i.unidad=unidad;i.costo=costo;i.stock=stock;i.updated_at=new Date().toISOString(); }
-  else{ d.insumos.push({id:agNextId(d.insumos),nombre:nombre,unidad:unidad,costo:costo,stock:stock,created_at:new Date().toISOString()}); }
+  else{ db.agro_insumos.push({id:agNextId(db.agro_insumos),nombre:nombre,unidad:unidad,costo:costo,stock:stock,created_at:new Date().toISOString()}); } /* v1.8.176: al array REAL (d.insumos ahora es la vista unificada) */
   agSaveDB(); agRenderInsumos(); agInsumoFormReset(); agToast('Insumo guardado: '+nombre,'success');
 }
 function agDelInsumo(id){
+  if(/^S/.test(String(id))){ agToast('Ese producto vive en el Stock general — sacale el tag Agro o borralo desde Stock','info'); return; } /* v1.8.176 */
   var d=agGetDB();
   var enUso=d.labores.some(function(l){ return (l.insumos||[]).some(function(r){return String(r.insumo_id)===String(id);}); });
   if(enUso){ agToast('No se puede eliminar: hay labores que lo usaron','error'); return; }
@@ -43974,7 +44025,9 @@ function agwLeerInsumos(){
   var cid=agEl('agw-campana').value;
   var ha=cid?campHa(d,agById(d.campanas,cid)||{}):0;
   document.querySelectorAll('#agw-ins-rows .ins-row').forEach(function(row){
-    var id=Number(row.querySelector('.agw-ins-sel').value);
+    /* v1.8.176: 'S<id>' = producto del stock general; numerico = catalogo agro legacy */
+    var _idRaw=String(row.querySelector('.agw-ins-sel').value||'');
+    var id=/^\d+$/.test(_idRaw)?Number(_idRaw):_idRaw;
     var dosis=parseFloat(row.querySelector('.agw-ins-dosis').value);
     if(!id||!dosis||dosis<=0){ row.querySelector('.agw-ins-total').value=''; row.querySelector('.agw-ins-costo').value=''; return; }
     var ins=agById(d.insumos,id), total=dosis*ha, costo=total*ins.costo;
@@ -44032,7 +44085,7 @@ function agwSummary(){
     '📅 '+agFecha(l.fecha)+' · 👤 '+escA(l.resp||'—')+(AGW.mode==='plan'?' · <span class="pill a">PLANIFICADA</span>':'')+'<br>';
   if(AGW.tipo==='cosecha'&&l.cosecha){ htm+='🌾 '+fmtA(l.cosecha.kg)+' kg ('+fmtA(r.ha?l.cosecha.kg/1000/r.ha:0,2)+' t/ha) · humedad '+(l.cosecha.hum||'—')+'% · ingreso Bs '+fmtA((l.cosecha.kg/1000)*(l.cosecha.precio||0))+'<br>'; }
   (l.insumos||[]).forEach(function(x){ var i=agById(d.insumos,x.insumo_id); htm+='• '+escA(i.nombre)+': '+x.dosis+' '+i.unidad+'/ha → '+fmtA(x.total,1)+' '+i.unidad+' = Bs '+fmtA(x.costo)+'<br>'; });
-  if(l.maquina||l.diesel||l.mo_h) htm+='🚜 '+escA(l.maquina||'s/máquina')+(l.hmaq?(' '+l.hmaq+' h (Bs '+fmtA(cost.maq)+')'):'')+(l.diesel?(' · ⛽ '+l.diesel+' l = Bs '+fmtA(cost.diesel)):'')+(l.mo_h?(' · 👷 '+l.mo_h+' h = Bs '+fmtA(cost.mo)):'')+'<br>';
+  if(l.maquina||l.diesel||l.mo_h) htm+='🚜 '+escA(l.maquina||'s/máquina')+(l.implemento?(' + ⚙️ '+escA(l.implemento)):'')+(l.hmaq?(' '+l.hmaq+' h (Bs '+fmtA(cost.maq)+')'):'')+(l.diesel?(' · ⛽ '+l.diesel+' l = Bs '+fmtA(cost.diesel)):'')+(l.mo_h?(' · 👷 '+l.mo_h+' h = Bs '+fmtA(cost.mo)):'')+'<br>';
   htm+='<div style="margin-top:8px;border-top:1px solid var(--bor);padding-top:8px">💵 <b>Costo total: Bs '+fmtA(cost.total)+'</b>'+(r.ha?(' · <b>Bs '+fmtA(cost.total/r.ha)+' /ha</b>'):'')+'</div>';
   agEl('agw-summary').innerHTML=htm;
 }
@@ -44065,7 +44118,21 @@ function agwFinish(){
     data.id=agNextId(d.labores); data.created_at=data.updated_at; d.labores.push(data);
   }
   if(data.estado==='ejecutada'||AGW.execId){
-    (data.insumos||[]).forEach(function(x){ var ins=agById(d.insumos,x.insumo_id); if(ins) ins.stock=Math.round((ins.stock-x.total)*100)/100; });
+    (data.insumos||[]).forEach(function(x){
+      /* v1.8.176: 'S<id>' descuenta del stock general (products); numerico del catalogo agro */
+      var _sid=String(x.insumo_id||'');
+      if(/^S/.test(_sid)){
+        var _p=(db.products||[]).find(function(pp){ return String(pp.id)===_sid.slice(1); });
+        if(_p){
+          _p.stock_qty=Math.round(((parseFloat(_p.stock_qty)||0)-x.total)*100)/100;
+          if(_p.stock_qty<0)_p.stock_qty=0;
+          _p.stock_updated_at=new Date().toISOString();
+        }
+        return;
+      }
+      var ins=agById(d.insumos,x.insumo_id); if(ins&&!ins._stock) ins.stock=Math.round((ins.stock-x.total)*100)/100;
+    });
+    try{ if((data.insumos||[]).some(function(x){return /^S/.test(String(x.insumo_id||''));}) && typeof renderStock==='function') renderStock(); }catch(e){}
     if(AGW.tipo==='cosecha'){ var c=agById(d.campanas,data.campana_id); if(c) c.estado='cosechada'; }
     else { var c2=agById(d.campanas,data.campana_id); if(c2&&c2.estado==='planificada') c2.estado='en_curso'; }
   }
@@ -44146,6 +44213,7 @@ window.agRenderCampanas=agRenderCampanas; window.agRenderLabores=agRenderLabores
 window.agEjecutarLabor=agEjecutarLabor; window.agDelLabor=agDelLabor; window.agExportCuaderno=agExportCuaderno;
 window.agOpenInsumos=agOpenInsumos; window.agSaveInsumo=agSaveInsumo; window.agEditInsumo=agEditInsumo;
 window.agDelInsumo=agDelInsumo; window.agInsumoFormReset=agInsumoFormReset;
+window.agGetDB=agGetDB; window.agById=agById; window.agwFinish=agwFinish; window.agwLeerInsumos=agwLeerInsumos; // v1.8.176: capas posteriores y tests dejan de chocar con el closure
 window.agwOpen=agwOpen; window.agwSetTipo=agwSetTipo; window.agwNav=agwNav; window.agwAddInsumo=agwAddInsumo;
 window.agwCrearCampanaInline=agwCrearCampanaInline; window.agwToggleNuevoInsumo=agwToggleNuevoInsumo; window.agwCrearInsumoInline=agwCrearInsumoInline; // v1.8.120: los 3 fixes inline v1.8.112 quedaron dentro del IIFE sin exponer (onclick no los veia)
 window.agwDelInsumo=agwDelInsumo; window.agwRecalcAll=agwRecalcAll; window.agwCampanaInfo=agwCampanaInfo; window.agwCalcRinde=agwCalcRinde;
@@ -44210,8 +44278,16 @@ document.addEventListener('click', function(ev){
       .filter(function (n, i, a) { return a.indexOf(n) === i; }).sort();
   }
   function agmMaquinas() {
+    /* v1.8.176: solo maquinas motrices — los implementos tienen su propio selector */
     return ((typeof db !== 'undefined' && db && db.maquinaria) || []).filter(function (m) {
-      return m && (m.nombre || m.name) && !/vendid/i.test(String(m.estado || ''));
+      return m && (m.nombre || m.name) && !/vendid/i.test(String(m.estado || '')) &&
+             String(m.tipo || '') !== 'implemento';
+    });
+  }
+  function agmImplementos() {
+    return ((typeof db !== 'undefined' && db && db.maquinaria) || []).filter(function (m) {
+      return m && (m.nombre || m.name) && !/vendid/i.test(String(m.estado || '')) &&
+             String(m.tipo || '') === 'implemento';
     });
   }
   /* servicios externos */
@@ -44331,6 +44407,12 @@ document.addEventListener('click', function(ev){
     var data = _agwBuildLabor0(r);
     data.resp = agmRespVal('agw-resp');
     data.maquina = agmRespVal('agw-maquina');
+    /* v1.8.176: ids para cruzar con mantenimiento/diesel + implemento aparte */
+    var _mObj = agmMaquinas().find(function (m) { return String(m.nombre || m.name).trim() === data.maquina; });
+    data.maquina_id = _mObj ? _mObj.id : null;
+    data.implemento = (agEl('agw-implemento') || {}).value || '';
+    var _iObj = agmImplementos().find(function (m) { return String(m.nombre || m.name).trim() === data.implemento; });
+    data.implemento_id = _iObj ? _iObj.id : null;
     data.mo_h = 0; data.mo_bs = 0; /* planilla: la mano de obra NO se carga por labor */
     if (data.maquina) {
       var mq = agmMaquinas().find(function (m) { return String(m.nombre || m.name).trim() === data.maquina; });
@@ -44413,6 +44495,18 @@ document.addEventListener('click', function(ev){
       msel.innerHTML = opts; msel.value = cur || '';
       var mo = agEl('agw-maquina-otra'); if (mo) { mo.style.display = 'none'; mo.value = ''; }
     }
+    /* v1.8.176: llenar implementos (tipo='implemento' del catalogo Maquinaria) */
+    var isel = agEl('agw-implemento');
+    if (isel) {
+      var curI = lab ? (lab.implemento || '') : '';
+      var iopts = '<option value="">— Sin implemento —</option>', tieneI = false;
+      agmImplementos().forEach(function (m) {
+        var nm = String(m.nombre || m.name).trim(); if (nm === curI) tieneI = true;
+        iopts += '<option value="' + escA(nm) + '">⚙️ ' + escA(nm) + '</option>';
+      });
+      if (curI && !tieneI) iopts += '<option value="' + escA(curI) + '">' + escA(curI) + ' (histórico)</option>';
+      isel.innerHTML = iopts; isel.value = curI || '';
+    }
     /* diésel: tanques visibles + costo automático */
     AGMW.tank = null;
     var tanks = agmTanquesDiesel();
@@ -44482,6 +44576,16 @@ document.addEventListener('click', function(ev){
         agEl('agw-maquina-otra').style.display = msel.value === '__otra' ? 'block' : 'none';
         agmWizDieselInfo();
       });
+    }
+    /* v1.8.176: implemento (sembradora, rastra, fumigadora...) separado de la maquina */
+    if (!agEl('agw-implemento')) {
+      var mwrap = agEl('agw-maquina') && agEl('agw-maquina').parentNode;
+      if (mwrap) {
+        var iwrap = document.createElement('div');
+        iwrap.innerHTML = '<label class="form-label" style="margin-top:8px">Implemento</label>' +
+          '<select class="form-input" id="agw-implemento"><option value="">— Sin implemento —</option></select>';
+        mwrap.appendChild(iwrap);
+      }
     }
     /* mano de obra: fuera (planilla) */
     var moh = agEl('agw-mo-h');
@@ -44581,7 +44685,7 @@ document.addEventListener('click', function(ev){
       '</div>' +
       /* ── STOCK AGRO ── */
       '<div id="ag-view-stockagro" class="ag-view">' +
-      '<div class="sub">Stock agrícola APARTE del ganadero/veterinario. Las labores descuentan de acá. (Prepara la separación de flujos del bot y la PWA agro.)</div>' +
+      '<div class="sub">Vista agrícola del STOCK ÚNICO: el catálogo agro propio + los productos del Stock general tageados 🌾 Agro. Las labores descuentan de acá — cada uno a su tabla.</div>' +
       '<div class="toolbar"><button class="btn btn-primary" onclick="agOpenInsumos()">🧪 Gestionar catálogo (altas / recargas)</button></div>' +
       '<div class="cards" id="agsk-cards"></div>' +
       '<div class="panel"><h3>Catálogo</h3><table class="tbl"><thead><tr><th>Insumo</th><th>Unidad</th><th class="num">Costo Bs/u</th><th class="num">Stock</th><th class="num">Valor (Bs)</th><th></th></tr></thead><tbody id="agsk-tbody"></tbody></table></div>' +
@@ -51542,5 +51646,103 @@ try {
 
 </script>
 
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   v1.8.176 · stock-unico-v18176 — STOCK ÚNICO CON ÁMBITO (etapa E1, modo puente)
+   ─────────────────────────────────────────────────────────────────────────
+   · Cada producto tiene un ámbito: ganaderia | agro | ambos (inferido del tipo,
+     editable en el modal). Stock muestra ganaderia+ambos; Stock Agro muestra
+     el catálogo agro legacy + los productos tageados agro.
+   · El selector de labores ve el catálogo UNIFICADO: los del stock entran con
+     id 'S<id>' y descuentan de products; los legacy siguen igual.
+   · NO se migra ningún dato. Kill switch: __V176_OFF (apaga merge y filtro).
+   Requiere server >= v4.43.3 (ambito en sync-push + descuento S en labores).
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  var AMB_GAN = { antiparasitario:1, vacuna:1, antibiotico:1, antiinflamatorio:1,
+                  vitamina_mineral:1, vitamina:1, hormona:1, sal_mineral:1, alimento_balanceado:1 };
+  var AMB_AGRO = { herbicida:1, fungicida:1, insecticida:1, fertilizante:1, semilla:1,
+                   coadyuvante:1, tratamiento_semilla:1, bacteria:1, bacterias:1 };
+
+  window.v176Ambito = function (p) {
+    if (!p) return 'ganaderia';
+    var a = String(p.ambito || '').toLowerCase();
+    if (a === 'ganaderia' || a === 'agro' || a === 'ambos') return a;
+    var t = String(p.type || '').toLowerCase();
+    if (AMB_GAN[t]) return 'ganaderia';
+    if (AMB_AGRO[t]) return 'agro';
+    return 'ambos'; /* combustible, lubricante, repuesto, herramienta, otro */
+  };
+
+  window.v176AmbitoHint = function () {
+    var sel = document.getElementById('prod-ambito');
+    var tip = document.getElementById('prod-type');
+    var h = document.getElementById('prod-ambito-hint');
+    if (!sel || !h) return;
+    var eff = sel.value || v176Ambito({ type: tip ? tip.value : '' });
+    var txt = { ganaderia: 'aparece en Stock (y en curaciones)', agro: 'aparece en Stock Agro y en el selector de labores',
+                ambos: 'aparece en las dos listas (diesel, aceite, repuestos...)' };
+    h.textContent = (sel.value ? '' : 'Auto → ' + eff + ' · ') + (txt[eff] || '');
+  };
+
+  window.v176ProductosAgro = function () {
+    return ((typeof db !== 'undefined' && db && db.products) || []).filter(function (p) {
+      return p && v176Ambito(p) === 'agro';
+    });
+  };
+
+  /* ── el catálogo unificado que consume agGetDB (patch interno del closure) ──
+     Los del stock van PRIMERO como vistas de solo-lectura; los legacy al FINAL
+     por referencia — la capa v165 (USD) toma d.insumos[len-1] tras crear uno. */
+  window.v176CatalogoInsumos = function (legacy) {
+    var virt = v176ProductosAgro().map(function (p) {
+      return { id: 'S' + p.id, nombre: p.name, unidad: p.unit || 'u',
+               costo: Number(p.unit_cost) || 0, stock: Number(p.stock_qty) || 0,
+               _stock: true, created_at: p.created_at };
+    });
+    return virt.concat(Array.isArray(legacy) ? legacy : []);
+  };
+
+  /* ── el aviso en Stock: cuántos productos viven en la vista agro ── */
+  window.v176StockAviso = function () {
+    if (window.__V176_OFF) return;
+    var cont = document.getElementById('stock-list-container');
+    if (!cont || !cont.parentNode) return;
+    var nAgro = v176ProductosAgro().length;
+    var el = document.getElementById('v176-stock-aviso');
+    if (!nAgro) { if (el) el.remove(); return; }
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'v176-stock-aviso';
+      el.style.cssText = 'margin:6px 0 10px;padding:8px 14px;border:1px solid rgba(63,185,80,.3);background:rgba(63,185,80,.06);border-radius:8px;font-size:12px;color:var(--muted);cursor:pointer';
+      el.onclick = function () { try { showPage('agro', null); setTimeout(function(){ var b=document.querySelector('[data-agnav="stockagro"]'); if(b) b.click(); }, 250); } catch (e) {} };
+      cont.parentNode.insertBefore(el, cont);
+    }
+    el.innerHTML = '🌾 <b style="color:var(--text)">' + nAgro + ' insumo' + (nAgro === 1 ? '' : 's') + ' agrícola' + (nAgro === 1 ? '' : 's') + '</b> viven en Agricultura → Stock Agro (tocá para ir)';
+  };
+
+  /* diagnóstico */
+  window.v176Diag = function () {
+    var prods = (db && db.products) || [];
+    var porAmbito = { ganaderia: 0, agro: 0, ambos: 0 };
+    var explicitos = 0;
+    prods.forEach(function (p) { porAmbito[v176Ambito(p)]++; if (p.ambito) explicitos++; });
+    var d = (typeof agGetDB === 'function') ? agGetDB() : { insumos: [] };
+    var r = {
+      productos: prods.length, por_ambito: porAmbito, con_ambito_explicito: explicitos,
+      catalogo_agro_legacy: ((db && db.agro_insumos) || []).length,
+      catalogo_unificado_labores: d.insumos.length,
+      del_stock_en_labores: d.insumos.filter(function (i) { return i._stock; }).length
+    };
+    console.log('[v1.8.176] stock único', r);
+    return r;
+  };
+
+  console.log('%c[v1.8.176] stock único con ámbito · catálogo unificado en labores · máquina+implemento · v176Diag()', 'color:#3fb950;font-weight:bold');
+})();
+</script>
 </body>
 </html>
