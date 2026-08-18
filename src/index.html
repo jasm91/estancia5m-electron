@@ -710,7 +710,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.176';
+window.E5M_HTML_BUILD = '1.8.177'; // calendario-v18177
 
 window.v175Diag = function () {
   var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
@@ -44361,6 +44361,8 @@ document.addEventListener('click', function(ev){
 
   /* ═══════════════ OVERRIDE: agRenderLabores (excluye servicios; muestra maquinaria) ═══════════════ */
   agRenderLabores = function () {
+    /* v1.8.177: vista agrupada por campaña; con fallo cae a la tabla */
+    if (!window.__V177_OFF && window.v177Lab) { try { if (window.v177Lab.render() !== false) return; } catch (e177) { console.warn('[v177-lab]', e177); } }
     var d = agGetDB(), f = (agEl('agl-filter') || {}).value || '', html = '';
     if (!agEl('agl-tbody')) return;
     d.labores.slice().sort(function (a, b) { return (b.fecha || '').localeCompare(a.fecha || ''); }).forEach(function (l) {
@@ -45226,6 +45228,8 @@ document.addEventListener('click', function(ev){
   }
   function agcalRender() {
     if (agcalOff() || !agEl('ag-view-agcal')) return;
+    /* v1.8.177: calendario+agenda; si el módulo no está o falla, sigue la tabla de siempre */
+    if (!window.__V177_OFF && window.v177Cal) { try { if (window.v177Cal.render() !== false) return; } catch (e177) { console.warn('[v177-cal]', e177); } }
     var campId = agcalCampSel();
     var res = agEl('agcal-resumen'), tb = agEl('agcal-tbody');
     if (!res || !tb) return;
@@ -45376,6 +45380,8 @@ document.addEventListener('click', function(ev){
   window.agcalTachar = agcalTachar; window.agcalOpenPlantilla = agcalOpenPlantilla; window.agcalTplSave = agcalTplSave;
   window.agcalTplAdd = agcalTplAdd; window.agcalTplDel = agcalTplDel; window.AGCAL_TPL_EDIT = AGCAL_TPL_EDIT;
   window.agcalGuardarUbicacion = agcalGuardarUbicacion;
+  /* v1.8.177: helpers para el módulo calendario-v18177 (fuera del closure) */
+  window.__v177H = { campSel: agcalCampSel, campLabel: campLabel, campHa: campHa, laborCosto: laborCosto, agFecha: agFecha, escA: escA, fmtA: fmtA, agEl: agEl, agHoy: agHoy, TIPOS: LABOR_TIPOS };
   Object.defineProperty(window, 'AGCAL_TPL_EDIT', { get: function () { return AGCAL_TPL_EDIT; }, configurable: true });
   window.__agcal = { seed: AGCAL_SEED, addDias: agcalAddDias, generar: agcalGenerar, recalcular: agcalRecalcular, estado: agcalEstado, tachar: agcalTachar, plantilla: agcalPlantilla, planDe: agcalPlanDe };
   function agcalBoot() {
@@ -51743,6 +51749,350 @@ try {
 
   console.log('%c[v1.8.176] stock único con ámbito · catálogo unificado en labores · máquina+implemento · v176Diag()', 'color:#3fb950;font-weight:bold');
 })();
+</script>
+<script id="v177-calendario">
+/*__V177_START__*/
+/* ═══════════════════════════════════════════════════════════════════════════
+   v1.8.177 — calendario-v18177
+   Rediseño visual (elegido por José 18-08 sobre renders):
+   · Plan de campaña (📅 Calendario): tabs 📅 CALENDARIO (mensual literal,
+     como SG Ventas — chips con color por tipo, tira de vencidas, HOY marcado,
+     navegación de mes) + 📋 AGENDA (VENCIDAS / ESTA SEMANA / PRÓXIMAS /
+     SIN FECHA / HECHAS con fecha grande y ▶ Registrar).
+   · Labores: agrupadas POR CAMPAÑA con barra de avance y total Bs; filas
+     livianas (fecha + S±n, icono de tipo, insumos/máquina, estado).
+   Cero cambio de datos: mismos handlers de siempre (agEjecutarLabor,
+   agcalTachar, agDelLabor). Si algo falla, cae a las tablas viejas.
+   Kill switch: window.__V177_OFF = true
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+  function H() { return window.__v177H || null; }
+  function off() { return window.__V177_OFF === true; }
+
+  var TCOL = { siembra: '#3fb950', fumigada: '#58a6ff', fertilizacion: '#a371f7', cosecha: '#d4a017' };
+  var MESES = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
+  var MESES_L = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  function tCol(t) { return TCOL[t] || '#8b949e'; }
+  function tIco(t) { var h = H(); var s = (h && h.TIPOS && h.TIPOS[t]) || '🔧 x'; return s.split(' ')[0]; }
+  function tNombre(l) { var h = H(); return l.nombre || String((h.TIPOS && h.TIPOS[l.tipo]) || l.tipo || '').replace(/^[^\s]+\s/, ''); }
+  function dias(iso) { return Math.round(new Date(String(iso).slice(0, 10) + 'T12:00:00').getTime() / 86400000); }
+  function ddmm(iso) { if (!iso) return '—'; var s = String(iso); return s.slice(8, 10) + '/' + s.slice(5, 7); }
+  function offTxt(l, c) {
+    var n = null;
+    if (l.offset_dias != null) n = Number(l.offset_dias);
+    else if (c && c.siembra_plan && l.fecha) n = dias(l.fecha) - dias(c.siembra_plan);
+    if (n == null || isNaN(n)) return '';
+    return 'S' + (n >= 0 ? '+' : '−') + Math.abs(n);
+  }
+  function esVenc(l, hoy) { return l.estado === 'planificada' && l.fecha && String(l.fecha).slice(0, 10) < hoy; }
+  function faltanCostos(l) { return l.estado === 'ejecutada' && l.tachado_rapido && l.con_costo !== false && !(l.insumos || []).length && !l.hmaq && !l.diesel_l; }
+
+  function css() {
+    if (document.getElementById('v177-css')) return;
+    var st = document.createElement('style'); st.id = 'v177-css';
+    st.textContent =
+      '#v177-wrap{margin-top:10px}' +
+      '.v177-tabs{display:flex;gap:6px;align-items:center;margin:2px 0 10px;flex-wrap:wrap}' +
+      '.v177-tab{border:1px solid var(--bor);border-radius:8px;background:var(--sur2,#21262d);color:var(--muted);padding:6px 14px;font-size:12.5px;font-weight:700;cursor:pointer}' +
+      '.v177-tab.on{background:var(--green,#3fb950);color:#04150a;border-color:transparent}' +
+      '.v177-mnav{margin-left:auto;display:flex;gap:6px;align-items:center}' +
+      '.v177-mnav b{font-size:13.5px;margin-right:6px}' +
+      '.v177-mbtn{border:1px solid var(--bor);background:var(--sur2,#21262d);color:var(--text,#e6edf3);border-radius:8px;padding:4px 10px;cursor:pointer;font-size:12px}' +
+      '.v177-strip{border:1px solid rgba(248,81,73,.45);background:rgba(248,81,73,.07);border-radius:10px;padding:8px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:12px}' +
+      '.v177-vchip{border:1px solid rgba(248,81,73,.4);border-radius:14px;padding:2px 10px;cursor:pointer;color:var(--text,#e6edf3);font-size:11.5px}' +
+      '.v177-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}' +
+      '.v177-dow{font-size:10px;font-weight:800;letter-spacing:.08em;color:var(--muted);text-align:center;padding:4px 0}' +
+      '.v177-cd{border:1px solid var(--bor);border-radius:8px;min-height:74px;padding:4px;background:var(--sur,#161b22);font-size:11px;overflow:hidden}' +
+      '.v177-cd.out{opacity:.35}' +
+      '.v177-cd.today{border-color:var(--amber2,#e3b341);box-shadow:inset 0 0 0 1px var(--amber2,#e3b341)}' +
+      '.v177-cd .dn{color:var(--muted);font-weight:700;font-size:11px;display:block;margin-bottom:2px}' +
+      '.v177-hoy-tag{color:var(--amber2,#e3b341);font-size:9px;font-weight:800}' +
+      '.v177-ev{display:block;border-left:3px solid #8b949e;background:var(--sur2,#21262d);border-radius:4px;padding:1px 5px;margin:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;font-size:10.5px}' +
+      '.v177-ev.venc{background:rgba(248,81,73,.13);color:var(--red,#f85149)}' +
+      '.v177-ev.done{opacity:.5;text-decoration:line-through;cursor:default}' +
+      '.v177-leg{display:flex;gap:14px;font-size:11px;color:var(--muted);margin-top:8px;flex-wrap:wrap}' +
+      '.v177-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:middle}' +
+      '.v177-sec{font-size:11px;font-weight:800;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px;display:flex;align-items:center;gap:8px}' +
+      '.v177-sec:after{content:"";flex:1;height:1px;background:var(--bor)}' +
+      '.v177-card{display:flex;align-items:center;gap:12px;border:1px solid var(--bor);border-radius:10px;background:var(--sur,#161b22);padding:8px 12px;margin-bottom:6px}' +
+      '.v177-card.venc{border-left:3px solid var(--red,#f85149)}' +
+      '.v177-card.done{opacity:.55}' +
+      '.v177-date{text-align:center;min-width:40px}' +
+      '.v177-date b{font-size:17px;display:block;line-height:1.05}' +
+      '.v177-date span{font-size:9.5px;color:var(--muted);letter-spacing:.06em}' +
+      '.v177-tico{width:32px;height:32px;min-width:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px}' +
+      '.v177-main{flex:1;min-width:0}' +
+      '.v177-main b{display:block;font-size:13px}' +
+      '.v177-main .v177s{font-size:11px;color:var(--muted);margin:0;padding:0;display:block;line-height:1.4}' +
+      '.v177-late{color:var(--red,#f85149);font-weight:700}' +
+      '.v177-off{color:var(--blue,#58a6ff);font-weight:700;font-size:11.5px;min-width:34px;text-align:right}' +
+      '.v177-cmp{border:1px solid var(--bor);border-radius:12px;background:var(--sur,#161b22);margin-bottom:14px;overflow:hidden}' +
+      '.v177-cmp-h{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--sur2,#21262d)}' +
+      '.v177-cmp-h .t b{font-size:13.5px}' +
+      '.v177-cmp-h .t span{display:block;font-size:11px;color:var(--muted)}' +
+      '.v177-cmp-h .r{margin-left:auto;text-align:right;font-size:11px;color:var(--muted);white-space:nowrap}' +
+      '.v177-bar{width:110px;height:6px;background:var(--bg,#0d1117);border-radius:4px;overflow:hidden;display:inline-block;vertical-align:middle;margin:0 6px}' +
+      '.v177-bar i{display:block;height:100%;background:var(--green,#3fb950)}' +
+      '.v177-lb{display:flex;align-items:center;gap:12px;padding:8px 14px;border-top:1px solid var(--bor)}' +
+      '.v177-lb .v177f{min-width:46px}' +
+      '.v177-lb .v177f b{font-size:12.5px;font-family:ui-monospace,SFMono-Regular,monospace;display:block}' +
+      '.v177-lb .v177f span{font-size:10px;color:var(--muted)}' +
+      '.v177-lb .v177m{flex:1;min-width:0}' +
+      '.v177-lb .v177m b{font-size:13px;display:block;margin:0;line-height:1.35}' +
+      '.v177-lb .v177m .v177s{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0;padding:0;line-height:1.4}' +
+      '.v177-lb .v177n{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12.5px;min-width:70px;text-align:right}';
+    document.head.appendChild(st);
+  }
+
+  /* ═══════════════════ PLAN DE CAMPAÑA: CALENDARIO + AGENDA ═══════════════════ */
+  var ST = { tab: 'cal', y: null, m: null };
+  function ensureMes() { if (ST.y == null || ST.m == null) { var h = new Date(); ST.y = h.getFullYear(); ST.m = h.getMonth(); } }
+  window.v177Tab = function (t) { ST.tab = (t === 'agenda') ? 'agenda' : 'cal'; render(); };
+  window.v177Nav = function (dm) { ensureMes(); var d = new Date(ST.y, ST.m + dm, 1); ST.y = d.getFullYear(); ST.m = d.getMonth(); render(); };
+  window.v177HoyBtn = function () { ST.y = null; ST.m = null; ensureMes(); render(); };
+
+  function ensureDom(h) {
+    var view = h.agEl('ag-view-agcal'); if (!view) return false;
+    var tb = h.agEl('agcal-tbody');
+    if (tb) { var p = tb.closest ? tb.closest('.panel') : null; if (p) p.style.display = 'none'; }
+    if (!h.agEl('v177-wrap')) {
+      var w = document.createElement('div'); w.id = 'v177-wrap';
+      w.innerHTML = '<div class="v177-tabs" id="v177-tabs"></div><div id="v177-strip"></div><div id="v177-body"></div>';
+      var res = h.agEl('agcal-resumen');
+      if (res && res.parentNode) res.parentNode.insertBefore(w, res.nextSibling);
+      else view.appendChild(w);
+    }
+    return true;
+  }
+
+  function chipCal(l, hoy) {
+    var h = H();
+    var done = l.estado === 'ejecutada';
+    var venc = esVenc(l, hoy);
+    var name = tNombre(l);
+    var cls = 'v177-ev' + (done ? ' done' : venc ? ' venc' : '');
+    var click = done ? '' : ' onclick="agEjecutarLabor(' + l.id + ')"';
+    return '<span class="' + cls + '" style="border-left-color:' + tCol(l.tipo) + '"' + click + ' title="' + h.escA(name) + (l.fecha ? ' · ' + h.agFecha(l.fecha) : '') + '">' + (done ? '✓ ' : '') + tIco(l.tipo) + ' ' + h.escA(name) + '</span>';
+  }
+
+  function calHTML(plan, hoy) {
+    ensureMes();
+    var h = H();
+    var byDay = {};
+    plan.forEach(function (l) { if (l.fecha) { var k = String(l.fecha).slice(0, 10); (byDay[k] = byDay[k] || []).push(l); } });
+    var dim = new Date(ST.y, ST.m + 1, 0).getDate();
+    var startDow = (new Date(ST.y, ST.m, 1).getDay() + 6) % 7;
+    var weeks = Math.ceil((startDow + dim) / 7);
+    var html = '<div class="v177-cal">';
+    ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'].forEach(function (d) { html += '<div class="v177-dow">' + d + '</div>'; });
+    for (var i = 0; i < weeks * 7; i++) {
+      var dayIdx = i - startDow + 1;
+      var d0 = new Date(ST.y, ST.m, dayIdx);
+      var isoStr = d0.getFullYear() + '-' + ('0' + (d0.getMonth() + 1)).slice(-2) + '-' + ('0' + d0.getDate()).slice(-2);
+      var inMes = dayIdx >= 1 && dayIdx <= dim;
+      var esHoy = isoStr === hoy;
+      var chips = (byDay[isoStr] || []).map(function (l) { return chipCal(l, hoy); }).join('');
+      html += '<div class="v177-cd' + (inMes ? '' : ' out') + (esHoy ? ' today' : '') + '"><span class="dn">' + d0.getDate() + (esHoy ? ' <span class="v177-hoy-tag">HOY</span>' : '') + '</span>' + chips + '</div>';
+    }
+    html += '</div>';
+    html += '<div class="v177-leg">' +
+      '<span><i class="v177-dot" style="background:#3fb950"></i>Siembra</span>' +
+      '<span><i class="v177-dot" style="background:#58a6ff"></i>Fumigación</span>' +
+      '<span><i class="v177-dot" style="background:#a371f7"></i>Fertilización</span>' +
+      '<span><i class="v177-dot" style="background:#d4a017"></i>Cosecha</span>' +
+      '<span>borde rojo = vencida · click en un chip abre ▶ Registrar</span></div>';
+    return html;
+  }
+
+  function cardAg(l, c, kind, hoy) {
+    var h = H();
+    var done = l.estado === 'ejecutada';
+    var name = tNombre(l), col = tCol(l.tipo), ofs = offTxtSafe(l, c);
+    var dd = l.fecha ? String(l.fecha).slice(8, 10) : '—';
+    var mm = l.fecha ? MESES[Number(String(l.fecha).slice(5, 7)) - 1] : '';
+    var when = '';
+    if (kind === 'venc') { var n = dias(hoy) - dias(l.fecha); when = '<span class="v177-late">' + (n === 1 ? 'ayer' : 'hace ' + n + ' días') + '</span>'; }
+    else if (done) { var cost = h.laborCosto(l); when = cost.total ? ('Bs ' + h.fmtA(cost.total)) : (faltanCostos(l) ? '<span class="agm-pend">⚠ faltan costos</span>' : 'hecha'); }
+    else if (l.fecha) { var n2 = dias(l.fecha) - dias(hoy); when = n2 === 0 ? '<b>hoy</b>' : 'en ' + n2 + ' días'; }
+    else when = h.escA(l.etapa || 'cuando toque — no vence');
+    var acts = '';
+    if (l.estado === 'planificada') acts = '<button class="btn btn-ghost btn-sm" title="Hecha rápida (sin costos)" onclick="agcalTachar(' + l.id + ')">✔</button> <button class="btn btn-primary btn-sm" onclick="agEjecutarLabor(' + l.id + ')">▶ Registrar</button>';
+    else if (faltanCostos(l)) acts = '<button class="btn btn-ghost btn-sm" onclick="agEjecutarLabor(' + l.id + ')">⚠ Completar costos</button>';
+    return '<div class="v177-card' + (kind === 'venc' ? ' venc' : '') + (done ? ' done' : '') + '">' +
+      '<div class="v177-date"><b' + (kind === 'venc' ? ' style="color:var(--red,#f85149)"' : '') + '>' + dd + '</b><span>' + mm + '</span></div>' +
+      '<div class="v177-tico" style="background:' + col + '22;border:1px solid ' + col + '55">' + tIco(l.tipo) + '</div>' +
+      '<div class="v177-main"><b>' + (done ? '<s>' : '') + h.escA(name) + (done ? '</s>' : '') + '</b><span class="v177s">' + when + '</span></div>' +
+      (ofs ? '<span class="v177-off">' + ofs + '</span>' : '') +
+      '<div style="white-space:nowrap">' + acts + '</div></div>';
+  }
+  function offTxtSafe(l, c) { try { return offTxt(l, c); } catch (e) { return ''; } }
+
+  function agendaHTML(st, c, hoy) {
+    var lim = new Date(); lim.setDate(lim.getDate() + 7);
+    var limIso = lim.getFullYear() + '-' + ('0' + (lim.getMonth() + 1)).slice(-2) + '-' + ('0' + lim.getDate()).slice(-2);
+    var semana = st.proximas.filter(function (l) { return String(l.fecha).slice(0, 10) <= limIso; });
+    var luego = st.proximas.filter(function (l) { return String(l.fecha).slice(0, 10) > limIso; });
+    var html = '';
+    if (st.vencidas.length) {
+      html += '<div class="v177-sec" style="color:var(--red,#f85149)">🔴 VENCIDAS — RESOLVER PRIMERO</div>';
+      st.vencidas.slice().sort(function (a, b) { return String(a.fecha).localeCompare(String(b.fecha)); }).forEach(function (l) { html += cardAg(l, c, 'venc', hoy); });
+    }
+    html += '<div class="v177-sec">📍 ESTA SEMANA</div>';
+    html += semana.length ? semana.map(function (l) { return cardAg(l, c, 'prox', hoy); }).join('') : '<div class="empty" style="padding:4px 0 8px">Nada esta semana.</div>';
+    if (luego.length) { html += '<div class="v177-sec">📅 PRÓXIMAS</div>' + luego.map(function (l) { return cardAg(l, c, 'prox', hoy); }).join(''); }
+    if (st.sinFecha.length) { html += '<div class="v177-sec">⬜ CUANDO TOQUE (sin plazo — no vencen)</div>' + st.sinFecha.map(function (l) { return cardAg(l, c, 'sf', hoy); }).join(''); }
+    if (st.hechas.length) {
+      html += '<div class="v177-sec" style="color:var(--green,#3fb950)">✅ HECHAS</div>';
+      st.hechas.slice().sort(function (a, b) { return String(b.fecha || '').localeCompare(String(a.fecha || '')); }).forEach(function (l) { html += cardAg(l, c, 'done', hoy); });
+    }
+    return html;
+  }
+
+  function render() {
+    var h = H();
+    if (off() || !h) return false;
+    if (!h.agEl('ag-view-agcal')) return false;
+    try {
+      css();
+      if (!ensureDom(h)) return false;
+      var campId = h.campSel();
+      var res = h.agEl('agcal-resumen'), tabs = h.agEl('v177-tabs'), strip = h.agEl('v177-strip'), body = h.agEl('v177-body');
+      if (!res || !tabs || !body) return false;
+      if (!campId) {
+        res.innerHTML = '<span class="empty">Creá una campaña en la subpestaña Campañas y después generá su plan acá.</span>';
+        tabs.innerHTML = ''; strip.innerHTML = ''; body.innerHTML = '';
+        return true;
+      }
+      var d = window.agGetDB(), c = window.agById(d.campanas, campId);
+      var st = window.__agcal.estado(d, campId);
+      var hoy = h.agHoy();
+      if (!st.total) {
+        res.innerHTML = '<b>' + h.escA(h.campLabel(d, c)) + '</b> todavía no tiene plan. ' + (c && c.siembra_plan ? 'Tocá <b>📅 Generar plan</b> — se crean ' + ((window.__agcal.plantilla().actividades || []).length) + ' actividades ancladas a la siembra del ' + h.agFecha(c.siembra_plan) + '.' : '⚠ Primero poné la <b>fecha de siembra planificada</b> en la campaña (✏️ en Campañas).');
+        tabs.innerHTML = ''; strip.innerHTML = ''; body.innerHTML = '';
+        return true;
+      }
+      /* resumen (igual que siempre) */
+      res.innerHTML =
+        '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:baseline">' +
+        '<b>' + h.escA(h.campLabel(d, c)) + '</b>' +
+        '<span><b class="agm-ok">' + st.hechas.length + '/' + st.total + ' hechas (' + st.pct + '%)</b>' +
+        (st.vencidas.length ? ' · <span class="agcal-venc">' + st.vencidas.length + ' vencida' + (st.vencidas.length > 1 ? 's' : '') + ' 🔴</span>' : '') +
+        (st.sinCostos.length ? ' · <span class="agm-pend">' + st.sinCostos.length + ' sin costos ⚠</span>' : '') + '</span></div>' +
+        '<div class="agcal-bar"><i style="background:var(--green,#3fb950);width:' + st.pct + '%"></i><i style="background:var(--red,#f85149);width:' + Math.round(st.vencidas.length * 100 / st.total) + '%"></i></div>' +
+        '<div style="font-size:11px;color:var(--muted)">siembra ' + (c && c.siembra_plan ? h.agFecha(c.siembra_plan) : '—') + ' · los plazos se calculan desde ahí</div>';
+      /* tabs + nav */
+      ensureMes();
+      var mesNom = MESES_L[ST.m] + ' ' + ST.y;
+      tabs.innerHTML =
+        '<button class="v177-tab' + (ST.tab === 'cal' ? ' on' : '') + '" onclick="v177Tab(\'cal\')">📅 Calendario</button>' +
+        '<button class="v177-tab' + (ST.tab === 'agenda' ? ' on' : '') + '" onclick="v177Tab(\'agenda\')">📋 Agenda</button>' +
+        (ST.tab === 'cal' ? '<span class="v177-mnav"><b>' + mesNom + '</b><button class="v177-mbtn" onclick="v177Nav(-1)">‹</button><button class="v177-mbtn" onclick="v177HoyBtn()">Hoy</button><button class="v177-mbtn" onclick="v177Nav(1)">›</button></span>' : '');
+      /* tira de vencidas (solo calendario — en agenda son la primera sección) */
+      if (ST.tab === 'cal' && st.vencidas.length) {
+        strip.innerHTML = '<div class="v177-strip"><b style="color:var(--red,#f85149)">🔴 ' + st.vencidas.length + ' vencida' + (st.vencidas.length > 1 ? 's' : '') + '</b>' +
+          st.vencidas.map(function (l) { return '<span class="v177-vchip" onclick="agEjecutarLabor(' + l.id + ')">' + tIco(l.tipo) + ' ' + h.escA(tNombre(l)) + ' · ' + ddmm(l.fecha) + '</span>'; }).join('') +
+          '<button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="v177Tab(\'agenda\')">Resolver →</button></div>';
+      } else strip.innerHTML = '';
+      var plan = window.__agcal.planDe(d, campId);
+      body.innerHTML = (ST.tab === 'cal') ? calHTML(plan, hoy) : agendaHTML(st, c, hoy);
+      return true;
+    } catch (e) {
+      try { console.warn('[v177-cal] caída — vuelve la tabla vieja', e); var tb2 = h.agEl('agcal-tbody'); if (tb2) { var p2 = tb2.closest('.panel'); if (p2) p2.style.display = ''; } var w2 = h.agEl('v177-wrap'); if (w2) w2.style.display = 'none'; } catch (e2) {}
+      return false;
+    }
+  }
+  window.v177Cal = { render: render, st: ST };
+
+  /* ═══════════════════ LABORES: AGRUPADAS POR CAMPAÑA ═══════════════════ */
+  function subLabor(l, d, h) {
+    var ins = (l.insumos || []).map(function (r) { var i = window.agById(d.insumos, r.insumo_id); return i ? (i.nombre + ' ' + r.dosis + ' ' + i.unidad + '/ha') : ''; }).filter(Boolean).join(' + ');
+    if (l.tipo === 'cosecha' && l.cosecha) ins = h.fmtA(l.cosecha.kg) + ' kg · ' + (l.cosecha.hum || '—') + '% hum';
+    if (l.tipo === 'maquinaria' && !ins) ins = (l.notas || '');
+    var extra = [];
+    if (l.maquina) extra.push('🚜 ' + l.maquina + (l.implemento ? ' + ' + l.implemento : ''));
+    if (l.resp) extra.push(l.resp);
+    var s = [ins, extra.join(' · ')].filter(Boolean).join(' · ');
+    if (!s && l.estado === 'planificada') s = 'planificada · insumos por definir';
+    return s || '—';
+  }
+  function labRender() {
+    var h = H();
+    if (off() || !h) return false;
+    var tbody = h.agEl('agl-tbody'); if (!tbody) return false;
+    try {
+      css();
+      var d = window.agGetDB();
+      var tblPanel = tbody.closest ? tbody.closest('.panel') : null;
+      if (!tblPanel) return false;
+      var wrap = h.agEl('v177-labores');
+      if (!wrap) { wrap = document.createElement('div'); wrap.id = 'v177-labores'; tblPanel.parentNode.insertBefore(wrap, tblPanel); }
+      tblPanel.style.display = 'none';
+      var f = (h.agEl('agl-filter') || {}).value || '';
+      var todas = d.labores.filter(function (l) { return l && l.tipo !== 'servicio_ext'; });
+      var ls = todas.filter(function (l) { return !f || l.estado === f; });
+      if (!ls.length) {
+        wrap.innerHTML = '<div class="panel"><div class="empty">' + (todas.length ? 'Sin labores con ese filtro.' : 'Aún no hay labores. Registrá la primera con “+ Registrar labor”.') + '</div></div>';
+        return true;
+      }
+      var groups = {}, order = [];
+      ls.forEach(function (l) { var k = String(l.campana_id || '0'); if (!groups[k]) { groups[k] = []; order.push(k); } groups[k].push(l); });
+      function maxF(arr) { return arr.reduce(function (m, l) { return String(l.fecha || '') > m ? String(l.fecha) : m; }, ''); }
+      order.sort(function (a, b) { if (a === '0') return 1; if (b === '0') return -1; return maxF(groups[b]).localeCompare(maxF(groups[a])); });
+      var hoy = h.agHoy(), html = '';
+      order.forEach(function (k) {
+        var c = k === '0' ? null : window.agById(d.campanas, k);
+        var all = todas.filter(function (l) { return String(l.campana_id || '0') === k; });
+        var hechas = all.filter(function (l) { return l.estado === 'ejecutada'; });
+        var totBs = 0; hechas.forEach(function (l) { totBs += (h.laborCosto(l).total || 0); });
+        var pct = all.length ? Math.round(hechas.length * 100 / all.length) : 0;
+        var ha = c ? h.campHa(d, c) : 0;
+        var head = c
+          ? '<div class="t"><b>🌾 ' + h.escA(h.campLabel(d, c)) + '</b><span>' + (ha ? h.fmtA(ha, 1) + ' ha' : '') + (c.siembra_plan ? (ha ? ' · ' : '') + 'siembra ' + h.agFecha(c.siembra_plan) : '') + '</span></div>'
+          : '<div class="t"><b>— Sin campaña</b><span>labores generales</span></div>';
+        html += '<div class="v177-cmp"><div class="v177-cmp-h">' + head +
+          '<div class="r">' + hechas.length + '/' + all.length + '<span class="v177-bar"><i style="width:' + pct + '%"></i></span>' + (totBs ? '<b style="color:var(--text,#e6edf3)">Bs ' + h.fmtA(totBs) + '</b>' : (all.length && !hechas.length ? 'plan Bs 0' : '')) + '</div></div>';
+        groups[k].slice().sort(function (a, b) { var fa = a.fecha || '9999', fb = b.fecha || '9999'; return String(fa).localeCompare(String(fb)); }).forEach(function (l) {
+          var venc = esVenc(l, hoy);
+          var cost = h.laborCosto(l);
+          var acts = '';
+          if (l.estado === 'planificada') acts += '<button class="btn btn-primary btn-sm" onclick="agEjecutarLabor(' + l.id + ')">▶ Ejecutar</button> ';
+          else if (faltanCostos(l)) acts += '<button class="btn btn-ghost btn-sm" onclick="agEjecutarLabor(' + l.id + ')">⚠ costos</button> ';
+          acts += '<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agDelLabor(' + l.id + ')">🗑</button>';
+          var pill = l.estado === 'ejecutada' ? '<span class="pill g">Ejecutada</span>' : (venc ? '<span class="pill r">Vencida</span>' : '<span class="pill a">Planificada</span>');
+          var ofs = offTxtSafe(l, c);
+          html += '<div class="v177-lb">' +
+            '<div class="v177f"><b' + (venc ? ' style="color:var(--red,#f85149)"' : '') + '>' + ddmm(l.fecha) + '</b>' + (ofs ? '<span>' + ofs + '</span>' : '') + '</div>' +
+            '<div class="v177-tico" style="background:' + tCol(l.tipo) + '22;border:1px solid ' + tCol(l.tipo) + '55">' + tIco(l.tipo) + '</div>' +
+            '<div class="v177m"><b>' + h.escA(tNombre(l)) + '</b><span class="v177s">' + h.escA(subLabor(l, d, h)) + '</span></div>' +
+            '<div class="v177n">' + (l.estado === 'ejecutada' && cost.total ? 'Bs ' + h.fmtA(cost.total) : '—') + '</div>' +
+            '<div style="min-width:92px;text-align:center">' + pill + '</div>' +
+            '<div style="white-space:nowrap">' + acts + '</div></div>';
+        });
+        html += '</div>';
+      });
+      wrap.innerHTML = html;
+      return true;
+    } catch (e) {
+      try { console.warn('[v177-lab] caída — vuelve la tabla vieja', e); var tp = tbody.closest('.panel'); if (tp) tp.style.display = ''; var w = h.agEl('v177-labores'); if (w) w.style.display = 'none'; } catch (e2) {}
+      return false;
+    }
+  }
+  window.v177Lab = { render: labRender };
+
+  window.v177Diag = function () {
+    var h = H();
+    var out = {
+      helpers: !!h, off: off(), tab: ST.tab, mes: (ST.y != null ? ST.y + '-' + (ST.m + 1) : '(hoy)'),
+      calWrap: !!document.getElementById('v177-wrap'), labWrap: !!document.getElementById('v177-labores')
+    };
+    try { console.table([out]); } catch (e) { console.log(out); }
+    return out;
+  };
+  try { console.log('%c[v1.8.177] calendario mensual + agenda en el plan · labores por campaña — v177Diag() · kill: __V177_OFF', 'color:#3fb950;font-weight:bold'); } catch (e) {}
+})();
+/*__V177_END__*/
+
 </script>
 </body>
 </html>
