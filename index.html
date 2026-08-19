@@ -710,7 +710,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.179'; // calendario-v18177 linea-v18178 tareas-v18179
+window.E5M_HTML_BUILD = '1.8.180'; // calendario-v18177 linea-v18178 tareas-v18179 borrado-agro-v18180
 
 window.v175Diag = function () {
   var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
@@ -43808,6 +43808,16 @@ function agDelLabor(id){
   var d=agGetDB(), l=agById(d.labores,id); if(!l)return;
   if(!confirm('¿Eliminar esta labor'+(l.estado==='ejecutada'?' EJECUTADA? (el stock descontado no se repone solo)':' planificada?')))return;
   if (agDbOk()) db.agro_labores = db.agro_labores.filter(function(x){return String(x.id)!==String(id);});
+  /* borrado-agro-v18180: las jornadas de la tarea se van con ella (local + tombstone en server) */
+  try {
+    if (agDbOk() && Array.isArray(db.agro_jornadas)) {
+      var js180 = db.agro_jornadas.filter(function(j){ return j && String(j.labor_id)===String(id); });
+      if (js180.length) {
+        db.agro_jornadas = db.agro_jornadas.filter(function(j){ return !(j && String(j.labor_id)===String(id)); });
+        js180.forEach(function(j){ try { if (window.e5mDelRegistroSrv) window.e5mDelRegistroSrv('agro_jornadas', j.id); } catch(e){} });
+      }
+    }
+  } catch(e180){}
   agSaveDB(); agRenderAll(); agToast('Labor eliminada','info');
 }
 
@@ -48202,7 +48212,7 @@ var ASO_PELAJES=['AM — Amarela','AMAL — Amarela Alaranjada','AMCH — Amarel
 (function(){
 'use strict';
 var off = function(){ return window.__DELREAL_OFF === true; };
-var TABLAS_SRV = {agua:1,sal:1,conteo:1,partos:1,alimento:1,purchases:1,advances:1,maintenance:1,diesel:1,lluvias:1,pesajes:1,bajas:1,treatments:1,sales:1,rotation_history:1,animal_movements:1,pasture_evals:1,agro_labores:1,vet_products:1,aceite:1,maquinaria:1}; /* v1.8.133: +aceite +maquinaria */
+var TABLAS_SRV = {agua:1,sal:1,conteo:1,partos:1,alimento:1,purchases:1,advances:1,maintenance:1,diesel:1,lluvias:1,pesajes:1,bajas:1,treatments:1,sales:1,rotation_history:1,animal_movements:1,pasture_evals:1,agro_labores:1,agro_jornadas:1,vet_products:1,aceite:1,maquinaria:1}; /* v1.8.133: +aceite +maquinaria · borrado-agro-v18180: +agro_jornadas */
 var QKEY='e5m_del_queue';
 function qGet(){ try { return JSON.parse(localStorage.getItem(QKEY)||'[]'); } catch(e){ return []; } }
 function qSet(a){ try { localStorage.setItem(QKEY, JSON.stringify(a.slice(-200))); } catch(e){} }
@@ -48325,6 +48335,7 @@ function instalar(){
   wrapDel('deleteProduct','products','vet_products',0);
   wrapDel('deleteAceite','aceite','aceite',0);   /* v1.8.133 */
   wrapDel('deleteMaq','maquinaria','maquinaria',0); /* v1.8.133 */
+  wrapDel('agDelLabor','agro_labores','agro_labores',0); /* borrado-agro-v18180: el 🗑 de labores agro NUNCA llamaba al server → el append-merge las resucitaba en cada pull */
 }
 if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', instalar); else instalar();
 setTimeout(instalar, 3000); /* por si algún handler se define tarde */
