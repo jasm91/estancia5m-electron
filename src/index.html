@@ -52910,6 +52910,188 @@ try {
 /*__V181_END__*/
 </script>
 
+<script id="fix-costos-v18187">
+/* ═══ v1.8.187 — ① FIX modales agro cortados + ② Costos/ha con panel ejecutivo ═══
+   ① Los overlays .agx viven DENTRO de #page-agro; con la animación de página
+     (epPageIn) un ancestro genera containing block y el position:fixed se ancla
+     a la página → el modal se corre para arriba y el título queda fuera de
+     pantalla (bug Jose 31-08: "sigue mal el modal de calendario"). Fix real:
+     mover esos overlays a document.body (los onclick son globales — no se rompe).
+   ② Costos/ha al nivel del reporte ganadero: KPIs, desglose por categoría
+     (barra apilada) y costo vs ingreso por campaña. Lee los números de la
+     tabla que arma agRenderCostos — cero dependencia de closures.
+   Kill: __V187_OFF */
+(function () {
+  'use strict';
+  if (window.__V187_OFF) return;
+  /* ── ① overlays al body ── */
+  function moverOverlays() {
+    var pg = document.getElementById('page-agro'); if (!pg) return;
+    pg.querySelectorAll('.agx.modal-overlay').forEach(function (ov) {
+      document.body.appendChild(ov);
+    });
+  }
+  if (document.readyState !== 'loading') moverOverlays(); else document.addEventListener('DOMContentLoaded', moverOverlays);
+  setTimeout(moverOverlays, 3500); /* los que inyectan módulos tardíos (plantilla, crédito, cierre) */
+  setTimeout(moverOverlays, 8000);
+
+  /* ── ② panel ejecutivo de Costos/ha ── */
+  var CAT = [
+    { k: 'ins', n: 'Insumos', c: '#3fb950' }, { k: 'diesel', n: 'Diésel', c: '#f0b429' },
+    { k: 'mo', n: 'M. Obra', c: '#58a6ff' }, { k: 'maq', n: 'Maquinaria', c: '#bc8cff' },
+    { k: 'serv', n: 'Serv. Ext', c: '#f78166' }
+  ];
+  function num(s) { s = String(s || '').replace(/[^\d.,\-]/g, ''); if (!s || s === '—') return 0; return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0; }
+  function bs(n) { return 'Bs ' + (Number(n) || 0).toLocaleString('es-BO', { maximumFractionDigits: 0 }); }
+  function css() {
+    if (document.getElementById('v187-css')) return;
+    var st = document.createElement('style'); st.id = 'v187-css';
+    st.textContent =
+      '#v187-extra .v187-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}' +
+      '#v187-extra .v187-card{background:var(--sur2,rgba(255,255,255,.04));border:1px solid var(--bor);border-radius:12px;padding:12px 14px}' +
+      '#v187-extra .v187-card .k{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}' +
+      '#v187-extra .v187-card .v{font-size:19px;font-weight:800;font-family:"DM Mono",monospace}' +
+      '#v187-extra .v187-card .s{font-size:11px;color:var(--muted);margin-top:2px}' +
+      '#v187-extra .v187-stack{display:flex;height:22px;border-radius:8px;overflow:hidden;border:1px solid var(--bor)}' +
+      '#v187-extra .v187-leg{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;font-size:11.5px;color:var(--muted)}' +
+      '#v187-extra .v187-leg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}' +
+      '#v187-extra .v187-camp{margin-bottom:12px}' +
+      '#v187-extra .v187-camp .nm{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px}' +
+      '#v187-extra .v187-bar{height:10px;border-radius:6px;background:var(--bg);overflow:hidden;margin-bottom:3px;display:flex}' +
+      '#v187-extra .v187-bar i{display:block;height:100%}';
+    document.head.appendChild(st);
+  }
+  function armarExtra() {
+    var view = document.getElementById('ag-view-costos'); if (!view || document.getElementById('v187-extra')) return;
+    var d = document.createElement('div'); d.id = 'v187-extra';
+    d.innerHTML = '<div class="v187-cards" id="v187-kpis"></div>' +
+      '<div class="panel" style="padding:14px 16px;margin-bottom:14px"><h3 style="margin:0 0 10px;font-size:14px">🧩 Desglose del costo por categoría</h3><div class="v187-stack" id="v187-stack"></div><div class="v187-leg" id="v187-leg"></div></div>' +
+      '<div class="panel" style="padding:14px 16px;margin-bottom:14px"><h3 style="margin:0 0 10px;font-size:14px">🌾 Costo vs ingreso por campaña</h3><div id="v187-camps"></div></div>' +
+      '<div class="panel" style="padding:14px 16px;margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px"><h3 style="margin:0 0 10px;font-size:14px">📅 Ingresos vs gastos, mes a mes</h3><span style="font-size:11.5px;color:var(--muted);font-style:italic">la línea es el resultado (ingresos − gastos)</span></div><div id="v187-mensual" style="overflow-x:auto"></div></div>';
+    var primerPanel = view.querySelector('.panel');
+    view.insertBefore(d, primerPanel);
+  }
+  function pintar() {
+    css(); armarExtra();
+    var tb = document.getElementById('agk-tbody'), tf = document.getElementById('agk-tfoot');
+    var kp = document.getElementById('v187-kpis'); if (!tb || !kp) return;
+    var filas = [].slice.call(tb.querySelectorAll('tr')).map(function (tr) {
+      var c = tr.querySelectorAll('td'); if (c.length < 12) return null;
+      return { nombre: (c[0].textContent || '').replace(/en curso/i, '').trim(), ha: num(c[1].textContent),
+        ins: num(c[2].textContent), diesel: num(c[3].textContent), mo: num(c[4].textContent),
+        maq: num(c[5].textContent), serv: num(c[6].textContent), total: num(c[7].textContent),
+        ing: num(c[9].textContent), mg: num(c[10].textContent) };
+    }).filter(Boolean);
+    var vacio = !filas.length;
+    var T = { ha: 0, ins: 0, diesel: 0, mo: 0, maq: 0, serv: 0, total: 0, ing: 0 };
+    filas.forEach(function (f) { Object.keys(T).forEach(function (k) { T[k] += f[k] || 0; }); });
+    var mg = T.ing - T.total;
+    kp.innerHTML =
+      '<div class="v187-card"><div class="k">💸 Costo total</div><div class="v">' + bs(T.total) + '</div><div class="s">' + filas.length + ' campaña' + (filas.length === 1 ? '' : 's') + ' · ' + T.ha.toLocaleString('es-BO', { maximumFractionDigits: 1 }) + ' ha</div></div>' +
+      '<div class="v187-card"><div class="k">📐 Costo/ha prom.</div><div class="v">' + (T.ha ? bs(T.total / T.ha) : '—') + '</div><div class="s">sobre ha con actividad</div></div>' +
+      '<div class="v187-card"><div class="k">🌾 Ingreso</div><div class="v">' + bs(T.ing) + '</div><div class="s">cosechas registradas</div></div>' +
+      '<div class="v187-card"><div class="k">📊 Margen</div><div class="v" style="color:' + (mg >= 0 ? 'var(--green,#3fb950)' : 'var(--red,#f85149)') + '">' + bs(mg) + '</div><div class="s">' + (T.ha ? bs(mg / T.ha) + ' /ha' : '—') + '</div></div>' +
+      '<div class="v187-card"><div class="k">⚖️ Costo/ingreso</div><div class="v">' + (T.ing > 0 ? Math.round(T.total * 100 / T.ing) + '%' : '—') + '</div><div class="s">' + (T.ing > 0 ? 'del ingreso se va en costo' : 'sin ingreso todavía') + '</div></div>';
+    var stack = document.getElementById('v187-stack'), leg = document.getElementById('v187-leg');
+    if (stack && leg) {
+      if (T.total > 0) {
+        stack.innerHTML = CAT.map(function (c) { var v = T[c.k] || 0; if (!v) return ''; return '<div title="' + c.n + ': ' + bs(v) + ' (' + Math.round(v * 100 / T.total) + '%)" style="width:' + (v * 100 / T.total) + '%;background:' + c.c + '"></div>'; }).join('');
+        leg.innerHTML = CAT.map(function (c) { var v = T[c.k] || 0; return '<span><i style="background:' + c.c + '"></i>' + c.n + ' <b style="color:var(--text)">' + bs(v) + '</b> · ' + (T.total ? Math.round(v * 100 / T.total) : 0) + '%</span>'; }).join('');
+      } else {
+        stack.innerHTML = ''; leg.innerHTML = '<span style="color:var(--muted)">Sin costos todavía — se llenan solos al ejecutar labores (insumos, diésel, maquinaria, servicios).</span>';
+      }
+    }
+    var camps = document.getElementById('v187-camps');
+    if (camps) {
+      if (vacio) { camps.innerHTML = '<div style="color:var(--muted);font-size:12px">Sin campañas con actividad.</div>'; }
+      else {
+        var max = Math.max.apply(null, filas.map(function (f) { return Math.max(f.total, f.ing); })) || 1;
+        camps.innerHTML = filas.map(function (f) {
+          var segs = CAT.map(function (c) { var v = f[c.k] || 0; return v ? '<i title="' + c.n + ': ' + bs(v) + '" style="width:' + (v * 100 / max) + '%;background:' + c.c + '"></i>' : ''; }).join('');
+          return '<div class="v187-camp"><div class="nm"><b>' + f.nombre + '</b><span>' +
+            '<span style="color:var(--muted)">costo</span> <b>' + bs(f.total) + '</b>' + (f.ha ? ' <span style="color:var(--muted)">(' + bs(f.ha ? f.total / f.ha : 0) + '/ha)</span>' : '') +
+            ' · <span style="color:var(--muted)">ingreso</span> <b>' + bs(f.ing) + '</b>' +
+            ' · <b style="color:' + (f.mg >= 0 ? 'var(--green,#3fb950)' : 'var(--red,#f85149)') + '">' + (f.mg >= 0 ? '+' : '') + bs(f.mg).replace('Bs ', '') + '</b></span></div>' +
+            '<div class="v187-bar">' + segs + '</div>' +
+            '<div class="v187-bar" style="height:6px"><i style="width:' + (f.ing * 100 / max) + '%;background:linear-gradient(90deg,#1a7f37,#3fb950)"></i></div></div>';
+        }).join('');
+      }
+    }
+  }
+  /* ── ②b gráfico mensual (mismo estilo que el de ganadería): barras ingreso/gasto + línea resultado ── */
+  var MESES_ES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+  function serieMensual() {
+    var H = window.__v177H || {};
+    if (typeof agGetDB !== 'function' || !H.laborCosto) return [];
+    var d = agGetDB(), por = {};
+    (d.labores || []).forEach(function (l) {
+      if (!l || l.estado !== 'ejecutada' || !l.fecha) return;
+      var m = String(l.fecha).slice(0, 7); if (!/^\d{4}-\d{2}$/.test(m)) return;
+      var e = por[m] = por[m] || { ing: 0, gasto: 0 };
+      if (l.tipo === 'servicio_ext') { e.gasto += Number(l.monto) || 0; return; }
+      try { e.gasto += (H.laborCosto(l).total || 0); } catch (er) {}
+      if (l.tipo === 'cosecha' && l.cosecha) e.ing += (Number(l.cosecha.kg) || 0) / 1000 * (Number(l.cosecha.precio) || 0);
+    });
+    var meses = Object.keys(por).sort();
+    if (!meses.length) return [];
+    /* rellenar huecos entre el primer y el último mes */
+    var out = [], p = meses[0], fin = meses[meses.length - 1], g = 0;
+    while (p <= fin && g < 48) {
+      var y = +p.slice(0, 4), mm = +p.slice(5, 7);
+      out.push({ mes: p, label: MESES_ES[mm - 1] + ' ' + String(y).slice(2), ing: (por[p] || {}).ing || 0, gasto: (por[p] || {}).gasto || 0 });
+      mm++; if (mm > 12) { mm = 1; y++; }
+      p = y + '-' + String(mm).padStart(2, '0'); g++;
+    }
+    return out.slice(-24); /* últimos 24 meses como el de ganadería */
+  }
+  function pintarMensual() {
+    var host = document.getElementById('v187-mensual'); if (!host) return;
+    var s = serieMensual();
+    if (!s.length) { host.innerHTML = '<div style="color:var(--muted);font-size:12px">Sin movimientos con fecha todavía.</div>'; return; }
+    var W = Math.max(560, s.length * 56), Hh = 210, padL = 12, padB = 34, padT = 14;
+    var max = Math.max.apply(null, s.map(function (x) { return Math.max(x.ing, x.gasto, Math.abs(x.ing - x.gasto)); })) || 1;
+    var plotH = Hh - padB - padT;
+    function yv(v) { return padT + plotH - (Math.max(0, v) / max) * plotH; }
+    var grupo = 44, bw = 16;
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + Hh + '" style="min-width:' + W + 'px;height:' + Hh + 'px;display:block" role="img" aria-label="Ingresos vs gastos por mes">';
+    /* grid */
+    for (var gi = 0; gi <= 4; gi++) { var gy = padT + plotH * gi / 4; svg += '<line x1="0" y1="' + gy + '" x2="' + W + '" y2="' + gy + '" stroke="currentColor" stroke-opacity=".08"/>'; }
+    var pts = [];
+    s.forEach(function (x, i) {
+      var x0 = padL + i * grupo + (grupo - bw * 2 - 4) / 2;
+      var yi = yv(x.ing), yg = yv(x.gasto);
+      svg += '<rect x="' + x0 + '" y="' + yi + '" width="' + bw + '" height="' + (padT + plotH - yi) + '" rx="3" fill="#2b4a5e"><title>' + x.label + ' — ingresos: ' + bs(x.ing) + '</title></rect>';
+      svg += '<rect x="' + (x0 + bw + 4) + '" y="' + yg + '" width="' + bw + '" height="' + (padT + plotH - yg) + '" rx="3" fill="#e8933f"><title>' + x.label + ' — gastos: ' + bs(x.gasto) + '</title></rect>';
+      var res = x.ing - x.gasto;
+      pts.push([x0 + bw + 2, padT + plotH - (Math.max(0, res) / max) * plotH, res, x.label]);
+      svg += '<text x="' + (x0 + bw + 2) + '" y="' + (Hh - 12) + '" text-anchor="middle" font-size="10.5" fill="currentColor" fill-opacity=".6" transform="rotate(-32 ' + (x0 + bw + 2) + ' ' + (Hh - 12) + ')">' + x.label + '</text>';
+    });
+    svg += '<polyline points="' + pts.map(function (p2) { return p2[0] + ',' + p2[1]; }).join(' ') + '" fill="none" stroke="#c6d935" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" opacity=".95"/>';
+    pts.forEach(function (p2) { svg += '<circle cx="' + p2[0] + '" cy="' + p2[1] + '" r="4" fill="#c6d935" stroke="var(--sur,#161b22)" stroke-width="2"><title>' + p2[3] + ' — resultado: ' + bs(p2[2]) + '</title></circle>'; });
+    svg += '</svg>';
+    host.innerHTML =
+      '<div style="display:flex;gap:16px;font-size:11.5px;color:var(--muted);margin-bottom:6px;flex-wrap:wrap">' +
+      '<span><i style="display:inline-block;width:14px;height:9px;border-radius:2px;background:#2b4a5e;margin-right:5px"></i>Ingresos</span>' +
+      '<span><i style="display:inline-block;width:14px;height:9px;border-radius:2px;background:#e8933f;margin-right:5px"></i>Gastos</span>' +
+      '<span><i style="display:inline-block;width:14px;height:4px;border-radius:2px;background:#c6d935;margin-right:5px;vertical-align:middle"></i>Resultado</span></div>' + svg;
+  }
+  function repintar() { try { pintar(); pintarMensual(); } catch (e) { console.warn('[v187]', e); } }
+  /* agRenderCostos vive en el closure del módulo agro (no está en window) — enganchamos por
+     los DOS puntos expuestos que lo disparan: agRenderAll (datos nuevos) y agShowPage('costos'). */
+  function instalar() {
+    if (typeof window.agRenderAll !== 'function' || window.agRenderAll.__v187) return typeof window.agRenderAll === 'function';
+    window.agRenderAll = (function (base) { var w = function () { var r = base.apply(this, arguments); repintar(); return r; }; w.__v187 = true; return w; })(window.agRenderAll);
+    if (typeof window.agShowPage === 'function' && !window.agShowPage.__v187) {
+      window.agShowPage = (function (base) { var w = function (name, btn) { var r = base.apply(this, arguments); if (name === 'costos') repintar(); return r; }; w.__v187 = true; return w; })(window.agShowPage);
+    }
+    console.log('%c[v1.8.187] modales agro al body + Costos/ha ejecutivo + mes a mes — kill: __V187_OFF', 'color:#3fb950;font-weight:bold');
+    return true;
+  }
+  var iv = setInterval(function () { try { if (instalar()) clearInterval(iv); } catch (e) { clearInterval(iv); } }, 500);
+  setTimeout(function () { clearInterval(iv); }, 20000);
+})();
+</script>
+
 <script id="menu-agro-v18185">
 /* ═══ v1.8.185 — MENÚ AGRICULTURA estilo CRM: sub-tabs en el sidebar (pedido Jose 31-08)
    Estructura final:
