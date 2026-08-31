@@ -48212,7 +48212,7 @@ var ASO_PELAJES=['AM — Amarela','AMAL — Amarela Alaranjada','AMCH — Amarel
 (function(){
 'use strict';
 var off = function(){ return window.__DELREAL_OFF === true; };
-var TABLAS_SRV = {agua:1,sal:1,conteo:1,partos:1,alimento:1,purchases:1,advances:1,maintenance:1,diesel:1,lluvias:1,pesajes:1,bajas:1,treatments:1,sales:1,rotation_history:1,animal_movements:1,pasture_evals:1,agro_labores:1,agro_jornadas:1,vet_products:1,aceite:1,maquinaria:1}; /* v1.8.133: +aceite +maquinaria · borrado-agro-v18180: +agro_jornadas */
+var TABLAS_SRV = {agua:1,sal:1,conteo:1,partos:1,alimento:1,purchases:1,advances:1,maintenance:1,diesel:1,lluvias:1,pesajes:1,bajas:1,treatments:1,sales:1,rotation_history:1,animal_movements:1,pasture_evals:1,agro_labores:1,agro_jornadas:1,vet_products:1,aceite:1,maquinaria:1,agro_campanas:1,agro_parcelas:1}; /* v1.8.133: +aceite +maquinaria · borrado-agro-v18180: +agro_jornadas · v1.8.182: +agro_campanas +agro_parcelas (resucitaban en EP Agro) */
 var QKEY='e5m_del_queue';
 function qGet(){ try { return JSON.parse(localStorage.getItem(QKEY)||'[]'); } catch(e){ return []; } }
 function qSet(a){ try { localStorage.setItem(QKEY, JSON.stringify(a.slice(-200))); } catch(e){} }
@@ -48336,6 +48336,29 @@ function instalar(){
   wrapDel('deleteAceite','aceite','aceite',0);   /* v1.8.133 */
   wrapDel('deleteMaq','maquinaria','maquinaria',0); /* v1.8.133 */
   wrapDel('agDelLabor','agro_labores','agro_labores',0); /* borrado-agro-v18180: el 🗑 de labores agro NUNCA llamaba al server → el append-merge las resucitaba en cada pull */
+  /* borrado-campanas-v18182: agDelCampana/agDelParcela NO reciben el id por argumento
+     (lo leen del input oculto del modal) → wrapDel no les sirve. Mismo patrón: capturar
+     el id ANTES de llamar al original, y si la tabla local se achicó, avisar al server.
+     Sin esto, el merge del sync-push preservaba la campaña en server y EP Agro la
+     resucitaba en cada pull (bug Jose 31-08). */
+  wrapDelModal('agDelCampana','agro_campanas','agc-id');
+  wrapDelModal('agDelParcela','agro_parcelas','agp-id');
+}
+function wrapDelModal(fnName, tabla, inputId){
+  var o = window[fnName];
+  if (typeof o!=='function' || o.__v129) return;
+  var w = function(){
+    var id=''; try { var inp=document.getElementById(inputId); id = inp ? String(inp.value||'') : ''; } catch(e){}
+    var antes = ((db && db[tabla]) || []).length;
+    var ret = o.apply(this, arguments);
+    try {
+      var despues = ((db && db[tabla]) || []).length;
+      if (id && despues < antes) window.e5mDelRegistroSrv(tabla, id);
+    } catch(e){}
+    return ret;
+  };
+  w.__v129 = true;
+  window[fnName] = w;
 }
 if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', instalar); else instalar();
 setTimeout(instalar, 3000); /* por si algún handler se define tarde */
