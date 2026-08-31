@@ -17,6 +17,10 @@ app.whenReady().then(() => {
   createTray();
   startSyncScheduler();
   checkForUpdates();
+  /* v1.8.184: actualización silenciosa — además del arranque, chequear cada 6h.
+     Con autoDownload + autoInstallOnAppQuit la nueva versión baja sola y se
+     instala sola al cerrar la app; nadie tiene que tocar nada. */
+  setInterval(() => { try { checkForUpdates(); } catch (e) {} }, 6 * 60 * 60 * 1000);
 });
 
 app.on('window-all-closed', () => {
@@ -237,6 +241,10 @@ function checkForUpdates() {
   autoUpdater.logger.transports.file.level = 'info';
 
   console.log('[Updater] Verificando actualizaciones... versión actual:', app.getVersion());
+
+  /* v1.8.184: checkForUpdates ahora corre cada 6h — registrar los listeners UNA vez */
+  if (checkForUpdates._listeners) { autoUpdater.checkForUpdates(); return; }
+  checkForUpdates._listeners = true;
 
   autoUpdater.on('checking-for-update', () => {
     console.log('[Updater] Buscando actualización...');

@@ -29258,6 +29258,31 @@ function showUpdateBadge(version, downloaded) {
     ? 'v' + version + ' descargada y lista para instalar. Click para ir a actualizar.'
     : 'Nueva versión v' + version + ' disponible. Click para descargar.';
   badge.innerHTML = downloaded ? ('✅ v' + version + ' lista') : ('⬇️ Nueva v' + version);
+  /* v1.8.184: modo silencioso (por defecto) — la actualización baja sola y se instala
+     al cerrar la app, así que el badge deja de gritar: gris, chiquito, sin animación.
+     Para volver al badge verde pulsante: localStorage e5m_update_ruidoso = '1'. */
+  if (localStorage.getItem('e5m_update_ruidoso') !== '1') {
+    badge.style.animation = 'none';
+    badge.style.background = 'transparent';
+    badge.style.border = '1px solid var(--bor,#30363d)';
+    badge.style.boxShadow = 'none';
+    badge.style.color = 'var(--muted,#8b949e)';
+    badge.style.fontWeight = '500';
+    badge.style.padding = '3px 9px';
+    badge.innerHTML = '⬆ v' + version;
+    badge.title = downloaded
+      ? 'v' + version + ' descargada — se instala sola al cerrar la app.'
+      : 'v' + version + ' disponible — se descarga y se instala sola al cerrar la app.';
+  } else {
+    /* restaurar el look original por si el modo silencioso lo pisó antes */
+    badge.style.animation = 'pulse-update 1.5s infinite';
+    badge.style.background = 'linear-gradient(135deg,#39d353,#1a7f37)';
+    badge.style.border = '1px solid rgba(57,211,83,.4)';
+    badge.style.boxShadow = '0 0 8px rgba(57,211,83,.3)';
+    badge.style.color = '#fff';
+    badge.style.fontWeight = '700';
+    badge.style.padding = '5px 12px';
+  }
 }
 
 function hideUpdateBadge() {
@@ -29266,6 +29291,10 @@ function hideUpdateBadge() {
 }
 
 function showUpdateNotification(version, downloaded) {
+  /* v1.8.184: modo silencioso (por defecto) — nada de notificaciones del sistema por
+     updates normales; la app se actualiza sola al cerrar. El upgrade FORZADO por versión
+     mínima tiene su propia pantalla y no pasa por acá. Opt-out: e5m_update_ruidoso='1'. */
+  if (localStorage.getItem('e5m_update_ruidoso') !== '1') return;
   // Notificación nativa del sistema operativo
   if (!('Notification' in window)) return;
   var send = function(){
