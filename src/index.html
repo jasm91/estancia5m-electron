@@ -45231,10 +45231,13 @@ document.addEventListener('click', function(ev){
       '<div class="panel"><table class="tbl"><thead><tr><th></th><th>Actividad</th><th>Plazo</th><th>Fecha</th><th>Tipo</th><th class="num">Costo (Bs)</th><th></th></tr></thead><tbody id="agcal-tbody"></tbody></table></div>' +
       '</div>' +
       /* modal plantilla (v1.8.152 FIX: clases reales modal-overlay/agx — antes quedaba visible inline) */
-      '<div class="modal-overlay agx" id="ag-modal-plantilla"><div class="modal" style="max-width:720px">' +
+      /* v1.8.183: el .modal base mide 520px y esta tabla necesita ~900px — las columnas se
+         aplastaban (el select de Tipo quedaba de 30px, Etapa cortada). Modal ancho + tabla con
+         min-width y scroll propio en ambos ejes. */
+      '<div class="modal-overlay agx" id="ag-modal-plantilla"><div class="modal" style="width:min(1080px,94vw);max-width:94vw">' +
       '<h3>🧩 Plantilla de actividades (general — vale para cualquier cultivo)</h3>' +
       '<div class="sub" style="margin:4px 0 10px">Plazo en días desde la siembra (negativo = antes). Sin plazo → actividad por etapa que nunca vence. "Costo" = al tacharla rápido queda marcada "⚠ faltan costos".</div>' +
-      '<div style="max-height:46vh;overflow-y:auto"><table class="tbl"><thead><tr><th>Actividad</th><th>Tipo</th><th class="num">Plazo (días)</th><th>Etapa</th><th>Costo</th><th></th></tr></thead><tbody id="agcal-tpl-tbody"></tbody></table></div>' +
+      '<div style="max-height:52vh;overflow:auto;border:1px solid var(--bor);border-radius:10px"><table class="tbl" style="min-width:880px"><thead><tr><th style="min-width:220px">Actividad</th><th style="min-width:160px">Tipo</th><th class="num" style="width:100px">Plazo (días)</th><th style="min-width:140px">Etapa</th><th style="width:60px;text-align:center">Costo</th><th style="width:44px"></th></tr></thead><tbody id="agcal-tpl-tbody"></tbody></table></div>' +
       '<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="agcalTplAdd()">➕ Agregar actividad</button>' +
       '<div class="m-actions"><button class="btn btn-ghost" onclick="agCloseModal(\'ag-modal-plantilla\')">Cancelar</button>' +
       '<button class="btn btn-primary" onclick="agcalTplSave()">💾 Guardar plantilla</button></div>' +
@@ -45324,9 +45327,9 @@ document.addEventListener('click', function(ev){
     tb.innerHTML = AGCAL_TPL_EDIT.map(function (a, i) {
       return '<tr>' +
         '<td><input class="form-input" value="' + escA(a.nombre || '') + '" onchange="AGCAL_TPL_EDIT[' + i + '].nombre=this.value" style="min-width:180px"></td>' +
-        '<td><select class="form-input" onchange="AGCAL_TPL_EDIT[' + i + '].tipo=this.value">' + tipos.map(function (t) { return '<option value="' + t + '"' + (a.tipo === t ? ' selected' : '') + '>' + LABOR_TIPOS[t] + '</option>'; }).join('') + '</select></td>' +
+        '<td><select class="form-input" style="min-width:150px" onchange="AGCAL_TPL_EDIT[' + i + '].tipo=this.value">' + tipos.map(function (t) { return '<option value="' + t + '"' + (a.tipo === t ? ' selected' : '') + '>' + LABOR_TIPOS[t] + '</option>'; }).join('') + '</select></td>' +
         '<td class="num"><input class="form-input" type="number" value="' + (a.offset_dias != null ? a.offset_dias : '') + '" placeholder="—" onchange="AGCAL_TPL_EDIT[' + i + '].offset_dias=this.value===\'\'?null:Number(this.value)" style="width:82px"></td>' +
-        '<td><input class="form-input" value="' + escA(a.etapa || '') + '" placeholder="pre-siembra…" onchange="AGCAL_TPL_EDIT[' + i + '].etapa=this.value" style="width:110px"></td>' +
+        '<td><input class="form-input" value="' + escA(a.etapa || '') + '" placeholder="pre-siembra…" onchange="AGCAL_TPL_EDIT[' + i + '].etapa=this.value" style="width:130px"></td>' +
         '<td style="text-align:center"><input type="checkbox"' + (a.con_costo !== false ? ' checked' : '') + ' onchange="AGCAL_TPL_EDIT[' + i + '].con_costo=this.checked"></td>' +
         '<td><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agcalTplDel(' + i + ')">✕</button></td></tr>';
     }).join('');
