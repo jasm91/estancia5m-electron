@@ -329,27 +329,34 @@ ipcMain.handle('app:force-update', async () => {
 ipcMain.handle('app:quit-and-install', () => {
   console.log('[Updater] quitAndInstall called. Downloaded:', _updateDownloaded, 'Version:', _updateVersion);
   if (_updateDownloaded) {
-    // Force quit all windows and install
     autoUpdater.autoInstallOnAppQuit = true;
+    /* v1.8.188 FIX "instala pero no se vuelve a abrir": cerrar la ventana disparaba
+       window-all-closed → app.quit(), y la app moría ANTES de que corriera
+       quitAndInstall (el único que programa el relanzado). La instalación pasaba
+       igual al salir, pero sin reabrir. Orden correcto: sacar ese listener PRIMERO,
+       cerrar la ventana, y llamar quitAndInstall de inmediato (él se encarga de
+       salir, instalar y relanzar). */
+    app.removeAllListeners('window-all-closed');
     if (mainWindow) {
       mainWindow.removeAllListeners('close');
       mainWindow.close();
     }
-    setTimeout(() => {
+    setImmediate(() => {
       try {
-        autoUpdater.quitAndInstall(false, true);
+        autoUpdater.quitAndInstall(false, true); // isSilent=false, isForceRunAfter=true
       } catch(e) {
         console.error('[Updater] quitAndInstall failed:', e);
-        // Fallback: relaunch
         app.relaunch();
         app.exit(0);
       }
-    }, 1000);
-    // Force exit after 5 seconds if quitAndInstall hangs
+    });
+    // Fallback si quitAndInstall se cuelga: salir RELANZANDO (la instalación
+    // pendiente se aplica al salir y la app vuelve a abrir sola)
     setTimeout(() => {
-      console.log('[Updater] Force exit after timeout');
+      console.log('[Updater] Force relaunch+exit after timeout');
+      app.relaunch();
       app.exit(0);
-    }, 5000);
+    }, 8000);
   }
   return { ok: true, downloaded: _updateDownloaded };
 });
