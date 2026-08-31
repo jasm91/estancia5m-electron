@@ -43038,7 +43038,7 @@ function renderReproInteligencia() {
       var line;
       if(!d.baneco){ line='El pago por QR no está disponible por ahora.'; }
       else if(fee<=0){ line='Tu plan no tiene cargo de soporte. ¡Nada que pagar!'; }
-      else if(d.billing_status==='vencido'){ line='🔴 Tu cuota está vencida. Pagá para seguir al día.'; }
+      else if(d.billing_status==='vencido'){ var _nm=(d.months_due||[]).length; line='🔴 <b>Pago vencido.</b> Debés <b style="color:var(--red,#F85149)">'+_money(d.amount_due_bs)+'</b>'+(_nm>1?(' ('+_nm+' meses)'):'')+' — el QR cobra todo junto.'; } /* v1.8.186: deuda acumulada */
       else if(d.amount_due_bs>0){ line='Tenés <b style="color:var(--amber2)">'+_money(d.amount_due_bs)+'</b> por pagar este período.'; }
       else { line='Estás al día. Próximo pago: '+(d.next_due_date?String(d.next_due_date).slice(0,10):'—')+'.'; }
       $e('eps-line').innerHTML=line;
