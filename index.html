@@ -21592,6 +21592,15 @@ function checkForAppUpdate() {
       if (installBtn) { installBtn.style.display = 'inline-block'; installBtn.style.animation = 'pulse 1.5s infinite'; }
       // Actualizar el badge del header al estado "lista para instalar"
       try { showUpdateBadge(info.version, true); showUpdateNotification(info.version, true); } catch(e){}
+      /* v1.8.185: en modo silencioso no hay notificación del SO, pero SÍ un toast dentro
+         de la app avisando que la descarga terminó (pedido Jose 31-08). Una sola vez por versión. */
+      try {
+        if (localStorage.getItem('e5m_update_ruidoso') !== '1' &&
+            localStorage.getItem('e5m_upd_avisada') !== String(info.version)) {
+          localStorage.setItem('e5m_upd_avisada', String(info.version));
+          toast('⬇️ Descarga de versión ' + info.version + ' completa. Reiniciar para instalar última versión.', 'success');
+        }
+      } catch(e){}
     });
   }
   if (window.estancia.app.onUpdateError) {
@@ -52899,6 +52908,96 @@ try {
   try { console.log('%c[v1.8.181] 💵 Crédito + 🏁 Cierres + wizard tipado + espera-germinación — v181Diag() · kill: __V181_OFF', 'color:#3fb950;font-weight:bold'); } catch (e) {}
 })();
 /*__V181_END__*/
+</script>
+
+<script id="menu-agro-v18185">
+/* ═══ v1.8.185 — MENÚ AGRICULTURA estilo CRM: sub-tabs en el sidebar (pedido Jose 31-08)
+   Estructura final:
+     🌾 Dashboard
+     🌱 Campañas ▸  (expandible; ícono nuevo para no chocar con Calendario)
+        🗺️ Parcelas · 🚜 Labores · 🤝 Servicios Externos · ⚙️ Maquinaria · 🌽 Cosecha
+     📅 Calendario
+     🧪 Stock Agro
+     💰 Costos/ha
+     💵 Cuentas por Pagar   (antes "Crédito" — solo cambia el texto visible; data-label queda
+                             'Crédito' porque otros módulos lo usan como guard de idempotencia)
+     📊 Análisis de Campaña (antes "Cierres" — ídem, data-label queda 'Cierres')
+   Los botones los crean varios módulos en momentos distintos → reintenta hasta tenerlos todos.
+   Kill switch: window.__V185_OFF */
+(function () {
+  'use strict';
+  if (window.__V185_OFF) { console.log('[v1.8.185] OFF'); return; }
+  var HIJOS = ['Parcelas', 'Labores', 'Servicios Externos', 'Maquinaria', 'Cosecha'];
+  var ESPERA = HIJOS.concat(['Campañas', 'Calendario', 'Stock Agro', 'Costos/ha', 'Crédito', 'Cierres']);
+  function css() {
+    if (document.getElementById('v185-css')) return;
+    var st = document.createElement('style'); st.id = 'v185-css';
+    st.textContent =
+      '.agnav-group{display:block}' +
+      '.agnav-parent{position:relative}' +
+      '.agnav-parent .agnav-chev{margin-left:auto;font-size:10px;color:var(--muted);transition:transform .18s ease;display:inline-block}' +
+      '.agnav-group.open .agnav-parent .agnav-chev{transform:rotate(90deg)}' +
+      '.agnav-sub{display:none;margin-left:14px;padding-left:6px;border-left:2px solid var(--bor,#30363d)}' +
+      '.agnav-group.open .agnav-sub{display:block}' +
+      '.agnav-sub .nav-btn{font-size:12.5px;padding-top:6px;padding-bottom:6px}' +
+      '.agnav-sub .nav-btn .nav-icon{font-size:13px}';
+    document.head.appendChild(st);
+  }
+  function btnDe(label) { return document.querySelector('#nav-agro-btn [data-label="' + label + '"]'); }
+  function listos() { return ESPERA.every(function (l) { return !!btnDe(l); }); }
+  function armar() {
+    var body = document.querySelector('#nav-agro-btn .nav-sec-body');
+    if (!body || document.getElementById('agnav-grp-campanas')) return true;
+    if (!listos()) return false;
+    css();
+    /* 1) renombres (solo el texto visible; data-label intacto) */
+    var ren = { 'Crédito': 'Cuentas por Pagar', 'Cierres': 'Análisis de Campaña' };
+    Object.keys(ren).forEach(function (l) {
+      var b = btnDe(l), t = b && b.querySelector('.nav-text');
+      if (t) t.textContent = ren[l];
+    });
+    var cie = btnDe('Cierres'), cieIco = cie && cie.querySelector('.nav-icon');
+    if (cieIco) cieIco.textContent = '📊';
+    /* 2) Campañas: ícono propio (Calendario se queda con 📅) + chevron */
+    var camp = btnDe('Campañas');
+    var campIco = camp.querySelector('.nav-icon'); if (campIco) campIco.textContent = '🌱';
+    camp.classList.add('agnav-parent');
+    if (!camp.querySelector('.agnav-chev')) {
+      var ch = document.createElement('span'); ch.className = 'agnav-chev'; ch.textContent = '▶';
+      camp.appendChild(ch);
+    }
+    /* 3) grupo: Campañas + sub-tabs */
+    var grp = document.createElement('div'); grp.className = 'agnav-group'; grp.id = 'agnav-grp-campanas';
+    var sub = document.createElement('div'); sub.className = 'agnav-sub';
+    body.insertBefore(grp, camp);
+    grp.appendChild(camp); grp.appendChild(sub);
+    HIJOS.forEach(function (l) { var b = btnDe(l); if (b) sub.appendChild(b); });
+    camp.addEventListener('click', function () { grp.classList.add('open'); });
+    /* click en un hijo mantiene el grupo abierto; click en otra sección lo deja como está */
+    /* 4) orden del resto: Dashboard, [grupo], Calendario, Stock Agro, Costos/ha, CxP, Análisis */
+    ['Calendario', 'Stock Agro', 'Costos/ha', 'Crédito', 'Cierres'].forEach(function (l) {
+      var b = btnDe(l); if (b) body.appendChild(b);
+    });
+    /* si la vista activa es de un hijo, abrir el grupo (p.ej. al volver de otra página) */
+    try {
+      var act = body.querySelector('.agnav-sub .nav-btn.active');
+      if (act) grp.classList.add('open');
+    } catch (e) {}
+    console.log('%c[v1.8.185] menú Agricultura reorganizado: Campañas con sub-tabs, CxP y Análisis de Campaña — kill: __V185_OFF', 'color:#3fb950;font-weight:bold');
+    return true;
+  }
+  var tries = 0;
+  var iv = setInterval(function () {
+    tries++;
+    try { if (armar() || tries > 40) clearInterval(iv); } catch (e) { clearInterval(iv); console.warn('[v1.8.185]', e); }
+  }, 400);
+  if (document.readyState !== 'loading') { try { armar(); } catch (e) {} }
+  window.v185Diag = function () {
+    return { version: '1.8.185', grupo: !!document.getElementById('agnav-grp-campanas'),
+      abiertos: !!document.querySelector('#agnav-grp-campanas.open'),
+      cxp: (function(){ var b = btnDe('Crédito'); var t = b && b.querySelector('.nav-text'); return t ? t.textContent : null; })() };
+  };
+})();
 </script>
 
 </body>
