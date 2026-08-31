@@ -52478,5 +52478,373 @@ try {
 /*__V177_END__*/
 
 </script>
+
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════════
+   v1.8.181 — AGRO NIVEL PWA + CRÉDITO + CIERRES (pedido Jose 31-08).
+   ① Sidebar 💵 Crédito: compras a crédito de insumos con detalle de pagos,
+      saldo en USD, diferencia de cambio y registro de pagos (server v4.51).
+   ② Sidebar 🏁 Cierres: cerrar campañas con NÚMEROS REALES — kg cosechados,
+      rinde t/ha, ingreso real (precio × TC), margen real vs proyección.
+   ③ Desktop al nivel de EP Agro: wizard tipado (maquinaria saltea insumos)
+      + "espera germinación" (post-emergencia no cuenta vencida sin 🌿).
+   Aditivo · kill switch: __V181_OFF · marker: credito-cierre-v18181
+   ══════════════════════════════════════════════════════════════════════════ */
+(function v181() {
+  if (window.__V181_OFF) { console.log('[v1.8.181] OFF'); return; }
+  function _f(n, d) { try { return (typeof fmtA === 'function') ? fmtA(n, d) : Number(n || 0).toLocaleString('es-BO'); } catch (e) { return String(n); } }
+  function _esc(x) { return String(x == null ? '' : x).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  var H = window.__v177H || {};
+  function agEl(id) { return (H.agEl ? H.agEl(id) : document.getElementById(id)); }
+  function _hoyH() { return H.agHoy ? H.agHoy() : new Date().toISOString().slice(0, 10); }
+  function _campLabel(d, c) { return H.campLabel ? H.campLabel(d, c) : ((c && c.cultivo) || 'Campaña'); }
+  function _campHa(d, c) { return H.campHa ? Number(H.campHa(d, c)) || 0 : 0; }
+  function _laborCosto(l) { try { return H.laborCosto ? H.laborCosto(l) : { total: 0 }; } catch (e) { return { total: 0 }; } }
+  function _campCosto(d, cid) { var t = 0; (d.labores || []).forEach(function (l) { if (String(l.campana_id) === String(cid) && l.estado === 'ejecutada') t += Number(_laborCosto(l).total) || 0; }); return t; }
+  function _campIngreso(d, cid) { var t = 0; (d.labores || []).forEach(function (l) { if (String(l.campana_id) === String(cid) && l.estado === 'ejecutada' && l.tipo === 'cosecha' && l.cosecha) t += (Number(l.cosecha.kg) || 0) / 1000 * (Number(l.cosecha.precio) || 0); }); return t; }
+  function _save() { try { if (H.saveDB) H.saveDB(); else if (typeof saveDB === 'function') saveDB(); } catch (e) {} }
+  function _toast(m, k) { try { (H.toast || window.agToast || window.toast || console.log)(m, k); } catch (e) { console.log(m); } }
+  function _tc() { try { var t = JSON.parse(localStorage.getItem('e5m_tc_bcb') || 'null'); return (t && t.valor) ? t : null; } catch (e) { return null; } }
+  
+  function _api(path, opts) {
+    opts = opts || {};
+    return fetch(getApiUrl() + path, {
+      method: opts.method || 'GET',
+      headers: { 'Authorization': 'Bearer ' + getApiToken(), 'Content-Type': 'application/json' },
+      body: opts.body ? JSON.stringify(opts.body) : undefined
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); });
+  }
+
+  /* ═══ ③a — WIZARD TIPADO (port de EP Agro): maquinaria saltea el paso insumos.
+     AGW vive en el closure del módulo agro → lo hacemos por navegación: si al
+     avanzar/retroceder caemos en el paso "insumos" con tipo maquinaria, seguimos. ═══ */
+  var _tipoMaq = false;
+  if (typeof window.agwSetTipo === 'function') {
+    window.agwSetTipo = (function (base) { return function (t) { base(t); _tipoMaq = (t === 'maquinaria'); }; })(window.agwSetTipo);
+  }
+  if (typeof window.agwOpen === 'function') {
+    window.agwOpen = (function (base) { return function () { _tipoMaq = false; return base.apply(this, arguments); }; })(window.agwOpen);
+  }
+  if (typeof window.agwNav === 'function') {
+    window.agwNav = (function (base) { return function (dir) {
+      base(dir);
+      try {
+        if (_tipoMaq) {
+          var act = document.querySelector('.agw-step.active');
+          if (act && act.getAttribute('data-step') === 'insumos') base(dir); /* saltear insumos */
+        }
+      } catch (e) {}
+    }; })(window.agwNav);
+  }
+
+  /* ═══ ③b — ESPERA GERMINACIÓN (regla de EP Agro v1.3.5): las post-emergencia
+     (offset_dias > 0) SIN germinación registrada no cuentan como vencidas —
+     pasan a PRÓXIMAS y un banner lo explica. Hook: window.__agcal.estado,
+     que es lo que consumen la agenda y el calendario v177/v178. ═══ */
+  function _v181Estado(base, d, campId) {
+    var st = base(d, campId);
+    try {
+      var c = ((d && d.campanas) || []).find(function (x) { return String(x.id) === String(campId); });
+      st.esperaGerm = [];
+      if (c && !c.germinacion_fecha && st.vencidas && st.vencidas.length) {
+        st.esperaGerm = st.vencidas.filter(function (l) { return Number(l.offset_dias) > 0; });
+        if (st.esperaGerm.length) {
+          var ids = {}; st.esperaGerm.forEach(function (l) { ids[String(l.id)] = 1; });
+          st.vencidas = st.vencidas.filter(function (l) { return !ids[String(l.id)]; });
+          st.proximas = (st.proximas || []).concat(st.esperaGerm).sort(function (a, b) { return String(a.fecha).localeCompare(String(b.fecha)); });
+        }
+      }
+    } catch (e) {}
+    return st;
+  }
+  function hookAgcal() {
+    if (window.__agcal && typeof window.__agcal.estado === 'function' && !window.__agcal.__v181) {
+      window.__agcal.estado = (function (base) { return function (d, campId) { return _v181Estado(base, d, campId); }; })(window.__agcal.estado);
+      window.__agcal.__v181 = true;
+    }
+  }
+  hookAgcal(); setTimeout(hookAgcal, 2000);
+  if (typeof window.agcalRender === 'function') {
+    window.agcalRender = (function (base) { return function () {
+      base.apply(this, arguments);
+      try {
+        var sel = agEl('agcal-camp'), res = agEl('agcal-resumen');
+        if (!sel || !res || !sel.value || !window.__agcal) return;
+        var st = window.__agcal.estado(agGetDB(), sel.value);
+        var old = document.getElementById('v181-espera'); if (old) old.remove();
+        if (st.esperaGerm && st.esperaGerm.length) {
+          var div = document.createElement('div'); div.id = 'v181-espera';
+          div.style.cssText = 'margin-top:8px;padding:8px 12px;border:1px dashed var(--green,#3fb950);border-radius:8px;font-size:12.5px;color:var(--green,#3fb950)';
+          div.innerHTML = '🌿 <b>' + st.esperaGerm.length + ' tarea' + (st.esperaGerm.length > 1 ? 's' : '') + ' post-emergencia esperando la germinación</b> — no cuentan como vencidas. Registrá 🌿 en la campaña y el plan se reprograma solo.';
+          res.appendChild(div);
+        }
+      } catch (e) {}
+    }; })(window.agcalRender);
+  }
+
+  /* ═══ helpers de UI compartidos ═══ */
+  function navBtn(label, icon, view, onshow) {
+    var b = document.createElement('button');
+    b.className = 'nav-btn'; b.setAttribute('data-label', label);
+    b.innerHTML = '<span class="nav-icon">' + icon + '</span><span class="nav-text">' + label + '</span>';
+    b.addEventListener('click', function () {
+      try { showPage('agro', b); } catch (e) {}
+      try { agShowPage(view); } catch (e) {}
+      try { onshow(); } catch (e) {}
+    });
+    return b;
+  }
+  function sidebar() {
+    var body = document.querySelector('#nav-agro-btn .nav-sec-body');
+    if (!body) return;
+    if (!document.querySelector('#nav-agro-btn [data-label="Crédito"]')) body.appendChild(navBtn('Crédito', '💵', 'credito', credRender));
+    if (!document.querySelector('#nav-agro-btn [data-label="Cierres"]')) body.appendChild(navBtn('Cierres', '🏁', 'cierres', cierresRender));
+  }
+  function vistas() {
+    var pg = agEl('page-agro'); if (!pg || agEl('ag-view-credito')) return;
+    var w = document.createElement('div');
+    w.innerHTML =
+      '<div id="ag-view-credito" class="ag-view">' +
+      '<div class="sub">Compras a crédito de insumos: la deuda vive en dólares y se cancela al TC del día del pago. El server es el único que calcula — mismos números que EP Agro, EP Campo y el bot.</div>' +
+      '<div id="cred-kpis" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px"></div>' +
+      '<div class="panel"><h3>Deudas abiertas</h3><div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Proveedor</th><th>Compra</th><th class="num">USD total</th><th class="num">Pagado</th><th class="num">Saldo USD</th><th class="num">Hoy en Bs</th><th>Vence</th><th></th></tr></thead><tbody id="cred-tbody"></tbody></table></div></div>' +
+      '<div class="panel"><h3>Canceladas (costo definitivo)</h3><div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Proveedor</th><th>Compra</th><th class="num">USD</th><th class="num">Costo final Bs</th><th class="num">Dif. de cambio</th></tr></thead><tbody id="cred-tbody-done"></tbody></table></div></div>' +
+      '</div>' +
+      '<div id="ag-view-cierres" class="ag-view">' +
+      '<div class="sub">Cerrar una campaña congela sus números REALES: kg cosechados, rinde, ingreso al precio y TC del día, margen. Nada de proyecciones.</div>' +
+      '<div id="cie-mercado" style="font-size:12.5px;color:var(--muted);margin-bottom:10px"></div>' +
+      '<div id="cie-list"></div>' +
+      '</div>' +
+      '<div class="modal-overlay agx" id="ag-modal-credpago"><div class="modal" style="max-width:460px">' +
+      '<h3>💵 Registrar pago</h3><div id="cp-info" class="sub" style="margin:4px 0 10px"></div>' +
+      '<div style="display:flex;gap:8px;margin-bottom:10px">' +
+      '<button class="btn btn-ghost btn-sm" id="cp-m-parte" onclick="v181PagoModo(\'parte\')">Pagar parte</button>' +
+      '<button class="btn btn-ghost btn-sm" id="cp-m-todo" onclick="v181PagoModo(\'todo\')">Pagar todo</button>' +
+      '<button class="btn btn-ghost btn-sm" id="cp-m-usd" onclick="v181PagoModo(\'usd\')">Pagué en USD</button></div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+      '<div><label class="form-label" id="cp-lbl">Bolivianos</label><input class="form-input" id="cp-monto" type="number" min="0" step="0.01" oninput="v181PagoCalc()"></div>' +
+      '<div id="cp-tcbox"><label class="form-label">TC del día</label><input class="form-input" id="cp-tc" type="number" min="0" step="0.01" oninput="v181PagoCalc()"></div></div>' +
+      '<div class="sub" style="margin:4px 0 8px">TC oficial BCB precargado — cambialo si pagaste a otro cambio (queda guardado el que uses).</div>' +
+      '<div id="cp-calc" style="padding:8px 12px;border:1px solid var(--bor);border-radius:8px;font-size:13px;margin-bottom:10px"></div>' +
+      '<div class="m-actions"><button class="btn btn-ghost" onclick="agCloseModal(\'ag-modal-credpago\')">Cancelar</button>' +
+      '<button class="btn btn-primary" id="cp-go" onclick="v181PagoGuardar()">💾 Registrar pago</button></div>' +
+      '</div></div>' +
+      '<div class="modal-overlay agx" id="ag-modal-cierre"><div class="modal" style="max-width:560px">' +
+      '<h3>🏁 Cerrar campaña</h3><div id="ci-info" class="sub" style="margin:4px 0 10px"></div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+      '<div><label class="form-label">Kg cosechados (total)</label><input class="form-input" id="ci-kg" type="number" min="0" oninput="v181CierreCalc()"></div>' +
+      '<div><label class="form-label">Humedad %</label><input class="form-input" id="ci-hum" type="number" min="0" max="40" step="0.1"></div>' +
+      '<div><label class="form-label">Precio de venta (USD/t)</label><input class="form-input" id="ci-precio" type="number" min="0" step="0.01" oninput="v181CierreCalc()"></div>' +
+      '<div><label class="form-label">TC (Bs/USD)</label><input class="form-input" id="ci-tc" type="number" min="0" step="0.01" oninput="v181CierreCalc()"></div></div>' +
+      '<div id="ci-calc" style="padding:10px 14px;border:1px solid var(--bor);border-radius:8px;font-size:13px;line-height:1.8;margin:10px 0"></div>' +
+      '<div class="warn" style="font-size:12px">Cerrar deja la campaña como COSECHADA con estos números congelados. Se puede reabrir tocando el estado en Campañas.</div>' +
+      '<div class="m-actions"><button class="btn btn-ghost" onclick="agCloseModal(\'ag-modal-cierre\')">Cancelar</button>' +
+      '<button class="btn btn-primary" onclick="v181CierreGuardar()">🏁 Cerrar campaña</button></div>' +
+      '</div></div>';
+    while (w.firstChild) pg.appendChild(w.firstChild);
+  }
+
+  /* ═══ ① CRÉDITO ═══ */
+  var CRED = { data: null };
+  window.v181Cred = CRED;
+  function kpi(label, val, col) {
+    return '<div style="background:var(--sur2);border:1px solid var(--bor);border-radius:10px;padding:10px 16px;min-width:150px">' +
+      '<div style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">' + label + '</div>' +
+      '<div style="font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;' + (col ? 'color:' + col : '') + '">' + val + '</div></div>';
+  }
+  function semaforo(v) {
+    if (!v) return { c: 'var(--muted)', t: 'sin fecha' };
+    var dias = Math.round((new Date(v + 'T12:00:00Z') - Date.now()) / 86400000);
+    if (dias < 0) return { c: 'var(--red)', t: 'VENCIDA hace ' + (-dias) + ' d' };
+    if (dias <= 10) return { c: 'var(--red)', t: 'en ' + dias + ' días' };
+    if (dias <= 30) return { c: 'var(--amber2,#e3b341)', t: 'en ' + dias + ' días' };
+    return { c: 'var(--green)', t: v };
+  }
+  function credRender() {
+    vistas();
+    var tb = agEl('cred-tbody'); if (!tb) return;
+    tb.innerHTML = '<tr><td colspan="8" style="color:var(--muted)">Cargando del server…</td></tr>';
+    _api('/credito/resumen').then(function (r) {
+      if (!r.ok || !r.j) { tb.innerHTML = '<tr><td colspan="8" style="color:var(--red)">No pude leer el server (' + ((r.j && r.j.error) || 'red') + ')</td></tr>'; return; }
+      CRED.data = r.j;
+      var d = r.j;
+      agEl('cred-kpis').innerHTML =
+        kpi('Deuda total', 'USD ' + _f(d.deuda_usd, 2)) +
+        (d.deuda_bs_hoy != null ? kpi('Al TC ' + (d.tc_hoy || '?'), 'Bs ' + _f(d.deuda_bs_hoy, 0)) : '') +
+        kpi('Dif. de cambio acumulada', (d.dif_cambio_total_bs >= 0 ? '+' : '') + 'Bs ' + _f(d.dif_cambio_total_bs, 0), d.dif_cambio_total_bs > 0 ? 'var(--red)' : 'var(--green)') +
+        kpi('Deudas abiertas', String((d.abiertas || []).length));
+      if (!(d.abiertas || []).length) { tb.innerHTML = '<tr><td colspan="8" style="color:var(--muted)">🎉 No se debe nada.</td></tr>'; }
+      else tb.innerHTML = d.abiertas.map(function (x, i) {
+        var sm = semaforo(x.vencimiento);
+        var pagosHtml = (x.pagos || []).map(function (p) {
+          return '<div style="font-size:11.5px;color:var(--muted)">· ' + p.fecha + ' — ' + (p.monto_usd ? 'USD ' + _f(p.monto_usd, 2) : 'Bs ' + _f(p.monto_bs, 2) + ' @ ' + p.tc_dia) + (p.medio ? ' · ' + _esc(p.medio) : '') + (p.by ? ' · ' + _esc(p.by) : '') + '</div>';
+        }).join('');
+        return '<tr>' +
+          '<td><b>' + _esc(x.supplier || '—') + '</b>' + (x.condicion_pago === 'credito_banco' ? ' <span style="font-size:10px;border:1px solid var(--bor);border-radius:6px;padding:0 5px">BANCO' + (x.interes_pct ? ' ' + x.interes_pct + '%' : '') + '</span>' : '') + '</td>' +
+          '<td>' + _esc(x.desc || '') + '<div style="font-size:11px;color:var(--muted)">' + (x.date || '') + (x.tc_factura ? ' · TC factura ' + x.tc_factura : '') + '</div>' + pagosHtml + '</td>' +
+          '<td class="num">' + _f(x.usd_total, 2) + '</td>' +
+          '<td class="num" style="color:var(--green)">' + _f(x.aplicado_usd, 2) + '</td>' +
+          '<td class="num"><b style="color:var(--amber2,#e3b341)">' + _f(x.saldo_usd, 2) + '</b></td>' +
+          '<td class="num">' + (d.tc_hoy ? _f(x.saldo_usd * d.tc_hoy, 0) : '—') + '</td>' +
+          '<td style="color:' + sm.c + '">' + sm.t + '</td>' +
+          '<td><button class="btn btn-primary btn-sm" onclick="v181PagoOpen(' + i + ')">💵 Pagar</button></td></tr>';
+      }).join('');
+      var td = agEl('cred-tbody-done');
+      var done = d.cerradas_recientes || [];
+      td.innerHTML = done.length ? done.map(function (x) {
+        return '<tr><td>' + _esc(x.supplier || '—') + '</td><td>' + _esc(x.desc || '') + '</td><td class="num">' + _f(x.usd_total, 2) + '</td><td class="num">' + _f(x.costo_bs, 0) + '</td>' +
+          '<td class="num" style="color:' + (x.dif_cambio_bs > 0 ? 'var(--red)' : 'var(--green)') + '">' + (x.dif_cambio_bs >= 0 ? '+' : '') + _f(x.dif_cambio_bs, 0) + '</td></tr>';
+      }).join('') : '<tr><td colspan="5" style="color:var(--muted)">Todavía ninguna.</td></tr>';
+    }).catch(function () { tb.innerHTML = '<tr><td colspan="8" style="color:var(--red)">Sin conexión con el server.</td></tr>'; });
+  }
+  var PAGO = { x: null, modo: 'parte' };
+  window.v181PagoOpen = function (i) {
+    var x = CRED.data && CRED.data.abiertas && CRED.data.abiertas[i]; if (!x) return;
+    PAGO = { x: x, modo: 'parte' };
+    agEl('cp-info').innerHTML = '<b>' + _esc(x.supplier || x.desc) + '</b> — saldo <b style="color:var(--amber2,#e3b341)">USD ' + _f(x.saldo_usd, 2) + '</b>' + (CRED.data.tc_hoy ? ' (Bs ' + _f(x.saldo_usd * CRED.data.tc_hoy, 0) + ' hoy)' : '');
+    agEl('cp-monto').value = ''; agEl('cp-monto').disabled = false;
+    var t = _tc(); agEl('cp-tc').value = t ? t.valor : (CRED.data.tc_hoy || '');
+    v181PagoModo('parte');
+    window.agOpenModal('ag-modal-credpago');
+  };
+  window.v181PagoModo = function (m) {
+    PAGO.modo = m;
+    ['parte', 'todo', 'usd'].forEach(function (k) { var b = agEl('cp-m-' + k); if (b) { b.className = 'btn btn-sm ' + (k === m ? 'btn-primary' : 'btn-ghost'); } });
+    var lbl = agEl('cp-lbl'), tcb = agEl('cp-tcbox'), mi = agEl('cp-monto');
+    if (m === 'usd') { lbl.textContent = 'Dólares'; tcb.style.display = 'none'; mi.disabled = false; }
+    else if (m === 'todo') { lbl.textContent = 'Bolivianos (auto)'; tcb.style.display = 'block'; mi.disabled = true; }
+    else { lbl.textContent = 'Bolivianos'; tcb.style.display = 'block'; mi.disabled = false; }
+    v181PagoCalc();
+  };
+  window.v181PagoCalc = function () {
+    var out = agEl('cp-calc'); if (!out || !PAGO.x) return;
+    var tcv = parseFloat(agEl('cp-tc').value) || 0, monto = parseFloat(agEl('cp-monto').value) || 0;
+    if (PAGO.modo === 'todo') {
+      if (!(tcv > 0)) { out.innerHTML = '<span style="color:var(--red)">Cargá el TC.</span>'; return; }
+      var bs = Math.round(PAGO.x.saldo_usd * tcv * 100) / 100;
+      agEl('cp-monto').value = bs;
+      out.innerHTML = 'Para cancelar todo: <b>Bs ' + _f(bs, 2) + '</b> → queda <b style="color:var(--green)">USD 0 🎉</b>'; return;
+    }
+    if (PAGO.modo === 'usd') {
+      out.innerHTML = 'Cancela <b style="color:var(--green)">USD ' + _f(Math.min(monto, PAGO.x.saldo_usd), 2) + '</b> → queda <b style="color:var(--amber2,#e3b341)">USD ' + _f(Math.max(0, PAGO.x.saldo_usd - monto), 2) + '</b>'; return;
+    }
+    if (!(tcv > 0) || !(monto > 0)) { out.innerHTML = '<span style="color:var(--muted)">Cargá monto y TC…</span>'; return; }
+    var usd = Math.round(monto / tcv * 100) / 100;
+    out.innerHTML = 'Cancela <b style="color:var(--green)">USD ' + _f(usd, 2) + '</b> → queda <b style="color:var(--amber2,#e3b341)">USD ' + _f(Math.max(0, PAGO.x.saldo_usd - usd), 2) + '</b>';
+  };
+  window.v181PagoGuardar = function () {
+    if (!PAGO.x) return;
+    var tcv = parseFloat(agEl('cp-tc').value) || 0, monto = parseFloat(agEl('cp-monto').value) || 0;
+    var body = { purchase_id: PAGO.x.purchase_id, medio: 'desktop', by: 'Desktop', source: 'desktop' };
+    if (PAGO.modo === 'usd') { if (!(monto > 0)) { _toast('Cargá el monto en USD', 'error'); return; } body.monto_usd = monto; }
+    else if (PAGO.modo === 'todo') { if (!(tcv > 0)) { _toast('Cargá el TC', 'error'); return; } body.pagar_todo = true; body.tc_dia = tcv; }
+    else { if (!(monto > 0) || !(tcv > 0)) { _toast('Cargá monto y TC', 'error'); return; } body.monto_bs = monto; body.tc_dia = tcv; }
+    var btn = agEl('cp-go'); btn.disabled = true; btn.textContent = 'Registrando…';
+    _api('/credito/pago', { method: 'POST', body: body }).then(function (r) {
+      btn.disabled = false; btn.textContent = '💾 Registrar pago';
+      if (r.ok && r.j && r.j.ok) { _toast((r.j.resumen || '✅ Pago registrado').replace(/\*/g, ''), 'success'); agCloseModal('ag-modal-credpago'); credRender(); }
+      else _toast('No se pudo: ' + ((r.j && r.j.error) || 'error del server'), 'error');
+    }).catch(function () { btn.disabled = false; btn.textContent = '💾 Registrar pago'; _toast('Error de red', 'error'); });
+  };
+
+  /* ═══ ② CIERRES DE CAMPAÑA ═══ */
+  var CIE = { campId: null, mercado: null };
+  window.v181CierreData = function (d, c) { /* puro, testeable */
+    var ha = _campHa(d, c) || 0;
+    var kg = 0; d.labores.forEach(function (l) { if (String(l.campana_id) === String(c.id) && l.estado === 'ejecutada' && l.tipo === 'cosecha' && l.cosecha) kg += Number(l.cosecha.kg) || 0; });
+    var costo = _campCosto(d, c.id);
+    return { ha: ha, kg: kg, rinde: (ha && kg) ? Math.round(kg / 1000 / ha * 100) / 100 : null, costo: costo, ingresoProy: _campIngreso(d, c.id) };
+  };
+  function cierresRender() {
+    vistas();
+    var host = agEl('cie-list'); if (!host) return;
+    var d = agGetDB();
+    /* mercado del día para prefill */
+    _api('/agro/mercado').then(function (r) { if (r.ok) { CIE.mercado = r.j; var m = agEl('cie-mercado'); if (m && r.j) { var cm = r.j.commodities || {}; m.innerHTML = '🌾 CBOT hoy (USD/t): soya <b>' + ((cm.soya || {}).usd_t || '—') + '</b> · maíz <b>' + ((cm.maiz || {}).usd_t || '—') + '</b> · trigo <b>' + ((cm.trigo || {}).usd_t || '—') + '</b> · sorgo <b>' + ((cm.sorgo || {}).usd_t || '—') + '</b>* &nbsp;·&nbsp; 💱 TC <b>' + ((r.j.tc_bcb || {}).valor || '—') + '</b> <span style="font-size:11px">(*ref. maíz)</span>'; } } }).catch(function () {});
+    var camps = (d.campanas || []).filter(function (c) { return c.estado !== 'planificada'; });
+    if (!camps.length) { host.innerHTML = '<div class="panel" style="padding:16px;color:var(--muted)">Sin campañas en curso ni cosechadas.</div>'; return; }
+    host.innerHTML = camps.map(function (c) {
+      var x = v181CierreData(d, c);
+      var cerrada = c.estado === 'cosechada';
+      var ci = c.cierre;
+      var head = '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">' +
+        '<div><b style="font-size:15px">' + _esc(_campLabel(d, c)) + '</b> <span style="font-size:11px;border:1px solid var(--bor);border-radius:8px;padding:1px 8px;color:' + (cerrada ? 'var(--green)' : 'var(--amber2,#e3b341)') + '">' + (cerrada ? '🏁 CERRADA' : 'EN CURSO') + '</span></div>' +
+        (cerrada ? '' : '<button class="btn btn-primary btn-sm" onclick="v181CierreOpen(' + c.id + ')">🏁 Cerrar con números reales</button>') + '</div>';
+      var body;
+      if (cerrada && ci) {
+        var marg = ci.margen_bs;
+        body = '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;font-size:13px">' +
+          '<span>🌾 ' + _f(ci.kg, 0) + ' kg (' + _f(ci.rinde, 2) + ' t/ha)</span>' +
+          '<span>💵 precio ' + _f(ci.precio_usd_t, 2) + ' USD/t @ TC ' + ci.tc + '</span>' +
+          '<span>ingreso <b>Bs ' + _f(ci.ingreso_bs, 0) + '</b></span>' +
+          '<span>costo <b>Bs ' + _f(ci.costo_bs, 0) + '</b></span>' +
+          '<span>margen <b style="color:' + (marg >= 0 ? 'var(--green)' : 'var(--red)') + '">Bs ' + _f(marg, 0) + '</b> (' + _f(x.ha ? marg / x.ha : 0, 0) + '/ha)</span>' +
+          '<span style="color:var(--muted)">cerrada el ' + (ci.fecha || '') + '</span></div>';
+      } else {
+        body = '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;font-size:13px">' +
+          '<span>' + _f(x.ha, 1) + ' ha</span>' +
+          '<span>🌾 cosechado hasta ahora: <b>' + _f(x.kg, 0) + ' kg</b>' + (x.rinde ? ' (' + _f(x.rinde, 2) + ' t/ha)' : '') + '</span>' +
+          '<span>costo real acumulado: <b>Bs ' + _f(x.costo, 0) + '</b>' + (x.ha ? ' (' + _f(x.costo / x.ha, 0) + '/ha)' : '') + '</span>' +
+          (x.ingresoProy ? '<span style="color:var(--muted)">ingreso registrado en cosechas: Bs ' + _f(x.ingresoProy, 0) + '</span>' : '') + '</div>';
+      }
+      return '<div class="panel" style="padding:14px 18px;margin-bottom:10px">' + head + body + '</div>';
+    }).join('');
+  }
+  window.v181CierreOpen = function (campId) {
+    var d = agGetDB(); var c = (d.campanas || []).find(function (x) { return String(x.id) === String(campId); }); if (!c) return;
+    CIE.campId = campId;
+    var x = v181CierreData(d, c);
+    agEl('ci-info').innerHTML = '<b>' + _esc(_campLabel(d, c)) + '</b> · ' + _f(x.ha, 1) + ' ha · costo real <b>Bs ' + _f(x.costo, 0) + '</b>';
+    agEl('ci-kg').value = x.kg || '';
+    agEl('ci-hum').value = '';
+    var cult = String(c.cultivo || '').toLowerCase();
+    var cm = (CIE.mercado && CIE.mercado.commodities) || {};
+    var px = /soy|soja/.test(cult) ? cm.soya : /ma[ií]z/.test(cult) ? cm.maiz : /trigo/.test(cult) ? cm.trigo : /sorgo/.test(cult) ? cm.sorgo : null;
+    agEl('ci-precio').value = (px && px.usd_t) || '';
+    var t = _tc(); agEl('ci-tc').value = (t && t.valor) || ((CIE.mercado && CIE.mercado.tc_bcb && CIE.mercado.tc_bcb.valor) || '');
+    v181CierreCalc();
+    window.agOpenModal('ag-modal-cierre');
+  };
+  window.v181CierreCalc = function () {
+    var d = agGetDB(); var c = (d.campanas || []).find(function (x) { return String(x.id) === String(CIE.campId); }); if (!c) return;
+    var x = v181CierreData(d, c);
+    var kg = parseFloat(agEl('ci-kg').value) || 0, px = parseFloat(agEl('ci-precio').value) || 0, tc = parseFloat(agEl('ci-tc').value) || 0;
+    var ingreso = Math.round(kg / 1000 * px * tc);
+    var margen = ingreso - x.costo;
+    agEl('ci-calc').innerHTML =
+      '<div style="display:flex;justify-content:space-between"><span>Rinde real</span><b>' + (x.ha && kg ? _f(kg / 1000 / x.ha, 2) + ' t/ha' : '—') + '</b></div>' +
+      '<div style="display:flex;justify-content:space-between"><span>Ingreso real (' + _f(kg, 0) + ' kg × ' + _f(px, 2) + ' USD/t × ' + _f(tc, 2) + ')</span><b>Bs ' + _f(ingreso, 0) + '</b></div>' +
+      '<div style="display:flex;justify-content:space-between"><span>Costo real acumulado</span><b>Bs ' + _f(x.costo, 0) + '</b></div>' +
+      '<div style="display:flex;justify-content:space-between;border-top:1px solid var(--bor);padding-top:6px;margin-top:4px"><span><b>MARGEN REAL</b></span><b style="color:' + (margen >= 0 ? 'var(--green)' : 'var(--red)') + '">Bs ' + _f(margen, 0) + (x.ha ? ' · ' + _f(margen / x.ha, 0) + '/ha' : '') + '</b></div>';
+  };
+  window.v181CierreGuardar = function () {
+    var d = agGetDB(); var c = (d.campanas || []).find(function (x) { return String(x.id) === String(CIE.campId); }); if (!c) return;
+    var x = v181CierreData(d, c);
+    var kg = parseFloat(agEl('ci-kg').value) || 0, px = parseFloat(agEl('ci-precio').value) || 0, tc = parseFloat(agEl('ci-tc').value) || 0;
+    if (!(kg > 0)) { _toast('Cargá los kg cosechados', 'error'); return; }
+    if (!(px > 0) || !(tc > 0)) { _toast('Cargá precio y TC del cierre', 'error'); return; }
+    var ingreso = Math.round(kg / 1000 * px * tc);
+    c.estado = 'cosechada';
+    c.cierre = { fecha: _hoyH(), kg: kg, humedad_pct: parseFloat(agEl('ci-hum').value) || null, precio_usd_t: px, tc: tc,
+      rinde: x.ha ? Math.round(kg / 1000 / x.ha * 100) / 100 : null,
+      ingreso_bs: ingreso, costo_bs: Math.round(x.costo), margen_bs: ingreso - Math.round(x.costo), by: 'Desktop v1.8.181' };
+    c.updated_at = new Date().toISOString();
+    _save();
+    agCloseModal('ag-modal-cierre');
+    _toast('🏁 Campaña cerrada — margen real Bs ' + _f(c.cierre.margen_bs, 0), 'success');
+    cierresRender();
+  };
+
+  /* ═══ boot ═══ */
+  function boot() { sidebar(); vistas(); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true }); else boot();
+  setInterval(sidebar, 5000);
+  window.v181Diag = function () { return { version: '1.8.181', credito: !!agEl('ag-view-credito'), cierres: !!agEl('ag-view-cierres'), wizardTipado: true, esperaGerm: true, marker: 'credito-cierre-v18181' }; };
+  try { console.log('%c[v1.8.181] 💵 Crédito + 🏁 Cierres + wizard tipado + espera-germinación — v181Diag() · kill: __V181_OFF', 'color:#3fb950;font-weight:bold'); } catch (e) {}
+})();
+/*__V181_END__*/
+</script>
+
 </body>
 </html>
