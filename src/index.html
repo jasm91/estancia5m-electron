@@ -710,7 +710,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.191'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
+window.E5M_HTML_BUILD = '1.8.192'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
 
 window.v175Diag = function () {
   var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
@@ -2214,26 +2214,27 @@ function orMarcajeGo(){
 <!-- ═══ v1.8.191: 📈 Gráficos BI (Reportes) — estilo Padel Pro Shop, datos ganadería ═══ -->
 <div id="page-graficosbi" class="page">
   <style>
-    #page-graficosbi{background:#f4f6f8}
-    .gbi-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px}
-    .gbi-head h1{margin:0;color:#1f2d3a;font-size:22px}
-    .gbi-filtros{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0 14px;font-size:13px;color:#4a5560}
-    .gbi-filtros input[type=date]{background:#fff;border:1px solid #d7dde3;border-radius:8px;padding:6px 10px;color:#1f2d3a;font-family:inherit;font-size:12.5px}
-    .gbi-chip{background:#fff;border:1px solid #d7dde3;border-radius:8px;padding:6px 14px;font-size:12.5px;font-weight:600;color:#3a4854;cursor:pointer;font-family:inherit}
-    .gbi-chip:hover{border-color:#9fb0bd}
-    .gbi-chip.on{background:#c9d92e;border-color:#c9d92e;color:#243043}
-    #gbi-kpis{display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px;color:#4a5560;margin:0 0 14px}
-    #gbi-kpis b{font-size:14px}
+    #page-graficosbi{}
+    .gbi-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+    .gbi-head h1{margin:0;color:var(--text);font-size:22px}
+    .gbi-filtros{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0 14px;font-size:13px;color:var(--muted)}
+    .gbi-filtros input[type=date]{background:var(--sur2,rgba(255,255,255,.04));border:1px solid var(--bor);border-radius:8px;padding:6px 10px;color:var(--text);font-family:'DM Mono',monospace;font-size:12px}
+    .gbi-chip{background:var(--sur2,rgba(255,255,255,.04));border:1px solid var(--bor);border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer;font-family:inherit}
+    .gbi-chip:hover{border-color:var(--muted)}
+    .gbi-chip.on{background:var(--green2,#1A4D24);border-color:var(--green,#3fb950);color:var(--green,#3fb950);font-weight:700}
+    #gbi-kpis{display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin:0 0 14px;font-family:'DM Mono',monospace}
+    #gbi-kpis b{font-size:14px;color:var(--text)}
     .gbi-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}
-    .gbi-card{background:#fff;border:1px solid #e4e8ec;border-radius:12px;padding:14px 16px;box-shadow:0 1px 3px rgba(20,30,40,.05)}
-    .gbi-card h3{margin:0 0 2px;font-size:13px;font-weight:600;color:#5a6570}
-    .gbi-card .gbi-sub{font-size:11px;color:#8a949e;font-style:italic;margin-bottom:8px;min-height:13px}
+    .gbi-card{background:var(--sur);border:1px solid var(--bor);border-radius:14px;padding:14px 16px}
+    .gbi-card h3{margin:0 0 2px;font-size:13px;font-weight:700;color:var(--text)}
+    .gbi-card .gbi-sub{font-size:11px;color:var(--muted);font-style:italic;margin-bottom:8px;min-height:13px}
     .gbi-cv{position:relative;height:260px}
     .gbi-cv.alto{height:300px}
+    .gbi-vacio{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px}
     .gbi-12{grid-column:span 12}.gbi-6{grid-column:span 6}.gbi-4{grid-column:span 4}
     @media (max-width:1200px){.gbi-6,.gbi-4{grid-column:span 12}}
   </style>
-  <div class="gbi-head"><h1>📈 Gráficos BI</h1><span style="font-size:12px;color:#8a949e">ganadería · los montos salen de ventas, compras, sueldos, diésel y mantenimiento</span></div>
+  <div class="gbi-head"><h1>📈 Gráficos BI</h1><span style="font-size:12px;color:var(--muted)">ganadería · ventas, compras, sueldos, diésel y mantenimiento</span><button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="gbiRender()">🔄 Actualizar</button></div>
   <div class="gbi-filtros">
     Del <input type="date" id="gbi-desde" onchange="gbiFechas()"> al <input type="date" id="gbi-hasta" onchange="gbiFechas()">
     <button class="gbi-chip" onclick="gbiChip('semana',this)">Semana</button>
@@ -53317,8 +53318,10 @@ try {
 (function () {
   'use strict';
   if (window.__GBI_OFF) return;
-  var NAVY = '#223d54', LIME = '#c9d92e', ORANGE = '#e8933f', STEEL = '#5b7e9e', STEEL2 = '#8aa6bd', OLIVE = '#8a9a3c', PLUM = '#9b6a8f', RED = '#d9534f';
-  var PAL = [NAVY, LIME, STEEL, ORANGE, OLIVE, STEEL2, PLUM, '#c46a4a'];
+  /* v1.8.192: paleta de la LÍNEA EstanciaPro (tema oscuro) — no la del proyecto de referencia */
+  var NAVY = '#3fb950', LIME = '#f0c040', ORANGE = '#f78166', STEEL = '#58a6ff', STEEL2 = '#7d8590', OLIVE = '#a3be3c', PLUM = '#bc8cff', RED = '#f85149';
+  var PAL = [NAVY, LIME, STEEL, ORANGE, OLIVE, PLUM, STEEL2, '#d29922'];
+  var GRID = 'rgba(255,255,255,.07)', TICK = '#8b949e', TXT = '#c9d1d9';
   var CH = {}; /* instancias Chart por canvas */
   var RANGO = { d: '', h: '', chip: 'todo' };
   var MES_ES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -53346,11 +53349,21 @@ try {
   }
   function ejes(extra) {
     return Object.assign({
-      x: { grid: { display: false }, ticks: { color: '#6a737d', font: { size: 10 }, maxRotation: 45, minRotation: 45 } },
-      y: { grid: { color: '#eceff1' }, ticks: { color: '#6a737d', font: { size: 10 } }, beginAtZero: true }
+      x: { grid: { display: false }, ticks: { color: TICK, font: { size: 10 }, maxRotation: 45, minRotation: 45 } },
+      y: { grid: { color: GRID }, ticks: { color: TICK, font: { size: 10 } }, beginAtZero: true }
     }, extra || {});
   }
-  function legend() { return { display: true, labels: { color: '#4a5560', boxWidth: 22, boxHeight: 10, font: { size: 11 } } }; }
+  function legend() { return { display: true, labels: { color: TICK, boxWidth: 22, boxHeight: 10, font: { size: 11 } } }; }
+  /* v1.8.192: estado vacío visible en vez de ejes mudos */
+  function vacio(id, hay, msg) {
+    var cv = document.getElementById(id); if (!cv) return hay;
+    var host = cv.parentElement, ov = host.querySelector('.gbi-vacio');
+    if (hay) { if (ov) ov.remove(); cv.style.opacity = 1; return true; }
+    cv.style.opacity = .12;
+    if (!ov) { ov = document.createElement('div'); ov.className = 'gbi-vacio'; host.appendChild(ov); }
+    ov.textContent = msg || 'Sin movimientos en el período';
+    return false;
+  }
 
   /* ── datos ── */
   function ventasR() { return (db.sales || []).filter(function (v) { return v && enRango(v.date); }); }
@@ -53390,7 +53403,7 @@ try {
       data: { labels: meses.map(mesLabel), datasets: [
         { label: 'Ingresos Bs', data: meses.map(function (m) { return ing[m] || 0; }), backgroundColor: NAVY, borderRadius: 4, yAxisID: 'y' },
         { type: 'line', label: '# Ventas', data: meses.map(function (m) { return nv[m] || 0; }), borderColor: LIME, backgroundColor: LIME, borderWidth: 3, pointRadius: 3, tension: .3, yAxisID: 'y2' }] },
-      options: { plugins: { legend: legend() }, scales: ejes({ y2: { position: 'right', grid: { display: false }, ticks: { color: '#6a737d', font: { size: 10 } }, beginAtZero: true } }) } });
+      options: { plugins: { legend: legend() }, scales: ejes({ y2: { position: 'right', grid: { display: false }, ticks: { color: TICK, font: { size: 10 } }, beginAtZero: true } }) } });
 
     /* 2 · ingresos vs gastos apilados + resultado */
     var mesesG = ejeMeses(V.map(function (v) { return v.date; }).concat(Object.keys(GM).map(function (m) { return m + '-01'; })));
@@ -53412,7 +53425,7 @@ try {
       data: { labels: mesesCG.map(mesLabel), datasets: [
         { label: 'Inversión Bs', data: mesesCG.map(function (m) { return cgBs[m] || 0; }), backgroundColor: NAVY, borderRadius: 4, yAxisID: 'y' },
         { type: 'line', label: 'Cabezas', data: mesesCG.map(function (m) { return cgCab[m] || 0; }), borderColor: ORANGE, backgroundColor: ORANGE, borderWidth: 3, pointRadius: 3, tension: .3, yAxisID: 'y2' }] },
-      options: { plugins: { legend: legend() }, scales: ejes({ y2: { position: 'right', grid: { display: false }, ticks: { color: '#6a737d', font: { size: 10 } }, beginAtZero: true } }) } });
+      options: { plugins: { legend: legend() }, scales: ejes({ y2: { position: 'right', grid: { display: false }, ticks: { color: TICK, font: { size: 10 } }, beginAtZero: true } }) } });
 
     /* 4 · compras generales apiladas por tipo */
     var mesesP = ejeMeses(P.map(function (p) { return p.date; }));
@@ -53450,14 +53463,14 @@ try {
     var topC = Object.keys(cli).map(function (k) { return [k, cli[k]]; }).sort(function (a, b2) { return b2[1] - a[1]; }).slice(0, 10);
     grafico('gb-c7', { type: 'bar',
       data: { labels: topC.map(function (x) { return x[0]; }), datasets: [{ data: topC.map(function (x) { return x[1]; }), backgroundColor: NAVY, borderRadius: 4 }] },
-      options: { indexAxis: 'y', scales: { x: { grid: { color: '#eceff1' }, ticks: { color: '#6a737d', font: { size: 10 } }, beginAtZero: true }, y: { grid: { display: false }, ticks: { color: '#4a5560', font: { size: 11 } } } } } });
+      options: { indexAxis: 'y', scales: { x: { grid: { color: GRID }, ticks: { color: TICK, font: { size: 10 } }, beginAtZero: true }, y: { grid: { display: false }, ticks: { color: TXT, font: { size: 11 } } } } } });
 
     /* 8 · top rangos de peso más vendidos (# animales) */
     var rk = {}; conPeso.forEach(function (v) { var a = ventaKg(v) / ventaCab(v); var lo = Math.floor(a / 25) * 25; var k = lo + '-' + (lo + 25) + ' kg'; rk[k] = (rk[k] || 0) + ventaCab(v); });
     var topR = Object.keys(rk).map(function (k) { return [k, rk[k]]; }).sort(function (a, b2) { return b2[1] - a[1]; }).slice(0, 10);
     grafico('gb-c8', { type: 'bar',
       data: { labels: topR.map(function (x) { return x[0]; }), datasets: [{ data: topR.map(function (x) { return x[1]; }), backgroundColor: topR.map(function (_, i) { return i === 0 ? LIME : NAVY; }), borderRadius: 4 }] },
-      options: { indexAxis: 'y', scales: { x: { grid: { color: '#eceff1' }, ticks: { color: '#6a737d', font: { size: 10 } }, beginAtZero: true }, y: { grid: { display: false }, ticks: { color: '#4a5560', font: { size: 11 } } } } } });
+      options: { indexAxis: 'y', scales: { x: { grid: { color: GRID }, ticks: { color: TICK, font: { size: 10 } }, beginAtZero: true }, y: { grid: { display: false }, ticks: { color: TXT, font: { size: 11 } } } } } });
 
     /* 9 · top proveedores (insumos + ganado) */
     var prov = {};
@@ -53466,7 +53479,7 @@ try {
     var topP = Object.keys(prov).map(function (k) { return [k, prov[k]]; }).sort(function (a, b2) { return b2[1] - a[1]; }).slice(0, 10);
     grafico('gb-c9', { type: 'bar',
       data: { labels: topP.map(function (x) { return x[0]; }), datasets: [{ data: topP.map(function (x) { return x[1]; }), backgroundColor: ORANGE, borderRadius: 4 }] },
-      options: { indexAxis: 'y', scales: { x: { grid: { color: '#eceff1' }, ticks: { color: '#6a737d', font: { size: 10 } }, beginAtZero: true }, y: { grid: { display: false }, ticks: { color: '#4a5560', font: { size: 11 } } } } } });
+      options: { indexAxis: 'y', scales: { x: { grid: { color: GRID }, ticks: { color: TICK, font: { size: 10 } }, beginAtZero: true }, y: { grid: { display: false }, ticks: { color: TXT, font: { size: 11 } } } } } });
 
     /* 10 · participación por raza (stock actual — no filtra por fecha) */
     var razas = {};
@@ -53478,17 +53491,30 @@ try {
     });
     var topRz = Object.keys(razas).map(function (k) { return [k, razas[k]]; }).sort(function (a, b2) { return b2[1] - a[1]; }).slice(0, 8);
     grafico('gb-c10', { type: 'doughnut',
-      data: { labels: topRz.map(function (x) { return x[0]; }), datasets: [{ data: topRz.map(function (x) { return x[1]; }), backgroundColor: PAL, borderWidth: 2, borderColor: '#fff' }] },
-      options: { plugins: { legend: { display: true, position: 'right', labels: { color: '#4a5560', boxWidth: 22, boxHeight: 10, font: { size: 11 } } } }, cutout: '55%' } });
+      data: { labels: topRz.map(function (x) { return x[0]; }), datasets: [{ data: topRz.map(function (x) { return x[1]; }), backgroundColor: PAL, borderWidth: 2, borderColor: 'rgba(0,0,0,.35)' }] },
+      options: { plugins: { legend: { display: true, position: 'right', labels: { color: TICK, boxWidth: 22, boxHeight: 10, font: { size: 11 } } } }, cutout: '55%' } });
+
+    /* estados vacíos por gráfico (Chaco Lejos arranca sin datos — que lo DIGA) */
+    vacio('gb-c1', V.length > 0, 'Sin ventas en el período');
+    vacio('gb-c2', V.length > 0 || Object.keys(GM).length > 0, 'Sin movimientos en el período');
+    vacio('gb-c3', CG.length > 0, 'Sin compras de ganado en el período');
+    vacio('gb-c4', P.length > 0, 'Sin compras en el período');
+    vacio('gb-c5', V.length > 0, 'Sin ventas todavía');
+    vacio('gb-c6a', conPeso.length > 0, 'Sin ventas con peso y cabezas');
+    vacio('gb-c6b', conCab.length > 0, 'Sin ventas con # de animales');
+    vacio('gb-c7', topC.length > 0, 'Sin clientes todavía');
+    vacio('gb-c8', topR.length > 0, 'Sin ventas con peso y cabezas');
+    vacio('gb-c9', topP.length > 0, 'Sin proveedores en el período');
+    vacio('gb-c10', topRz.length > 0, 'Sin animales en el rebaño');
 
     /* KPIs del período */
     var totIng = V.reduce(function (s, v) { return s + (Number(v.total) || 0); }, 0);
     var totG = 0; Object.keys(GM).forEach(function (m) { var g = GM[m]; totG += g.compras + g.sueldos + g.diesel + g.mant; });
     var el2 = document.getElementById('gbi-kpis');
     if (el2) el2.innerHTML =
-      '<span>💰 Ingresos <b style="color:#1a7f37">' + bs(totIng) + '</b></span>' +
-      '<span>💸 Gastos <b style="color:#c05621">' + bs(totG) + '</b></span>' +
-      '<span>⚖ Resultado <b style="color:' + (totIng - totG >= 0 ? '#1a7f37' : '#c53030') + '">' + bs(totIng - totG) + '</b></span>' +
+      '<span>💰 Ingresos <b style="color:var(--green,#3fb950)">' + bs(totIng) + '</b></span>' +
+      '<span>💸 Gastos <b style="color:var(--amber2,#e3b341)">' + bs(totG) + '</b></span>' +
+      '<span>⚖ Resultado <b style="color:' + (totIng - totG >= 0 ? 'var(--green,#3fb950)' : 'var(--red,#f85149)') + '">' + bs(totIng - totG) + '</b></span>' +
       '<span>🐂 Ventas <b>' + V.length + '</b></span>' +
       '<span>🛒 Compras ganado <b>' + bs(CG.reduce(function (s, c) { return s + (Number(c.total || c.monto) || 0); }, 0)) + '</b></span>';
   }
