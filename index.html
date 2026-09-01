@@ -710,7 +710,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.193'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
+window.E5M_HTML_BUILD = '1.8.194'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
 
 window.v175Diag = function () {
   var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
@@ -10217,7 +10217,8 @@ function _stockGetCategory(p) {
     veterinario:{ type:'veterinario', label:'Veterinario', subLabel:'Vacunas · antiparasitarios · medicamentos', bg:'#FBEAF0', fg:'#4B1528', fgMuted:'#72243E', stroke:'#D4537E', icon:'💉' },
     sal:{ type:'sal', label:'Sal y suplementos', subLabel:'Sal mineral · suplementos nutricionales', bg:'#FAEEDA', fg:'#412402', fgMuted:'#633806', stroke:'#BA7517', icon:'🧂' },
     aceite:{ type:'aceite', label:'Aceites y lubricantes', subLabel:'Aceites · lubricantes · refrigerantes', bg:'#E6F1FB', fg:'#042C53', fgMuted:'#0C447C', stroke:'#378ADD', icon:'🛢️' },
-    herramienta:{ type:'herramienta', label:'Herramientas', subLabel:'Herramientas · repuestos · cercos', bg:'#EEEDFE', fg:'#26215C', fgMuted:'#3C3489', stroke:'#7F77DD', icon:'🔧' },
+    herramienta:{ type:'herramienta', label:'Herramientas', subLabel:'Herramientas · cercos', bg:'#EEEDFE', fg:'#26215C', fgMuted:'#3C3489', stroke:'#7F77DD', icon:'🔧' },
+    repuesto:{ type:'repuesto', label:'Repuestos', subLabel:'Filtros · correas · rodamientos · repuestos de maquinaria', bg:'#FDF0E4', fg:'#4A2A05', fgMuted:'#6F3F08', stroke:'#D98C2B', icon:'🔩' }, /* v1.8.194 pedido Jose 31-08 */
     otros:{ type:'otros', label:'Otros', subLabel:'Sin categoría asignada', bg:'#F1EFE8', fg:'#2C2C2A', fgMuted:'#5F5E5A', stroke:'#888780', icon:'📦' }
   };
   // 1) El TIPO elegido por el usuario MANDA (evita falsos positivos del adivinador, ej. "trampa" -> "amp")
@@ -10226,7 +10227,7 @@ function _stockGetCategory(p) {
     antiinflamatorio:'veterinario', vitamina_mineral:'veterinario', vitamina:'veterinario', hormona:'veterinario',
     sal_mineral:'sal', alimento_balanceado:'sal', alimento:'sal',
     lubricante:'aceite', aceite:'aceite', combustible:'aceite',
-    herramienta:'herramienta', repuesto:'herramienta',
+    herramienta:'herramienta', repuesto:'repuesto', /* v1.8.194: Repuestos es categoría propia */
     otro:'otros'
   };
   if (byType[type]) return CAT[byType[type]];
@@ -10235,7 +10236,8 @@ function _stockGetCategory(p) {
   if (/vacuna|vaccin|antibi|antiparasit|ivermec|pour.?on|clostr|aftosa|rabia|jeringa|aguja|sanidad|medicament|\bvet\b|dosis|ampoll|estreptomi|penicil|biotic|tetra|oxitetra|fenbenda|albenda|\bcura|sulfat|hierro|vitamin|complej.?b|fipronil|cypermet|piretroide|tatuad|caravan/.test(search)) return CAT.veterinario;
   if (/\bsal\b|mineral|calcimin|calcio|fosfor|magnesi|suplement|premix|sodio/.test(search)) return CAT.sal;
   if (/aceit|lubricant|grasa|hidr[áa]ulic|refrigerant|anticongel/.test(search)) return CAT.aceite;
-  if (/tornill|clav|alambre|martillo|llave|destornill|repuest|tuerca|perno|broca|disco|cuerda|piol[íi]n|herramient|infraest|filtro|manguera|correa|rodamiento/.test(search)) return CAT.herramienta;
+  if (/repuest|filtro|manguera|correa|rodamiento|tuerca|perno|broca|buj[íi]a|retén|reten\b|banda|disco de|kit de/.test(search)) return CAT.repuesto; /* v1.8.194 */
+  if (/tornill|clav|alambre|martillo|llave|destornill|disco|cuerda|piol[íi]n|herramient|infraest/.test(search)) return CAT.herramienta;
   return CAT.otros;
 }
 
@@ -10285,6 +10287,7 @@ function _stockRenderHub() {
     sal:         { count:0, value:0, unitsByUnit:{}, alerts:0 },
     aceite:      { count:0, value:0, unitsByUnit:{}, alerts:0 },
     herramienta: { count:0, value:0, unitsByUnit:{}, alerts:0 },
+    repuesto:    { count:0, value:0, unitsByUnit:{}, alerts:0 }, /* v1.8.194 */
     otros:       { count:0, value:0, unitsByUnit:{}, alerts:0 }
   };
   var totalCount = 0, totalValue = 0, totalAlerts = 0;
@@ -10327,7 +10330,8 @@ function _stockRenderHub() {
     { type:'veterinario', icon:'💉', label:'Veterinario',        bg:'rgba(248,113,113,.10)', fg:'#fca5a5', fgMuted:'#8b949e' },
     { type:'sal',         icon:'🧂', label:'Sal y suplem.',      bg:'rgba(251,191,36,.10)',  fg:'#fcd34d', fgMuted:'#8b949e' },
     { type:'aceite',      icon:'🛢️', label:'Aceites y lubric.',  bg:'rgba(96,165,250,.10)',  fg:'#93c5fd', fgMuted:'#8b949e' },
-    { type:'herramienta', icon:'🔧', label:'Herramientas',       bg:'rgba(167,139,250,.10)', fg:'#c4b5fd', fgMuted:'#8b949e' }
+    { type:'herramienta', icon:'🔧', label:'Herramientas',       bg:'rgba(167,139,250,.10)', fg:'#c4b5fd', fgMuted:'#8b949e' },
+    { type:'repuesto',    icon:'🔩', label:'Repuestos',          bg:'rgba(251,146,60,.10)',  fg:'#fdba74', fgMuted:'#8b949e' }
   ].forEach(function(c){
     var b = cats[c.type];
     hubHtml += _stockHubCard(c.type, c.icon, c.label, b.count + ' producto'+(b.count!==1?'s':''), 'Bs. ' + _fmtNum(Math.round(b.value)) + ' · ' + fmtUnits(b.unitsByUnit), b.alerts, _stockSelectedCategory === c.type, c.bg, c.fg, c.fgMuted);
@@ -10753,7 +10757,7 @@ function _stockRenderList(items) {
   }
 
   // Si "Todos" -> agrupar por categoría
-  var groups = { veterinario:[], sal:[], aceite:[], herramienta:[], otros:[] };
+  var groups = { veterinario:[], sal:[], aceite:[], herramienta:[], repuesto:[], otros:[] }; /* v1.8.194 */
   items.forEach(function(p){
     var cat = _stockGetCategory(p);
     if (groups[cat.type]) groups[cat.type].push(p);
@@ -10765,6 +10769,7 @@ function _stockRenderList(items) {
     { key:'sal',         icon:'🧂', label:'Sal y suplementos',     bg:'rgba(251,191,36,.10)',  fg:'#fcd34d', fgMuted:'#8b949e' },
     { key:'aceite',      icon:'🛢️', label:'Aceites y lubricantes', bg:'rgba(96,165,250,.10)',  fg:'#93c5fd', fgMuted:'#8b949e' },
     { key:'herramienta', icon:'🔧', label:'Herramientas',          bg:'rgba(167,139,250,.10)', fg:'#c4b5fd', fgMuted:'#8b949e' },
+    { key:'repuesto',    icon:'🔩', label:'Repuestos',             bg:'rgba(251,146,60,.10)',  fg:'#fdba74', fgMuted:'#8b949e' },
     { key:'otros',       icon:'📦', label:'Otros',                 bg:'rgba(48,54,61,.5)',     fg:'#c9d1d9', fgMuted:'#8b949e' }
   ];
 
