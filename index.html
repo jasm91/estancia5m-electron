@@ -710,7 +710,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.196'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
+window.E5M_HTML_BUILD = '1.8.197'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
 
 window.v175Diag = function () {
   var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
@@ -7695,6 +7695,7 @@ function pullFromRailwayDesktop(thenPush) {
     .then(function(remote) {
       try { if (remote && remote._versions) localStorage.setItem('e5m_table_versions', JSON.stringify(remote._versions)); } catch(eV){} // v1.8.115 SYNC V2
       try { if (remote && remote.tc_bcb && remote.tc_bcb.valor) { localStorage.setItem('e5m_tc_bcb', JSON.stringify(remote.tc_bcb)); if (typeof window.tcBcbRender === 'function') window.tcBcbRender(); } } catch(eTc){} /* v1.8.151: TC oficial BCB servido por server v4.42 */
+      try { if (remote && remote.animal_costos && typeof remote.animal_costos === 'object') { localStorage.setItem('e5m_animal_costos', JSON.stringify(remote.animal_costos)); } } catch(eAC){} /* v1.8.197: costo por cabeza (server v4.58.1) */
       if (!remote || remote.error) {
         if (thenPush) pushToRailway();
         return;
@@ -53403,7 +53404,7 @@ try {
   function gastosMes() { /* por mes: {compras, sueldos, diesel, mant} */
     var por = {};
     function add(m, k, v) { if (!/^\d{4}-\d{2}$/.test(m)) return; (por[m] = por[m] || { compras: 0, sueldos: 0, diesel: 0, mant: 0 })[k] += (Number(v) || 0); }
-    comprasR().forEach(function (p) { add(mesDe(p.date), 'compras', p.total); });
+    comprasR().forEach(function (p) { if (/^(maquinaria|infraestructura|vehiculo|vehículo)$/i.test(String(p.type || ''))) return; /* v1.8.197: CAPEX aparte */ add(mesDe(p.date), 'compras', p.total); });
     (db.historial_sueldos || []).forEach(function (s) {
       if (s.estado && String(s.estado).toLowerCase() !== 'pagado') return;
       var f = sueldoFecha(s); if (!enRango(f)) return;
@@ -53417,7 +53418,7 @@ try {
     (db.maintenance || []).forEach(function (m) { if (m && enRango(m.date || m.fecha)) add(mesDe(m.date || m.fecha), 'mant', m.cost); });
     return por;
   }
-  function ventaCab(v) { return Number(v.count || v.animal_count || v.qty) || 0; }
+  function ventaCab(v) { return Number(v.count || v.animal_count || v.animals || v.qty) || 0; } /* v1.8.197: +animals (ventas frigorífico) */
   function ventaKg(v) { return Number(v.kg || v.total_kg) || 0; }
 
   /* ── render ── */
@@ -53763,5 +53764,96 @@ try {
 
 </script>
 
+
+<script id="costo-cabeza-v18197">
+/* ═══════════════════════════════════════════════════════════════════════════
+   v1.8.197 — LA INVERSIÓN VIAJA CON LA CABEZA (server v4.58.1 · pedido José 01-09)
+   El server sella cada animal con su costo (`animal_costos`, viene en el pull).
+   Acá: (1) el header "Inversión ganado" = Σ costo de los animales vivos —
+   reorganizar lotes ya no la mueve; (2) chip "N al partido" (ganado de terceros,
+   no es inversión) y "N sin costo" reemplazan al viejo "Bs X sin contar";
+   (3) el Kardex arranca las filas en el saldo de apertura (900 vs 901).
+   Kill: __V197_OFF
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+  function costos() { try { return JSON.parse(localStorage.getItem('e5m_animal_costos') || 'null') || null; } catch (e) { return null; } }
+  function animales() { try { return (typeof getAnimalesDB === 'function') ? (getAnimalesDB() || {}) : {}; } catch (e) { return {}; } }
+  function idDe(a) { return String((a && (a.animal_id != null ? a.animal_id : a.id)) || ''); }
+  function resumen() {
+    var C = costos(); if (!C) return null;
+    var A = animales(), r = { total: 0, cab: 0, conCosto: 0, sinCosto: 0, nacidos: 0, partido: 0, socios: {}, estimados: 0, porLote: {} };
+    Object.keys(A).forEach(function (lc) {
+      var pl = r.porLote[lc] = { cab: 0, bs: 0, partido: 0, sinCosto: 0 };
+      (A[lc] || []).forEach(function (a) {
+        var id = idDe(a); if (!id) return; r.cab++; pl.cab++;
+        var c = C[id];
+        if (!c) { r.sinCosto++; pl.sinCosto++; return; }
+        if (c.partido) { r.partido++; pl.partido++; var s = c.partido.socio || '(sin socio)'; r.socios[s] = (r.socios[s] || 0) + 1; return; }
+        if (c.nacido) { r.nacidos++; return; }
+        var bs = Number(c.costo_bs) || 0; r.total += bs; pl.bs += bs; r.conCosto++; if (c.estimado) r.estimados++;
+      });
+    });
+    return r;
+  }
+  window.v197Inversion = resumen;
+  window.v197CostoDe = function (id) { var C = costos(); return C ? (C[String(id)] || null) : null; };
+  /* valor de un lote por sus cabezas (lo usan Análisis de Lote / header) */
+  window.v197ValorLote = function (code) { var r = resumen(); return (r && r.porLote[code]) ? r.porLote[code].bs : null; };
+
+  function fmt(n) { return 'Bs ' + (n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : Math.round(n).toLocaleString('es-BO')); }
+  function pintar() {
+    if (window.__V197_OFF) return;
+    var r = resumen(); if (!r || !r.cab) return;
+    var el = document.getElementById('tbs-valor'); if (!el) return;
+    if (r.conCosto || r.partido) {
+      el.textContent = r.total > 0 ? fmt(r.total) : '—';
+      el.title = 'Σ costo de compra de las ' + r.conCosto + ' cabezas vivas con asiento' + (r.estimados ? ' (' + r.estimados + ' con costo estimado por FIFO)' : '') + '. La inversión viaja con cada animal: reorganizar lotes no la cambia.';
+    }
+    var box = document.getElementById('v169-aviso');
+    /* el "sin contar" viejo ya no aplica: lo reemplazan los chips de abajo */
+    if (box) box.remove();
+    var chip = document.getElementById('v197-chip');
+    var partes = [], tip = [];
+    if (r.partido) { partes.push('🤝 ' + r.partido + ' al partido'); tip.push(r.partido + ' cab de terceros que se engordan acá (no son inversión): ' + Object.keys(r.socios).map(function (k) { return k + ' ' + r.socios[k]; }).join(' · ')); }
+    if (r.sinCosto) { partes.push('⚠ ' + r.sinCosto + ' sin costo'); tip.push(r.sinCosto + ' cabeza(s) sin asiento de costo — el server las sella al sincronizar; si persiste, la compra no las cubre.'); }
+    if (!partes.length) { if (chip) chip.remove(); return; }
+    if (!chip) { chip = document.createElement('span'); chip.id = 'v197-chip'; el.parentNode.appendChild(chip); }
+    chip.style.cssText = 'margin-left:8px;padding:1px 7px;border-radius:9px;font-size:10px;font-weight:700;cursor:help;' +
+      (r.sinCosto ? 'background:rgba(240,180,41,.16);color:#f0b429;border:1px solid rgba(240,180,41,.4)' : 'background:rgba(88,166,255,.14);color:#58a6ff;border:1px solid rgba(88,166,255,.4)');
+    chip.textContent = partes.join(' · '); chip.title = tip.join('\n');
+  }
+  if (typeof renderTopbarSummary === 'function' && !renderTopbarSummary.__v197) {
+    renderTopbarSummary = (function (base) { function w() { var r = base.apply(this, arguments); try { pintar(); } catch (e) {} return r; } w.__v197 = true; return w; })(renderTopbarSummary);
+    window.renderTopbarSummary = renderTopbarSummary;
+  }
+  /* el aviso v169 se dispara con retardo: si volvió a poner "sin contar", lo pisamos */
+  if (typeof window.v169Avisar === 'function' && !window.v169Avisar.__v197) {
+    var _a = window.v169Avisar; var w2 = function () { _a.apply(this, arguments); try { pintar(); } catch (e) {} }; w2.__v197 = true; window.v169Avisar = w2;
+  }
+  setTimeout(function () { try { pintar(); } catch (e) {} }, 7500);
+
+  /* ── Kardex: las filas arrancan en el saldo de apertura, no en 0 ── */
+  if (typeof renderKardexEstancia === 'function' && !renderKardexEstancia.__v197) {
+    renderKardexEstancia = (function (base) {
+      function w() {
+        var r = base.apply(this, arguments);
+        try {
+          var ap = (typeof window.v169Apertura === 'function') ? window.v169Apertura() : null;
+          var cab = ap && Number(ap.cab) || 0; if (!cab) return r;
+          var nodos = Array.prototype.filter.call(document.querySelectorAll('#page-kardex-estancia [id^="ke-"] div, #page-kardex-estancia div'), function (d) {
+            return d.children.length === 2 && /^SALDO$/i.test((d.children[1].textContent || '').trim()) && /^[\d.,]+$/.test((d.children[0].textContent || '').trim());
+          });
+          nodos.forEach(function (d) { var v = parseInt(String(d.children[0].textContent).replace(/[^\d]/g, ''), 10); if (isFinite(v) && !d.__v197) { d.__v197 = true; d.children[0].textContent = (v + cab).toLocaleString(); } });
+        } catch (e) {}
+        return r;
+      }
+      w.__v197 = true; return w;
+    })(renderKardexEstancia);
+    window.renderKardexEstancia = renderKardexEstancia;
+  }
+  console.log('[v1.8.197] costo por cabeza: header desde animal_costos · chips partido/sin costo · kardex con apertura');
+})();
+</script>
 </body>
 </html>
