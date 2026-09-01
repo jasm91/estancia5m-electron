@@ -710,7 +710,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.195'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
+window.E5M_HTML_BUILD = '1.8.196'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
 
 window.v175Diag = function () {
   var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
@@ -49695,7 +49695,19 @@ try {
           if (i && i._ts && (Date.now() - i._ts) > INTENCION_TTL) i = null;   /* pista vieja: se ignora */
           if (antes) {
             var evs = r0Derivar(antes, despues, i || {});
-            if (evs.length) { encolar(evs); flushPronto(); }
+            /* v1.8.196: un id con -DUPnnn solo lo fabrica el dedupe anti-colision del
+               MERGE (v1.8.78) — jamas una accion del usuario. Si un papelito lo toca,
+               es un artefacto de sync: se descarta y se re-basa la sombra. */
+            var esDup = function (id) { return /-DUP\d+$/.test(String(id || '')); };
+            var evsOk = evs.filter(function (ev) {
+              if (esDup(ev.animal_id)) return false;
+              if (ev.cambios && esDup(ev.cambios.id)) return false;
+              if (Array.isArray(ev.animales) && ev.animales.some(function (a) { return esDup(a && a.id); })) return false;
+              if (Array.isArray(ev.pesajes) && ev.pesajes.some(function (p) { return esDup(p && p.animal_id); })) return false;
+              return true;
+            });
+            if (evsOk.length !== evs.length) console.warn('[R0] ' + (evs.length - evsOk.length) + ' papelito(s) con ids -DUP descartados (artefacto del merge, no accion del usuario)');
+            if (evsOk.length) { encolar(evsOk); flushPronto(); }
           } else {
             console.log('[R0] primera corrida: se toma la foto base, no se emiten papelitos');
           }
@@ -49727,9 +49739,15 @@ try {
     if (typeof f !== 'function' || f.__r0) return;
     var w = (function (base, n) {
       function envolt() {
-        var res = suspender(function () { return base.apply(this, arguments); }.bind(this));
-        if (n !== 'getAnimalesDB') { try { setTimeout(function () { rebasar('después de ' + n); }, 5000); } catch (e) {} }
-        return res;
+        /* v1.8.196: el pull/merge es ASYNC — la suspension sincrona vieja no cubria el
+           setItem del merge (corria con la derivacion activa y la sombra vieja → el diff
+           se leia como altas/renombres del usuario → papelitos fantasma → +5 cabezas en
+           tenant 1 el 01-09). Ahora se congela hasta el mismo momento del re-base (5s). */
+        if (n === 'getAnimalesDB') return suspender(function () { return base.apply(this, arguments); }.bind(this));
+        suspendido++;
+        var soltar = function () { if (soltar._hecho) return; soltar._hecho = true; suspendido--; rebasar('después de ' + n); };
+        try { setTimeout(soltar, 5000); } catch (e) { soltar(); }
+        return base.apply(this, arguments);
       }
       envolt.__r0 = true;
       return envolt;
