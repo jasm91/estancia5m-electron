@@ -710,7 +710,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.192'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
+window.E5M_HTML_BUILD = '1.8.193'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
 
 window.v175Diag = function () {
   var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
@@ -7954,6 +7954,7 @@ function pullFromRailwayDesktop(thenPush) {
         { local: 'agro_labores',   remote: remote.agro_labores },    // v1.8.99 agro
         { local: 'agro_jornadas',  remote: remote.agro_jornadas },   // v1.8.179 tareas multi-dia (server v4.44)
         { local: 'agro_insumos',   remote: remote.agro_insumos },    // v1.8.99 agro
+        { local: 'casas_comerciales', remote: remote.casas_comerciales }, // v1.8.193 catálogo proveedores crédito
         { local: 'repro_semen',    remote: remote.repro_semen },     // v1.8.99 cabana
         { local: 'repro_te',       remote: remote.repro_te },        // v1.8.99 cabana
         { local: 'repro_temporada', remote: remote.repro_temporada }, // v1.8.99 cabana
@@ -53548,6 +53549,187 @@ try {
     window.showPage = (function (base) { var w = function (name, btn) { var r = base.apply(this, arguments); if (name === 'graficosbi') setTimeout(function () { try { render(); } catch (e) { console.warn('[GBI]', e); } }, 60); return r; }; w.__gbi = true; return w; })(_sp);
   }
   console.log('%c[v1.8.191] 📈 Gráficos BI (Reportes) — 10 gráficos ganadería · kill: __GBI_OFF', 'color:#3fb950;font-weight:bold');
+})();
+
+</script>
+
+<script id="casas-comerciales-v18193">
+/* ═══ v1.8.193 — 🏪 CASAS COMERCIALES (pedido Jose 31-08, sobre 30+ facturas reales).
+   Catálogo parametrizado de proveedores de insumos con sus condiciones de crédito:
+   moneda de facturación, TC de factura (6,96 — SOLO para derivar los USD; se paga
+   al TC del día), plazo en días, tasa de mora % anual (modelo Vermont) y modalidad
+   (fecha fija / a campaña). Sincroniza a EP Agro/Campo (server v4.55.0).
+   + Cuentas por Pagar: resumen agrupado POR CASA con saldo, mora y próximo venc.
+   Kill: __V193_OFF ═══ */
+(function () {
+  'use strict';
+  if (window.__V193_OFF) return;
+  var SEED = [ /* extraídas de las facturas de Chaco Lejos dic25–may26 */
+    { nombre: 'AGROPARCEL S.R.L.', nit: '289554029', telefono: '71624074', moneda: 'Bs', tc_factura: 6.96, plazo_dias: 30, tasa_mora: 0, modalidad: 'fecha', notas: 'Montero + Sucursal 5 · boleta de venta al crédito' },
+    { nombre: 'VERMONT INTERNATIONAL CORPORATION SRL', nit: '459147021', telefono: '', moneda: 'USD', tc_factura: 6.96, plazo_dias: 15, tasa_mora: 36, modalidad: 'campana', notas: 'Factura directo en USD · estado de cuenta con capital/interés · términos 15 días, 3 días o A CAMPAÑA' },
+    { nombre: 'AGROPARTNERS S.R.L.', nit: '1013879029', telefono: '', moneda: 'USD', tc_factura: 6.96, plazo_dias: 7, tasa_mora: 0, modalidad: 'fecha', notas: 'Vencimiento impreso en factura · "cancelar en USD o equivalente al TC oficial a la fecha de pago"' },
+    { nombre: 'AGROINCO SRL', nit: '1028459027', telefono: '', moneda: 'USD', tc_factura: 6.96, plazo_dias: 30, tasa_mora: 0, modalidad: 'fecha', notas: '' },
+    { nombre: 'COPERAGRO S.R.L.', nit: '210410020', telefono: '', moneda: 'USD', tc_factura: 6.96, plazo_dias: 30, tasa_mora: 0, modalidad: 'fecha', notas: '' },
+    { nombre: 'UPL BOLIVIA S.R.L.', nit: '144792027', telefono: '', moneda: 'Bs', tc_factura: 6.96, plazo_dias: 30, tasa_mora: 0, modalidad: 'fecha', notas: 'Facturas grandes en Bs' },
+    { nombre: 'Agripac Boliviana Agroindustrial S.A.', nit: '1028409020', telefono: '', moneda: 'Bs', tc_factura: 6.96, plazo_dias: 0, tasa_mora: 0, modalidad: 'fecha', notas: 'Suele ser contado' }
+  ];
+  function tabla() { if (!Array.isArray(db.casas_comerciales)) db.casas_comerciales = []; return db.casas_comerciales; }
+  function pushSrv() { try { if (typeof replaceTableInRailway === 'function') replaceTableInRailway('casas_comerciales', db.casas_comerciales || []); } catch (e) {} }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function money(n) { return (Number(n) || 0).toLocaleString('es-BO', { maximumFractionDigits: 2 }); }
+
+  function vista() {
+    var pg = document.getElementById('page-agro');
+    if (!pg || document.getElementById('ag-view-casascom')) return;
+    var w = document.createElement('div');
+    w.innerHTML =
+      '<div id="ag-view-casascom" class="ag-view">' +
+      '<div class="sub">Proveedores de insumos con sus condiciones de crédito. La deuda vive en USD (Bs de factura ÷ TC factura, o USD directo) y se cancela al TC del día del pago — el TC de factura NUNCA se usa para pagar. EP Agro y EP Campo precargan estas condiciones al comprar.</div>' +
+      '<div class="toolbar" style="gap:8px"><button class="btn btn-primary" onclick="ccOpen()">➕ Nueva casa comercial</button><span id="cc-seed-host"></span></div>' +
+      '<div class="panel"><div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Casa comercial</th><th>NIT</th><th>Factura en</th><th class="num">TC factura</th><th class="num">Plazo</th><th class="num">Mora %/año</th><th>Vence</th><th>Notas</th><th></th></tr></thead><tbody id="cc-tbody"></tbody></table></div></div>' +
+      '</div>';
+    while (w.firstChild) pg.appendChild(w.firstChild);
+    var m = document.createElement('div');
+    m.innerHTML =
+      '<div class="modal-overlay agx" id="ag-modal-casacom"><div class="modal" style="max-width:560px">' +
+      '<h3 id="cc-m-title">🏪 Casa comercial</h3>' +
+      '<input type="hidden" id="cc-id">' +
+      '<label class="form-label">Nombre *</label><input class="form-input" id="cc-nombre" placeholder="Ej: AGROPARTNERS S.R.L.">' +
+      '<div style="display:flex;gap:10px"><div style="flex:1"><label class="form-label">NIT</label><input class="form-input" id="cc-nit"></div>' +
+      '<div style="flex:1"><label class="form-label">Teléfono</label><input class="form-input" id="cc-tel"></div></div>' +
+      '<div style="display:flex;gap:10px"><div style="flex:1"><label class="form-label">Factura en</label><select class="form-select" id="cc-moneda"><option value="Bs">Bs</option><option value="USD">USD</option></select></div>' +
+      '<div style="flex:1"><label class="form-label">TC factura</label><input class="form-input" id="cc-tc" type="number" step="any" value="6.96"></div></div>' +
+      '<div style="display:flex;gap:10px"><div style="flex:1"><label class="form-label">Plazo (días)</label><input class="form-input" id="cc-plazo" type="number" min="0" step="1" placeholder="0 = contado"></div>' +
+      '<div style="flex:1"><label class="form-label">Mora (% anual)</label><input class="form-input" id="cc-mora" type="number" min="0" step="any" placeholder="Ej: 36"></div></div>' +
+      '<label class="form-label">Vencimiento</label><select class="form-select" id="cc-modalidad"><option value="fecha">Fecha fija (factura + plazo)</option><option value="campana">A campaña (vence al cierre de campaña)</option></select>' +
+      '<label class="form-label">Notas</label><input class="form-input" id="cc-notas">' +
+      '<div class="m-actions"><button class="btn btn-ghost" id="cc-del" style="display:none;margin-right:auto;color:var(--red)" onclick="ccDel()">🗑 Eliminar</button>' +
+      '<button class="btn btn-ghost" onclick="agCloseModal(\'ag-modal-casacom\')">Cancelar</button>' +
+      '<button class="btn btn-primary" onclick="ccSave()">💾 Guardar</button></div>' +
+      '</div></div>';
+    document.body.appendChild(m.firstElementChild); /* al body: lección v1.8.187 */
+  }
+  function render() {
+    var tb = document.getElementById('cc-tbody'); if (!tb) return;
+    var arr = tabla();
+    tb.innerHTML = arr.length ? arr.map(function (c) {
+      return '<tr><td><b>' + esc(c.nombre) + '</b></td><td>' + esc(c.nit || '—') + '</td><td>' + esc(c.moneda || 'Bs') + '</td>' +
+        '<td class="num">' + (c.tc_factura ? money(c.tc_factura) : '—') + '</td>' +
+        '<td class="num">' + (c.plazo_dias ? c.plazo_dias + ' d' : 'contado') + '</td>' +
+        '<td class="num">' + (c.tasa_mora ? money(c.tasa_mora) + '%' : '—') + '</td>' +
+        '<td>' + (c.modalidad === 'campana' ? '🌾 A campaña' : '📅 Fecha fija') + '</td>' +
+        '<td style="font-size:11px;color:var(--muted);max-width:260px">' + esc(c.notas || '') + '</td>' +
+        '<td><button class="btn btn-ghost btn-sm" onclick="ccOpen(\'' + esc(c.id) + '\')">✏️</button></td></tr>';
+    }).join('') : '<tr><td colspan="9" class="empty">Sin casas comerciales todavía.</td></tr>';
+    var sh = document.getElementById('cc-seed-host');
+    if (sh) sh.innerHTML = arr.length ? '' : '<button class="btn btn-ghost" onclick="ccSeed()">⚡ Cargar las 7 casas de las facturas (Agroparcel, Vermont, Agropartners…)</button>';
+  }
+  window.ccSeed = function () {
+    var arr = tabla(); if (arr.length) return;
+    var now = new Date().toISOString();
+    SEED.forEach(function (s, i) { arr.push(Object.assign({ id: 'cc' + (i + 1), created_at: now, updated_at: now }, s)); });
+    try { saveDB(); } catch (e) {}
+    pushSrv(); render();
+    if (typeof toast === 'function') toast('🏪 7 casas comerciales cargadas desde las facturas', 'success');
+  };
+  window.ccOpen = function (id) {
+    vista();
+    var c = id ? (tabla().find(function (x) { return String(x.id) === String(id); }) || null) : null;
+    document.getElementById('cc-m-title').textContent = c ? '✏️ ' + c.nombre : '➕ Nueva casa comercial';
+    document.getElementById('cc-id').value = c ? c.id : '';
+    document.getElementById('cc-nombre').value = c ? (c.nombre || '') : '';
+    document.getElementById('cc-nit').value = c ? (c.nit || '') : '';
+    document.getElementById('cc-tel').value = c ? (c.telefono || '') : '';
+    document.getElementById('cc-moneda').value = c ? (c.moneda || 'Bs') : 'Bs';
+    document.getElementById('cc-tc').value = c ? (c.tc_factura || 6.96) : 6.96;
+    document.getElementById('cc-plazo').value = c ? (c.plazo_dias || '') : '';
+    document.getElementById('cc-mora').value = c ? (c.tasa_mora || '') : '';
+    document.getElementById('cc-modalidad').value = c ? (c.modalidad || 'fecha') : 'fecha';
+    document.getElementById('cc-notas').value = c ? (c.notas || '') : '';
+    document.getElementById('cc-del').style.display = c ? 'inline-flex' : 'none';
+    agOpenModal('ag-modal-casacom');
+  };
+  window.ccSave = function () {
+    var id = document.getElementById('cc-id').value;
+    var nombre = (document.getElementById('cc-nombre').value || '').trim();
+    if (!nombre) { if (typeof toast === 'function') toast('El nombre es obligatorio', 'error'); return; }
+    var now = new Date().toISOString();
+    var data = { nombre: nombre, nit: (document.getElementById('cc-nit').value || '').trim(),
+      telefono: (document.getElementById('cc-tel').value || '').trim(),
+      moneda: document.getElementById('cc-moneda').value || 'Bs',
+      tc_factura: parseFloat(document.getElementById('cc-tc').value) || 6.96,
+      plazo_dias: parseInt(document.getElementById('cc-plazo').value, 10) || 0,
+      tasa_mora: parseFloat(document.getElementById('cc-mora').value) || 0,
+      modalidad: document.getElementById('cc-modalidad').value || 'fecha',
+      notas: (document.getElementById('cc-notas').value || '').trim(), updated_at: now };
+    var arr = tabla();
+    if (id) { var c = arr.find(function (x) { return String(x.id) === String(id); }); if (c) Object.assign(c, data); }
+    else { arr.push(Object.assign({ id: 'cc' + Date.now(), created_at: now }, data)); }
+    try { saveDB(); } catch (e) {}
+    pushSrv(); agCloseModal('ag-modal-casacom'); render();
+    if (typeof toast === 'function') toast('🏪 ' + nombre + ' guardada', 'success');
+  };
+  window.ccDel = function () {
+    var id = document.getElementById('cc-id').value; if (!id) return;
+    if (!confirm('¿Eliminar esta casa comercial? (las compras existentes no se tocan)')) return;
+    db.casas_comerciales = tabla().filter(function (x) { return String(x.id) !== String(id); });
+    try { saveDB(); } catch (e) {}
+    pushSrv(); agCloseModal('ag-modal-casacom'); render();
+  };
+
+  /* ── Cuentas por Pagar: estado de cuenta POR CASA (usa por_casa/mora del server v4.55) ── */
+  function cxpPorCasa() {
+    var view = document.getElementById('ag-view-credito'); if (!view) return;
+    var host = document.getElementById('cc-porcasa');
+    if (!host) {
+      host = document.createElement('div'); host.id = 'cc-porcasa'; host.className = 'panel';
+      host.style.cssText = 'padding:12px 16px';
+      view.insertBefore(host, view.children[1] || null);
+    }
+    host.innerHTML = '<h3 style="margin:0 0 8px">🏪 Por casa comercial</h3><div class="sub">cargando…</div>';
+    var api = (typeof getApiUrl === 'function') ? getApiUrl() : '';
+    var tok = localStorage.getItem('e5m_api_token') || '';
+    if (!api || !tok) { host.style.display = 'none'; return; }
+    fetch(api + '/credito/resumen', { headers: { 'Authorization': 'Bearer ' + tok } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var pc = (d && d.por_casa) || [];
+        if (!pc.length) { host.innerHTML = '<h3 style="margin:0 0 8px">🏪 Por casa comercial</h3><div class="sub">Sin deudas abiertas.</div>'; return; }
+        var hoy = new Date().toISOString().slice(0, 10);
+        host.innerHTML = '<h3 style="margin:0 0 8px">🏪 Por casa comercial</h3>' +
+          (d.mora_total_usd > 0 ? '<div class="sub" style="color:var(--red)">⚠ Mora acumulada: USD ' + money(d.mora_total_usd) + ' (informativa, al estilo del estado de cuenta del proveedor)</div>' : '') +
+          '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Casa</th><th class="num">Facturas</th><th class="num">Saldo USD</th><th class="num">Mora USD</th><th>Próx. venc.</th></tr></thead><tbody>' +
+          pc.map(function (g) {
+            var vencido = g.prox_venc && g.prox_venc < hoy;
+            return '<tr><td><b>' + esc(g.casa) + '</b>' + (g.nit ? ' <span style="font-size:10px;color:var(--muted)">NIT ' + esc(g.nit) + '</span>' : '') + '</td>' +
+              '<td class="num">' + g.n + '</td><td class="num"><b>' + money(g.saldo_usd) + '</b></td>' +
+              '<td class="num" style="color:' + (g.mora_usd > 0 ? 'var(--red)' : 'var(--muted)') + '">' + (g.mora_usd > 0 ? money(g.mora_usd) : '—') + '</td>' +
+              '<td style="color:' + (vencido ? 'var(--red)' : 'var(--text)') + '">' + (g.prox_venc || '—') + (vencido ? ' ⚠' : '') + '</td></tr>';
+          }).join('') + '</tbody></table></div>';
+      })
+      .catch(function () { host.innerHTML = '<h3 style="margin:0 0 8px">🏪 Por casa comercial</h3><div class="sub">Sin conexión — se muestra al reconectar.</div>'; });
+  }
+
+  /* ── instalación: botón en el sidebar + hooks ── */
+  function instalar() {
+    var body = document.querySelector('#nav-agro-btn .nav-sec-body');
+    if (!body || document.querySelector('#nav-agro-btn [data-label="Casas Comerciales"]')) return !!document.querySelector('#nav-agro-btn [data-label="Casas Comerciales"]');
+    var cred = document.querySelector('#nav-agro-btn [data-label="Crédito"]');
+    if (!cred) return false; /* esperar a que v181 arme el sidebar */
+    var b = document.createElement('button');
+    b.className = 'nav-btn'; b.setAttribute('data-label', 'Casas Comerciales');
+    b.innerHTML = '<span class="nav-icon">🏪</span><span class="nav-text">Casas Comerciales</span>';
+    b.addEventListener('click', function () { try { showPage('agro', b); } catch (e) {} vista(); try { agShowPage('casascom'); } catch (e) {} render(); });
+    cred.insertAdjacentElement('afterend', b);
+    vista();
+    if (typeof window.agShowPage === 'function' && !window.agShowPage.__v193) {
+      window.agShowPage = (function (base) { var w = function (name, btn2) { var r = base.apply(this, arguments); if (name === 'casascom') render(); if (name === 'credito') setTimeout(cxpPorCasa, 80); return r; }; w.__v193 = true; return w; })(window.agShowPage);
+    }
+    console.log('%c[v1.8.193] 🏪 Casas Comerciales + CxP por casa — kill: __V193_OFF', 'color:#3fb950;font-weight:bold');
+    return true;
+  }
+  var iv = setInterval(function () { try { if (instalar()) clearInterval(iv); } catch (e) { clearInterval(iv); } }, 600);
+  setTimeout(function () { clearInterval(iv); }, 25000);
 })();
 
 </script>
