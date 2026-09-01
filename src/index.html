@@ -710,7 +710,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.197'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
+window.E5M_HTML_BUILD = '1.8.198'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
 
 window.v175Diag = function () {
   var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
@@ -7956,6 +7956,7 @@ function pullFromRailwayDesktop(thenPush) {
         { local: 'agro_jornadas',  remote: remote.agro_jornadas },   // v1.8.179 tareas multi-dia (server v4.44)
         { local: 'agro_insumos',   remote: remote.agro_insumos },    // v1.8.99 agro
         { local: 'casas_comerciales', remote: remote.casas_comerciales }, // v1.8.193 catálogo proveedores crédito
+        { local: 'partido_liquidaciones', remote: remote.partido_liquidaciones }, // v1.8.198 liquidaciones al partido
         { local: 'repro_semen',    remote: remote.repro_semen },     // v1.8.99 cabana
         { local: 'repro_te',       remote: remote.repro_te },        // v1.8.99 cabana
         { local: 'repro_temporada', remote: remote.repro_temporada }, // v1.8.99 cabana
@@ -53853,6 +53854,219 @@ try {
     window.renderKardexEstancia = renderKardexEstancia;
   }
   console.log('[v1.8.197] costo por cabeza: header desde animal_costos · chips partido/sin costo · kardex con apertura');
+})();
+</script>
+
+<script id="partido-v18198">
+/* ═══════════════════════════════════════════════════════════════════════════
+   v1.8.198 — GANADO "AL PARTIDO" (pedido José 01-09)
+   Modalidad normal en el Chaco: un socio te deja su ganado, vos lo engordás en tu
+   campo y al vender/devolver se reparte la ganancia con un % que se pacta en ese
+   momento. No es inversión tuya. Tres piezas, todas por encima del wizard y de
+   las pantallas existentes (sin tocar su código):
+   ① Entrada: en "Comprar ganado", primer paso, "¿De quién es el ganado?" —
+      Compra propia / 🤝 Al partido. En partido pide socio en vez de proveedor,
+      no pide precio (queda Bs 0) y la compra sale con modalidad:'partido'.
+   ② Lotes: badge "🤝 N al partido · socio" en la fila del lote.
+   ③ Liquidación: botón "🤝 Liquidar" en el lote → peso entrada vs salida, kg
+      ganados, base (kg ganados o valor de venta), % tuyo → tu ingreso entra a
+      Contabilidad (INGRESOS · Partido) + registro en `partido_liquidaciones`; y
+      de ahí abrís la venta normal o la baja por devolución.
+   Kill: __V198_OFF
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+  var P = { on: false };
+  function $(id) { return document.getElementById(id); }
+  function _n(v) { var x = parseFloat(v); return isFinite(x) ? x : 0; }
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
+  function money(n) { return 'Bs ' + Math.round(_n(n)).toLocaleString('es-BO'); }
+
+  /* ── ① ENTRADA ────────────────────────────────────────────────── */
+  function inyectarTipo() {
+    var step = document.querySelector('#wc-modal .wc-step[data-step="modo"]'); if (!step || $('wc-tipo-box')) return;
+    var box = document.createElement('div'); box.id = 'wc-tipo-box';
+    box.innerHTML = '<div class="form-label">¿De quién es el ganado?</div>' +
+      '<div class="wc-modes" style="margin-bottom:14px">' +
+      '<div class="wc-tile on" id="wc-tipo-propio" onclick="v198Tipo(false)"><div style="font-size:24px">💵</div><div style="font-weight:700;margin-top:4px">Compra propia</div><div class="wc-md">Lo comprás vos: entra como inversión.</div></div>' +
+      '<div class="wc-tile" id="wc-tipo-partido" onclick="v198Tipo(true)"><div style="font-size:24px">🤝</div><div style="font-weight:700;margin-top:4px">Al partido</div><div class="wc-md">Ganado de un socio que engordás acá. No es inversión: se liquida al salir con el % que pacten.</div></div>' +
+      '</div>';
+    step.insertBefore(box, step.firstChild);
+  }
+  window.v198Tipo = function (on) {
+    P.on = !!on;
+    var a = $('wc-tipo-propio'), b = $('wc-tipo-partido');
+    if (a) a.classList.toggle('on', !on); if (b) b.classList.toggle('on', !!on);
+    aplicarEtiquetas();
+  };
+  function labelDe(inputId) { var i = $(inputId); if (!i) return null; var g = i.closest('.form-group'); return g ? g.querySelector('.form-label') : (i.previousElementSibling && i.previousElementSibling.classList.contains('form-label') ? i.previousElementSibling : null); }
+  function aplicarEtiquetas() {
+    var lp = labelDe('wc-prov'); if (lp) lp.textContent = P.on ? 'Socio / dueño del ganado' : 'Proveedor';
+    var pr = $('wc-prov'); if (pr) pr.placeholder = P.on ? 'Ej: La Victoria - Nelson Galvez' : '';
+    var pStep = document.querySelector('#wc-modal .wc-step[data-step="precio"]');
+    if (pStep) {
+      var nota = $('wc-partido-nota');
+      if (P.on) {
+        if (!nota) { nota = document.createElement('div'); nota.id = 'wc-partido-nota'; nota.style.cssText = 'padding:10px 12px;border:1px dashed var(--bor);border-radius:8px;font-size:12.5px;color:var(--muted);margin-bottom:10px'; pStep.insertBefore(nota, pStep.firstChild); }
+        nota.innerHTML = '🤝 <b>Al partido — sin precio de compra.</b> El ganado no es tuyo: el reparto (% sobre kilos ganados o sobre la venta) se define cuando lo liquides. Lo único importante acá es el <b>peso de entrada</b>, que ya cargaste.';
+        var inp = $('wc-precio'); if (inp) { inp.value = '0.01'; inp.closest('.form-group') && (inp.closest('.form-group').style.display = 'none'); }
+        var tot = $('wc-total'); if (tot && tot.parentNode) tot.parentNode.style.display = 'none';
+      } else {
+        if (nota) nota.remove();
+        var inp2 = $('wc-precio'); if (inp2) { if (inp2.value === '0.01') inp2.value = ''; inp2.closest('.form-group') && (inp2.closest('.form-group').style.display = ''); }
+        var tot2 = $('wc-total'); if (tot2 && tot2.parentNode) tot2.parentNode.style.display = '';
+      }
+    }
+  }
+  function parcharResumen() {
+    if (!P.on) return;
+    var s = $('wc-summary'); if (!s) return;
+    s.innerHTML = s.innerHTML.replace(/Proveedor:/, 'Socio:').replace(/<div style="font-size:16px;font-weight:700;color:var\(--green\);margin-top:6px">[^<]*<\/div>/,
+      '<div style="font-size:14px;font-weight:700;color:#58a6ff;margin-top:6px">🤝 Sin inversión — ganado de terceros al partido</div>');
+    s.innerHTML = s.innerHTML.replace(/ · 0\.01 Bs\/kg/, '');
+  }
+  if (typeof window.wcOpen === 'function' && !window.wcOpen.__v198) {
+    window.wcOpen = (function (base) { function w() { var r = base.apply(this, arguments); try { P.on = false; inyectarTipo(); v198Tipo(false); } catch (e) {} return r; } w.__v198 = true; return w; })(window.wcOpen);
+  }
+  if (typeof window.wcNav === 'function' && !window.wcNav.__v198) {
+    window.wcNav = (function (base) { function w() { var r = base.apply(this, arguments); try { aplicarEtiquetas(); setTimeout(parcharResumen, 0); } catch (e) {} return r; } w.__v198 = true; return w; })(window.wcNav);
+  }
+  /* post-guardado: la compra recién creada pasa a modalidad partido (precio 0, socio) */
+  if (typeof window.saveCompraGanado === 'function' && !window.saveCompraGanado.__v198) {
+    window.saveCompraGanado = (function (base) {
+      function w() {
+        var on = P.on, socio = ($('wc-prov') || {}).value || ($('cg-proveedor') || {}).value || '';
+        var antes = (db.compras_ganado || []).length;
+        var r = base.apply(this, arguments);
+        try {
+          if (!on) return r;
+          var cs = db.compras_ganado || []; if (cs.length <= antes) return r;
+          var c = cs[cs.length - 1];
+          c.modalidad = 'partido'; c.socio = socio; c.peso_entrada_kg = _n(c.total_kg); c.price_per_kg = 0; c.total = 0;
+          c.notes = ((c.notes || '') + ' · 🤝 Al partido de ' + socio).trim();
+          (db.kardex || []).forEach(function (k) { if (k && k.auto && k.lote === c.lot_code && k.tipo === 'compra' && Math.abs(_n(k.total)) < 1e6 && !k._v198) { k._v198 = true; k.total = 0; k.precio = 0; k.desc = '🤝 Entrada al partido de ' + socio + ' — ' + c.animal_count + ' cab.'; } });
+          var l = (db.lots || []).find(function (x) { return x && x.code === c.lot_code; });
+          if (l) l.partido = { socio: socio, compra_id: c.id };
+          localStorage.setItem(DB_KEY, JSON.stringify(db));
+          if (typeof replaceTableInRailway === 'function') { replaceTableInRailway('compras_ganado', db.compras_ganado); replaceTableInRailway('lots', db.lots); }
+          if (typeof toast === 'function') toast('🤝 Entrada al partido registrada — ' + c.animal_count + ' cab de ' + socio + ' (sin inversión)', 'success');
+          try { renderLotes(); } catch (e) {}
+        } catch (e) { console.warn('[v198] post-save', e); }
+        P.on = false;
+        return r;
+      }
+      w.__v198 = true; return w;
+    })(window.saveCompraGanado);
+  }
+
+  /* ── ② BADGE EN LOTES ─────────────────────────────────────────── */
+  function partidoDeLote(code) {
+    var r = (typeof window.v197Inversion === 'function') ? window.v197Inversion() : null;
+    var n = r && r.porLote[code] ? r.porLote[code].partido : 0;
+    var l = (db.lots || []).find(function (x) { return x && x.code === code; });
+    var socio = (l && l.partido && l.partido.socio) || '';
+    if (!socio) { var c = (db.compras_ganado || []).find(function (x) { return x && String(x.modalidad).toLowerCase() === 'partido' && ([x.lot_code].concat(x.lote_destinos || [])).indexOf(code) >= 0; }); if (c) socio = c.socio || c.proveedor || c.provider || ''; }
+    if (!n && !socio) return null;
+    return { n: n || (l ? _n(l.animal_count) : 0), socio: socio };
+  }
+  window.v198PartidoDeLote = partidoDeLote;
+  function badgesLotes() {
+    if (window.__V198_OFF) return;
+    var filas = document.querySelectorAll('#page-lotes tbody tr');
+    Array.prototype.forEach.call(filas, function (tr) {
+      var cell = tr.querySelector('td span'); if (!cell || tr.__v198) return;
+      var code = cell.textContent.trim(); var p = partidoDeLote(code); if (!p) return;
+      tr.__v198 = true;
+      var b = document.createElement('div'); b.style.cssText = 'margin-top:4px;font-size:10px;color:#58a6ff;font-weight:700';
+      b.textContent = '🤝 ' + p.n + ' al partido' + (p.socio ? ' · ' + p.socio : '');
+      cell.parentNode.appendChild(b);
+      var acc = tr.querySelector('td:last-child'); if (acc) { var btn = document.createElement('button'); btn.className = 'btn btn-ghost btn-sm'; btn.style.cssText = 'color:#58a6ff;border-color:rgba(88,166,255,.4)'; btn.textContent = '🤝 Liquidar'; btn.onclick = function () { window.v198Liquidar(code); }; acc.appendChild(btn); }
+    });
+  }
+  if (typeof renderLotes === 'function' && !renderLotes.__v198) {
+    renderLotes = (function (base) { function w() { var r = base.apply(this, arguments); try { badgesLotes(); } catch (e) {} return r; } w.__v198 = true; return w; })(renderLotes);
+    window.renderLotes = renderLotes;
+  }
+
+  /* ── ③ LIQUIDACIÓN ────────────────────────────────────────────── */
+  function pesoSalidaLote(code) {
+    var A = (typeof getAnimalesDB === 'function') ? (getAnimalesDB() || {}) : {};
+    var C = null; try { C = JSON.parse(localStorage.getItem('e5m_animal_costos') || 'null'); } catch (e) {}
+    var kg = 0, n = 0;
+    (A[code] || []).forEach(function (a) {
+      var id = String(a.animal_id || a.id || ''); var c = C && C[id];
+      if (C && c && !c.partido) return; /* solo las cabezas al partido si el server ya las sello */
+      var ps = (a.pesajes || []).filter(function (p) { return p && _n(p.peso) > 0; }).sort(function (x, y) { return String(x.fecha).localeCompare(String(y.fecha)); });
+      if (ps.length) { kg += _n(ps[ps.length - 1].peso); n++; }
+    });
+    return { kg: kg, n: n };
+  }
+  window.v198Liquidar = function (code) {
+    var p = partidoDeLote(code) || { n: 0, socio: '' };
+    var c = (db.compras_ganado || []).find(function (x) { return x && String(x.modalidad).toLowerCase() === 'partido' && ([x.lot_code].concat(x.lote_destinos || [])).indexOf(code) >= 0; });
+    var entradaKg = c ? _n(c.peso_entrada_kg || c.total_kg) : 0, entradaCab = c ? _n(c.animal_count) : p.n;
+    var sal = pesoSalidaLote(code);
+    var id = 'v198-modal';
+    var old = $(id); if (old) old.remove();
+    var d = document.createElement('div'); d.id = id; d.className = 'modal-overlay'; d.style.display = 'flex';
+    d.innerHTML = '<div class="modal" style="max-width:560px">' +
+      '<h2>🤝 Liquidar partido — ' + esc(code) + '</h2>' +
+      '<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">Socio: <b>' + esc(p.socio || (c && (c.socio || c.proveedor)) || '—') + '</b> · ' + p.n + ' cab al partido' + (c ? ' · entraron el ' + esc(c.fecha) : '') + '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+      '<div class="form-group"><label class="form-label">Peso de entrada (kg total)</label><input class="form-input" id="v198-ent" type="number" step="any" value="' + (entradaKg || '') + '" oninput="v198Calc()"></div>' +
+      '<div class="form-group"><label class="form-label">Peso de salida (kg total)</label><input class="form-input" id="v198-sal" type="number" step="any" value="' + (sal.kg ? Math.round(sal.kg) : '') + '" oninput="v198Calc()"><div style="font-size:11px;color:var(--muted);margin-top:3px">' + (sal.n ? 'Último pesaje de ' + sal.n + ' cab' : 'Sin pesajes recientes — cargalo de la báscula') + '</div></div>' +
+      '<div class="form-group"><label class="form-label">Base del reparto</label><select class="form-select" id="v198-base" onchange="v198Calc()"><option value="kg">Kilos ganados × precio</option><option value="venta">Valor total de la venta</option></select></div>' +
+      '<div class="form-group"><label class="form-label">Tu % <span style="color:var(--muted);font-weight:400">(se pacta ahora)</span></label><input class="form-input" id="v198-pct" type="number" step="any" min="0" max="100" value="50" oninput="v198Calc()"></div>' +
+      '<div class="form-group" id="v198-g-precio"><label class="form-label">Precio Bs/kg</label><input class="form-input" id="v198-precio" type="number" step="any" placeholder="18.50" oninput="v198Calc()"></div>' +
+      '<div class="form-group" id="v198-g-venta" style="display:none"><label class="form-label">Valor de venta (Bs)</label><input class="form-input" id="v198-venta" type="number" step="any" oninput="v198Calc()"></div>' +
+      '<div class="form-group" style="grid-column:1/-1"><label class="form-label">Fecha</label><input class="form-input" id="v198-fecha" type="date" value="' + new Date().toISOString().slice(0, 10) + '"></div>' +
+      '</div>' +
+      '<div id="v198-out" style="margin:8px 0 14px;padding:12px;border:1px solid var(--bor);border-radius:10px;font-size:13px;line-height:1.8"></div>' +
+      '<div class="form-actions" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">' +
+      '<button class="btn btn-ghost" onclick="document.getElementById(\'v198-modal\').remove()">Cancelar</button>' +
+      '<button class="btn btn-ghost" onclick="v198Guardar(\'devolucion\')" title="Registra tu ingreso y abre la baja por devolución al socio">↩ Vuelve al socio</button>' +
+      '<button class="btn btn-primary" onclick="v198Guardar(\'venta\')" title="Registra tu ingreso y abre la venta normal">💰 Se vende</button>' +
+      '</div></div>';
+    document.body.appendChild(d);
+    d.__code = code; d.__compra = c; d.__socio = p.socio || (c && (c.socio || c.proveedor)) || '';
+    window.v198Calc();
+  };
+  window.v198Calc = function () {
+    var ent = _n(($('v198-ent') || {}).value), sal = _n(($('v198-sal') || {}).value), pct = _n(($('v198-pct') || {}).value), base = ($('v198-base') || {}).value || 'kg';
+    $('v198-g-precio').style.display = base === 'kg' ? '' : 'none'; $('v198-g-venta').style.display = base === 'venta' ? '' : 'none';
+    var gan = Math.max(0, sal - ent), out = $('v198-out'), tot = 0, txt = '';
+    if (base === 'kg') { var pr = _n(($('v198-precio') || {}).value); tot = gan * pr * pct / 100; txt = 'Kilos ganados: <b>' + Math.round(gan).toLocaleString('es-BO') + ' kg</b> (' + Math.round(sal).toLocaleString('es-BO') + ' − ' + Math.round(ent).toLocaleString('es-BO') + ')<br>' + '× ' + pr + ' Bs/kg = ' + money(gan * pr) + ' de ganancia total<br>'; }
+    else { var vt = _n(($('v198-venta') || {}).value); tot = vt * pct / 100; txt = 'Valor de venta: <b>' + money(vt) + '</b>' + (gan ? ' · ' + Math.round(gan).toLocaleString('es-BO') + ' kg ganados' : '') + '<br>'; }
+    txt += 'Tu ' + pct + '% = <b style="font-size:16px;color:var(--green)">' + money(tot) + '</b> · el socio se lleva ' + money((base === 'kg' ? gan * _n(($('v198-precio') || {}).value) : _n(($('v198-venta') || {}).value)) - tot);
+    out.innerHTML = txt; out.__total = Math.round(tot * 100) / 100;
+  };
+  window.v198Guardar = function (destino) {
+    var d = $('v198-modal'); if (!d) return;
+    var tot = ($('v198-out') || {}).__total || 0, fecha = ($('v198-fecha') || {}).value || new Date().toISOString().slice(0, 10);
+    if (!(tot > 0)) { toast('Completá los datos: la liquidación da Bs 0', 'error'); return; }
+    var rec = { id: 'pl_' + Date.now(), lot_code: d.__code, socio: d.__socio, compra_id: d.__compra ? d.__compra.id : null, fecha: fecha,
+      peso_entrada_kg: _n($('v198-ent').value), peso_salida_kg: _n($('v198-sal').value), base: $('v198-base').value, pct: _n($('v198-pct').value),
+      precio_kg: _n(($('v198-precio') || {}).value), valor_venta: _n(($('v198-venta') || {}).value), ingreso_bs: tot, destino: destino,
+      by: (typeof OPERATOR_NAME !== 'undefined' ? OPERATOR_NAME : 'Desktop'), created_at: new Date().toISOString() };
+    if (!db.partido_liquidaciones) db.partido_liquidaciones = [];
+    db.partido_liquidaciones.push(rec);
+    if (!db.cuentas) db.cuentas = [];
+    db.cuentas.push({ id: Date.now(), cuenta: 'INGRESOS', subcuenta: 'Partido', tipo: 'VARIABLE', tipo_gasto: 'VARIABLE', fecha: fecha,
+      detalle: '🤝 Liquidación al partido — ' + d.__socio + ' · lote ' + d.__code + ' · ' + rec.pct + '% ' + (rec.base === 'kg' ? 'de ' + Math.round(rec.peso_salida_kg - rec.peso_entrada_kg) + ' kg ganados' : 'de la venta'),
+      monto: tot, by: 'Desktop', created_at: new Date().toISOString(), partido_id: rec.id });
+    if (d.__compra) { d.__compra.partido_liquidado = { id: rec.id, fecha: fecha, ingreso_bs: tot, destino: destino }; }
+    localStorage.setItem(DB_KEY, JSON.stringify(db));
+    if (typeof replaceTableInRailway === 'function') { replaceTableInRailway('cuentas', db.cuentas); replaceTableInRailway('partido_liquidaciones', db.partido_liquidaciones); replaceTableInRailway('compras_ganado', db.compras_ganado); }
+    d.remove();
+    toast('🤝 Liquidación registrada: ' + money(tot) + ' de ingreso por partido (' + d.__socio + ')', 'success');
+    try { if (typeof renderContabilidad === 'function') renderContabilidad(); } catch (e) {}
+    /* los animales salen por el flujo de siempre: venta normal o baja (devolución al socio) */
+    setTimeout(function () {
+      if (destino === 'venta') { if (typeof openModalSale === 'function') { openModalSale(); var sl = $('sale-lot'); if (sl) { sl.value = d.__code; sl.dispatchEvent(new Event('change')); } } }
+      else { if (typeof openBajaDirecta === 'function') openBajaDirecta(); toast('Registrá la baja de las cabezas devueltas con causa "Devolución al socio (partido)"', 'info'); }
+    }, 300);
+  };
+  console.log('[v1.8.198] 🤝 al partido: entrada en el wizard · badge en lotes · liquidación');
 })();
 </script>
 </body>
