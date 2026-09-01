@@ -710,7 +710,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.194'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
+window.E5M_HTML_BUILD = '1.8.195'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
 
 window.v175Diag = function () {
   var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
@@ -14742,6 +14742,12 @@ function switchTab(prefix,btnOrId,targetId) {
 // ══════════════════════════════════════════════════
 function esc(s){return escH(s);}
 function escH(str) { return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+/* v1.8.195: id como argumento string dentro de onclick="..." — JSON.stringify metia comillas
+   dobles LITERALES que cerraban el atributo antes de tiempo (handler cortado -> SyntaxError
+   "Unexpected end of input" al tocar ✏️/🗑 en Stock Agro, servicios, maquinaria). Con &quot;
+   el parser de HTML entrega al JS el string bien cerrado. */
+function agIdq(v){ return '&quot;' + String(v==null?'':v).replace(/[\\"'<>&]/g,'') + '&quot;'; }
+window.agIdq = agIdq;
 
 // v1.4.109: normalizar valor de scope para tratamientos. Bot WhatsApp inconsistentemente
 // generaba "lote" (español) o "lot" (inglés). Esta función devuelve siempre el valor canónico.
@@ -43961,7 +43967,7 @@ function agRenderInsumos(){
   var d=agGetDB(), html='';
   d.insumos.forEach(function(i){
     /* v1.8.176: ids como string (los del stock son 'S<id>') + badge de origen */
-    var idq=JSON.stringify(String(i.id));
+    var idq=agIdq((i.id));
     var badge=i._stock?' <span style="font-size:9px;background:rgba(63,185,80,.15);color:var(--green);padding:1px 6px;border-radius:8px">📦 Stock</span>':'';
     var acc=i._stock
       ? '<button class="btn btn-ghost btn-sm" title="Se edita en Stock" onclick="agEditInsumo('+idq+')">✏️</button>'
@@ -44991,16 +44997,16 @@ document.addEventListener('click', function(ev){
       Tm += Number(s.monto) || 0; Ta += asig;
       var chips = (s.asignaciones || []).map(function (a, i) {
         var c = agById(d.campanas, a.campana_id);
-        return '<div class="agm-asig-row">' + escA(c ? campLabel(d, c) : '?') + ': <b>Bs ' + fmtA(a.monto) + '</b> (' + agFecha(a.fecha) + ') <a href="#" onclick="agmQuitarAsignacion(' + JSON.stringify(String(s.id)) + ',' + i + ');return false" style="color:var(--red)">✕</a></div>';
+        return '<div class="agm-asig-row">' + escA(c ? campLabel(d, c) : '?') + ': <b>Bs ' + fmtA(a.monto) + '</b> (' + agFecha(a.fecha) + ') <a href="#" onclick="agmQuitarAsignacion(' + agIdq((s.id)) + ',' + i + ');return false" style="color:var(--red)">✕</a></div>';
       }).join('') || '<span style="color:var(--muted);font-size:12px">— sin asignar —</span>';
       html += '<tr><td>' + agFecha(s.fecha) + '</td><td>' + escA(s.proveedor || '—') + '</td><td>' + escA(s.concepto || '—') + '</td>' +
         '<td class="num">' + fmtA(s.monto) + '</td><td class="num">' + fmtA(asig) + '</td>' +
         '<td class="num">' + (pend > 0 ? '<span class="agm-pend">' + fmtA(pend) + '</span>' : '<span class="agm-ok">0 ✓</span>') + '</td>' +
         '<td>' + (s.plan_n || 1) + ' camp.</td><td>' + chips + '</td>' +
         '<td style="white-space:nowrap">' +
-        (pend > 0 ? '<button class="btn btn-primary btn-sm" onclick="agmOpenAsignar(' + JSON.stringify(String(s.id)) + ')">📌 Asignar</button> ' : '') +
-        '<button class="btn btn-ghost btn-sm" onclick="agmOpenServicio(' + JSON.stringify(String(s.id)) + ')">✏️</button> ' +
-        '<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agmDelServicio(' + JSON.stringify(String(s.id)) + ')">🗑</button></td></tr>';
+        (pend > 0 ? '<button class="btn btn-primary btn-sm" onclick="agmOpenAsignar(' + agIdq((s.id)) + ')">📌 Asignar</button> ' : '') +
+        '<button class="btn btn-ghost btn-sm" onclick="agmOpenServicio(' + agIdq((s.id)) + ')">✏️</button> ' +
+        '<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agmDelServicio(' + agIdq((s.id)) + ')">🗑</button></td></tr>';
     });
     tb.innerHTML = html || '<tr><td colspan="9" class="empty">Sin servicios externos. Registrá el primero (desmonte, nivelación, encalado…).</td></tr>';
     var cards = agEl('agsx-cards');
@@ -45106,7 +45112,7 @@ document.addEventListener('click', function(ev){
     rows.forEach(function (l) {
       var c = agById(d.campanas, l.campana_id), cost = laborCosto(l);
       html += '<tr><td>' + agFecha(l.fecha) + '</td><td>' + escA(l.notas || '—') + '</td><td>' + escA(c ? campLabel(d, c) : '?') + '</td><td>' + escA(l.resp || '—') + '</td><td>' + escA(l.maquina || '—') + '</td><td class="num">' + fmtA(l.hmaq, 1) + '</td><td class="num">' + fmtA(l.diesel, 1) + '</td><td class="num">' + fmtA(cost.total) + '</td>' +
-        '<td><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agDelLabor(' + JSON.stringify(String(l.id)) + ')">🗑</button></td></tr>';
+        '<td><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agDelLabor(' + agIdq((l.id)) + ')">🗑</button></td></tr>';
     });
     tb.innerHTML = html || '<tr><td colspan="9" class="empty">Sin trabajos de maquinaria. El primero se registra con el botón de arriba.</td></tr>';
   }
@@ -45122,7 +45128,7 @@ document.addEventListener('click', function(ev){
       html += '<tr><td>' + escA(i.nombre) + '</td><td>' + escA(i.unidad) + '</td><td class="num">' + fmtA(i.costo, 2) + '</td>' +
         '<td class="num" style="' + (low ? 'color:var(--red);font-weight:700' : '') + '">' + fmtA(i.stock, 1) + '</td>' +
         '<td class="num">' + fmtA(valor) + '</td>' +
-        '<td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="agOpenInsumos();agEditInsumo(' + JSON.stringify(String(i.id)) + ')">✏️</button></td></tr>';
+        '<td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="agOpenInsumos();agEditInsumo(' + agIdq((i.id)) + ')">✏️</button></td></tr>';
     });
     tb.innerHTML = html || '<tr><td colspan="6" class="empty">Sin insumos agro. Cargá el primero con "Gestionar catálogo".</td></tr>';
     var cards = agEl('agsk-cards');
