@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('estancia', {
 
   // ── DevTools a pedido (v1.8.201) ─────────────────────────
   devtools: { toggle: () => ipcRenderer.invoke('devtools:toggle') },
+  ui: { setZoom: (z) => ipcRenderer.invoke('ui:zoom', z) }, /* v1.8.205 */
 
   // ── Settings ─────────────────────────────────────────────
   settings: {

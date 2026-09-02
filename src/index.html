@@ -33,12 +33,12 @@ html[data-theme="light"]{
   --bg2:#EDF1F6;--border:#D8DEE6;
 }
 html{scroll-behavior:smooth}
-body{background:var(--bg);color:var(--text);font-family:Inter,'Segoe UI Emoji','Apple Color Emoji','Noto Color Emoji','Segoe UI Symbol',-apple-system,BlinkMacSystemFont,sans-serif;font-size:14px;line-height:1.55;min-height:100vh;overflow-x:hidden;font-feature-settings:'cv02','cv03','cv04','cv11','tnum';-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+body{background:var(--bg);color:var(--text);font-family:Inter,'Segoe UI Emoji','Apple Color Emoji','Noto Color Emoji','Segoe UI Symbol',-apple-system,BlinkMacSystemFont,sans-serif;font-size:14px;line-height:1.55;min-height:calc(100vh / var(--e5m-zoom,1));overflow-x:hidden;font-feature-settings:'cv02','cv03','cv04','cv11','tnum';-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
 /* Forzar uso de la fuente de emoji color en spans con la clase emoji */
 .emoji,.emj{font-family:'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif}
 
 /* LAYOUT — v1.4.71 sidebar colapsable */
-.app{display:grid;grid-template-columns:var(--sidebar-w,224px) 1fr;grid-template-rows:56px 1fr;min-height:100vh;transition:grid-template-columns .25s cubic-bezier(.4,0,.2,1)}
+.app{display:grid;grid-template-columns:var(--sidebar-w,224px) 1fr;grid-template-rows:auto 1fr;min-height:calc(100vh / var(--e5m-zoom,1));transition:grid-template-columns .25s cubic-bezier(.4,0,.2,1)}
 .app.sidebar-collapsed{--sidebar-w:64px}
 .topbar{grid-column:1/-1;background:var(--sur);border-bottom:1px solid var(--bor);display:flex;align-items:center;padding:0 24px;gap:16px;position:sticky;top:0;z-index:100}
 .logo{font-weight:800;font-size:16px;color:var(--amber);letter-spacing:.05em}
@@ -69,7 +69,7 @@ body{background:var(--bg);color:var(--text);font-family:Inter,'Segoe UI Emoji','
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 
 /* SIDEBAR — v1.4.71 premium look */
-.sidebar{background:var(--sur);border-right:1px solid var(--bor);padding:14px 0 18px;position:sticky;top:56px;height:calc(100vh - 56px);overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;overscroll-behavior:contain} /* v1.8.106c: la rueda sobre el sidebar scrollea SOLO el sidebar (no encadena a la página) */
+.sidebar{background:var(--sur);border-right:1px solid var(--bor);padding:14px 0 18px;position:sticky;top:var(--e5m-tb,56px);height:calc(100vh / var(--e5m-zoom,1) - var(--e5m-tb,56px));box-sizing:border-box;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;overscroll-behavior:contain} /* v1.8.106c: la rueda sobre el sidebar scrollea SOLO el sidebar (no encadena a la página) */
 /* v1.8.174 · menu-scroll-v18175: el sidebar es flex column y sus hijos tenian
    flex-shrink:1 → cuando el menu no entraba, en vez de aparecer la barra de scroll
    las secciones se COMPRIMIAN y, como .nav-sec-body tiene overflow:hidden, se comian
@@ -370,6 +370,14 @@ function setTheme(t){
   if (bl) { bl.style.background = (t==='light') ? 'var(--sur2)' : 'transparent'; bl.style.color = (t==='light') ? 'var(--text)' : 'var(--muted)'; }
 }
 document.addEventListener('DOMContentLoaded', function(){ try { setTheme(localStorage.getItem('e5m_theme')==='light' ? 'light':'dark'); } catch(e){} });
+/* v1.8.205 · sidebar: el topbar mide ~62px (resumen de cabezas) y no 56 → el sidebar arrancaba 6px más abajo
+   y con padding fuera del alto (content-box) su parte de abajo quedaba DEBAJO del borde de la ventana: los últimos
+   items solo se veían colapsando secciones. Ahora el alto sale del topbar real y el padding va adentro (border-box). */
+(function(){
+  function medir(){ try { var tb=document.querySelector('.topbar'); if(!tb) return; var h=Math.round(tb.offsetHeight); /* offsetHeight: px de layout, no afectados por CSS zoom */ if(h>0) document.documentElement.style.setProperty('--e5m-tb', h+'px'); } catch(e){} }
+  function arrancar(){ medir(); try { if (window.ResizeObserver) { var tb=document.querySelector('.topbar'); if (tb) new ResizeObserver(medir).observe(tb); } } catch(e){} window.addEventListener('resize', medir); setTimeout(medir, 1500); }
+  if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', arrancar); else arrancar();
+})();
 function showPage(name,btn){
   document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');});
   document.querySelectorAll('.nav-btn').forEach(function(b){b.classList.remove('active');});
@@ -716,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.204'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
+window.E5M_HTML_BUILD = '1.8.205'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
 
 window.v175Diag = function () {
   var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
@@ -45792,8 +45800,13 @@ function uiScaleGet(){
 }
 function uiScaleApply(){
   var z=uiScaleGet(), nativo=false;
-  try { var wf=require('electron').webFrame; if (wf && wf.setZoomFactor){ wf.setZoomFactor(z); nativo=true; } } catch(e){}
-  if (!nativo) { try { document.documentElement.style.zoom=String(z); } catch(e2){} }
+  /* v1.8.205: require('electron') NUNCA funcionó en el renderer (contextIsolation) → siempre caía al CSS zoom,
+     y con zoom en <html> todo lo que usa 100vh (sidebar, modales, botón del bot) desborda un 10% por abajo:
+     el menú lateral "se trababa" y sus últimos items solo se veían colapsando secciones. Ahora zoom nativo por IPC. */
+  try { if (window.estancia && window.estancia.ui && window.estancia.ui.setZoom) { window.estancia.ui.setZoom(z); nativo=true; } } catch(e){}
+  try { var wf=require('electron').webFrame; if (!nativo && wf && wf.setZoomFactor){ wf.setZoomFactor(z); nativo=true; } } catch(e){}
+  if (nativo) { try { document.documentElement.style.zoom=''; document.documentElement.style.setProperty('--e5m-zoom','1'); } catch(e3){} }
+  else { try { document.documentElement.style.zoom=String(z); document.documentElement.style.setProperty('--e5m-zoom',String(z)); } catch(e2){} }
   try {
     document.querySelectorAll('.uisc-btn').forEach(function(b){
       var on=parseFloat(b.getAttribute('data-z'))===z;

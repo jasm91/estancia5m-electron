@@ -292,6 +292,7 @@ ipcMain.handle('sync:status', async () => {
 });
 
 // SETTINGS
+ipcMain.handle('ui:zoom', (e, z) => { try { z = Number(z); if (!(z > 0.5 && z < 3)) z = 1; e.sender.setZoomFactor(z); return e.sender.getZoomFactor(); } catch (err) { return null; } }); /* v1.8.205: zoom nativo (antes caía a CSS zoom y 100vh desbordaba 10%) */
 ipcMain.handle('devtools:toggle', (e) => { try { const wc = e.sender; if (wc.isDevToolsOpened()) wc.closeDevTools(); else wc.openDevTools({ mode: 'right' }); return wc.isDevToolsOpened(); } catch (err) { return false; } }); /* v1.8.201 */
 ipcMain.handle('settings:get', (_, key) => store.get(key));
 ipcMain.handle('settings:set', (_, key, value) => { store.set(key, value); return true; });
