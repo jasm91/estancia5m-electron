@@ -711,7 +711,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.202'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
+window.E5M_HTML_BUILD = '1.8.203'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
 
 window.v175Diag = function () {
   var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
@@ -53539,11 +53539,13 @@ try {
 
     /* 10 · participación por raza (stock actual — no filtra por fecha) */
     var razas = {};
+    /* v1.8.202: los animales NO están en db.animals — viven en e5m_animals (getAnimalesDB); el lote guarda la raza en lot.breed */
+    var ANI = (typeof getAnimalesDB === 'function' ? getAnimalesDB() : null) || db.animals || {};
     (db.lots || []).forEach(function (l) {
       if (!l || !l.code) return; var st = String(l.status || '').toLowerCase(); if (st === 'sold' || st === 'vendido') return;
-      var anims = (db.animals || {})[l.code];
-      if (Array.isArray(anims) && anims.length) { anims.forEach(function (a) { var r = (a.breed || a.raza || '').trim() || 'Sin raza'; razas[r] = (razas[r] || 0) + 1; }); }
-      else { var r2 = (l.race || l.raza || '').trim() || 'Sin raza'; razas[r2] = (razas[r2] || 0) + (Number(l.animal_count) || 0); }
+      var anims = ANI[l.code];
+      if (Array.isArray(anims) && anims.length) { anims.forEach(function (a) { var r = String(a.breed || a.raza || l.breed || '').trim() || 'Sin raza'; razas[r] = (razas[r] || 0) + 1; }); }
+      else { var r2 = String(l.breed || l.race || l.raza || '').trim() || 'Sin raza'; razas[r2] = (razas[r2] || 0) + (Number(l.animal_count) || 0); }
     });
     var topRz = Object.keys(razas).map(function (k) { return [k, razas[k]]; }).sort(function (a, b2) { return b2[1] - a[1]; }).slice(0, 8);
     grafico('gb-c10', { type: 'doughnut',
