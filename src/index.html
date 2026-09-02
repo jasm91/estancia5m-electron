@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.205'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
+window.E5M_HTML_BUILD = '1.8.207'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
 
 window.v175Diag = function () {
   var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
@@ -41675,10 +41675,16 @@ function saveReproParto() {
           var pIdx = db.partos.findIndex(function(p){ return String(p.id) === String(record.id); });
           if (pIdx !== -1) db.partos[pIdx].cria_id = criaAnimalId;
         }
+        /* v1.8.206: la RAZA del ternero es la del lote/madre; "Torillo"/"Ternera" es CATEGORÍA, no raza
+           (antes se guardaba como breed y contaminaba la dona de razas del BI y los filtros). */
+        var _v206Lot = (db.lots || []).find(function (l) { return l && l.code === lote; }) || {};
+        var _v206Madre = (animDB[lote] || []).find(function (x) { return String(x.animal_id || x.id || '') === String(madre); }) || {};
+        var _v206Raza = (_v206Madre.breed && !/^(torillo|ternera|ternero|toro|vaca|vaquillona|novillo|f1)$/i.test(_v206Madre.breed) ? _v206Madre.breed : '') || _v206Lot.breed || '';
         animDB[lote].push({
           animal_id: criaAnimalId,
-          breed: sexo === 'macho' ? 'Torillo' : 'Ternera',
-          raza: sexo === 'macho' ? 'Torillo' : 'Ternera',
+          breed: _v206Raza,
+          raza: _v206Raza,
+          categoria: sexo === 'macho' ? 'torillo' : 'ternera',
           sexo: sexo,
           madre_id: madre,
           padre_id: padre,
@@ -49164,12 +49170,13 @@ try {
 
   // Costos DIRECTOS del lote (misma lógica que _ahRenderCostos): sanidad + mantenimiento
   function _ckDirectos(code){
+    if (typeof window.v207Directos === 'function') { var _r7 = window.v207Directos(code); if (_r7) return _r7; } /* v1.8.207: sanidad por linaje del animal */
     var products=_ckProducts();
     var treatments=((typeof db!=='undefined'&&db.treatments)||[]).filter(function(t){return t.lot_code===code;});
     var mant=((typeof db!=='undefined'&&db.mantenimientos)||[]).filter(function(m){return m.lot_code===code;});
     var costoSan=0;
     treatments.forEach(function(t){
-      var c=parseFloat(t.cost||0); if(c>0){ costoSan+=c; return; }
+      var c=parseFloat(t.cost||0)||parseFloat(t.total||0); if(c>0){ costoSan+=c; return; } /* v1.8.207: el gasto vive en `total` (cost suele ser 0) */
       var prod=products.find(function(p){return p.id===t.product_id||p.name===t.product_name;});
       var uc=prod?parseFloat(prod.unit_cost||prod.cost||0):0;
       if(uc>0){ var q=parseFloat(t.count||t.quantity||0)||0; costoSan+=q*uc; }
@@ -49329,13 +49336,13 @@ try {
         '<h1>Desglose de Costo por kg producido</h1>'+
         '<div class="sub">'+esc(estancia)+' · Lote <b>'+esc(lotCode)+'</b>'+(lot.category?(' · '+esc(lot.category)):'')+' · Emitido '+hoy+'</div>'+
         '<h2>1. Período del cálculo (prorrateo)</h2>'+
-        '<table><tr><td>Ingreso del lote</td><td class="r">'+esc(lot.entry_date||'—')+'</td></tr>'+
+        '<table><tr><td>Ingreso del lote'+(ind&&ind.linaje?' <span style="font-weight:400;color:#888">(entrada más antigua de sus animales)</span>':'')+'</td><td class="r">'+esc((ind&&ind.fechaEntradaReal)||lot.entry_date||'—')+'</td></tr>'+
         '<tr><td>Cabezas-días del lote</td><td class="r">'+fn(ind.cabDiasLote||0)+'</td></tr>'+
         '<tr><td>Cabezas-días del rebaño</td><td class="r">'+fn(ind.cabDiasTotal||0)+'</td></tr>'+
         '<tr class="tot"><td>Fracción del lote</td><td class="r">'+fra+'%</td></tr></table>'+
         '<h2>2. Costos directos (atribuidos al lote)</h2>'+
         '<table><tr><th>Concepto</th><th class="r">'+mon+'</th></tr>'+
-        '<tr><td>Sanidad (tratamientos del lote)</td><td class="r">'+mon+' '+fn(dir.sanidad)+'</td></tr>'+
+        '<tr><td>Sanidad (tratamientos del lote)'+(dir&&dir.linaje?'<div style="font-size:11px;color:#888;font-weight:400">por animal, siguiendo su historia de lotes: '+Object.keys(dir.detalle||{}).slice(0,8).map(function(k){return esc(k)+' '+fn(dir.detalle[k]);}).join(' · ')+(Object.keys(dir.detalle||{}).length>8?' · …':'')+'</div>':'')+'</td><td class="r">'+mon+' '+fn(dir.sanidad)+'</td></tr>'+
         '<tr><td>Mantenimiento del lote</td><td class="r">'+mon+' '+fn(dir.mantenimiento)+'</td></tr>'+
         /* v1.8.163: sal/alimento valorizado a costo de Stock = costo DIRECTO del lote */
         ((ind.salDirectoBs||0)>0 ? ('<tr><td>Sal / alimento — consumo del lote ('+fn(ind.salDirectoKg||0)+' kg a costo de Stock)'+
@@ -53570,7 +53577,7 @@ try {
     (db.lots || []).forEach(function (l) {
       if (!l || !l.code) return; var st = String(l.status || '').toLowerCase(); if (st === 'sold' || st === 'vendido') return;
       var anims = ANI[l.code];
-      if (Array.isArray(anims) && anims.length) { anims.forEach(function (a) { var r = String(a.breed || a.raza || l.breed || '').trim() || 'Sin raza'; razas[r] = (razas[r] || 0) + 1; }); }
+      if (Array.isArray(anims) && anims.length) { anims.forEach(function (a) { var r = (typeof window.v206Raza === 'function' ? window.v206Raza(a, l) : String(a.breed || a.raza || l.breed || '').trim()) || 'Sin raza'; razas[r] = (razas[r] || 0) + 1; }); } /* v1.8.206: Torillo/Ternera son categoría → raza del lote */
       else { var r2 = String(l.breed || l.race || l.raza || '').trim() || 'Sin raza'; razas[r2] = (razas[r2] || 0) + (Number(l.animal_count) || 0); }
     });
     var topRz = Object.keys(razas).map(function (k) { return [k, razas[k]]; }).sort(function (a, b2) { return b2[1] - a[1]; }).slice(0, 8);
@@ -54122,5 +54129,397 @@ try {
   console.log('[v1.8.198] 🤝 al partido: entrada en el wizard · badge en lotes · liquidación');
 })();
 </script>
+<script id="actividad-v18206">
+/* ═══════════════════════════════════════════════════════════════════════════
+   v1.8.206 — ACTIVIDAD PRODUCTIVA DEL LOTE (fase 1 + 2 del diseño "Actividades y Cabaña", 02-09)
+   Cría · Recría · Engorde · Cabaña. Es la dimensión por la que se separan unidad de medida, KPIs y
+   forma de venta (AgriWebb "enterprise", CattleMax commercial/registered). Ortogonal al "al partido"
+   (propiedad, v1.8.198) y a la categoría (vaca/torillo/…).
+   ① lot.actividad con default 'engorde' (= lo que el sistema asumía). Lotes nacidos de un "Mover" heredan
+      la del lote de origen (cadena animal_movements) sin escribir nada.
+   ② Lotes: chips de filtro por actividad + badge clickeable en cada fila para cambiarla.
+   ③ Sugerencia única por tenant: nombre CABAÑA → cabaña; categoría vaca/vaquillona, partos en el lote o
+      nombre LECHERIA → cría. Modal de confirmación, nunca automático.
+   ④ Wizard de compra: "¿Para qué actividad?" en el paso 1; el lote nuevo sale con esa actividad.
+   ⑤ Reproducción: selectores de lote (servicio y parto) solo listan cría/cabaña cuando existe al menos uno.
+      El primer lote cabaña prende el módulo Cabaña (perfil_cabana) solo.
+   ⑥ Helpers de categoría/raza: "Torillo"/"Ternera" guardados como raza se leen como categoría y la raza
+      sale del lote (BI raza + futuros filtros) — sin reescribir e5m_animals (no dispara papelitos R0).
+   Kill: __V206_OFF
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+  if (window.__V206_OFF) return;
+  var ACT = {
+    engorde: { ico: '🥩', nom: 'Engorde', col: '#e0a94a', desc: 'Compra por kg, engorda y vende por kg. Unidad: el kilo.' },
+    recria:  { ico: '📈', nom: 'Recría',  col: '#7ab8e0', desc: 'Del destete a los ~300 kg. Después pasa a engorde.' },
+    cria:    { ico: '🌱', nom: 'Cría',    col: '#6fcf7f', desc: 'Vientres y toros. Unidad: el vientre. Produce terneros.' },
+    cabana:  { ico: '🏆', nom: 'Cabaña',  col: '#bc8cff', desc: 'Reproductores con ficha individual, genealogía y registro. Se venden por cabeza.' }
+  };
+  var CATS = /^(torillo|ternera|ternero|toro|vaca|vaquillona|novillo|novilla|f1)$/i;
+  var FILTRO = 'todas';
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
+  function lots() { return (typeof db !== 'undefined' && db && Array.isArray(db.lots)) ? db.lots : []; }
+  function lotDe(code) { return lots().find(function (l) { return l && l.code === code; }) || null; }
+  function norm(a) { a = String(a || '').toLowerCase().replace('ñ', 'n'); return ACT[a] ? a : ''; }
+
+  /* ── ① actividad efectiva ─────────────────────────────────────── */
+  function actividadDe(x) {
+    var l = (typeof x === 'string') ? lotDe(x) : x; if (!l) return 'engorde';
+    var a = norm(l.actividad); if (a) return a;
+    /* herencia por cadena de movimientos: lote hijo de un "Mover" toma la del padre */
+    var cur = l.code, g = 0, seen = {};
+    while (cur && g++ < 6 && !seen[cur]) {
+      seen[cur] = 1;
+      var mv = (db.animal_movements || []).find(function (m) { return m && m.to_lot === cur && m.from_lot && m.from_lot !== cur; });
+      if (!mv) break;
+      var p = lotDe(mv.from_lot); if (!p) break;
+      var pa = norm(p.actividad); if (pa) return pa;
+      cur = mv.from_lot;
+    }
+    return 'engorde';
+  }
+  function esRepro(x) { var a = actividadDe(x); return a === 'cria' || a === 'cabana'; }
+  function hayRepro() { return lots().some(function (l) { return l && esRepro(l); }); }
+  window.v206Actividad = actividadDe; window.v206EsRepro = esRepro; window.V206_ACT = ACT;
+
+  /* ── ⑥ categoría / raza del animal sin reescribir datos ────────── */
+  window.v206Categoria = function (a, lot) {
+    if (!a) return '';
+    if (a.categoria) return String(a.categoria).toLowerCase();
+    if (a.breed && CATS.test(a.breed)) return String(a.breed).toLowerCase();
+    var l = (typeof lot === 'string') ? lotDe(lot) : lot;
+    return l && l.category ? String(l.category).toLowerCase() : '';
+  };
+  window.v206Raza = function (a, lot) {
+    if (!a) return '';
+    var b = String(a.breed || a.raza || '').trim();
+    if (b && !CATS.test(b)) return b;
+    var l = (typeof lot === 'string') ? lotDe(lot) : lot;
+    return (l && l.breed && !CATS.test(l.breed)) ? String(l.breed).trim() : '';
+  };
+
+  /* ── guardar ──────────────────────────────────────────────────── */
+  function guardar(code, act, motivo) {
+    var l = lotDe(code); if (!l) return false;
+    act = norm(act) || 'engorde';
+    l.actividad = act;
+    try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch (e) {}
+    try { if (typeof replaceTableInRailway === 'function') replaceTableInRailway('lots', db.lots); } catch (e) {}
+    try { if (typeof auditLog === 'function') auditLog('update', 'lots', code, 'Actividad → ' + ACT[act].nom + (motivo ? ' (' + motivo + ')' : ''), { actividad: act }); } catch (e) {}
+    if (act === 'cabana') prenderCabana();
+    return true;
+  }
+  function prenderCabana() {
+    try {
+      if (typeof getParams !== 'function' || typeof saveParams !== 'function') return;
+      var p = getParams() || {}; if (p.perfil_cabana) return;
+      p.perfil_cabana = true; saveParams(p);
+      try { if (typeof agGateApply === 'function') agGateApply(); } catch (e) {}
+      try { if (typeof window.reproCabanaGate === 'function') window.reproCabanaGate(); } catch (e) {}
+      try { if (typeof toast === 'function') toast('🏆 Módulo Cabaña activado (semen, TE/FIV, registro, ASOCEBU) en Reproducción', 'success'); } catch (e) {}
+    } catch (e) {}
+  }
+
+  /* ── ② UI en Lotes: chips + badge ─────────────────────────────── */
+  function chips() {
+    if ($('v206-chips')) return;
+    var host = $('lotes-filter-todos'); if (!host || !host.parentNode) return;
+    var row = host.parentNode;
+    var box = document.createElement('div'); box.id = 'v206-chips'; box.style.cssText = 'display:flex;gap:6px;align-items:center;margin-left:14px;padding-left:14px;border-left:1px solid var(--bor)';
+    var html = '<span style="font-size:11px;color:var(--muted);margin-right:2px">Actividad:</span>' +
+      '<button class="chip chip-active" data-act="todas" onclick="v206Filtro(\'todas\',this)" style="cursor:pointer">Todas</button>';
+    Object.keys(ACT).forEach(function (k) { html += '<button class="chip" data-act="' + k + '" onclick="v206Filtro(\'' + k + '\',this)" style="cursor:pointer">' + ACT[k].ico + ' ' + ACT[k].nom + '</button>'; });
+    box.innerHTML = html; row.appendChild(box);
+  }
+  window.v206Filtro = function (k, btn) {
+    FILTRO = k;
+    document.querySelectorAll('#v206-chips .chip').forEach(function (b) { b.classList.toggle('chip-active', b.getAttribute('data-act') === k); });
+    try { renderLotes(); } catch (e) {}
+  };
+  function badges() {
+    var filas = document.querySelectorAll('#page-lotes #lotes-tbody tr');
+    Array.prototype.forEach.call(filas, function (tr) {
+      var cell = tr.querySelector('td span'); if (!cell || tr.__v206) return;
+      var code = cell.textContent.trim(); var l = lotDe(code); if (!l) return;
+      tr.__v206 = true;
+      var a = actividadDe(l);
+      if (FILTRO !== 'todas' && a !== FILTRO) { tr.style.display = 'none'; return; }
+      var b = document.createElement('button');
+      b.className = 'v206-badge'; b.title = 'Actividad del lote — click para cambiar';
+      b.style.cssText = 'display:inline-block;margin-top:4px;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;border:1px solid ' + ACT[a].col + ';color:' + ACT[a].col + ';background:transparent;cursor:pointer;font-family:inherit' + (l.actividad ? '' : ';opacity:.7;border-style:dashed');
+      b.textContent = ACT[a].ico + ' ' + ACT[a].nom + (l.actividad ? '' : ' (supuesto)');
+      b.onclick = function (ev) { ev.stopPropagation(); window.v206Cambiar(code); };
+      cell.parentNode.appendChild(b);
+    });
+    var vis = Array.prototype.filter.call(filas, function (tr) { return tr.style.display !== 'none'; }).length;
+    var tb = $('lotes-tbody');
+    if (tb && FILTRO !== 'todas' && !vis && !$('v206-vacio')) { var tr = document.createElement('tr'); tr.id = 'v206-vacio'; tr.innerHTML = '<td colspan="10" style="text-align:center;padding:24px;color:var(--muted)">Ningún lote de ' + ACT[FILTRO].nom.toLowerCase() + ' en este filtro. Tocá el badge de un lote para asignarle la actividad.</td>'; tb.appendChild(tr); }
+  }
+  function cardsHtml(sel, onclick) {
+    return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' + Object.keys(ACT).map(function (k) {
+      return '<div class="wc-tile' + (k === sel ? ' on' : '') + '" data-act="' + k + '" onclick="' + onclick.replace('%K', k) + '" style="text-align:left;padding:12px"><div style="font-size:20px">' + ACT[k].ico + '</div><div style="font-weight:700;margin-top:2px;color:' + ACT[k].col + '">' + ACT[k].nom + '</div><div class="wc-md" style="font-size:11.5px">' + ACT[k].desc + '</div></div>';
+    }).join('') + '</div>';
+  }
+  window.v206Cambiar = function (code) {
+    var l = lotDe(code); if (!l) return;
+    var old = $('v206-modal'); if (old) old.remove();
+    var d = document.createElement('div'); d.id = 'v206-modal'; d.className = 'modal-overlay open';
+    d.innerHTML = '<div class="modal" style="max-width:520px"><h2>Actividad del lote ' + esc(code) + '</h2>' +
+      '<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">Define cómo se mide y se vende este lote. No cambia ningún dato histórico.</div>' +
+      cardsHtml(actividadDe(l), "v206Elegir('" + esc(code).replace(/'/g, "\\'") + "','%K')") +
+      '<div class="form-actions" style="display:flex;justify-content:flex-end;margin-top:12px"><button class="btn btn-ghost" onclick="document.getElementById(\'v206-modal\').remove()">Cancelar</button></div></div>';
+    document.body.appendChild(d);
+  };
+  window.v206Elegir = function (code, act) {
+    if (guardar(code, act, 'manual')) { try { toast(ACT[norm(act) || 'engorde'].ico + ' ' + code + ' → ' + ACT[norm(act) || 'engorde'].nom, 'success'); } catch (e) {} }
+    var m = $('v206-modal'); if (m) m.remove();
+    try { renderLotes(); } catch (e) {}
+    try { if (typeof _reproPopulateLoteSelector === 'function') _reproPopulateLoteSelector(); } catch (e) {}
+  };
+
+  /* ── ③ sugerencia única ───────────────────────────────────────── */
+  function sugerir(l) {
+    var code = String(l.code || ''), cat = String(l.category || '').toLowerCase();
+    if (/caba[nñ]a/i.test(code)) return 'cabana';
+    if (/vaca|vaquillona|vientre/.test(cat)) return 'cria';
+    if (/lecher/i.test(code)) return 'cria';
+    if ((db.partos || []).some(function (p) { return p && p.lot_code === code; })) return 'cria';
+    return '';
+  }
+  function keySug() { try { return 'e5m_v206_sugerido_' + (localStorage.getItem('e5m_api_token') || '').slice(-8); } catch (e) { return 'e5m_v206_sugerido'; } }
+  window.v206Sugerir = function (forzar) {
+    try { if (!forzar && localStorage.getItem(keySug())) return false; } catch (e) {}
+    var cand = lots().filter(function (l) { return l && l.code && !norm(l.actividad) && !/sold|vendido|inactivo|fusionado|merged/i.test(l.status || '') && !/^CUAR-\d+$/i.test(l.code); })
+      .map(function (l) { return { l: l, s: sugerir(l) }; }).filter(function (x) { return x.s; });
+    if (!cand.length) { try { localStorage.setItem(keySug(), '1'); } catch (e) {} return false; }
+    var old = $('v206-sug'); if (old) old.remove();
+    var d = document.createElement('div'); d.id = 'v206-sug'; d.className = 'modal-overlay open';
+    d.innerHTML = '<div class="modal" style="max-width:600px"><h2>Actividad de los lotes</h2>' +
+      '<div style="font-size:13px;color:var(--muted);margin-bottom:12px">Ahora cada lote tiene una <b>actividad</b> (cría, recría, engorde o cabaña) para no mezclar vientres y reproductores con el engorde en el kardex, la inversión y los gráficos. Todos los lotes quedan como <b>engorde</b> salvo estos, donde el sistema sugiere otra cosa. Podés cambiarlo cuando quieras desde el badge del lote.</div>' +
+      '<table class="tbl" style="width:100%;font-size:13px"><thead><tr><th>Lote</th><th>Categoría</th><th>Cabezas</th><th>Sugerencia</th></tr></thead><tbody>' +
+      cand.map(function (x) {
+        return '<tr><td><b>' + esc(x.l.code) + '</b></td><td>' + esc(x.l.category || '—') + '</td><td>' + (x.l.animal_count || 0) + '</td><td><select class="form-select v206-sug-sel" data-code="' + esc(x.l.code) + '" style="padding:4px 8px;font-size:12.5px">' +
+          Object.keys(ACT).map(function (k) { return '<option value="' + k + '"' + (k === x.s ? ' selected' : '') + '>' + ACT[k].ico + ' ' + ACT[k].nom + '</option>'; }).join('') + '</select></td></tr>';
+      }).join('') + '</tbody></table>' +
+      '<div class="form-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button class="btn btn-ghost" onclick="v206SugCerrar(false)">Después</button><button class="btn btn-primary" onclick="v206SugCerrar(true)">Aplicar</button></div></div>';
+    document.body.appendChild(d);
+    return true;
+  };
+  window.v206SugCerrar = function (aplicar) {
+    var d = $('v206-sug'); if (!d) return;
+    if (aplicar) {
+      var n = 0;
+      d.querySelectorAll('.v206-sug-sel').forEach(function (s) { var act = s.value; var l = lotDe(s.getAttribute('data-code')); if (l) { l.actividad = norm(act) || 'engorde'; n++; if (l.actividad === 'cabana') prenderCabana(); } });
+      try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch (e) {}
+      try { if (typeof replaceTableInRailway === 'function') replaceTableInRailway('lots', db.lots); } catch (e) {}
+      try { toast('Actividad asignada a ' + n + ' lote(s)', 'success'); } catch (e) {}
+      try { renderLotes(); } catch (e) {}
+    }
+    try { localStorage.setItem(keySug(), '1'); } catch (e) {}
+    d.remove();
+  };
+
+  if (typeof renderLotes === 'function' && !renderLotes.__v206) {
+    renderLotes = (function (base) { function w() { var r = base.apply(this, arguments); try { chips(); badges(); if (!window.__v206SugHecho) { window.__v206SugHecho = true; setTimeout(function () { try { window.v206Sugerir(false); } catch (e) {} }, 800); } } catch (e) { console.warn('[v206]', e); } return r; } w.__v206 = true; return w; })(renderLotes);
+    window.renderLotes = renderLotes;
+  }
+
+  /* ── ④ wizard de compra: ¿para qué actividad? ─────────────────── */
+  var W = { act: 'engorde' };
+  function inyectarWizard() {
+    var step = document.querySelector('#wc-modal .wc-step[data-step="modo"]'); if (!step || $('wc-act-box')) return;
+    var box = document.createElement('div'); box.id = 'wc-act-box'; box.style.marginBottom = '14px';
+    box.innerHTML = '<div class="form-label">¿Para qué actividad entra este ganado?</div>' + cardsHtml('engorde', "v206WizAct('%K')");
+    var ref = $('wc-tipo-box'); if (ref && ref.nextSibling) step.insertBefore(box, ref.nextSibling); else if (ref) step.appendChild(box); else step.insertBefore(box, step.firstChild);
+  }
+  window.v206WizAct = function (k) {
+    W.act = norm(k) || 'engorde';
+    document.querySelectorAll('#wc-act-box .wc-tile').forEach(function (t) { t.classList.toggle('on', t.getAttribute('data-act') === W.act); });
+  };
+  if (typeof window.wcOpen === 'function' && !window.wcOpen.__v206) {
+    window.wcOpen = (function (base) { function w() { var r = base.apply(this, arguments); try { W.act = 'engorde'; inyectarWizard(); window.v206WizAct('engorde'); } catch (e) {} return r; } w.__v206 = true; return w; })(window.wcOpen);
+  }
+  if (typeof window.saveCompraGanado === 'function' && !window.saveCompraGanado.__v206) {
+    window.saveCompraGanado = (function (base) {
+      function w() {
+        var act = W.act, antes = (db.compras_ganado || []).length;
+        var r = base.apply(this, arguments);
+        try {
+          var cs = db.compras_ganado || []; if (cs.length <= antes) return r;
+          var c = cs[cs.length - 1]; var codes = [c.lot_code].concat(c.lote_destinos || []).filter(Boolean);
+          var n = 0; codes.forEach(function (code) { var l = lotDe(code); if (l && !norm(l.actividad)) { l.actividad = act; n++; } });
+          c.actividad = act;
+          if (n) { try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch (e) {} try { if (typeof replaceTableInRailway === 'function') { replaceTableInRailway('lots', db.lots); replaceTableInRailway('compras_ganado', db.compras_ganado); } } catch (e) {} if (act === 'cabana') prenderCabana(); }
+        } catch (e) { console.warn('[v206] post-save', e); }
+        W.act = 'engorde';
+        return r;
+      }
+      w.__v206 = true; return w;
+    })(window.saveCompraGanado);
+  }
+
+  /* ── ⑤ reproducción: solo lotes de cría/cabaña ────────────────── */
+  function filtrarSelect(id) {
+    var sel = $(id); if (!sel || !hayRepro()) return;
+    var val = sel.value;
+    Array.prototype.forEach.call(sel.options, function (o) {
+      if (!o.value) return;
+      var ok = esRepro(o.value);
+      o.hidden = !ok; o.disabled = !ok;
+      if (ok && !/^(🌱|🏆)/.test(o.textContent)) o.textContent = ACT[actividadDe(o.value)].ico + ' ' + o.textContent;
+    });
+    if (val && !esRepro(val)) sel.value = '';
+    var nota = sel.parentNode && sel.parentNode.querySelector('.v206-nota');
+    if (!nota && sel.parentNode) { nota = document.createElement('div'); nota.className = 'v206-nota'; nota.style.cssText = 'font-size:11px;color:var(--muted);margin-top:4px'; nota.textContent = 'Solo lotes de cría y cabaña. Para usar otro lote, cambiá su actividad desde Lotes.'; sel.parentNode.appendChild(nota); }
+  }
+  ['_reproPopulateLoteSelector', '_reproPartoPopulateLoteSelector'].forEach(function (fn, i) {
+    if (typeof window[fn] === 'function' && !window[fn].__v206) {
+      window[fn] = (function (base) { function w() { var r = base.apply(this, arguments); try { filtrarSelect(i === 0 ? 'repro-srv-lote' : 'repro-parto-lote'); } catch (e) {} return r; } w.__v206 = true; return w; })(window[fn]);
+    }
+  });
+})();
+</script>
+
+<script id="costo-linaje-v18207">
+/* ═══════════════════════════════════════════════════════════════════════════
+   v1.8.207 — COSTO POR KG "POR ANIMAL" (linaje) — pedido José 02-09
+   El motor de costo/kg era POR LOTE: fecha de entrada = lot.entry_date, cabezas-días = cabezas × días
+   del lote, sanidad = tratamientos con lot_code === lote. Tras la reorganización del 11–13/08
+   (Tropa 1/2/3/4 → T1/T2/T3) eso dejaba: ventana de 20 días, pools de 20 días, sanidad de Tropa X perdida,
+   y kg producidos de 4 meses ⇒ Bs 1,4–2,0/kg (absurdo).
+   Ahora cada animal aporta su propia historia, reconstruida de animal_movements (204 individuales + batch):
+   · entrada del animal = entry_date | pesaje de marcaje | primer movimiento | primer pesaje | entrada del lote
+   · cabezas-días del lote = Σ (egreso − entrada_i); denominador = lo mismo para todos los lotes vivos
+     (+ vendidos con el criterio viejo), así la fracción no se infla.
+   · ventana de pools = desde la entrada más vieja del lote (se pasa al motor base vía lot.entry_date
+     temporal en todos los lotes vivos para que _fechaEntCiclo sea consistente).
+   · sanidad directa = Σ animales Σ segmentos (lote, desde, hasta) de tratamientos de ESE lote en ESE
+     intervalo, a costo por cabeza (total ÷ count); los de scope animal van al animal. Los tratamientos
+     guardan el gasto en `total` (cost suele venir 0) → se usa total cuando cost = 0.
+   Kill: __V207_OFF
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+  if (window.__V207_OFF) return;
+  function f10(x) { return String(x || '').slice(0, 10); }
+  function hoy() { return new Date().toISOString().slice(0, 10); }
+  function dias(a, b) { var d = (new Date(f10(b)) - new Date(f10(a))) / 86400000; return isFinite(d) ? Math.max(0, Math.round(d)) : 0; }
+  function up(s) { return String(s || '').trim().toUpperCase(); }
+  function lotDe(code) { return (db.lots || []).find(function (l) { return l && up(l.code) === up(code); }) || null; }
+  function vivo(l) { var s = String((l && l.status) || '').toLowerCase(); return !(s === 'vendido' || s === 'sold' || s === 'fusionado' || s === 'merged' || s === 'inactivo' || s === 'inactive'); }
+
+  /* movimientos por animal (individuales + batch), cacheado por render */
+  var _mvCache = null, _mvStamp = 0;
+  function movsDe(id) {
+    var arr = db.animal_movements || [];
+    if (!_mvCache || _mvStamp !== arr.length) {
+      _mvCache = {}; _mvStamp = arr.length;
+      arr.forEach(function (m) {
+        if (!m || !m.date) return;
+        var ids = m.animal_id ? [m.animal_id] : (Array.isArray(m.animal_ids) ? m.animal_ids : []);
+        ids.forEach(function (x) { var k = String(x); (_mvCache[k] = _mvCache[k] || []).push(m); });
+      });
+      Object.keys(_mvCache).forEach(function (k) { _mvCache[k].sort(function (a, b) { return f10(a.date).localeCompare(f10(b.date)); }); });
+    }
+    return _mvCache[String(id)] || [];
+  }
+  function entradaAnimal(a, lot) {
+    if (a.entry_date) return f10(a.entry_date);
+    if (a.entry_inherited) return f10(a.entry_inherited);
+    var ps = (a.pesajes || []).filter(function (p) { return p && p.fecha; }).sort(function (x, y) { return f10(x.fecha).localeCompare(f10(y.fecha)); });
+    var mk = ps.find(function (p) { return /marcaje/i.test(p.tipo || '') || /marcaje/i.test(p.nota || ''); });
+    if (mk) return f10(mk.fecha);
+    var mv = movsDe(a.animal_id || a.id); if (mv.length) return f10(mv[0].date);
+    if (ps.length) return f10(ps[0].fecha);
+    return f10((lot && lot.entry_date) || hoy());
+  }
+  /* segmentos {lot, desde, hasta} de la vida del animal hasta `egreso` */
+  function segmentos(a, lotCode, entrada, egreso) {
+    var mv = movsDe(a.animal_id || a.id).filter(function (m) { return f10(m.date) >= entrada && f10(m.date) <= egreso; });
+    var segs = [], cur = mv.length ? (mv[0].from_lot || lotCode) : lotCode, ini = entrada;
+    mv.forEach(function (m) { if (f10(m.date) > ini) segs.push({ lot: up(cur), desde: ini, hasta: f10(m.date) }); cur = m.to_lot || cur; ini = f10(m.date); });
+    segs.push({ lot: up(cur), desde: ini, hasta: egreso });
+    return segs;
+  }
+  function costoTrat(t) { var c = parseFloat(t.cost || 0); if (!(c > 0)) c = parseFloat(t.total || t.costo || 0); return isFinite(c) && c > 0 ? c : 0; }
+  function tratDe(lotUp) { return (db.treatments || []).filter(function (t) { return t && up(t.lot_code) === lotUp; }); }
+
+  /* ── sanidad directa por linaje ── */
+  window.v207Directos = function (code) {
+    try {
+      var lot = lotDe(code); if (!lot) return null;
+      var A = (typeof getAnimalesDB === 'function') ? (getAnimalesDB() || {}) : {};
+      var anims = A[lot.code] || []; if (!anims.length) return null;
+      var egreso = hoy(), san = 0, detalle = {};
+      var cacheT = {};
+      anims.forEach(function (a) {
+        var id = String(a.animal_id || a.id || ''); var ent = entradaAnimal(a, lot);
+        segmentos(a, lot.code, ent, egreso).forEach(function (s) {
+          var ts = cacheT[s.lot] || (cacheT[s.lot] = tratDe(s.lot));
+          ts.forEach(function (t) {
+            var f = f10(t.applied_at || t.date || t.fecha || t.created_at); if (!f || f < s.desde || f > s.hasta) return;
+            var c = costoTrat(t); if (!c) return;
+            var porCab;
+            if (t.animal_id && String(t.animal_id) !== '') { if (String(t.animal_id) !== id) return; porCab = c; }
+            else { var n = parseInt(t.count || t.quantity || 0, 10) || 0; if (!n) { var lo = lotDe(s.lot); n = (lo && parseInt(lo.animal_count, 10)) || 1; } porCab = c / n; }
+            san += porCab; var k = s.lot + ' · ' + (t.product_name || t.diagnosis || t.name || 'tratamiento'); detalle[k] = (detalle[k] || 0) + porCab;
+          });
+        });
+      });
+      /* mantenimiento del lote: igual que el motor base (sin linaje) */
+      var mant = 0; (db.mantenimientos || []).forEach(function (m) { if (m && up(m.lot_code) === up(lot.code)) mant += parseFloat(m.total || m.costo || 0) || 0; });
+      return { sanidad: Math.round(san * 100) / 100, mantenimiento: mant, total: san + mant, detalle: detalle, linaje: true };
+    } catch (e) { console.warn('[v207] directos', e); return null; }
+  };
+
+  /* ── cabezas-días por animal + ventana desde la entrada real ── */
+  function entradasLote(l, A) {
+    var anims = A[l.code] || []; if (!anims.length) return null;
+    return anims.map(function (a) { return entradaAnimal(a, l); });
+  }
+  if (typeof window._ahCalcularIndirectos === 'function' && !window._ahCalcularIndirectos.__v207) {
+    window._ahCalcularIndirectos = (function (base) {
+      function w(lot, ventas, compras) {
+        if (window.__V207_OFF || !lot || !vivo(lot)) return base.apply(this, arguments);
+        var A = (typeof getAnimalesDB === 'function') ? (getAnimalesDB() || {}) : {};
+        var ents = entradasLote(lot, A); if (!ents) return base.apply(this, arguments);
+        var egreso = hoy(); var minEnt = ents.slice().sort()[0];
+        /* 1) parchear temporalmente entry_date de todos los lotes vivos → ventana consistente para pools */
+        var parch = [];
+        (db.lots || []).forEach(function (l) { if (!l || !vivo(l)) return; var e = entradasLote(l, A); if (!e) return; var m = e.slice().sort()[0]; if (m && (!l.entry_date || f10(l.entry_date) > m)) { parch.push([l, l.entry_date]); l.entry_date = m; } });
+        var r;
+        try { r = base.apply(this, arguments); }
+        finally { parch.forEach(function (p) { if (p[1] === undefined) delete p[0].entry_date; else p[0].entry_date = p[1]; }); }
+        if (!r) return r;
+        try {
+          /* 2) cabezas-días por animal (numerador y denominador vivos) */
+          var cdLote = 0; ents.forEach(function (e) { cdLote += Math.max(1, dias(e, egreso)); });
+          var cdVivos = 0;
+          (db.lots || []).forEach(function (l) { if (!l || !vivo(l)) return; var e = entradasLote(l, A); if (!e) { cdVivos += (parseInt(l.animal_count, 10) || 0) * Math.max(1, dias(l.entry_date || minEnt, egreso)); return; } e.forEach(function (x) { cdVivos += Math.max(1, dias(x < minEnt ? minEnt : x, egreso)); }); });
+          /* vendidos: criterio del motor base (cabezas de la compra × solapamiento con la ventana) */
+          var cdVend = 0;
+          (db.lots || []).forEach(function (l) { var s = String((l && l.status) || '').toLowerCase(); if (!(s === 'vendido' || s === 'sold')) return;
+            var cs = (db.compras_ganado || []).filter(function (c) { return c.lot_code === l.code || (Array.isArray(c.lote_destinos) && c.lote_destinos.indexOf(l.code) >= 0); });
+            var cab = 0; cs.forEach(function (c) { cab += parseInt(c.animal_count || c.cabezas || 0, 10) || 0; }); if (!cab) return;
+            var ent = null; cs.forEach(function (c) { var f = f10(c.date || c.fecha); if (f && (!ent || f < ent)) ent = f; }); ent = ent || f10(l.entry_date); if (!ent) return;
+            var sal = null; (db.sales || []).forEach(function (v) { var ok = v.lot_code === l.code || (Array.isArray(v.lot_codes) && v.lot_codes.indexOf(l.code) >= 0) || (Array.isArray(v.items) && v.items.some(function (i) { return i.lot_code === l.code; })); if (ok) { var f = f10(v.date || v.fecha); if (f && (!sal || f > sal)) sal = f; } });
+            sal = sal || egreso; var a = ent > minEnt ? ent : minEnt, b = sal < egreso ? sal : egreso; if (b < a) return; cdVend += cab * Math.max(1, dias(a, b)); });
+          var cdTotal = cdVivos + cdVend; if (!(cdTotal > 0)) return r;
+          var frac = Math.min(1, cdLote / cdTotal);
+          r.cabDiasLote = Math.round(cdLote); r.cabDiasTotal = Math.round(cdTotal); r.fraccionPct = frac * 100;
+          r.fechaEntradaReal = minEnt; r.linaje = true;
+          ['sueldos', 'diesel', 'alimento', 'mantGeneral', 'compras', 'aceite', 'sanidadInd', 'cuentasMan'].forEach(function (k) { if (typeof r[k + '_total'] === 'number') r[k] = r[k + '_total'] * frac; });
+          r.total = ['sueldos', 'diesel', 'alimento', 'mantGeneral', 'compras', 'aceite', 'sanidadInd', 'cuentasMan'].reduce(function (s, k) { return s + (r[k] || 0); }, 0);
+        } catch (e) { console.warn('[v207] indirectos', e); }
+        return r;
+      }
+      w.__v207 = true; return w;
+    })(window._ahCalcularIndirectos);
+  }
+})();
+</script>
+
 </body>
 </html>
