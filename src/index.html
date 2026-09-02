@@ -711,7 +711,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.199'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
+window.E5M_HTML_BUILD = '1.8.200'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
 
 window.v175Diag = function () {
   var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
@@ -43169,14 +43169,14 @@ function renderReproInteligencia() {
 
 <style>
 /* v1.8.86: transiciones suaves globales — apertura/cierre de modales, pasos del wizard y cambios de página */
-.modal-overlay{ display:flex; opacity:0; visibility:hidden; pointer-events:none; transition:opacity .17s ease, visibility .17s ease; }
+.modal-overlay{ display:flex; opacity:0; visibility:hidden; pointer-events:none; transition:opacity .08s ease, visibility .08s ease; }
 .modal-overlay.open{ opacity:1; visibility:visible; pointer-events:auto; }
-.modal-overlay > .modal{ transform:translateY(12px) scale(.985); opacity:.5; transition:transform .24s cubic-bezier(.2,.85,.25,1), opacity .18s ease; }
-.modal-overlay.open > .modal{ transform:none; opacity:1; }
-@keyframes epStepIn{ from{ opacity:0; transform:translateY(7px); } to{ opacity:1; transform:none; } }
-.wv-step, .wc-step{ animation:epStepIn .24s ease both; }
-@keyframes epPageIn{ from{ opacity:0; transform:translateY(8px); } to{ opacity:1; transform:none; } }
-.page.active{ animation:epPageIn .22s ease both; }
+.modal-overlay > .modal{ opacity:.6; transition:opacity .08s ease; } /* v1.8.200: sin transform/scale */
+.modal-overlay.open > .modal{ opacity:1; }
+@keyframes epStepIn{ from{ opacity:0; } to{ opacity:1; } } /* v1.8.200: sin transform (pesaba en pantallas grandes) */
+.wv-step, .wc-step{ animation:epStepIn .09s ease both; }
+@keyframes epPageIn{ from{ opacity:0; } to{ opacity:1; } }
+.page.active{ animation:epPageIn .08s ease both; } /* v1.8.200: 220ms + translateY se sentia lento — Jose 01-09 */
 @media (prefers-reduced-motion: reduce){ .modal-overlay, .modal-overlay > .modal, .wv-step, .wc-step, .page.active{ transition:none !important; animation:none !important; } }
 </style>
 
