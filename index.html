@@ -378,9 +378,14 @@ function showPage(name,btn){
   var m=document.querySelector('.main');if(m)m.scrollTop=0;
   if(typeof renderPage==='function')renderPage(name);
   // Pull silencioso al cambiar de pagina para mostrar datos frescos del campo
+  // v1.8.204: ANTES cada cambio de pestaña disparaba un pull completo (descarga del tenant + merge de
+  // 900 animales + re-base de sombra + re-render de ~25 páginas) 500 ms después del click → la app se
+  // sentía pesada. Ahora solo si el último pull tiene más de 3 min (el auto-pull de 5 min y el botón
+  // Sync siguen igual).
   if(navigator.onLine) {
     clearTimeout(window._pageChangePull);
-    window._pageChangePull = setTimeout(function(){ if(typeof pullFromRailwayDesktop==='function') pullFromRailwayDesktop(false); }, 500);
+    var _hacePull = Date.now() - (window._e5mUltimoPullTs || 0);
+    if (_hacePull > 180000) window._pageChangePull = setTimeout(function(){ if(typeof pullFromRailwayDesktop==='function') pullFromRailwayDesktop(false); }, 500);
   }
 }
 // [removed duplicate openModal - full version below]
@@ -711,7 +716,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.203'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
+window.E5M_HTML_BUILD = '1.8.204'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
 
 window.v175Diag = function () {
   var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
@@ -7702,6 +7707,9 @@ function pullFromRailwayDesktop(thenPush) {
   fetch(apiUrl + '/sync-pull?include_sold=true', { headers: headers, signal: (function(){ var c=new AbortController(); setTimeout(function(){c.abort();},8000); return c.signal; })() })
     .then(function(r){ return r.json(); })
     .then(function(remote) {
+      window._e5mUltimoPullTs = Date.now(); /* v1.8.204 */
+      var _sinCambios = false; /* v1.8.204: mismo last_modified y mismas versiones que el pull anterior → no re-renderizar 25 páginas */
+      try { _sinCambios = !!(remote && remote.last_modified && remote.last_modified === localStorage.getItem('e5m_last_sync_at') && remote._versions && JSON.stringify(remote._versions) === localStorage.getItem('e5m_table_versions')); } catch(eSC){}
       try { if (remote && remote._versions) localStorage.setItem('e5m_table_versions', JSON.stringify(remote._versions)); } catch(eV){} // v1.8.115 SYNC V2
       try { if (remote && remote.tc_bcb && remote.tc_bcb.valor) { localStorage.setItem('e5m_tc_bcb', JSON.stringify(remote.tc_bcb)); if (typeof window.tcBcbRender === 'function') window.tcBcbRender(); } } catch(eTc){} /* v1.8.151: TC oficial BCB servido por server v4.42 */
       try { if (remote && remote.animal_costos && typeof remote.animal_costos === 'object') { localStorage.setItem('e5m_animal_costos', JSON.stringify(remote.animal_costos)); } } catch(eAC){} /* v1.8.197: costo por cabeza (server v4.58.1) */
@@ -8230,7 +8238,9 @@ function pullFromRailwayDesktop(thenPush) {
       // por encima del máximo id presente para que ningún "next_ids.X++" reemita un id ya usado.
       if (typeof reconcileNextIds === 'function') reconcileNextIds();
 
-      // Re-render todo
+      // Re-render todo (v1.8.204: solo si el server trajo algo distinto al pull anterior)
+      if (_sinCambios) { console.log('[Sync] sin cambios desde el último pull → sin re-render'); }
+      else {
       if (typeof renderLotes === 'function') renderLotes();
       if (typeof renderRotacion === 'function') renderRotacion(); // FIX v1.4.30: el tab Rotación no se re-renderizaba tras pull
       if (typeof renderDashboard === 'function') renderDashboard();
@@ -8263,6 +8273,7 @@ function pullFromRailwayDesktop(thenPush) {
       if (typeof renderSanidad === 'function') try { renderSanidad(); } catch(e){}
       if (typeof renderHistorialAnimales === 'function') try { renderHistorialAnimales(); } catch(e){}
       if (typeof renderConteoHistory === 'function') try { renderConteoHistory(); } catch(e){}
+      } /* fin re-render v1.8.204 */
 
       if (thenPush) {
         setSyncStatus('ok');
@@ -8281,7 +8292,8 @@ function pullFromRailwayDesktop(thenPush) {
         }
       } catch(e){}
     })
-    .catch(function() {
+    .catch(function(ePull) {
+      console.warn('[Sync] pull falló:', ePull && ePull.stack ? ePull.stack : ePull); /* v1.8.204: antes se tragaba el error en silencio */
       setSyncStatus('error');
       if (thenPush) pushToRailway();
     });
@@ -31885,9 +31897,10 @@ function renderHistogram(pesaje) {
 // Show histogram for last pesaje of selected lot
 function updateHistogramForFilter() {
   var filterLot = (document.getElementById('pesaje-filter-lot')||{}).value||'';
-  if (!filterLot || !db.pesajes) { document.getElementById('pesaje-histogram-card').style.display='none'; return; }
+  var _hc = document.getElementById('pesaje-histogram-card'); /* v1.8.204: el card no existe en el HTML → esto tiraba TypeError y cortaba TODO el post-pull (renderVentas, renderPersonal, setSyncStatus ok, e5m_last_sync_at) */
+  if (!filterLot || !db.pesajes) { if (_hc) _hc.style.display='none'; return; }
   var lotPesajes = db.pesajes.filter(function(p){return p.lot_code===filterLot;});
-  if (!lotPesajes.length) { document.getElementById('pesaje-histogram-card').style.display='none'; return; }
+  if (!lotPesajes.length) { if (_hc) _hc.style.display='none'; return; }
   renderHistogram(lotPesajes[lotPesajes.length-1]);
 }
 
