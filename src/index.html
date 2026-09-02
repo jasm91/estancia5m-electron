@@ -711,7 +711,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.201'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
+window.E5M_HTML_BUILD = '1.8.202'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
 
 window.v175Diag = function () {
   var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
@@ -2257,6 +2257,7 @@ function orMarcajeGo(){
   <div class="gbi-grid">
     <div class="gbi-card gbi-12"><h3>Tendencia mensual — ingresos (barras) vs # ventas (línea)</h3><div class="gbi-sub"></div><div class="gbi-cv"><canvas id="gb-c1"></canvas></div></div>
     <div class="gbi-card gbi-12"><h3>Ingresos vs Gastos, mes a mes</h3><div class="gbi-sub">gastos apilados por categoría · la línea es el resultado (ingresos − gastos) · la compra de ganado es inversión y va aparte</div><div class="gbi-cv alto"><canvas id="gb-c2"></canvas></div></div>
+    <div class="gbi-card gbi-12"><h3>Gastos operativos, mes a mes</h3><div class="gbi-sub">compras e insumos + sueldos + diésel + mantenimiento, con escala propia (sin las ventas aplastando la altura) · la línea es el total del mes</div><div class="gbi-cv alto"><canvas id="gb-c2b"></canvas></div></div>
     <div class="gbi-card gbi-6"><h3>Compras de ganado, mes a mes</h3><div class="gbi-sub">inversión Bs (barras) y cabezas compradas (línea)</div><div class="gbi-cv"><canvas id="gb-c3"></canvas></div></div>
     <div class="gbi-card gbi-6"><h3>Compras generales, mes a mes</h3><div class="gbi-sub">apilado por tipo de compra</div><div class="gbi-cv"><canvas id="gb-c4"></canvas></div></div>
     <div class="gbi-card gbi-6"><h3>Estacionalidad — en qué meses del año se vende más</h3><div class="gbi-sub">suma de ingresos por mes calendario</div><div class="gbi-cv"><canvas id="gb-c5"></canvas></div></div>
@@ -53373,6 +53374,10 @@ try {
   function mesLabel(m) { return MES_ES[(+m.slice(5, 7)) - 1] + ' ' + m.slice(2, 4); }
   function addMes(m) { var y = +m.slice(0, 4), mm = +m.slice(5, 7); mm++; if (mm > 12) { mm = 1; y++; } return y + '-' + String(mm).padStart(2, '0'); }
   function mesesEntre(a, b) { var out = [], p = a, g = 0; while (p <= b && g < 60) { out.push(p); p = addMes(p); g++; } return out; }
+  function nice(v) { /* v1.8.202: tope de eje "redondo" apenas por encima del máximo (Chart.js solo salta 1→10 con pocos ticks) */
+    if (!(v > 0)) return undefined; var p = Math.pow(10, Math.floor(Math.log10(v))); var f = v / p;
+    var m = f <= 1 ? 1 : f <= 1.5 ? 1.5 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 3 ? 3 : f <= 4 ? 4 : f <= 5 ? 5 : f <= 6 ? 6 : f <= 8 ? 8 : 10; return m * p; }
+  function yNice(vals) { return { grid: { color: GRID }, ticks: { color: TICK, font: { size: 10 } }, beginAtZero: true, max: nice(Math.max.apply(null, (vals || []).concat([0])) * 1.08) }; }
   function ejeMeses(fechas) {
     var ms = fechas.filter(Boolean).map(mesDe).filter(function (m) { return /^\d{4}-\d{2}$/.test(m); }).sort();
     if (!ms.length) return [];
@@ -53424,7 +53429,7 @@ try {
       if (!esRec || !enRango(d.fecha || d.date)) return;
       add(mesDe(d.fecha || d.date), 'diesel', d.total);
     });
-    (db.maintenance || []).forEach(function (m) { if (m && enRango(m.date || m.fecha)) add(mesDe(m.date || m.fecha), 'mant', m.cost); });
+    (db.maintenance || []).forEach(function (m) { var fm = m && (m.date || m.fecha || m.created_at); /* v1.8.202: los del bot a veces vienen sin fecha → created_at */ if (fm && enRango(fm)) add(mesDe(fm), 'mant', m.cost); });
     return por;
   }
   function ventaCab(v) { return Number(v.count || v.animal_count || v.animals || v.qty) || 0; } /* v1.8.197: +animals (ventas frigorífico) */
@@ -53443,7 +53448,7 @@ try {
       data: { labels: meses.map(mesLabel), datasets: [
         { label: 'Ingresos Bs', data: meses.map(function (m) { return ing[m] || 0; }), backgroundColor: NAVY, borderRadius: 4, yAxisID: 'y' },
         { type: 'line', label: '# Ventas', data: meses.map(function (m) { return nv[m] || 0; }), borderColor: LIME, backgroundColor: LIME, borderWidth: 3, pointRadius: 3, tension: .3, yAxisID: 'y2' }] },
-      options: { plugins: { legend: legend() }, scales: ejes({ y2: { position: 'right', grid: { display: false }, ticks: { color: TICK, font: { size: 10 } }, beginAtZero: true } }) } });
+      options: { plugins: { legend: legend() }, scales: ejes({ y: yNice(meses.map(function (m) { return ing[m] || 0; })), y2: { position: 'right', grid: { display: false }, ticks: { color: TICK, font: { size: 10 } }, beginAtZero: true } }) } });
 
     /* 2 · ingresos vs gastos apilados + resultado */
     var mesesG = ejeMeses(V.map(function (v) { return v.date; }).concat(Object.keys(GM).map(function (m) { return m + '-01'; })));
@@ -53455,7 +53460,18 @@ try {
         { label: 'Ingresos', data: mesesG.map(function (m) { return ing[m] || 0; }), backgroundColor: NAVY, stack: 'ing', borderRadius: 4 } ]
         .concat(dsG)
         .concat([{ type: 'line', label: 'Resultado', data: resultado, borderColor: LIME, backgroundColor: LIME, borderWidth: 3, pointRadius: 3, tension: .3 }]) },
-      options: { plugins: { legend: legend() }, scales: ejes() } });
+      options: { plugins: { legend: legend() }, scales: ejes({ y: yNice(mesesG.map(function (m) { var g = GM[m] || {}; return Math.max(ing[m] || 0, (g.compras || 0) + (g.sueldos || 0) + (g.diesel || 0) + (g.mant || 0)); })) }) } });
+
+    /* 2b · v1.8.202: gastos operativos con ESCALA PROPIA — pedido Jose 02-09:
+       en tenant 1 las ventas a frigorífico (2,3M / 3,5M) dejan los gastos
+       mensuales (35k compras + 33k sueldos) en <2 % de la altura ⇒ invisibles.
+       Mismo GM que el gráfico 2, meses solo donde hubo gastos. */
+    var mesesOp = ejeMeses(Object.keys(GM).map(function (m) { return m + '-01'; }));
+    var totOp = mesesOp.map(function (m) { var g = GM[m] || {}; return (g.compras || 0) + (g.sueldos || 0) + (g.diesel || 0) + (g.mant || 0); });
+    grafico('gb-c2b', { type: 'bar',
+      data: { labels: mesesOp.map(mesLabel), datasets: segs.map(function (s) { return { label: s.n, data: mesesOp.map(function (m) { return (GM[m] || {})[s.k] || 0; }), backgroundColor: s.c, stack: 'g', borderRadius: 2 }; })
+        .concat([{ type: 'line', label: 'Total gastos', data: totOp, borderColor: LIME, backgroundColor: LIME, borderWidth: 2, pointRadius: 3, tension: .3 }]) },
+      options: { plugins: { legend: legend(), tooltip: { callbacks: { label: function (c) { return ' ' + c.dataset.label + ': ' + bs(c.parsed.y); } } } }, scales: ejes({ y: yNice(totOp) }) } });
 
     /* 3 · compras de ganado mes a mes */
     var mesesCG = ejeMeses(CG.map(function (c) { return c.fecha || c.date; }));
@@ -53465,7 +53481,7 @@ try {
       data: { labels: mesesCG.map(mesLabel), datasets: [
         { label: 'Inversión Bs', data: mesesCG.map(function (m) { return cgBs[m] || 0; }), backgroundColor: NAVY, borderRadius: 4, yAxisID: 'y' },
         { type: 'line', label: 'Cabezas', data: mesesCG.map(function (m) { return cgCab[m] || 0; }), borderColor: ORANGE, backgroundColor: ORANGE, borderWidth: 3, pointRadius: 3, tension: .3, yAxisID: 'y2' }] },
-      options: { plugins: { legend: legend() }, scales: ejes({ y2: { position: 'right', grid: { display: false }, ticks: { color: TICK, font: { size: 10 } }, beginAtZero: true } }) } });
+      options: { plugins: { legend: legend() }, scales: ejes({ y: yNice(mesesCG.map(function (m) { return cgBs[m] || 0; })), y2: { position: 'right', grid: { display: false }, ticks: { color: TICK, font: { size: 10 } }, beginAtZero: true } }) } });
 
     /* 4 · compras generales apiladas por tipo */
     var mesesP = ejeMeses(P.map(function (p) { return p.date; }));
@@ -53474,7 +53490,7 @@ try {
     grafico('gb-c4', { type: 'bar',
       data: { labels: mesesP.map(mesLabel), datasets: Object.keys(tipos).map(function (t, i) {
         return { label: TNOM[t] || t, data: mesesP.map(function (m) { return tipos[t][m] || 0; }), backgroundColor: PAL[i % PAL.length], stack: 'c', borderRadius: 2 }; }) },
-      options: { plugins: { legend: legend() }, scales: ejes() } });
+      options: { plugins: { legend: legend() }, scales: ejes({ y: yNice(mesesP.map(function (m) { return Object.keys(tipos).reduce(function (a, t) { return a + (tipos[t][m] || 0); }, 0); })) }) } });
 
     /* 5 · estacionalidad */
     var est = new Array(12).fill(0);
@@ -53537,6 +53553,7 @@ try {
     /* estados vacíos por gráfico (Chaco Lejos arranca sin datos — que lo DIGA) */
     vacio('gb-c1', V.length > 0, 'Sin ventas en el período');
     vacio('gb-c2', V.length > 0 || Object.keys(GM).length > 0, 'Sin movimientos en el período');
+    vacio('gb-c2b', Object.keys(GM).length > 0, 'Sin gastos en el período');
     vacio('gb-c3', CG.length > 0, 'Sin compras de ganado en el período');
     vacio('gb-c4', P.length > 0, 'Sin compras en el período');
     vacio('gb-c5', V.length > 0, 'Sin ventas todavía');
