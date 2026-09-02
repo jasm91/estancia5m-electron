@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.207'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
+window.E5M_HTML_BUILD = '1.8.208'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
 
 window.v175Diag = function () {
   var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
@@ -54517,6 +54517,107 @@ try {
       }
       w.__v207 = true; return w;
     })(window._ahCalcularIndirectos);
+  }
+})();
+</script>
+
+<script id="cabana-animales-v18208">
+/* ═══════════════════════════════════════════════════════════════════════════
+   v1.8.208 — 🐄 ANIMALES DE CABAÑA dentro de Reproducción → Cabaña (pedido José 02-09)
+   Primera tarjeta de la pestaña: los animales de los lotes marcados 🏆 Cabaña (v1.8.206), uno por fila,
+   con lo que el cabañero necesita ver de un vistazo: RP, lote, categoría/sexo, raza, nacimiento/edad,
+   madre y padre (del parto), último peso, estado del registro (RGN/RGD o "sin registro"), semáforo del
+   denuncio de nacimiento (≤ 60 días ASOCEBU) y estado reproductivo (último servicio/diagnóstico).
+   Acciones: 📋 Registro (abre la ficha RGN/RGD ya con el animal elegido) · Historial.
+   Sin lotes cabaña: la tarjeta lo dice y ofrece marcar uno desde Lotes.
+   Kill: __V208_OFF
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+  if (window.__V208_OFF) return;
+  var LOTE_SEL = '';
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+  function f10(x) { return String(x || '').slice(0, 10); }
+  function hoy() { return new Date().toISOString().slice(0, 10); }
+  function dias(a, b) { var d = (new Date(f10(b)) - new Date(f10(a))) / 86400000; return isFinite(d) ? Math.round(d) : null; }
+  function edadTxt(nac) { var d = dias(nac, hoy()); if (d == null || d < 0) return ''; if (d < 60) return d + ' d'; if (d < 365) return Math.round(d / 30.4) + ' m'; return (d / 365).toFixed(1) + ' a'; }
+  function lotesCabana() { return (db.lots || []).filter(function (l) { return l && l.code && typeof window.v206Actividad === 'function' && window.v206Actividad(l) === 'cabana' && !/sold|vendido|inactivo|fusionado|merged/i.test(l.status || ''); }); }
+  function cat(a, l) { var c = (typeof window.v206Categoria === 'function') ? window.v206Categoria(a, l) : (a.categoria || ''); return c ? c.charAt(0).toUpperCase() + c.slice(1) : ''; }
+  function raza(a, l) { return (typeof window.v206Raza === 'function') ? window.v206Raza(a, l) : (a.breed || a.raza || ''); }
+  function sexoTxt(a, c) { var s = String(a.sexo || '').toLowerCase(); if (/^m|macho/.test(s)) return '♂'; if (/^h|hembra/.test(s)) return '♀'; if (/torillo|toro|novillo|ternero$/.test(String(c).toLowerCase())) return '♂'; if (/vaca|vaquillona|ternera/.test(String(c).toLowerCase())) return '♀'; return ''; }
+  function ultimoPeso(a) { var ps = (a.pesajes || []).filter(function (p) { return p && p.peso > 0; }).sort(function (x, y) { return f10(x.fecha).localeCompare(f10(y.fecha)); }); return ps.length ? ps[ps.length - 1] : null; }
+  function partoDe(id) { return (db.partos || []).find(function (p) { return p && String(p.cria_id || '') === String(id); }) || null; }
+  function repro(id) {
+    var ss = (db.reproductive_services || []).filter(function (s) { return s && String(s.animal_id) === String(id); }).sort(function (x, y) { return f10(x.date).localeCompare(f10(y.date)); });
+    if (!ss.length) return { txt: '—', col: 'var(--muted)' };
+    var s = ss[ss.length - 1], r = String(s.result || 'pendiente').toLowerCase();
+    if (/pre[ñn]ada/.test(r)) { var pp = (typeof _reproExpectedPartoDate === 'function') ? _reproExpectedPartoDate(s) : null; return { txt: '🤰 Preñada' + (pp ? ' · parto ~' + f10(pp) : ''), col: 'var(--green)' }; }
+    if (/vac/.test(r)) return { txt: 'Vacía (' + f10(s.date) + ')', col: 'var(--red,#f85149)' };
+    return { txt: 'Servicio ' + f10(s.date) + ' · sin diagnóstico', col: 'var(--amber2,#e0a94a)' };
+  }
+  function filas() {
+    var A = (typeof getAnimalesDB === 'function') ? (getAnimalesDB() || {}) : {};
+    var out = [];
+    lotesCabana().forEach(function (l) {
+      if (LOTE_SEL && l.code !== LOTE_SEL) return;
+      (A[l.code] || []).forEach(function (a) {
+        var id = String(a.animal_id || a.id || ''); if (!id) return;
+        var p = partoDe(id); var nac = f10(a.nacimiento || a.fecha_nacimiento || (p && (p.date || p.fecha)) || (a.origin === 'parto' ? a.entry_date : ''));
+        var madre = a.madre_id || (p && p.madre_id) || '', padre = a.padre_id || (p && (p.padre || p.padre_id || p.toro_id)) || '';
+        var reg = a.rgd ? { txt: 'RGD ' + a.rgd, col: 'var(--green)' } : a.rgn ? { txt: 'RGN ' + a.rgn, col: 'var(--green)' } : { txt: 'sin registro', col: 'var(--muted)' };
+        var den = null; if (nac && !a.rgn && !a.rgd) { var d = dias(nac, hoy()); if (d != null) { var resta = 60 - d; den = resta < 0 ? { txt: '⛔ extemporáneo (' + (-resta) + ' d)', col: 'var(--red,#f85149)' } : resta <= 15 ? { txt: '⚠ denuncio vence en ' + resta + ' d', col: 'var(--amber2,#e0a94a)' } : { txt: 'denuncio: ' + resta + ' d', col: 'var(--muted)' }; } }
+        var c = cat(a, l), up = ultimoPeso(a);
+        out.push({ id: id, lot: l.code, cat: c, sexo: sexoTxt(a, c), raza: raza(a, l), nac: nac, edad: edadTxt(nac), madre: madre, padre: padre, peso: up, reg: reg, den: den, rep: repro(id), nombre: a.nombre_pedigri || '' });
+      });
+    });
+    return out.sort(function (x, y) { return x.lot.localeCompare(y.lot) || String(x.id).localeCompare(String(y.id), undefined, { numeric: true }); });
+  }
+  function tarjeta() {
+    var tab = $('repro-tab-cabana'); if (!tab) return null;
+    var c = $('v208-card');
+    if (!c) {
+      c = document.createElement('div'); c.id = 'v208-card'; c.className = 'card'; c.style.marginBottom = '14px';
+      c.innerHTML = '<div class="card-body"><div class="card-title" style="margin-bottom:8px">🐄 Animales de cabaña</div><div id="v208-body"></div></div>';
+      var stats = tab.querySelector('.stats'); if (stats && stats.nextSibling) tab.insertBefore(c, stats.nextSibling); else tab.appendChild(c);
+    }
+    return c;
+  }
+  window.v208Lote = function (code) { LOTE_SEL = code || ''; window.v208Render(); };
+  window.v208Registro = function (id, lot) {
+    try { if (typeof openReproCabana === 'function') openReproCabana(); } catch (e) {}
+    setTimeout(function () { try { reproCabanaElegir(id, lot); } catch (e) {} }, 80);
+  };
+  window.v208Render = function () {
+    if (window.__V208_OFF) return;
+    var card = tarjeta(); if (!card) return;
+    var body = $('v208-body'); var LC = lotesCabana();
+    var st = $('cb2-st-pajuelas-sub');
+    if (!LC.length) {
+      body.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:6px 0 4px">Ningún lote está marcado como 🏆 Cabaña. Marcalo desde <a href="javascript:void(0)" onclick="showPage(\'lotes\')" style="color:var(--amber2,#e0a94a)">Lotes</a> tocando el badge de actividad del lote, y sus animales aparecen acá.</div>';
+      return;
+    }
+    var rows = filas();
+    var chips = LC.length > 1 ? '<div style="display:flex;gap:6px;margin:2px 0 10px;flex-wrap:wrap"><button class="chip' + (!LOTE_SEL ? ' chip-active' : '') + '" onclick="v208Lote(\'\')">Todos</button>' + LC.map(function (l) { return '<button class="chip' + (LOTE_SEL === l.code ? ' chip-active' : '') + '" onclick="v208Lote(\'' + esc(l.code) + '\')">' + esc(l.code) + '</button>'; }).join('') + '</div>' : '';
+    var nReg = rows.filter(function (r) { return /^RG/.test(r.reg.txt); }).length, nDen = rows.filter(function (r) { return r.den && /vence|extempor/.test(r.den.txt); }).length;
+    var head = '<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px"><b style="color:var(--text)">' + rows.length + '</b> animales en ' + LC.length + ' lote(s) de cabaña (' + LC.map(function (l) { return esc(l.code); }).join(', ') + ') · ' + nReg + ' con registro' + (nDen ? ' · <span style="color:var(--amber2,#e0a94a)">' + nDen + ' con denuncio por vencer o vencido</span>' : '') + '</div>';
+    var tbl = '<div style="overflow-x:auto"><table class="tbl" style="width:100%;font-size:12.5px"><thead><tr><th>RP / ID</th><th>Lote</th><th>Categoría</th><th>Raza</th><th>Nacimiento</th><th>Madre</th><th>Padre</th><th>Último peso</th><th>Registro</th><th>Reproductivo</th><th></th></tr></thead><tbody>' +
+      (rows.length ? rows.map(function (r) {
+        return '<tr><td><b>' + esc(r.id) + '</b>' + (r.nombre ? '<div style="font-size:10.5px;color:var(--muted)">' + esc(r.nombre) + '</div>' : '') + '</td><td>' + esc(r.lot) + '</td><td>' + esc(r.sexo + ' ' + r.cat).trim() + '</td><td>' + esc(r.raza || '—') + '</td>' +
+          '<td>' + (r.nac ? esc(r.nac) + ' <span style="color:var(--muted)">(' + r.edad + ')</span>' : '—') + '</td><td>' + esc(r.madre || '—') + '</td><td>' + esc(r.padre || '—') + '</td>' +
+          '<td>' + (r.peso ? '<b>' + Math.round(r.peso.peso) + ' kg</b> <span style="color:var(--muted);font-size:11px">' + esc(f10(r.peso.fecha)) + '</span>' : '—') + '</td>' +
+          '<td><span style="color:' + r.reg.col + '">' + esc(r.reg.txt) + '</span>' + (r.den ? '<div style="font-size:10.5px;color:' + r.den.col + '">' + esc(r.den.txt) + '</div>' : '') + '</td>' +
+          '<td style="color:' + r.rep.col + '">' + esc(r.rep.txt) + '</td>' +
+          '<td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" style="padding:3px 8px;font-size:11px" onclick="v208Registro(\'' + esc(r.id) + '\',\'' + esc(r.lot) + '\')">📋 Registro</button> ' +
+          (typeof verHistorialAnimal === 'function' ? '<button class="btn btn-ghost btn-sm" style="padding:3px 8px;font-size:11px" onclick="verHistorialAnimal(\'' + esc(r.id) + '\',\'' + esc(r.lot) + '\')">Historial</button>' : '') + '</td></tr>';
+      }).join('') : '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:14px">Sin animales en el lote elegido</td></tr>') + '</tbody></table></div>';
+    body.innerHTML = chips + head + tbl;
+    if (st) st.textContent = LC.length + ' lote(s) cabaña · ' + rows.length + ' animales · pajuelas en termo';
+    /* abrir la tarjeta por defecto la primera vez (las demás quedan plegadas como hasta ahora) */
+    if (!card.__v208Abierta) { card.__v208Abierta = true; setTimeout(function () { try { if (!card.classList.contains('aso-clps-ready') && typeof window.asoColapsables === 'function') window.asoColapsables(); if (card.classList.contains('aso-clps')) { var tt = card.querySelector('.card-title'); if (tt) tt.click(); } } catch (e) {} }, 150); }
+  };
+  if (typeof window.cab2Render === 'function' && !window.cab2Render.__v208) {
+    window.cab2Render = (function (base) { function w() { var r = base.apply(this, arguments); try { window.v208Render(); } catch (e) { console.warn('[v208]', e); } return r; } w.__v208 = true; return w; })(window.cab2Render);
   }
 })();
 </script>
