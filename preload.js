@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld('estancia', {
     onError: (cb) => ipcRenderer.on('sync:error', (_, msg) => cb(msg)),
   },
 
+  // ── DevTools a pedido (v1.8.201) ─────────────────────────
+  devtools: { toggle: () => ipcRenderer.invoke('devtools:toggle') },
+
   // ── Settings ─────────────────────────────────────────────
   settings: {
     get: (key) => ipcRenderer.invoke('settings:get', key),

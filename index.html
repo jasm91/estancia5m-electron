@@ -711,7 +711,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.200'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
+window.E5M_HTML_BUILD = '1.8.201'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
 
 window.v175Diag = function () {
   var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
@@ -773,6 +773,13 @@ window.v175Diag = function () {
       b.style.cssText = 'color:#39d353;font-size:11px;margin-left:6px;font-family:inherit';
       b.title = 'Build del index.html que está corriendo';
       el.appendChild(b);
+      /* v1.8.201: DevTools a pedido (ya no se abre solo al iniciar) */
+      var d = document.createElement('button');
+      d.textContent = '🛠 DevTools'; d.className = 'btn btn-ghost btn-sm'; d.id = 'btn-devtools';
+      d.style.cssText = 'margin-left:10px;padding:2px 8px;font-size:11px;vertical-align:middle';
+      d.title = 'Abrir/cerrar la consola de desarrollo (para diagnóstico). Atajo: Ctrl/Cmd+Shift+I';
+      d.onclick = function () { try { if (window.estancia && window.estancia.devtools) window.estancia.devtools.toggle(); else if (typeof toast === 'function') toast('DevTools no disponible en esta versión del binario', 'warn'); } catch (e) {} };
+      el.appendChild(d);
     } catch (e) {}
   }
   var obs = new MutationObserver(poner);

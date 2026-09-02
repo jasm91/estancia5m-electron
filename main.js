@@ -70,7 +70,8 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
-    mainWindow.webContents.openDevTools(); // debug
+    /* v1.8.201: DevTools ya no se abre solo al iniciar (frena Electron). Se abre desde Configuración → 🛠 DevTools, o con E5M_DEVTOOLS=1 */
+    if (process.env.E5M_DEVTOOLS === '1') mainWindow.webContents.openDevTools();
   });
 
   mainWindow.on('close', (e) => {
@@ -291,6 +292,7 @@ ipcMain.handle('sync:status', async () => {
 });
 
 // SETTINGS
+ipcMain.handle('devtools:toggle', (e) => { try { const wc = e.sender; if (wc.isDevToolsOpened()) wc.closeDevTools(); else wc.openDevTools({ mode: 'right' }); return wc.isDevToolsOpened(); } catch (err) { return false; } }); /* v1.8.201 */
 ipcMain.handle('settings:get', (_, key) => store.get(key));
 ipcMain.handle('settings:set', (_, key, value) => { store.set(key, value); return true; });
 ipcMain.handle('settings:getAll', () => store.store);
