@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.208'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
+window.E5M_HTML_BUILD = '1.8.209'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
 
 window.v175Diag = function () {
   var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
@@ -43574,7 +43574,10 @@ window.saveReproDestete = function(){
 };
 
 /* ═══ CABAÑA: rgn/rgd/serie/tatuaje sobre el ANIMAL ═══ */
-function rcAll(){ return (typeof getAnimalesDB==='function')?(getAnimalesDB()||{}):{}; }
+function rcAll(){ /* v1.8.209: si hay lotes 🏆 cabaña, el registro solo busca en ellos */
+  var all=(typeof getAnimalesDB==='function')?(getAnimalesDB()||{}):{};
+  try { if (typeof window.v208LotesCabana==='function') { var lc=window.v208LotesCabana(); if (lc.length) { var o={}; lc.forEach(function(c){ if(all[c]) o[c]=all[c]; }); return o; } } } catch(e){}
+  return all; }
 window.openReproCabana = function(){
   if (window.__REPRO_CABANA_OFF) return;
   rEl('rc-buscar').value=''; rEl('rc-results').style.display='none'; rEl('rc-form').style.display='none';
@@ -46238,8 +46241,10 @@ function cab2Rango(){
 }
 function cab2Eventos(){
   var r=cab2Rango(), ini=r[0], fin=r[1];
-  var srv=((dbOk()&&db.reproductive_services)||[]).filter(function(s){ return s.date&&s.date>=ini&&s.date<=fin&&(s.tipo_servicio==='MN'||s.tipo_servicio==='monta'||s.tipo_servicio==='IA'); });
-  var par=((dbOk()&&db.partos)||[]).filter(function(p){ return p.date&&p.date>=ini&&p.date<=fin; });
+  /* v1.8.209: con lotes 🏆 cabaña marcados, las planillas ASOCEBU solo llevan servicios/partos de esos lotes (los de LECHERIA/cría no se registran) */
+  var _lc=(typeof window.v208LotesCabana==='function')?window.v208LotesCabana():[]; var _enCab=function(code){ return !_lc.length || _lc.indexOf(String(code||'').trim())>=0 || _lc.map(function(x){return x.toUpperCase();}).indexOf(String(code||'').trim().toUpperCase())>=0; };
+  var srv=((dbOk()&&db.reproductive_services)||[]).filter(function(s){ return s.date&&s.date>=ini&&s.date<=fin&&(s.tipo_servicio==='MN'||s.tipo_servicio==='monta'||s.tipo_servicio==='IA')&&_enCab(s.lot_code); });
+  var par=((dbOk()&&db.partos)||[]).filter(function(p){ return p.date&&p.date>=ini&&p.date<=fin&&_enCab(p.lot_code); });
   var te=arr('repro_te').filter(function(t){ return t.fecha&&t.fecha>=ini&&t.fecha<=fin; });
   return { srv:srv, par:par, te:te, ini:ini, fin:fin };
 }
@@ -46254,7 +46259,8 @@ function cab2Validar(){
     if((s.tipo_servicio==='IA'||s.tipo_servicio==='TE')&&g>315) add('err','Gestación '+s.tipo_servicio+' de '+g+'d (máx 315) — cría '+(p.cria_id||'?'));
   });
   var porMadre={};
-  ((dbOk()&&db.partos)||[]).forEach(function(p){ if(!p.madre_id||!p.date)return; (porMadre[p.madre_id]=porMadre[p.madre_id]||[]).push(p.date); });
+  var _lc2=(typeof window.v208LotesCabana==='function')?window.v208LotesCabana().map(function(x){return x.toUpperCase();}):[];
+  ((dbOk()&&db.partos)||[]).forEach(function(p){ if(!p.madre_id||!p.date)return; if(_lc2.length&&_lc2.indexOf(String(p.lot_code||'').trim().toUpperCase())<0)return; /* v1.8.209 */ (porMadre[p.madre_id]=porMadre[p.madre_id]||[]).push(p.date); });
   Object.keys(porMadre).forEach(function(m){
     var ds=porMadre[m].sort();
     for(var i=1;i<ds.length;i++){ var iep=dias(ds[i-1],ds[i]); if(iep!=null&&iep<296&&ds[i]>=ev.ini&&ds[i]<=ev.fin) add('err','IEP de '+iep+'d (mín 296) — madre '+m); }
@@ -54584,6 +54590,7 @@ try {
     return c;
   }
   window.v208Lote = function (code) { LOTE_SEL = code || ''; window.v208Render(); };
+  window.v208LotesCabana = function () { return lotesCabana().map(function (l) { return l.code; }); };
   window.v208Registro = function (id, lot) {
     try { if (typeof openReproCabana === 'function') openReproCabana(); } catch (e) {}
     setTimeout(function () { try { reproCabanaElegir(id, lot); } catch (e) {} }, 80);
