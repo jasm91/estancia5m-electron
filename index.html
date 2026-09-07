@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.214';
+window.E5M_HTML_BUILD = '1.8.215';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -54962,19 +54962,35 @@ try {
 
   /* ── acciones: abren los modales que ya existen, con el animal cargado ── */
   function tick(fn) { setTimeout(fn, 60); }
+  function vientreDe(id) { try { return estado().vientres.find(function (v) { return String(v.id) === String(id); }) || null; } catch (e) { return null; } }
   window.vntServicio = function (id) {
     if (typeof openReproNuevoServicio !== 'function') return;
+    var v = vientreDe(id);
     openReproNuevoServicio();
-    tick(function () { var i = document.getElementById('repro-srv-animal'); if (i) { i.value = id; i.dispatchEvent(new Event('change', { bubbles: true })); } });
+    /* v1.8.215 (José): al entrar desde la fila ya sabemos vaca y lote — no se vuelven a pedir */
+    tick(function () {
+      var sl = document.getElementById('repro-srv-lote');
+      if (sl && v && v.lote) {
+        var op = Array.prototype.find.call(sl.options, function (o) { return o.value === v.lote; });
+        if (op) { sl.value = v.lote; if (typeof _reproPopulateAnimalsList === 'function') _reproPopulateAnimalsList(); }
+      }
+      var i = document.getElementById('repro-srv-animal');
+      if (i) { i.value = id; i.dispatchEvent(new Event('change', { bubbles: true })); }
+      var h = document.getElementById('repro-srv-animal-hint');
+      if (h && v) h.innerHTML = '<span style="color:var(--green2,#56d364)">✓ ' + esc(id) + ' · ' + esc(v.lote) + (v.cat ? ' · ' + esc(v.cat) : '') + '</span> — vienen de la fila que tocaste';
+      var f = document.getElementById('repro-srv-semen') || document.getElementById('repro-srv-tecnico');
+      if (f) { try { f.focus(); } catch (e) {} }
+    });
   };
   window.vntParto = function (id) {
     if (typeof openReproNuevoParto !== 'function') return;
+    var vP = vientreDe(id);
     openReproNuevoParto();
     tick(function () {
       var s = document.getElementById('repro-parto-madre'); if (!s) return;
       var op = Array.prototype.find.call(s.options, function (o) { return o.value === id || (o.textContent || '').indexOf(id) === 0; });
       if (op) { s.value = op.value; if (typeof _reproPartoOnMadreChange === 'function') _reproPartoOnMadreChange(); }
-      else if (typeof toast === 'function') toast('Esa vaca no figura como preñada pendiente de parto — elegila a mano', 'warn');
+      else if (typeof toast === 'function') toast('Esa vaca no figura como preñada pendiente de parto' + (vP && vP.lote ? ' (' + vP.lote + ')' : '') + ' — elegila a mano', 'warn');
     });
   };
   window.vntDiag = function (id) {
@@ -55127,7 +55143,7 @@ try {
     f.forEach(function (r) { var x = String(r.result || 'pendiente').toLowerCase(); G[/pre[ñn]/.test(x) ? 'pre' : /vac/.test(x) ? 'vac' : 'pend'].push(r); });
     var card = ocultarTabla('repro-tbody');
     var h = host('repro-tab-servicios', 'srv-accd'); if (!h) return;
-    if (card && card.nextSibling !== h) card.parentNode.insertBefore(h, card.nextSibling);
+    if (card && !h.closest('.vnt-listcard') && card.nextSibling !== h) card.parentNode.insertBefore(h, card.nextSibling); /* v1.8.215: si ya está en su tarjeta, no lo saques */
     var COLS = '108px 132px 92px minmax(0,1fr) 104px 132px 92px';
     e5mAccD({
       host: h, key: 'srv', gridCols: COLS, innerRows: 8, rowPx: 46, openDefault: G.pend.length ? 'pend' : 'pre',
@@ -55185,7 +55201,7 @@ try {
     });
     var card = ocultarTabla('repro-partos-tbody');
     var h = host('repro-tab-partos', 'par-accd'); if (!h) return;
-    if (card && card.nextSibling !== h) card.parentNode.insertBefore(h, card.nextSibling);
+    if (card && !h.closest('.vnt-listcard') && card.nextSibling !== h) card.parentNode.insertBefore(h, card.nextSibling); /* v1.8.215: si ya está en su tarjeta, no lo saques */
     var COLS = '108px 128px 132px 108px 104px 108px 118px';
     e5mAccD({
       host: h, key: 'par', gridCols: COLS, innerRows: 8, rowPx: 46, openDefault: 'pie',
@@ -55319,6 +55335,188 @@ try {
              cabana: !!(el('repro-tab-cabana') && el('repro-tab-cabana').dataset.v214) };
   };
   try { console.log('%c[EP Desktop v1.8.214] Reproducción: Vientres en el menú + Servicios/Partos/Cabaña con la lista de EP Campo · vnt2Diag() · kill: __VNT2_OFF', 'color:#bc8cff;font-weight:bold'); } catch (e) {}
+})();
+</script>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     v1.8.215 — SERVICIOS Y PARTOS: EL RESTO DE LA PANTALLA (pedido José 07-09:
+     "servicios y partos sigue viéndose mal y desprolijo"). La 1.8.214 cambió la
+     LISTA pero dejó el mobiliario de arriba: 4 tarjetas de KPI de 200 px con
+     rayitas, la barra de filtros suelta, el banner de partos esperados y un
+     gráfico vacío ocupando media pantalla cuando no hay datos.
+     Ahora: tira de KPI compacta, filtros dentro de la tarjeta de la lista como
+     barra de herramientas, y en Partos el gráfico y los partos esperados pasan a
+     una columna derecha (y se esconden cuando no hay nada que mostrar).
+     El grid va en un DIV interno, no en el pane: así no pelea con el display
+     inline de switchTab (el parche .active de la 1.8.214 ya no hace falta).
+     Aditivo. Kill switch: window.__VNT3_OFF = true
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<style>
+.vnt-cols2{display:grid;grid-template-columns:minmax(0,2.15fr) minmax(300px,1fr);gap:16px;align-items:start}
+.vnt-cols2.solo{grid-template-columns:1fr}
+.vnt-cols2 > div{min-width:0;display:flex;flex-direction:column;gap:14px}
+@media (max-width:1180px){.vnt-cols2{grid-template-columns:1fr}}
+/* la barra de filtros, dentro de la tarjeta de la lista */
+.vnt-scope .vnt-filtros{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--bor,#30363d);margin:0!important;font-size:12px}
+.vnt-scope .vnt-filtros select{background:var(--sur2,#21262d)!important;border:1px solid var(--bor,#30363d)!important;border-radius:8px!important;padding:6px 10px!important;font-size:12px!important;color:var(--text,#e6edf3)!important}
+.vnt-scope .vnt-filtros > div{gap:6px!important}
+.vnt-scope .vnt-listcard{background:var(--sur,#161b22);border:1px solid var(--bor,#30363d);border-radius:13px;overflow:hidden}
+.vnt-scope .vnt-listcard > .card{border:none!important;border-radius:0!important;background:transparent!important}
+.vnt-scope .vnt-chart-hd{font-family:Syne,system-ui,sans-serif;font-weight:700;font-size:13px;padding:11px 14px;border-bottom:1px solid var(--bor,#30363d)}
+/* Cabaña: el grid vuelve a un div interno (se retira el hack .active de 1.8.214) */
+#repro-tab-cabana.cb2-grid.active{display:block!important}
+#repro-tab-cabana.cb2-grid:not(.active){display:none!important}
+</style>
+<script>
+(function reproV1215() {
+  if (window.__VNT3_OFF) return;
+  function el(id) { return document.getElementById(id); }
+
+  /* tira de KPI compacta a partir de las tarjetas .stats que ya existen */
+  function kpis(pane, defs) {
+    var stats = pane.querySelector('.stats'); if (!stats) return null;
+    var k = pane.querySelector(':scope > .vnt-kpis');
+    if (!k) {
+      k = document.createElement('div'); k.className = 'vnt-kpis k4';
+      k.innerHTML = defs.map(function (d, i) {
+        return '<div class="vnt-kpi"><div class="vnt-n" id="' + d.n + '-k215"' + (d.c ? ' style="color:' + d.c + '"' : '') + '>—</div>' +
+               '<div class="vnt-l" id="' + d.n + '-l215">' + d.l + '</div></div>';
+      }).join('');
+      stats.style.display = 'none';
+      pane.insertBefore(k, stats);
+    }
+    defs.forEach(function (d) {
+      var src = el(d.n), dst = el(d.n + '-k215'); if (src && dst) dst.textContent = src.textContent;
+      var ls = d.sub ? el(d.sub) : null, ld = el(d.n + '-l215');
+      if (ls && ld) { var t = (ls.textContent || '').trim(); ld.textContent = t || d.l; }
+    });
+    return k;
+  }
+
+  /* estructura: [KPI] + grid(main | side) — el grid es un div, no el pane */
+  function estructura(pane, mainEls, sideEls) {
+    var cols = pane.querySelector(':scope > .vnt-cols2');
+    if (!cols) {
+      cols = document.createElement('div'); cols.className = 'vnt-cols2';
+      var m = document.createElement('div'), s = document.createElement('div');
+      cols.appendChild(m); cols.appendChild(s); pane.appendChild(cols);
+    }
+    var m = cols.children[0], s = cols.children[1];
+    mainEls.forEach(function (e2) { if (e2 && e2.parentNode !== m) m.appendChild(e2); });
+    (sideEls || []).forEach(function (e2) { if (e2 && e2.parentNode !== s) s.appendChild(e2); });
+    var vacia = !s.querySelector('*') || Array.prototype.every.call(s.children, function (c) { return c.style.display === 'none'; });
+    cols.classList.toggle('solo', vacia);
+    s.style.display = vacia ? 'none' : '';
+    return cols;
+  }
+  function tarjetaLista(host) {
+    var ya = host.closest('.vnt-listcard');
+    if (ya) return ya;
+    var w = document.createElement('div'); w.className = 'vnt-listcard';
+    host.parentNode.insertBefore(w, host); w.appendChild(host);
+    return w;
+  }
+  /* red de seguridad: si alguna pasada dejó tarjetas vacías, se barren */
+  function barrerVacias(pane) {
+    pane.querySelectorAll('.vnt-listcard').forEach(function (w) { if (!w.children.length) w.remove(); });
+  }
+  function filtros(pane, anyId) {
+    var f = el(anyId); if (!f) return null;
+    var row = f.closest('div[style*="flex-wrap"]') || f.parentNode.parentNode;
+    if (row) row.classList.add('vnt-filtros');
+    return row;
+  }
+
+  /* ── 🐂 SERVICIOS ── */
+  function armarServicios() {
+    var pane = el('repro-tab-servicios'), host = el('srv-accd'); if (!pane || !host) return;
+    pane.classList.add('vnt-scope');
+    kpis(pane, [
+      { n: 'repro-stat-total', sub: 'repro-stat-total-sub', l: 'servicios' },
+      { n: 'repro-stat-prenez', sub: 'repro-stat-prenez-sub', l: 'tasa de preñez', c: 'var(--green2,#56d364)' },
+      { n: 'repro-stat-sc', sub: 'repro-stat-sc-sub', l: 'servicios / concepción' },
+      { n: 'repro-stat-pendientes', l: 'pend. diagnóstico', c: 'var(--amber2,#e3b341)' }
+    ]);
+    var card = tarjetaLista(host);
+    var f = filtros(pane, 'repro-filter-tipo');
+    if (f && f.parentNode !== card) card.insertBefore(f, card.firstChild);
+    barrerVacias(pane);
+    estructura(pane, [card], []);
+  }
+
+  /* ── 🍼 PARTOS ── */
+  function armarPartos() {
+    var pane = el('repro-tab-partos'), host = el('par-accd'); if (!pane || !host) return;
+    pane.classList.add('vnt-scope');
+    kpis(pane, [
+      { n: 'repro-partos-stat-total', sub: 'repro-partos-stat-total-sub', l: 'partos' },
+      { n: 'repro-partos-stat-paricion', sub: 'repro-partos-stat-paricion-sub', l: 'parición' },
+      { n: 'repro-partos-stat-iep', sub: 'repro-partos-stat-iep-sub', l: 'intervalo entre partos' },
+      { n: 'repro-partos-stat-mortalidad', l: 'mortalidad neonatal', c: 'var(--red,#f85149)' }
+    ]);
+    var card = tarjetaLista(host);
+    var f = filtros(pane, 'repro-partos-filter-periodo');
+    if (f && f.parentNode !== card) card.insertBefore(f, card.firstChild);
+    /* a la derecha: partos esperados y el gráfico; se esconden si no hay nada */
+    var esp = el('repro-partos-esperados');
+    var chartEl = el('repro-partos-chart');
+    var chart = chartEl ? (chartEl.closest('.card') || chartEl.parentNode) : null;
+    var hayPartos = (typeof _reproGetPartos === 'function') ? _reproGetPartos().length > 0 : true;
+    if (chart) chart.style.display = hayPartos ? '' : 'none';
+    if (esp) {
+      var txt = (esp.innerText || '').trim();
+      esp.style.display = (!txt || /No hay partos esperados/i.test(txt)) && !hayPartos ? 'none' : '';
+    }
+    /* la barra de botones (Registrar destete / Registro cabaña) queda arriba de todo */
+    var bar = el('repro-v1899-bar');
+    if (bar && bar.parentNode === pane) pane.insertBefore(bar, pane.firstChild);
+    barrerVacias(pane);
+    estructura(pane, [card], [esp, chart]);
+  }
+
+  /* Cabaña: mover el grid del pane a un div interno (saca el !important de 1.8.214) */
+  function arreglarCabana() {
+    var pane = el('repro-tab-cabana'); if (!pane || !pane.classList.contains('cb2-grid')) return;
+    if (pane.querySelector(':scope > .vnt-cols2')) return;
+    var cols = pane.querySelectorAll(':scope > .cb2-col');
+    if (cols.length !== 2) return;
+    var w = document.createElement('div'); w.className = 'vnt-cols2';
+    w.appendChild(cols[0]); w.appendChild(cols[1]);
+    pane.appendChild(w);
+  }
+
+  function wrap(name, after) {
+    var o = window[name];
+    if (typeof o !== 'function' || o.__v215) return;
+    var w = function () { var r = o.apply(this, arguments); try { after(); } catch (e) { console.warn('[v215]', name, e); } return r; };
+    w.__v215 = true; window[name] = w;
+  }
+  /* los botones de pestaña de Servicios y Partos solo hacen switchTab: sin render no hay
+     lista nueva si la pestaña se abre después de que initReproduccion ya corrió */
+  function engancharTabs() {
+    [['repro-tab-servicios', 'renderReproServicios'], ['repro-tab-partos', 'renderReproPartos']].forEach(function (par) {
+      var b = document.querySelector('#page-reproduccion .tabs .tab-btn[onclick*="' + par[0] + '"]');
+      if (!b || b.dataset.v215) return;
+      b.dataset.v215 = '1';
+      b.addEventListener('click', function () { setTimeout(function () { try { window[par[1]](); } catch (e) {} }, 30); });
+    });
+  }
+  function arm(n) {
+    wrap('renderReproServicios', armarServicios);
+    wrap('renderReproPartos', armarPartos);
+    wrap('cab2Render', arreglarCabana);
+    engancharTabs();
+    if ((n || 0) < 14) setTimeout(function () { arm((n || 0) + 1); }, 700);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { arm(0); }, { once: true }); else arm(0);
+  window.vnt3Diag = function () {
+    var s = el('repro-tab-servicios'), p = el('repro-tab-partos');
+    return { version: '1.8.215',
+             srv: !!(s && s.querySelector('.vnt-cols2')), srvKpis: s ? s.querySelectorAll('.vnt-kpi').length : 0,
+             par: !!(p && p.querySelector('.vnt-cols2')), parKpis: p ? p.querySelectorAll('.vnt-kpi').length : 0 };
+  };
+  try { console.log('%c[EP Desktop v1.8.215] Servicios y Partos: KPI compactos, filtros en la tarjeta y columna derecha · vnt3Diag() · kill: __VNT3_OFF', 'color:#bc8cff;font-weight:bold'); } catch (e) {}
 })();
 </script>
 
