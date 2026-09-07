@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.212';
+window.E5M_HTML_BUILD = '1.8.213';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -43836,9 +43836,9 @@ function agRenderDashboard(){
 
   var ex='';
   vencidas.forEach(function(l){ var c=agById(d.campanas,l.campana_id);
-    ex+='<div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--bor)"><span class="pill r">VENCIDA</span><div style="flex:1">'+LABOR_TIPOS[l.tipo]+' — '+escA(c?campLabel(d,c):'?')+' <span style="color:var(--muted)">('+agFecha(l.fecha)+')</span></div><button class="btn btn-primary btn-sm" onclick="agEjecutarLabor('+l.id+')">▶ Ejecutar</button></div>'; });
+    ex+='<div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--bor)"><span class="pill r">VENCIDA</span><div style="flex:1">'+LABOR_TIPOS[l.tipo]+' — '+escA(c?campLabel(d,c):'?')+' <span style="color:var(--muted)">('+agFecha(l.fecha)+')</span></div><button class="btn btn-primary btn-sm" onclick="agEjecutarLabor('+agIdq(l.id)+')">▶ Ejecutar</button></div>'; });
   proximas.forEach(function(l){ var c=agById(d.campanas,l.campana_id);
-    ex+='<div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--bor)"><span class="pill a">PRÓXIMA</span><div style="flex:1">'+LABOR_TIPOS[l.tipo]+' — '+escA(c?campLabel(d,c):'?')+' <span style="color:var(--muted)">('+agFecha(l.fecha)+')</span></div><button class="btn btn-primary btn-sm" onclick="agEjecutarLabor('+l.id+')">▶ Ejecutar</button></div>'; });
+    ex+='<div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--bor)"><span class="pill a">PRÓXIMA</span><div style="flex:1">'+LABOR_TIPOS[l.tipo]+' — '+escA(c?campLabel(d,c):'?')+' <span style="color:var(--muted)">('+agFecha(l.fecha)+')</span></div><button class="btn btn-primary btn-sm" onclick="agEjecutarLabor('+agIdq(l.id)+')">▶ Ejecutar</button></div>'; });
   agEl('agd-excepciones').innerHTML= ex || '<div class="empty">✅ Nada pendiente: sin labores vencidas ni próximas en 7 días.</div>';
   var nb=agEl('ag-nb-labores'); if(nb){ nb.style.display=vencidas.length?'inline-block':'none'; nb.textContent=vencidas.length; }
   var nbS=agEl('ag-nb-labores-side'); if(nbS){ nbS.style.display=vencidas.length?'inline-block':'none'; nbS.textContent=vencidas.length; } // v1.8.109: badge espejo en el sidebar
@@ -43863,7 +43863,7 @@ function agRenderParcelas(){
   d.parcelas.forEach(function(p){
     var cur=d.campanas.filter(function(c){return String(c.parcela_id)===String(p.id)&&c.estado==='en_curso';}).map(function(c){return c.cultivo+' '+(c.ciclo==='verano'?'☀️':'❄️');}).join(', ');
     html+='<tr><td><b>'+escA(p.code)+'</b></td><td>'+escA(p.nombre||'—')+'</td><td class="num">'+fmtA(p.ha,1)+'</td><td>'+(cur||'<span style="color:var(--muted)">barbecho / libre</span>')+'</td><td>'+(cur?'<span class="pill g">Sembrada</span>':'<span style="color:var(--muted);font-size:12px">Libre</span>') /* v1.8.112 R5 */+'</td>'+
-      '<td><button class="btn btn-ghost btn-sm" onclick="agOpenParcela('+p.id+')">✏️ Editar</button></td></tr>';
+      '<td><button class="btn btn-ghost btn-sm" onclick="agOpenParcela('+agIdq(p.id)+')">✏️ Editar</button></td></tr>';
   });
   agEl('agp-tbody').innerHTML= html || '<tr><td colspan="6" class="empty">Sin parcelas. Creá la primera.</td></tr>';
 }
@@ -43909,7 +43909,7 @@ function agRenderCampanas(){
     var cost=campCosto(d,c.id); var n=d.labores.filter(function(l){return String(l.campana_id)===String(c.id);}).length;
     var pill=c.estado==='en_curso'?'<span class="pill g">En curso</span>':c.estado==='cosechada'?'<span class="pill b">Cosechada</span>':'<span class="pill a">Planificada</span>';
     html+='<tr><td><b>'+escA(p?p.code:'?')+'</b> '+escA(p&&p.nombre?('· '+p.nombre):'')+'</td><td>'+escA(c.cultivo)+'</td><td>'+(c.ciclo==='verano'?'☀️ Verano':'❄️ Invierno')+' '+escA(c.anio)+'</td><td class="num">'+fmtA(ha,1)+'</td><td>'+agFecha(c.siembra_plan)+'</td><td class="num">'+n+'</td><td class="num">'+(cost.total&&ha?fmtA(cost.total/ha):'—')+'</td><td>'+pill+'</td>'+
-      '<td><button class="btn btn-ghost btn-sm" onclick="agOpenCampana('+c.id+')">✏️</button></td></tr>';
+      '<td><button class="btn btn-ghost btn-sm" onclick="agOpenCampana('+agIdq(c.id)+')">✏️</button></td></tr>';
   });
   agEl('agc-tbody').innerHTML= html || '<tr><td colspan="9" class="empty">Sin campañas con ese filtro.</td></tr>';
 }
@@ -43963,8 +43963,8 @@ function agRenderLabores(){
     var ins=(l.insumos||[]).map(function(r){ var i=agById(d.insumos,r.insumo_id); return i?(i.nombre+' '+r.dosis+' '+i.unidad+'/ha'):''; }).join(', ');
     if(l.tipo==='cosecha'&&l.cosecha) ins=fmtA(l.cosecha.kg)+' kg · '+(l.cosecha.hum||'—')+'% hum';
     var acts='';
-    if(l.estado==='planificada') acts+='<button class="btn btn-primary btn-sm" onclick="agEjecutarLabor('+l.id+')">▶ Ejecutar</button> ';
-    acts+='<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agDelLabor('+l.id+')">🗑</button>';
+    if(l.estado==='planificada') acts+='<button class="btn btn-primary btn-sm" onclick="agEjecutarLabor('+agIdq(l.id)+')">▶ Ejecutar</button> ';
+    acts+='<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agDelLabor('+agIdq(l.id)+')">🗑</button>';
     html+='<tr><td>'+agFecha(l.fecha)+'</td><td>'+LABOR_TIPOS[l.tipo]+'</td><td>'+escA(c?campLabel(d,c):'?')+'</td><td style="font-size:12px;color:var(--muted)">'+escA(ins||'—')+'</td><td>'+escA(l.resp||'—')+'</td><td class="num">'+fmtA(cost.total)+'</td><td>'+(l.estado==='ejecutada'?'<span class="pill g">Ejecutada</span>':'<span class="pill a">Planificada</span>')+'</td><td style="white-space:nowrap">'+acts+'</td></tr>';
   });
   agEl('agl-tbody').innerHTML= html || '<tr><td colspan="8" class="empty">'+(d.labores.length?'Sin labores con ese filtro.':'Aún no hay labores. Registrá la primera con “+ Registrar labor”.')+'</td></tr>'; /* v1.8.110b */
@@ -44565,8 +44565,8 @@ document.addEventListener('click', function(ev){
       if (l.tipo === 'cosecha' && l.cosecha) ins = fmtA(l.cosecha.kg) + ' kg · ' + (l.cosecha.hum || '—') + '% hum';
       if (l.tipo === 'maquinaria' && !ins) ins = (l.notas || '—');
       var acts = '';
-      if (l.estado === 'planificada') acts += '<button class="btn btn-primary btn-sm" onclick="agEjecutarLabor(' + l.id + ')">▶ Ejecutar</button> ';
-      acts += '<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agDelLabor(' + l.id + ')">🗑</button>';
+      if (l.estado === 'planificada') acts += '<button class="btn btn-primary btn-sm" onclick="agEjecutarLabor(' + agIdq(l.id) + ')">▶ Ejecutar</button> ';
+      acts += '<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agDelLabor(' + agIdq(l.id) + ')">🗑</button>';
       html += '<tr><td>' + agFecha(l.fecha) + '</td><td>' + (LABOR_TIPOS[l.tipo] || l.tipo) + '</td><td>' + escA(c ? campLabel(d, c) : '?') + '</td><td style="font-size:12px;color:var(--muted)">' + escA(ins || '—') + '</td><td>' + escA(l.resp || '—') + '</td><td class="num">' + fmtA(cost.total) + '</td><td>' + (l.estado === 'ejecutada' ? '<span class="pill g">Ejecutada</span>' : '<span class="pill a">Planificada</span>') + '</td><td style="white-space:nowrap">' + acts + '</td></tr>';
     });
     agEl('agl-tbody').innerHTML = html || '<tr><td colspan="8" class="empty">' + (d.labores.length ? 'Sin labores con ese filtro.' : 'Aún no hay labores. Registrá la primera con “+ Registrar labor”.') + '</td></tr>';
@@ -45447,8 +45447,8 @@ document.addEventListener('click', function(ev){
     function fila(l, cls, plazoTxt) {
       var cost = laborCosto(l);
       var acts = '';
-      if (l.estado === 'planificada') acts = '<button class="btn btn-ghost btn-sm" title="Hecha rápida (sin costos)" onclick="agcalTachar(' + l.id + ')">✔</button> <button class="btn btn-primary btn-sm" onclick="agEjecutarLabor(' + l.id + ')">▶ Registrar</button>';
-      else if (l.tachado_rapido && l.con_costo !== false && !(l.insumos || []).length) acts = '<button class="btn btn-ghost btn-sm" onclick="agEjecutarLabor(' + l.id + ')">⚠ Completar costos</button>';
+      if (l.estado === 'planificada') acts = '<button class="btn btn-ghost btn-sm" title="Hecha rápida (sin costos)" onclick="agcalTachar(' + agIdq(l.id) + ')">✔</button> <button class="btn btn-primary btn-sm" onclick="agEjecutarLabor(' + agIdq(l.id) + ')">▶ Registrar</button>';
+      else if (l.tachado_rapido && l.con_costo !== false && !(l.insumos || []).length) acts = '<button class="btn btn-ghost btn-sm" onclick="agEjecutarLabor(' + agIdq(l.id) + ')">⚠ Completar costos</button>';
       return '<tr class="agcal-row"' + (l.estado === 'ejecutada' ? ' style="opacity:.55"' : '') + '><td>' + (l.estado === 'ejecutada' ? '✅' : (cls === 'venc' ? '🔴' : cls === 'prox' ? '🟡' : '⬜')) + '</td>' +
         '<td>' + (l.estado === 'ejecutada' ? '<s>' : '') + escA(l.nombre || LABOR_TIPOS[l.tipo] || l.tipo) + (l.estado === 'ejecutada' ? '</s>' : '') + '</td>' +
         '<td>' + (plazoTxt || '') + '</td><td>' + (l.fecha ? agFecha(l.fecha) : '—') + '</td>' +
@@ -52149,7 +52149,7 @@ try {
     var curso = l.estado === 'en_curso';
     var name = tNombre(l);
     var cls = 'v177-ev' + (done ? ' done' : venc ? ' venc' : curso ? ' curso' : '');
-    var click = done ? '' : curso ? ' onclick="v179JornadaOpen(\'' + l.id + '\')"' : ' onclick="agEjecutarLabor(' + l.id + ')"';
+    var click = done ? '' : curso ? ' onclick="v179JornadaOpen(\'' + l.id + '\')"' : ' onclick="agEjecutarLabor(' + agIdq(l.id) + ')"';
     return '<span class="' + cls + '" style="border-left-color:' + tCol(l.tipo) + '"' + click + ' title="' + h.escA(name) + (l.fecha ? ' · ' + h.agFecha(l.fecha) : '') + '">' + (done ? '✓ ' : '') + tIco(l.tipo) + ' ' + h.escA(name) + '</span>';
   }
 
@@ -52194,9 +52194,9 @@ try {
     else if (l.fecha) { var n2 = dias(l.fecha) - dias(hoy); when = n2 === 0 ? '<b>hoy</b>' : 'en ' + n2 + ' días'; }
     else when = h.escA(l.etapa || 'cuando toque — no vence');
     var acts = '';
-    if (l.estado === 'planificada') acts = '<button class="btn btn-ghost btn-sm" onclick="v179Iniciar(\'' + l.id + '\')">▶ Iniciar</button> <button class="btn btn-ghost btn-sm" title="Hecha rápida (sin costos)" onclick="agcalTachar(' + l.id + ')">✔</button> <button class="btn btn-primary btn-sm" onclick="agEjecutarLabor(' + l.id + ')">▶ Registrar</button>';
+    if (l.estado === 'planificada') acts = '<button class="btn btn-ghost btn-sm" onclick="v179Iniciar(\'' + l.id + '\')">▶ Iniciar</button> <button class="btn btn-ghost btn-sm" title="Hecha rápida (sin costos)" onclick="agcalTachar(' + agIdq(l.id) + ')">✔</button> <button class="btn btn-primary btn-sm" onclick="agEjecutarLabor(' + agIdq(l.id) + ')">▶ Registrar</button>';
     else if (l.estado === 'en_curso') { acts = '<button class="btn btn-primary btn-sm" onclick="v179JornadaOpen(\'' + l.id + '\')">➕ Jornada</button> <button class="btn btn-ghost btn-sm" onclick="v179Cerrar(\'' + l.id + '\')">✔ Cerrar</button>'; when = '⏳ ' + v179DiasTxt(l); }
-    else if (faltanCostos(l)) acts = '<button class="btn btn-ghost btn-sm" onclick="agEjecutarLabor(' + l.id + ')">⚠ Completar costos</button>';
+    else if (faltanCostos(l)) acts = '<button class="btn btn-ghost btn-sm" onclick="agEjecutarLabor(' + agIdq(l.id) + ')">⚠ Completar costos</button>';
     return '<div class="v177-card' + (kind === 'venc' ? ' venc' : '') + (l.estado === 'en_curso' ? ' curso' : '') + (done ? ' done' : '') + '">' +
       '<div class="v177-date"><b' + (kind === 'venc' ? ' style="color:var(--red,#f85149)"' : '') + '>' + dd + '</b><span>' + mm + '</span></div>' +
       '<div class="v177-tico" style="background:' + col + '22;border:1px solid ' + col + '55">' + tIco(l.tipo) + '</div>' +
@@ -52246,7 +52246,7 @@ try {
         prevPct = p; prevLane = lane;
         var ofs = offTxtSafe(l, c), nom = tNombre(l);
         var txt = h.escA(nom.length > 16 ? nom.slice(0, 15) + '…' : nom) + (ofs ? ' · ' + ofs : '');
-        var click = done ? '' : curso ? ' onclick="v179JornadaOpen(\'' + l.id + '\')"' : ' onclick="agEjecutarLabor(' + l.id + ')"';
+        var click = done ? '' : curso ? ' onclick="v179JornadaOpen(\'' + l.id + '\')"' : ' onclick="agEjecutarLabor(' + agIdq(l.id) + ')"';
         return '<span class="v178-pill' + (done ? ' done' : '') + (venc ? ' venc' : '') + (curso ? ' curso' : '') + '" style="left:' + p + '%;top:' + (lane ? '74%' : '26%') + ';border-color:' + col + ';color:' + col + '"' + click +
           ' title="' + h.escA(nom) + ' · ' + h.agFecha(l.fecha) + (done ? ' · hecha' : venc ? ' · VENCIDA' : '') + '">' + (done ? '✓ ' : '') + txt + '</span>';
       }).join('');
@@ -52262,7 +52262,7 @@ try {
     /* sin fecha */
     var sinF = plan.filter(function (l) { return !l.fecha && l.estado === 'planificada' && l.tipo !== 'cosecha'; });
     var sinFHtml = sinF.length ? '<div class="v178-sinf">⬜ cuando toque:' + sinF.map(function (l) {
-      return '<span class="agcal-chip" style="cursor:pointer" onclick="agEjecutarLabor(' + l.id + ')">' + tIco(l.tipo) + ' ' + h.escA(tNombre(l)) + '</span>';
+      return '<span class="agcal-chip" style="cursor:pointer" onclick="agEjecutarLabor(' + agIdq(l.id) + ')">' + tIco(l.tipo) + ' ' + h.escA(tNombre(l)) + '</span>';
     }).join('') + '</div>' : '';
     return '<div class="v178-tl"><div class="v178-months">' + months + '</div>' +
       '<div class="v178-rows">' + rows + '<div class="v178-overlay">' + lines + '</div></div>' + sinFHtml +
@@ -52340,7 +52340,7 @@ try {
       /* tira de vencidas (solo calendario — en agenda son la primera sección) */
       if (ST.tab === 'cal' && st.vencidas.length) {
         strip.innerHTML = '<div class="v177-strip"><b style="color:var(--red,#f85149)">🔴 ' + st.vencidas.length + ' vencida' + (st.vencidas.length > 1 ? 's' : '') + '</b>' +
-          st.vencidas.map(function (l) { return '<span class="v177-vchip" onclick="agEjecutarLabor(' + l.id + ')">' + tIco(l.tipo) + ' ' + h.escA(tNombre(l)) + ' · ' + ddmm(l.fecha) + '</span>'; }).join('') +
+          st.vencidas.map(function (l) { return '<span class="v177-vchip" onclick="agEjecutarLabor(' + agIdq(l.id) + ')">' + tIco(l.tipo) + ' ' + h.escA(tNombre(l)) + ' · ' + ddmm(l.fecha) + '</span>'; }).join('') +
           '<button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="v177Tab(\'agenda\')">Resolver →</button></div>';
       } else strip.innerHTML = '';
       body.innerHTML = (ST.tab === 'cal') ? calHTML(plan_, hoy) : (ST.tab === 'agenda') ? agendaHTML(st, c, hoy) : lineaHTML(plan_, c, hoy);
@@ -52406,10 +52406,10 @@ try {
           var venc = esVenc(l, hoy);
           var cost = h.laborCosto(l);
           var acts = '';
-          if (l.estado === 'planificada') acts += '<button class="btn btn-primary btn-sm" onclick="v179Iniciar(\'' + l.id + '\')">▶ Iniciar</button> <button class="btn btn-ghost btn-sm" onclick="agEjecutarLabor(' + l.id + ')">✔ En un día</button> ';
+          if (l.estado === 'planificada') acts += '<button class="btn btn-primary btn-sm" onclick="v179Iniciar(\'' + l.id + '\')">▶ Iniciar</button> <button class="btn btn-ghost btn-sm" onclick="agEjecutarLabor(' + agIdq(l.id) + ')">✔ En un día</button> ';
           else if (l.estado === 'en_curso') acts += '<button class="btn btn-primary btn-sm" onclick="v179JornadaOpen(\'' + l.id + '\')">➕ Jornada</button> <button class="btn btn-ghost btn-sm" onclick="v179Cerrar(\'' + l.id + '\')">✔ Cerrar</button> ';
-          else if (faltanCostos(l)) acts += '<button class="btn btn-ghost btn-sm" onclick="agEjecutarLabor(' + l.id + ')">⚠ costos</button> ';
-          acts += '<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agDelLabor(' + l.id + ')">🗑</button>';
+          else if (faltanCostos(l)) acts += '<button class="btn btn-ghost btn-sm" onclick="agEjecutarLabor(' + agIdq(l.id) + ')">⚠ costos</button> ';
+          acts += '<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agDelLabor(' + agIdq(l.id) + ')">🗑</button>';
           var pill = l.estado === 'ejecutada' ? '<span class="pill g">Ejecutada</span>' : l.estado === 'en_curso' ? '<span class="pill c179">⏳ ' + v179DiasTxt(l) + '</span>' : (venc ? '<span class="pill r">Vencida</span>' : '<span class="pill a">Planificada</span>');
           var ofs = offTxtSafe(l, c);
           html += '<div class="v177-lb">' +
