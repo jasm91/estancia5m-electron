@@ -1,6 +1,6 @@
 {
   "name": "estancia5m",
-  "version": "1.8.211",
+  "version": "1.8.212",
   "description": "Sistema de Gestión Ganadera — Estancia 5M",
   "main": "main.js",
   "scripts": {
@@ -50,9 +50,7 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "notarize": {
-        "teamId": "Q9N6TSVQZ6"
-      }
+      "notarize": true
     },
     "dmg": {
       "title": "Estancia Pro",
@@ -119,7 +117,7 @@
   },
   "devDependencies": {
     "electron": "22.3.27",
-    "electron-builder": "24.9.1"
+    "electron-builder": "26.16.1"
   },
   "author": "SG Bolivia",
   "license": "MIT"

@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.211';
+window.E5M_HTML_BUILD = '1.8.212';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -737,9 +737,16 @@ window.e5mDevtoolsToggle = function () {
   return false;
 };
 document.addEventListener('keydown', function (e) {
+  /* Solo dentro de Electron: en la versión web hay que dejar pasar F12 al navegador. */
+  if (!(window.estancia && window.estancia.devtools) || window.estancia.__web) return;
   var mod = e.ctrlKey || e.metaKey;
   if (e.key === 'F12' || (mod && e.shiftKey && (e.key === 'I' || e.key === 'i'))) { e.preventDefault(); window.e5mDevtoolsToggle(); }
-}); // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
+});
+/* la fila de DevTools no aplica fuera de Electron */
+document.addEventListener('DOMContentLoaded', function () {
+  if (window.estancia && window.estancia.devtools && !window.estancia.__web) return;
+  var r = document.getElementById('row-devtools'); if (r) r.style.display = 'none';
+}, { once: true }); // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
 
 window.v175Diag = function () {
   var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
