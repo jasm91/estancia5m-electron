@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.213';
+window.E5M_HTML_BUILD = '1.8.214';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -54661,64 +54661,64 @@ try {
      Aditivo: no toca ningún pane existente. Kill switch: window.__VNT_OFF = true
      ═══════════════════════════════════════════════════════════════════════════ -->
 <style>
-#repro-tab-vientres .vnt-kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:9px;margin-bottom:14px}
-#repro-tab-vientres .vnt-kpi{background:var(--sur,#161b22);border:1px solid var(--bor,#30363d);border-radius:11px;padding:9px 12px;cursor:pointer;transition:border-color .18s,transform .12s,background .18s}
-#repro-tab-vientres .vnt-kpi:hover{border-color:#4a5568;transform:translateY(-1px)}
-#repro-tab-vientres .vnt-kpi.on{border-color:rgba(210,153,34,.6);background:linear-gradient(180deg,rgba(210,153,34,.09),var(--sur,#161b22))}
-#repro-tab-vientres .vnt-n{font-family:Syne,system-ui,Arial,sans-serif;font-weight:800;font-size:21px;line-height:1}
-#repro-tab-vientres .vnt-l{font-size:9.5px;color:var(--muted,#8b949e);text-transform:uppercase;letter-spacing:.05em;margin-top:3px}
-#repro-tab-vientres .vnt-cols{display:grid;grid-template-columns:minmax(0,2.15fr) minmax(290px,1fr);gap:16px;align-items:start}
-@media (max-width:1180px){#repro-tab-vientres .vnt-cols{grid-template-columns:1fr}#repro-tab-vientres .vnt-kpis{grid-template-columns:repeat(3,1fr)}}
-#repro-tab-vientres .vnt-tool{display:flex;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--bor,#30363d);flex-wrap:wrap}
-#repro-tab-vientres .vnt-q{flex:1;min-width:200px;background:var(--sur2,#21262d);border:1px solid var(--bor,#30363d);border-radius:8px;padding:7px 11px;color:var(--text,#e6edf3);font-family:inherit;font-size:12.5px;outline:none}
-#repro-tab-vientres .vnt-chip{border:1px solid var(--bor,#30363d);background:var(--sur2,#21262d);color:var(--muted,#8b949e);border-radius:16px;padding:5px 11px;font-size:11.5px;cursor:pointer;white-space:nowrap;font-family:inherit}
-#repro-tab-vientres .vnt-chip.on{background:rgba(210,153,34,.14);border-color:rgba(210,153,34,.5);color:var(--amber2,#e3b341);font-weight:600}
-#repro-tab-vientres .vnt-grp{border-bottom:1px solid rgba(125,125,125,.16)}
-#repro-tab-vientres .vnt-grp:last-child{border-bottom:none}
-#repro-tab-vientres .vnt-hd{display:flex;justify-content:space-between;align-items:center;padding:11px 14px;cursor:pointer;user-select:none}
-#repro-tab-vientres .vnt-hd:hover{background:rgba(125,125,125,.045)}
-#repro-tab-vientres .vnt-t{font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:8px}
-#repro-tab-vientres .vnt-cnt{font-size:11px;font-weight:700;padding:1px 9px;border-radius:10px;background:rgba(125,125,125,.14);color:var(--muted,#8b949e)}
-#repro-tab-vientres .vnt-cnt.g{background:rgba(63,185,80,.14);color:var(--green2,#56d364)}
-#repro-tab-vientres .vnt-cnt.a{background:rgba(210,153,34,.16);color:var(--amber2,#e3b341)}
-#repro-tab-vientres .vnt-cnt.r{background:rgba(248,81,73,.14);color:var(--red,#f85149)}
-#repro-tab-vientres .vnt-car{color:var(--muted,#8b949e);font-size:11px;transition:transform .28s ease;transform:rotate(-90deg)}
-#repro-tab-vientres .vnt-grp.open .vnt-car{transform:rotate(0)}
-#repro-tab-vientres .vnt-body{display:grid;grid-template-rows:0fr;opacity:0;transition:grid-template-rows .32s cubic-bezier(.4,0,.2,1),opacity .28s ease}
-#repro-tab-vientres .vnt-grp.open .vnt-body{grid-template-rows:1fr;opacity:1}
-#repro-tab-vientres .vnt-in{min-height:0;overflow:hidden}
-#repro-tab-vientres .vnt-rows{max-height:448px;overflow-y:auto;border-top:1px solid rgba(125,125,125,.16)}
-#repro-tab-vientres .vnt-rows::-webkit-scrollbar{width:9px}
-#repro-tab-vientres .vnt-rows::-webkit-scrollbar-thumb{background:#2f3742;border-radius:5px}
-#repro-tab-vientres .vnt-chd,#repro-tab-vientres .vnt-row{display:grid;grid-template-columns:126px 88px minmax(0,1fr) 122px 112px 158px;gap:10px;align-items:center}
-#repro-tab-vientres .vnt-chd{padding:7px 14px;font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#8b949e);background:rgba(125,125,125,.05);position:sticky;top:0;z-index:1}
-#repro-tab-vientres .vnt-row{padding:9px 14px;border-bottom:1px solid rgba(125,125,125,.13);cursor:pointer}
-#repro-tab-vientres .vnt-row:nth-child(even){background:rgba(125,125,125,.055)}
-#repro-tab-vientres .vnt-row:hover{background:rgba(88,166,255,.06)}
-#repro-tab-vientres .vnt-row:last-child{border-bottom:none}
-#repro-tab-vientres .vnt-are{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#repro-tab-vientres .vnt-lot{font-size:10.5px;color:var(--muted,#8b949e);border:1px solid var(--bor,#30363d);border-radius:9px;padding:1px 7px;display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#repro-tab-vientres .vnt-det{font-size:11.5px;color:var(--muted,#8b949e);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#repro-tab-vientres .vnt-num{font-family:DM Mono,monospace;font-size:12px;font-variant-numeric:tabular-nums}
-#repro-tab-vientres .vnt-pill{font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:11px;white-space:nowrap;display:inline-block;background:rgba(125,125,125,.14);color:var(--muted,#8b949e)}
-#repro-tab-vientres .vnt-pill.g{background:rgba(63,185,80,.14);color:var(--green2,#56d364)}
-#repro-tab-vientres .vnt-pill.a{background:rgba(210,153,34,.16);color:var(--amber2,#e3b341)}
-#repro-tab-vientres .vnt-pill.r{background:rgba(248,81,73,.14);color:var(--red,#f85149)}
-#repro-tab-vientres .vnt-ract{display:flex;gap:5px;opacity:0;transition:opacity .16s;justify-content:flex-end}
-#repro-tab-vientres .vnt-row:hover .vnt-ract,#repro-tab-vientres .vnt-row:focus-within .vnt-ract{opacity:1}
-#repro-tab-vientres .vnt-ra{border:1px solid var(--bor,#30363d);background:var(--sur2,#21262d);color:var(--text,#e6edf3);border-radius:7px;padding:3px 9px;font-family:inherit;font-size:11px;cursor:pointer;white-space:nowrap}
-#repro-tab-vientres .vnt-ra.p{background:rgba(63,185,80,.16);border-color:rgba(63,185,80,.45);color:var(--green2,#56d364)}
-#repro-tab-vientres .vnt-ra:hover{border-color:#4a5568}
-#repro-tab-vientres .vnt-mini{padding:10px 14px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(125,125,125,.13);font-size:12px;gap:10px}
-#repro-tab-vientres .vnt-mini:last-child{border-bottom:none}
-#repro-tab-vientres .vnt-mini:nth-child(even){background:rgba(125,125,125,.05)}
-#repro-tab-vientres .vnt-mini b{font-family:DM Mono,monospace;font-variant-numeric:tabular-nums}
-#repro-tab-vientres .vnt-bar{height:6px;border-radius:4px;background:var(--sur2,#21262d);overflow:hidden;display:flex}
-#repro-tab-vientres .vnt-bar i{display:block;height:100%}
-#repro-tab-vientres .vnt-leg{display:flex;gap:11px;font-size:10.5px;color:var(--muted,#8b949e);margin-top:7px;flex-wrap:wrap}
-#repro-tab-vientres .vnt-dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:-1px}
-#repro-tab-vientres .vnt-empty{padding:26px 14px;text-align:center;color:var(--muted,#8b949e);font-size:12.5px}
-@media (prefers-reduced-motion:reduce){#repro-tab-vientres .vnt-body,#repro-tab-vientres .vnt-car,#repro-tab-vientres .vnt-kpi{transition:none}}
+.vnt-scope .vnt-kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:9px;margin-bottom:14px}
+.vnt-scope .vnt-kpi{background:var(--sur,#161b22);border:1px solid var(--bor,#30363d);border-radius:11px;padding:9px 12px;cursor:pointer;transition:border-color .18s,transform .12s,background .18s}
+.vnt-scope .vnt-kpi:hover{border-color:#4a5568;transform:translateY(-1px)}
+.vnt-scope .vnt-kpi.on{border-color:rgba(210,153,34,.6);background:linear-gradient(180deg,rgba(210,153,34,.09),var(--sur,#161b22))}
+.vnt-scope .vnt-n{font-family:Syne,system-ui,Arial,sans-serif;font-weight:800;font-size:21px;line-height:1}
+.vnt-scope .vnt-l{font-size:9.5px;color:var(--muted,#8b949e);text-transform:uppercase;letter-spacing:.05em;margin-top:3px}
+.vnt-scope .vnt-cols{display:grid;grid-template-columns:minmax(0,2.15fr) minmax(290px,1fr);gap:16px;align-items:start}
+@media (max-width:1180px){.vnt-scope .vnt-cols{grid-template-columns:1fr}.vnt-scope .vnt-kpis{grid-template-columns:repeat(3,1fr)}}
+.vnt-scope .vnt-tool{display:flex;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--bor,#30363d);flex-wrap:wrap}
+.vnt-scope .vnt-q{flex:1;min-width:200px;background:var(--sur2,#21262d);border:1px solid var(--bor,#30363d);border-radius:8px;padding:7px 11px;color:var(--text,#e6edf3);font-family:inherit;font-size:12.5px;outline:none}
+.vnt-scope .vnt-chip{border:1px solid var(--bor,#30363d);background:var(--sur2,#21262d);color:var(--muted,#8b949e);border-radius:16px;padding:5px 11px;font-size:11.5px;cursor:pointer;white-space:nowrap;font-family:inherit}
+.vnt-scope .vnt-chip.on{background:rgba(210,153,34,.14);border-color:rgba(210,153,34,.5);color:var(--amber2,#e3b341);font-weight:600}
+.vnt-scope .vnt-grp{border-bottom:1px solid rgba(125,125,125,.16)}
+.vnt-scope .vnt-grp:last-child{border-bottom:none}
+.vnt-scope .vnt-hd{display:flex;justify-content:space-between;align-items:center;padding:11px 14px;cursor:pointer;user-select:none}
+.vnt-scope .vnt-hd:hover{background:rgba(125,125,125,.045)}
+.vnt-scope .vnt-t{font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:8px}
+.vnt-scope .vnt-cnt{font-size:11px;font-weight:700;padding:1px 9px;border-radius:10px;background:rgba(125,125,125,.14);color:var(--muted,#8b949e)}
+.vnt-scope .vnt-cnt.g{background:rgba(63,185,80,.14);color:var(--green2,#56d364)}
+.vnt-scope .vnt-cnt.a{background:rgba(210,153,34,.16);color:var(--amber2,#e3b341)}
+.vnt-scope .vnt-cnt.r{background:rgba(248,81,73,.14);color:var(--red,#f85149)}
+.vnt-scope .vnt-car{color:var(--muted,#8b949e);font-size:11px;transition:transform .28s ease;transform:rotate(-90deg)}
+.vnt-scope .vnt-grp.open .vnt-car{transform:rotate(0)}
+.vnt-scope .vnt-body{display:grid;grid-template-rows:0fr;opacity:0;transition:grid-template-rows .32s cubic-bezier(.4,0,.2,1),opacity .28s ease}
+.vnt-scope .vnt-grp.open .vnt-body{grid-template-rows:1fr;opacity:1}
+.vnt-scope .vnt-in{min-height:0;overflow:hidden}
+.vnt-scope .vnt-rows{max-height:448px;overflow-y:auto;border-top:1px solid rgba(125,125,125,.16)}
+.vnt-scope .vnt-rows::-webkit-scrollbar{width:9px}
+.vnt-scope .vnt-rows::-webkit-scrollbar-thumb{background:#2f3742;border-radius:5px}
+.vnt-scope .vnt-chd,.vnt-scope .vnt-row{display:grid;grid-template-columns:126px 88px minmax(0,1fr) 122px 112px 158px;gap:10px;align-items:center}
+.vnt-scope .vnt-chd{padding:7px 14px;font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#8b949e);background:rgba(125,125,125,.05);position:sticky;top:0;z-index:1}
+.vnt-scope .vnt-row{padding:9px 14px;border-bottom:1px solid rgba(125,125,125,.13);cursor:pointer}
+.vnt-scope .vnt-row:nth-child(even){background:rgba(125,125,125,.055)}
+.vnt-scope .vnt-row:hover{background:rgba(88,166,255,.06)}
+.vnt-scope .vnt-row:last-child{border-bottom:none}
+.vnt-scope .vnt-are{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vnt-scope .vnt-lot{font-size:10.5px;color:var(--muted,#8b949e);border:1px solid var(--bor,#30363d);border-radius:9px;padding:1px 7px;display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vnt-scope .vnt-det{font-size:11.5px;color:var(--muted,#8b949e);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vnt-scope .vnt-num{font-family:DM Mono,monospace;font-size:12px;font-variant-numeric:tabular-nums}
+.vnt-scope .vnt-pill{font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:11px;white-space:nowrap;display:inline-block;background:rgba(125,125,125,.14);color:var(--muted,#8b949e)}
+.vnt-scope .vnt-pill.g{background:rgba(63,185,80,.14);color:var(--green2,#56d364)}
+.vnt-scope .vnt-pill.a{background:rgba(210,153,34,.16);color:var(--amber2,#e3b341)}
+.vnt-scope .vnt-pill.r{background:rgba(248,81,73,.14);color:var(--red,#f85149)}
+.vnt-scope .vnt-ract{display:flex;gap:5px;opacity:0;transition:opacity .16s;justify-content:flex-end}
+.vnt-scope .vnt-row:hover .vnt-ract,.vnt-scope .vnt-row:focus-within .vnt-ract{opacity:1}
+.vnt-scope .vnt-ra{border:1px solid var(--bor,#30363d);background:var(--sur2,#21262d);color:var(--text,#e6edf3);border-radius:7px;padding:3px 9px;font-family:inherit;font-size:11px;cursor:pointer;white-space:nowrap}
+.vnt-scope .vnt-ra.p{background:rgba(63,185,80,.16);border-color:rgba(63,185,80,.45);color:var(--green2,#56d364)}
+.vnt-scope .vnt-ra:hover{border-color:#4a5568}
+.vnt-scope .vnt-mini{padding:10px 14px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(125,125,125,.13);font-size:12px;gap:10px}
+.vnt-scope .vnt-mini:last-child{border-bottom:none}
+.vnt-scope .vnt-mini:nth-child(even){background:rgba(125,125,125,.05)}
+.vnt-scope .vnt-mini b{font-family:DM Mono,monospace;font-variant-numeric:tabular-nums}
+.vnt-scope .vnt-bar{height:6px;border-radius:4px;background:var(--sur2,#21262d);overflow:hidden;display:flex}
+.vnt-scope .vnt-bar i{display:block;height:100%}
+.vnt-scope .vnt-leg{display:flex;gap:11px;font-size:10.5px;color:var(--muted,#8b949e);margin-top:7px;flex-wrap:wrap}
+.vnt-scope .vnt-dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.vnt-scope .vnt-empty{padding:26px 14px;text-align:center;color:var(--muted,#8b949e);font-size:12.5px}
+@media (prefers-reduced-motion:reduce){.vnt-scope .vnt-body,.vnt-scope .vnt-car,.vnt-scope .vnt-kpi{transition:none}}
 </style>
 <script>
 (function vientresV1211() {
@@ -54953,7 +54953,7 @@ try {
   window.vntLote = function (c) { V.lote = c; window.renderVientres(); };
   window.vntQ = function (q) {
     V.q = q; q = String(q || '').toLowerCase().trim();
-    document.querySelectorAll('#repro-tab-vientres .vnt-rows').forEach(function (rows) {
+    document.querySelectorAll('.vnt-scope .vnt-rows').forEach(function (rows) {
       var n = 0;
       rows.querySelectorAll('.vnt-row').forEach(function (r) { var ok = !q || (r.dataset.txt || '').indexOf(q) >= 0; r.style.display = ok ? '' : 'none'; if (ok) n++; });
       var none = rows.querySelector('.vnt-none'); if (none) none.style.display = n ? 'none' : '';
@@ -55003,11 +55003,12 @@ try {
     if (document.getElementById('repro-tab-vientres')) return true;
     var tabs = page.querySelector('.tabs'); if (!tabs) return false;
     var pane = document.createElement('div');
-    pane.id = 'repro-tab-vientres'; pane.className = 'tab-pane';
+    pane.id = 'repro-tab-vientres'; pane.className = 'tab-pane vnt-scope';
     pane.style.display = 'none';
     tabs.parentNode.insertBefore(pane, tabs.nextSibling);
     var b = document.createElement('button');
     b.className = 'tab-btn'; b.id = 'repro-tab-vientres-btn'; b.textContent = '🐄 Vientres';
+    b.setAttribute('onclick', "switchTab('repro',this,'repro-tab-vientres');renderVientres()");
     b.onclick = function () { switchTab('repro', b, 'repro-tab-vientres'); window.renderVientres(); };
     tabs.insertBefore(b, tabs.firstChild);
     /* v1.8.211: Vientres pasa a ser la vista de entrada de Reproducción */
@@ -55027,6 +55028,297 @@ try {
   if (typeof _gr === 'function') window.goToRepro = function (sub, el) { var r = _gr.apply(this, arguments); if (sub === 'vientres') { var b = document.getElementById('repro-tab-vientres-btn'); if (b) b.click(); } return r; };
   window.vntDiag2 = function () { return { version: '1.8.211', vientres: estado().vientres.length, lotes: lotesRepro().length, abre: V.abre, lote: V.lote }; };
   try { console.log('%c[EP Desktop v1.8.211] 🐄 Vientres — lista estilo EP Campo · vntDiag2() · kill: __VNT_OFF', 'color:#bc8cff;font-weight:bold'); } catch (e) {}
+})();
+</script>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     v1.8.214 — REPRODUCCIÓN, EL RESTO DE LAS PESTAÑAS (pedido José 07-09):
+     ① "Vientres" en el menú lateral y como pestaña de entrada de Reproducción.
+     ② La lista de EP Campo (acordeón por estado, visor con scroll, bitono,
+        transición suave, acciones al hover) también en Servicios y Partos:
+        la tabla queda oculta, los filtros y las stats de arriba siguen intactos.
+     ③ Cabaña deja de ser cinco barras vacías a ancho completo: layout 2:1,
+        KPI compactos y plegado con animación.
+     Aditivo. Kill switch: window.__VNT2_OFF = true
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<style>
+.vnt-scope .vnt-kpis.k4{grid-template-columns:repeat(4,1fr)}
+/* Cabaña: dos columnas y tarjetas plegables con transición (antes display:none) */
+/* el !important es necesario porque switchTab pone display:block inline; se ata a .active
+   para no romper el ocultado de la pestaña cuando se navega a otra */
+#repro-tab-cabana.cb2-grid.active{display:grid!important;grid-template-columns:minmax(0,2.15fr) minmax(300px,1fr);gap:16px;align-items:start}
+#repro-tab-cabana.cb2-grid:not(.active){display:none!important}
+#repro-tab-cabana.cb2-grid > .vnt-kpis{grid-column:1/-1}
+#repro-tab-cabana.cb2-grid .card{margin-bottom:0}
+#repro-tab-cabana .cb2-col{display:flex;flex-direction:column;gap:14px;min-width:0}
+@media (max-width:1180px){#repro-tab-cabana.cb2-grid.active{grid-template-columns:1fr}}
+/* el plegado de v1.8.209 usa display:none!important sobre TODO hijo que no sea el título;
+   la clase repetida sube la especificidad para que el envoltorio siga siendo grid y pueda animar */
+#repro-tab-cabana .card .card-body > .cb2-wrap.cb2-wrap{display:grid!important;grid-template-rows:1fr;opacity:1;transition:grid-template-rows .32s cubic-bezier(.4,0,.2,1),opacity .28s ease}
+#repro-tab-cabana .card.aso-clps .card-body > .cb2-wrap.cb2-wrap{display:grid!important;grid-template-rows:0fr;opacity:0}
+#repro-tab-cabana .card .card-body > .cb2-wrap > div{min-height:0;overflow:hidden}
+@media (prefers-reduced-motion:reduce){#repro-tab-cabana .card .card-body > .cb2-wrap{transition:none}}
+</style>
+<script>
+(function reproV1214() {
+  if (window.__VNT2_OFF) return;
+
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
+  function el(id) { return document.getElementById(id); }
+  var ABRE = {};
+
+  /* ── lista genérica: el acordeón de EP Campo, ancho de escritorio ──
+     opts: { host, key, cols:[...], groups:[{id,title,tone,items}], row(item)→html,
+             innerRows, rowPx, gridCols, openDefault } */
+  window.e5mAccD = function (opts) {
+    var host = opts.host; if (!host) return;
+    var key = opts.key, gs = (opts.groups || []).filter(function (g) { return g.items && g.items.length; });
+    if (!gs.length) { host.innerHTML = '<div class="card"><div class="vnt-empty">' + (opts.vacio || 'Nada para mostrar.') + '</div></div>'; return; }
+    if (ABRE[key] === undefined || !gs.some(function (g) { return g.id === ABRE[key]; })) ABRE[key] = opts.openDefault !== undefined ? opts.openDefault : gs[0].id;
+    var gc = opts.gridCols ? 'style="grid-template-columns:' + opts.gridCols + '"' : '';
+    host.innerHTML = '<div class="card">' + gs.map(function (g) {
+      var open = ABRE[key] === g.id;
+      return '<div class="vnt-grp' + (open ? ' open' : '') + '" id="accd-' + key + '-' + g.id + '">' +
+        '<div class="vnt-hd" onclick="e5mAccDTog(\'' + key + '\',\'' + g.id + '\')"><span class="vnt-t">' + g.title + '</span>' +
+        '<span style="display:flex;gap:9px;align-items:center"><span class="vnt-cnt ' + (g.tone || '') + '">' + g.items.length + '</span><span class="vnt-car">▾</span></span></div>' +
+        '<div class="vnt-body"><div class="vnt-in"><div class="vnt-rows"' + (opts.innerRows ? ' style="max-height:' + (opts.innerRows * (opts.rowPx || 56)) + 'px"' : '') + '>' +
+        '<div class="vnt-chd" ' + gc + '>' + opts.cols.map(function (c) { return '<div>' + c + '</div>'; }).join('') + '</div>' +
+        g.items.map(function (it) { return '<div class="vnt-row" ' + gc + '>' + opts.row(it) + '</div>'; }).join('') +
+        '</div></div></div></div>';
+    }).join('') + '</div>';
+  };
+  window.e5mAccDTog = function (key, id) {
+    var e = el('accd-' + key + '-' + id); if (!e) return;
+    var abrir = !e.classList.contains('open');
+    var wrap = e.parentNode;
+    wrap.querySelectorAll('.vnt-grp.open').forEach(function (o) { o.classList.remove('open'); });
+    if (abrir) { e.classList.add('open'); ABRE[key] = id; setTimeout(function () { try { e.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (x) {} }, 340); }
+    else ABRE[key] = null;
+  };
+  function host(paneId, hostId) {
+    var pane = el(paneId); if (!pane) return null;
+    pane.classList.add('vnt-scope');
+    var h = el(hostId);
+    if (!h) { h = document.createElement('div'); h.id = hostId; pane.appendChild(h); }
+    return h;
+  }
+  function ocultarTabla(tbodyId) {
+    var tb = el(tbodyId); if (!tb) return null;
+    var card = tb.closest('.card') || tb.closest('div');
+    var tabla = tb.closest('table'); if (tabla) tabla.style.display = 'none';
+    return card;
+  }
+  function fdmy(y) { var m = String(y || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? (m[3] + '/' + m[2] + '/' + m[1].slice(2)) : '—'; }
+
+  /* ── 🐂 SERVICIOS ── */
+  function pintarServicios() {
+    if (typeof _reproGetServicios !== 'function') return;
+    var all = _reproGetServicios();
+    var tipoF = (el('repro-filter-tipo') || {}).value || '', periodoF = (el('repro-filter-periodo') || {}).value || '',
+        loteF = (el('repro-filter-lote') || {}).value || '', resultF = (el('repro-filter-result') || {}).value || '';
+    var f = all.slice();
+    if (tipoF) f = f.filter(function (r) { return r.tipo_servicio === tipoF; });
+    if (periodoF && typeof _reproFilterPeriodo === 'function') f = _reproFilterPeriodo(f, periodoF);
+    if (loteF) f = f.filter(function (r) { return r.lot_code === loteF; });
+    if (resultF) f = f.filter(function (r) { return resultF === 'pendiente' ? (!r.result || r.result === 'pendiente') : r.result === resultF; });
+    f.sort(function (a, b) { return String(b.date || b.created_at || '').localeCompare(String(a.date || a.created_at || '')); });
+    var G = { pend: [], pre: [], vac: [] };
+    f.forEach(function (r) { var x = String(r.result || 'pendiente').toLowerCase(); G[/pre[ñn]/.test(x) ? 'pre' : /vac/.test(x) ? 'vac' : 'pend'].push(r); });
+    var card = ocultarTabla('repro-tbody');
+    var h = host('repro-tab-servicios', 'srv-accd'); if (!h) return;
+    if (card && card.nextSibling !== h) card.parentNode.insertBefore(h, card.nextSibling);
+    var COLS = '108px 132px 92px minmax(0,1fr) 104px 132px 92px';
+    e5mAccD({
+      host: h, key: 'srv', gridCols: COLS, innerRows: 8, rowPx: 46, openDefault: G.pend.length ? 'pend' : 'pre',
+      cols: ['Fecha', 'Vientre', 'Tipo', 'Toro / pajuela', 'Lote', 'Parto esperado', ''],
+      vacio: all.length ? 'Ningún servicio con esos filtros.' : 'Todavía no hay servicios. Cargalos con <b>+ Servicio</b>.',
+      groups: [
+        { id: 'pend', title: '⏳ Sin diagnóstico', items: G.pend, tone: 'a' },
+        { id: 'pre', title: '🤰 Preñadas', items: G.pre, tone: 'g' },
+        { id: 'vac', title: '❌ Vacías', items: G.vac, tone: 'r' }
+      ],
+      row: function (r) {
+        var toro = r.tipo_servicio === 'IA' ? (r.semen_lote || '—') : (r.toro_id || 'Toro suelto');
+        var pend = !r.result || r.result === 'pendiente';
+        var exp = (typeof _reproExpectedPartoPill === 'function' && !pend) ? _reproExpectedPartoPill(r) : '<span style="color:var(--muted)">—</span>';
+        var acts = '<button class="vnt-ra p" onclick="event.stopPropagation();vntDiagSrv(\'' + esc(r.id) + '\')">🤰 Diagnóstico</button>';
+        if (!pend) acts = '<button class="vnt-ra" onclick="event.stopPropagation();openReproEditarServicio(\'' + esc(r.id) + '\')">✎ Editar</button>';
+        return '<div class="vnt-num">' + fdmy(r.date) + '</div>' +
+          '<div class="vnt-are">' + esc(r.animal_id || '—') + '</div>' +
+          '<div>' + (typeof _reproTipoPill === 'function' ? _reproTipoPill(r.tipo_servicio) : esc(r.tipo_servicio || '')) + '</div>' +
+          '<div class="vnt-det">' + esc(toro) + (r.technician ? ' · ' + esc(r.technician) : '') + '</div>' +
+          '<div><span class="vnt-lot">' + esc(r.lot_code || '—') + '</span></div>' +
+          '<div class="vnt-det">' + exp + '</div>' +
+          '<div class="vnt-ract">' + acts + '</div>';
+      }
+    });
+  }
+  window.vntDiagSrv = function (id) {
+    if (typeof openReproDiagnostico !== 'function') return;
+    openReproDiagnostico();
+    setTimeout(function () {
+      var s = el('repro-diag-srv-select'); if (!s) return;
+      var op = Array.prototype.find.call(s.options, function (o) { return String(o.value) === String(id); });
+      if (op) { s.value = op.value; s.dispatchEvent(new Event('change', { bubbles: true })); }
+    }, 60);
+  };
+
+  /* ── 🍼 PARTOS ── */
+  function pintarPartos() {
+    if (typeof _reproGetPartos !== 'function') return;
+    var all = _reproGetPartos();
+    var periodoF = (el('repro-partos-filter-periodo') || {}).value || '', loteF = (el('repro-partos-filter-lote') || {}).value || '',
+        sexoF = (el('repro-partos-filter-sexo') || {}).value || '', estadoF = (el('repro-partos-filter-estado') || {}).value || '';
+    var f = all.slice();
+    if (periodoF && typeof _reproPartosFilterPeriodo === 'function') f = _reproPartosFilterPeriodo(f, periodoF);
+    if (loteF) f = f.filter(function (r) { return r.lot_code === loteF; });
+    if (sexoF) f = f.filter(function (r) { return r.sexo === sexoF; });
+    if (estadoF) f = f.filter(function (r) { return r.estado === estadoF; });
+    f.sort(function (a, b) { return String(b.date || '').localeCompare(String(a.date || '')); });
+    var G = { pie: [], dest: [], perd: [] };
+    f.forEach(function (r) {
+      var e2 = String(r.estado || '').toLowerCase();
+      if (e2.indexOf('muert') >= 0 || e2 === 'aborto') G.perd.push(r);
+      else if (r.destete_fecha) G.dest.push(r);
+      else G.pie.push(r);
+    });
+    var card = ocultarTabla('repro-partos-tbody');
+    var h = host('repro-tab-partos', 'par-accd'); if (!h) return;
+    if (card && card.nextSibling !== h) card.parentNode.insertBefore(h, card.nextSibling);
+    var COLS = '108px 128px 132px 108px 104px 108px 118px';
+    e5mAccD({
+      host: h, key: 'par', gridCols: COLS, innerRows: 8, rowPx: 46, openDefault: 'pie',
+      cols: ['Fecha', 'Madre', 'Cría', 'Sexo / peso', 'Lote', 'Estado', ''],
+      vacio: all.length ? 'Ningún parto con esos filtros.' : 'Todavía no hay partos. Cargalos con <b>+ Parto</b>.',
+      groups: [
+        { id: 'pie', title: '🍼 Cría al pie, sin destetar', items: G.pie, tone: 'a' },
+        { id: 'dest', title: '✅ Destetadas', items: G.dest, tone: 'g' },
+        { id: 'perd', title: '⚠ Muertos y abortos', items: G.perd, tone: 'r' }
+      ],
+      row: function (r) {
+        var sexo = String(r.sexo || '') === 'macho' ? '♂ macho' : String(r.sexo || '') === 'hembra' ? '♀ hembra' : '—';
+        var acts = r.destete_fecha
+          ? '<button class="vnt-ra" onclick="event.stopPropagation();openReproEditarParto(\'' + esc(r.id) + '\')">✎ Editar</button>'
+          : '<button class="vnt-ra p" onclick="event.stopPropagation();vntDestete(\'' + esc(r.id) + '\')">🍼 Destete</button>';
+        return '<div class="vnt-num">' + fdmy(r.date) + '</div>' +
+          '<div class="vnt-are">' + esc(r.madre_id || '—') + '</div>' +
+          '<div class="vnt-det">' + esc(r.cria_id || '—') + (r.padre_id ? ' <span style="color:var(--muted)">· padre ' + esc(r.padre_id) + '</span>' : '') + '</div>' +
+          '<div class="vnt-det">' + sexo + (r.peso ? ' · ' + r.peso + ' kg' : '') + '</div>' +
+          '<div><span class="vnt-lot">' + esc(r.lot_code || '—') + '</span></div>' +
+          '<div>' + (typeof _reproPartoEstadoPill === 'function' ? _reproPartoEstadoPill(r.estado) : '<span class="vnt-pill">' + esc(r.estado || '—') + '</span>') + '</div>' +
+          '<div class="vnt-ract">' + acts + '</div>';
+      }
+    });
+  }
+
+  /* ── 🏆 CABAÑA: dos columnas, KPI compactos y plegado con animación ── */
+  function pintarCabana() {
+    var pane = el('repro-tab-cabana'); if (!pane || pane.dataset.v214) return;
+    var stats = pane.querySelector('.stats'); if (!stats) return;
+    pane.classList.add('vnt-scope');
+    /* KPI compactos, con la misma tira que Vientres */
+    var vals = [['cb2-st-pajuelas', 'cb2-st-pajuelas-sub'], ['cb2-st-te', 'cb2-st-te-sub'], ['cb2-st-temp', 'cb2-st-temp-sub'], ['cb2-st-com', null]];
+    var kp = document.createElement('div'); kp.className = 'vnt-kpis k4';
+    kp.innerHTML = vals.map(function (v, i) {
+      var n = (el(v[0]) || {}).textContent || '0';
+      var l = v[1] ? ((el(v[1]) || {}).textContent || '') : 'eventos por comunicar (mes)';
+      return '<div class="vnt-kpi"><div class="vnt-n"' + (i === 0 ? ' style="color:var(--amber2,#e3b341)"' : '') + ' id="v214k' + i + '">' + esc(n) + '</div><div class="vnt-l" id="v214l' + i + '">' + esc(l) + '</div></div>';
+    }).join('');
+    stats.style.display = 'none';
+    pane.insertBefore(kp, pane.firstChild);
+    /* las tarjetas van a dos columnas: las dos primeras (animales + semen) a la izquierda */
+    var cards = Array.prototype.slice.call(pane.querySelectorAll(':scope > .card'));
+    if (cards.length) {
+      var izq = document.createElement('div'), der = document.createElement('div');
+      izq.className = 'cb2-col'; der.className = 'cb2-col';
+      cards.forEach(function (c, i) { (i < 2 ? izq : der).appendChild(c); });
+      pane.appendChild(izq); pane.appendChild(der);
+      pane.classList.add('cb2-grid');
+    }
+    pane.dataset.v214 = '1';
+  }
+  /* el plegado de v1.8.209 usa display:none — envuelvo el cuerpo para poder animarlo.
+     Se re-aplica en cada cab2Render porque el render rehace los cuerpos de las tarjetas. */
+  function envolverCabana() {
+    var pane = el('repro-tab-cabana'); if (!pane) return;
+    pane.querySelectorAll('.card .card-body').forEach(function (body) {
+      var w = body.querySelector(':scope > .cb2-wrap');
+      if (w) { /* recoger lo que el re-render haya dejado suelto */
+        Array.prototype.slice.call(body.children).forEach(function (ch) {
+          if (ch !== w && !ch.classList.contains('card-title')) w.firstChild.appendChild(ch);
+        });
+        return;
+      }
+      w = document.createElement('div'); w.className = 'cb2-wrap';
+      var inner = document.createElement('div');
+      Array.prototype.slice.call(body.children).forEach(function (ch) { if (!ch.classList.contains('card-title')) inner.appendChild(ch); });
+      w.appendChild(inner); body.appendChild(w);
+    });
+  }
+  function refrescarKpisCabana() {
+    var pane = el('repro-tab-cabana'); if (!pane || !pane.dataset.v214) return;
+    [['cb2-st-pajuelas', 'cb2-st-pajuelas-sub'], ['cb2-st-te', 'cb2-st-te-sub'], ['cb2-st-temp', 'cb2-st-temp-sub'], ['cb2-st-com', null]].forEach(function (v, i) {
+      var n = el('v214k' + i), l = el('v214l' + i);
+      if (n && el(v[0])) n.textContent = el(v[0]).textContent;
+      if (l && v[1] && el(v[1])) l.textContent = el(v[1]).textContent;
+    });
+  }
+
+  /* ── enganches ── */
+  function wrap(name, after) {
+    var o = window[name];
+    if (typeof o !== 'function' || o.__v214) return;
+    var w = function () { var r = o.apply(this, arguments); try { after(); } catch (e) { console.warn('[v214]', name, e); } return r; };
+    w.__v214 = true; window[name] = w;
+  }
+  function enganchar() {
+    wrap('renderReproServicios', pintarServicios);
+    wrap('renderReproPartos', pintarPartos);
+    wrap('cab2Render', function () { pintarCabana(); envolverCabana(); refrescarKpisCabana(); });
+  }
+
+  /* ── ① Vientres en el menú lateral + pestaña de entrada ── */
+  function sidebar() {
+    var sec = document.querySelector('.nav-sec[data-sec="reproduccion"] .nav-sec-body');
+    if (!sec || el('nav-repro-vientres')) return !!sec;
+    var b = document.createElement('button');
+    b.className = 'nav-btn'; b.id = 'nav-repro-vientres';
+    b.setAttribute('data-label', 'Vientres');
+    b.setAttribute('onclick', "goToRepro('vientres',this)");
+    b.innerHTML = '<span class="nav-icon">🐄</span><span class="nav-text">Vientres</span>';
+    sec.insertBefore(b, sec.firstChild);
+    return true;
+  }
+  /* al entrar a Reproducción sin sub-pestaña pedida, abrir Vientres */
+  var _sp = window.showPage;
+  if (typeof _sp === 'function' && !_sp.__v214) {
+    var w = function (page) {
+      var r = _sp.apply(this, arguments);
+      if (page === 'reproduccion' && !window.__vntSubPedida) {
+        setTimeout(function () { var b = el('repro-tab-vientres-btn'); if (b && !b.classList.contains('active')) b.click(); }, 80);
+      }
+      window.__vntSubPedida = false;
+      return r;
+    };
+    w.__v214 = true; window.showPage = w;
+  }
+  var _gr = window.goToRepro;
+  if (typeof _gr === 'function' && !_gr.__v214) {
+    var g = function (sub) { window.__vntSubPedida = !!sub; return _gr.apply(this, arguments); };
+    g.__v214 = true; window.goToRepro = g;
+  }
+
+  function arm(n) {
+    sidebar(); enganchar();
+    if ((n || 0) < 12) setTimeout(function () { arm((n || 0) + 1); }, 700);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { arm(0); }, { once: true }); else arm(0);
+  window.vnt2Diag = function () {
+    return { version: '1.8.214', sidebar: !!el('nav-repro-vientres'), srv: !!el('srv-accd'), par: !!el('par-accd'),
+             cabana: !!(el('repro-tab-cabana') && el('repro-tab-cabana').dataset.v214) };
+  };
+  try { console.log('%c[EP Desktop v1.8.214] Reproducción: Vientres en el menú + Servicios/Partos/Cabaña con la lista de EP Campo · vnt2Diag() · kill: __VNT2_OFF', 'color:#bc8cff;font-weight:bold'); } catch (e) {}
 })();
 </script>
 
