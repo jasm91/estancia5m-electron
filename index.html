@@ -724,7 +724,22 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.209'; // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
+window.E5M_HTML_BUILD = '1.8.211';
+/* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
+   inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
+   aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
+   Ahora: fila fija en Configuracion -> Informacion + atajos F12 / Ctrl-Cmd+Shift+I. */
+window.e5mDevtoolsToggle = function () {
+  try {
+    if (window.estancia && window.estancia.devtools && window.estancia.devtools.toggle) { window.estancia.devtools.toggle(); return true; }
+    if (typeof toast === 'function') toast('DevTools no disponible en este binario — actualiza el Desktop', 'warn');
+  } catch (e) {}
+  return false;
+};
+document.addEventListener('keydown', function (e) {
+  var mod = e.ctrlKey || e.metaKey;
+  if (e.key === 'F12' || (mod && e.shiftKey && (e.key === 'I' || e.key === 'i'))) { e.preventDefault(); window.e5mDevtoolsToggle(); }
+}); // OJO: bump manual en cada version (Config muestra 'html X' para detectar binario/html desparejos). 181-189: credito+cierres, borrado campanas, menu CRM, update silencioso, modales-al-body, costos BI, metricas de uso
 
 window.v175Diag = function () {
   var sb = document.querySelector('aside.sidebar') || document.querySelector('.sidebar');
@@ -786,13 +801,8 @@ window.v175Diag = function () {
       b.style.cssText = 'color:#39d353;font-size:11px;margin-left:6px;font-family:inherit';
       b.title = 'Build del index.html que está corriendo';
       el.appendChild(b);
-      /* v1.8.201: DevTools a pedido (ya no se abre solo al iniciar) */
-      var d = document.createElement('button');
-      d.textContent = '🛠 DevTools'; d.className = 'btn btn-ghost btn-sm'; d.id = 'btn-devtools';
-      d.style.cssText = 'margin-left:10px;padding:2px 8px;font-size:11px;vertical-align:middle';
-      d.title = 'Abrir/cerrar la consola de desarrollo (para diagnóstico). Atajo: Ctrl/Cmd+Shift+I';
-      d.onclick = function () { try { if (window.estancia && window.estancia.devtools) window.estancia.devtools.toggle(); else if (typeof toast === 'function') toast('DevTools no disponible en esta versión del binario', 'warn'); } catch (e) {} };
-      el.appendChild(d);
+      /* v1.8.210: el boton de DevTools ya NO se inyecta aca — es una fila fija de la tarjeta
+         Informacion (#row-devtools). Este bloque solo pone el sello del build del html. */
     } catch (e) {}
   }
   var obs = new MutationObserver(poner);
@@ -5380,6 +5390,7 @@ function orMarcajeGo(){
     <div class="card-hd"><div class="card-title">📱 Informacion</div></div>
     <div class="card-body" style="padding:0">
       <div style="display:flex;justify-content:space-between;padding:10px 18px;border-bottom:1px solid rgba(48,54,61,.4);font-size:13px"><span style="color:var(--muted)">Version</span><span style="font-family:DM Mono,monospace" id="app-version">—</span></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px;border-bottom:1px solid rgba(48,54,61,.4);font-size:13px" id="row-devtools"><span style="color:var(--muted)">Consola de desarrollo</span><span><span style="color:var(--muted);font-size:11px;margin-right:8px" id="devtools-hint">F12 o Ctrl/Cmd+Shift+I</span><button class="btn btn-ghost btn-sm" id="btn-devtools" style="padding:3px 10px;font-size:12px" title="Abrir/cerrar la consola de desarrollo (diagnostico). Atajos: F12 o Ctrl/Cmd+Shift+I" onclick="e5mDevtoolsToggle()">&#128736; DevTools</button></span></div>
       <div style="display:flex;justify-content:space-between;padding:10px 18px;border-bottom:1px solid rgba(48,54,61,.4);font-size:13px"><span style="color:var(--muted)">Base de datos</span><span style="font-family:DM Mono,monospace;color:var(--green)">SQLite local ✓</span></div>
       <div style="display:flex;justify-content:space-between;padding:10px 18px;border-bottom:1px solid rgba(48,54,61,.4);font-size:13px"><span style="color:var(--muted)">App Android (PWA)</span><span style="font-family:DM Mono,monospace;color:var(--blue)" id="cfg-pwa-url">-</span></div>
       <div style="padding:10px 18px;border-bottom:1px solid rgba(48,54,61,.4)">
@@ -54626,6 +54637,389 @@ try {
   if (typeof window.cab2Render === 'function' && !window.cab2Render.__v208) {
     window.cab2Render = (function (base) { function w() { var r = base.apply(this, arguments); try { window.v208Render(); } catch (e) { console.warn('[v208]', e); } return r; } w.__v208 = true; return w; })(window.cab2Render);
   }
+})();
+</script>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     v1.8.211 — REPRODUCCIÓN → 🐄 VIENTRES (pedido José 07-09: "la pestaña de
+     reproducción no me agrada visualmente, en la EP Campo lo resolvimos mucho
+     mejor... el desktop debería ser mejor, no peor").
+     Trae al Desktop la vista que hasta ahora vivía solo en el celular: los
+     vientres agrupados por estado, con el acordeón de EP Campo (grupos plegados,
+     uno abierto a la vez, transición por clase, visor con scroll, bitono) pero
+     aprovechando el ancho: fila de UNA línea con columnas y acciones al hover,
+     filtradas por estado con la misma matriz de EP Campo 9.9.20.
+     Layout 2:1 — izquierda lo que se opera, derecha el contexto.
+     Aditivo: no toca ningún pane existente. Kill switch: window.__VNT_OFF = true
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<style>
+#repro-tab-vientres .vnt-kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:9px;margin-bottom:14px}
+#repro-tab-vientres .vnt-kpi{background:var(--sur,#161b22);border:1px solid var(--bor,#30363d);border-radius:11px;padding:9px 12px;cursor:pointer;transition:border-color .18s,transform .12s,background .18s}
+#repro-tab-vientres .vnt-kpi:hover{border-color:#4a5568;transform:translateY(-1px)}
+#repro-tab-vientres .vnt-kpi.on{border-color:rgba(210,153,34,.6);background:linear-gradient(180deg,rgba(210,153,34,.09),var(--sur,#161b22))}
+#repro-tab-vientres .vnt-n{font-family:Syne,system-ui,Arial,sans-serif;font-weight:800;font-size:21px;line-height:1}
+#repro-tab-vientres .vnt-l{font-size:9.5px;color:var(--muted,#8b949e);text-transform:uppercase;letter-spacing:.05em;margin-top:3px}
+#repro-tab-vientres .vnt-cols{display:grid;grid-template-columns:minmax(0,2.15fr) minmax(290px,1fr);gap:16px;align-items:start}
+@media (max-width:1180px){#repro-tab-vientres .vnt-cols{grid-template-columns:1fr}#repro-tab-vientres .vnt-kpis{grid-template-columns:repeat(3,1fr)}}
+#repro-tab-vientres .vnt-tool{display:flex;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--bor,#30363d);flex-wrap:wrap}
+#repro-tab-vientres .vnt-q{flex:1;min-width:200px;background:var(--sur2,#21262d);border:1px solid var(--bor,#30363d);border-radius:8px;padding:7px 11px;color:var(--text,#e6edf3);font-family:inherit;font-size:12.5px;outline:none}
+#repro-tab-vientres .vnt-chip{border:1px solid var(--bor,#30363d);background:var(--sur2,#21262d);color:var(--muted,#8b949e);border-radius:16px;padding:5px 11px;font-size:11.5px;cursor:pointer;white-space:nowrap;font-family:inherit}
+#repro-tab-vientres .vnt-chip.on{background:rgba(210,153,34,.14);border-color:rgba(210,153,34,.5);color:var(--amber2,#e3b341);font-weight:600}
+#repro-tab-vientres .vnt-grp{border-bottom:1px solid rgba(125,125,125,.16)}
+#repro-tab-vientres .vnt-grp:last-child{border-bottom:none}
+#repro-tab-vientres .vnt-hd{display:flex;justify-content:space-between;align-items:center;padding:11px 14px;cursor:pointer;user-select:none}
+#repro-tab-vientres .vnt-hd:hover{background:rgba(125,125,125,.045)}
+#repro-tab-vientres .vnt-t{font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:8px}
+#repro-tab-vientres .vnt-cnt{font-size:11px;font-weight:700;padding:1px 9px;border-radius:10px;background:rgba(125,125,125,.14);color:var(--muted,#8b949e)}
+#repro-tab-vientres .vnt-cnt.g{background:rgba(63,185,80,.14);color:var(--green2,#56d364)}
+#repro-tab-vientres .vnt-cnt.a{background:rgba(210,153,34,.16);color:var(--amber2,#e3b341)}
+#repro-tab-vientres .vnt-cnt.r{background:rgba(248,81,73,.14);color:var(--red,#f85149)}
+#repro-tab-vientres .vnt-car{color:var(--muted,#8b949e);font-size:11px;transition:transform .28s ease;transform:rotate(-90deg)}
+#repro-tab-vientres .vnt-grp.open .vnt-car{transform:rotate(0)}
+#repro-tab-vientres .vnt-body{display:grid;grid-template-rows:0fr;opacity:0;transition:grid-template-rows .32s cubic-bezier(.4,0,.2,1),opacity .28s ease}
+#repro-tab-vientres .vnt-grp.open .vnt-body{grid-template-rows:1fr;opacity:1}
+#repro-tab-vientres .vnt-in{min-height:0;overflow:hidden}
+#repro-tab-vientres .vnt-rows{max-height:448px;overflow-y:auto;border-top:1px solid rgba(125,125,125,.16)}
+#repro-tab-vientres .vnt-rows::-webkit-scrollbar{width:9px}
+#repro-tab-vientres .vnt-rows::-webkit-scrollbar-thumb{background:#2f3742;border-radius:5px}
+#repro-tab-vientres .vnt-chd,#repro-tab-vientres .vnt-row{display:grid;grid-template-columns:126px 88px minmax(0,1fr) 122px 112px 158px;gap:10px;align-items:center}
+#repro-tab-vientres .vnt-chd{padding:7px 14px;font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#8b949e);background:rgba(125,125,125,.05);position:sticky;top:0;z-index:1}
+#repro-tab-vientres .vnt-row{padding:9px 14px;border-bottom:1px solid rgba(125,125,125,.13);cursor:pointer}
+#repro-tab-vientres .vnt-row:nth-child(even){background:rgba(125,125,125,.055)}
+#repro-tab-vientres .vnt-row:hover{background:rgba(88,166,255,.06)}
+#repro-tab-vientres .vnt-row:last-child{border-bottom:none}
+#repro-tab-vientres .vnt-are{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#repro-tab-vientres .vnt-lot{font-size:10.5px;color:var(--muted,#8b949e);border:1px solid var(--bor,#30363d);border-radius:9px;padding:1px 7px;display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#repro-tab-vientres .vnt-det{font-size:11.5px;color:var(--muted,#8b949e);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#repro-tab-vientres .vnt-num{font-family:DM Mono,monospace;font-size:12px;font-variant-numeric:tabular-nums}
+#repro-tab-vientres .vnt-pill{font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:11px;white-space:nowrap;display:inline-block;background:rgba(125,125,125,.14);color:var(--muted,#8b949e)}
+#repro-tab-vientres .vnt-pill.g{background:rgba(63,185,80,.14);color:var(--green2,#56d364)}
+#repro-tab-vientres .vnt-pill.a{background:rgba(210,153,34,.16);color:var(--amber2,#e3b341)}
+#repro-tab-vientres .vnt-pill.r{background:rgba(248,81,73,.14);color:var(--red,#f85149)}
+#repro-tab-vientres .vnt-ract{display:flex;gap:5px;opacity:0;transition:opacity .16s;justify-content:flex-end}
+#repro-tab-vientres .vnt-row:hover .vnt-ract,#repro-tab-vientres .vnt-row:focus-within .vnt-ract{opacity:1}
+#repro-tab-vientres .vnt-ra{border:1px solid var(--bor,#30363d);background:var(--sur2,#21262d);color:var(--text,#e6edf3);border-radius:7px;padding:3px 9px;font-family:inherit;font-size:11px;cursor:pointer;white-space:nowrap}
+#repro-tab-vientres .vnt-ra.p{background:rgba(63,185,80,.16);border-color:rgba(63,185,80,.45);color:var(--green2,#56d364)}
+#repro-tab-vientres .vnt-ra:hover{border-color:#4a5568}
+#repro-tab-vientres .vnt-mini{padding:10px 14px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(125,125,125,.13);font-size:12px;gap:10px}
+#repro-tab-vientres .vnt-mini:last-child{border-bottom:none}
+#repro-tab-vientres .vnt-mini:nth-child(even){background:rgba(125,125,125,.05)}
+#repro-tab-vientres .vnt-mini b{font-family:DM Mono,monospace;font-variant-numeric:tabular-nums}
+#repro-tab-vientres .vnt-bar{height:6px;border-radius:4px;background:var(--sur2,#21262d);overflow:hidden;display:flex}
+#repro-tab-vientres .vnt-bar i{display:block;height:100%}
+#repro-tab-vientres .vnt-leg{display:flex;gap:11px;font-size:10.5px;color:var(--muted,#8b949e);margin-top:7px;flex-wrap:wrap}
+#repro-tab-vientres .vnt-dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+#repro-tab-vientres .vnt-empty{padding:26px 14px;text-align:center;color:var(--muted,#8b949e);font-size:12.5px}
+@media (prefers-reduced-motion:reduce){#repro-tab-vientres .vnt-body,#repro-tab-vientres .vnt-car,#repro-tab-vientres .vnt-kpi{transition:none}}
+</style>
+<script>
+(function vientresV1211() {
+  if (window.__VNT_OFF) return;
+  var GEST = 283, TACTO_D = 45, PARIR_D = 21;
+  var V = { q: '', lote: '', abre: null, listo: false };
+
+  function hoy() { return new Date().toISOString().slice(0, 10); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
+  function dias(a, b) { if (!a || !b) return null; var x = new Date(a + 'T12:00:00Z'), y = new Date(b + 'T12:00:00Z'); return Math.round((y - x) / 86400000); }
+  function addDias(d, n) { if (!d) return null; var x = new Date(d + 'T12:00:00Z'); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); }
+  function fdm(y) { var m = String(y || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? (+m[3] + '/' + +m[2]) : ''; }
+  function fdmy(y) { var m = String(y || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? (m[3] + '/' + m[2] + '/' + m[1].slice(2)) : '—'; }
+  function DB() { return (typeof db !== 'undefined' && db) ? db : {}; }
+  function ANI() { try { return (typeof getAnimalesDB === 'function') ? getAnimalesDB() : (DB().animals || {}); } catch (e) { return {}; } }
+  function lotesRepro() {
+    var ls = DB().lots || [];
+    if (typeof window.v206EsRepro === 'function') return ls.filter(function (l) { return l && window.v206EsRepro(l); });
+    return ls.filter(function (l) { return l && /cria|cabana|cabaña/i.test(String(l.actividad || l.category || '')); });
+  }
+  var CATS_M = /toro|torillo|novillo|ternero$|macho/i, CATS_INM = /ternera|becerra/i;
+  function cat(a, l) { try { return String((typeof v206Categoria === 'function' ? v206Categoria(a, l) : (a.categoria || ''))||''); } catch (e) { return String(a.categoria || ''); } }
+
+  /* ── estado de los vientres (mismo criterio que EP Campo) ── */
+  function estado() {
+    var d = DB(), A = ANI(), S = d.reproductive_services || [], P = d.partos || [], H = hoy();
+    var LR = lotesRepro(), out = { lotes: LR, vientres: [], crias: [], serv: S, partos: P };
+    LR.forEach(function (l) {
+      (A[l.code] || []).forEach(function (a) {
+        var id = String(a.animal_id || a.id || ''); if (!id) return;
+        var c = cat(a, l);
+        if (CATS_M.test(c) || CATS_M.test(String(a.breed || ''))) return;             /* machos fuera */
+        if (a.parto_id != null && !CATS_INM.test(c) && /ternero/i.test(c)) return;
+        var ss = S.filter(function (s) { return s && String(s.animal_id) === id; }).sort(function (x, y) { return String(x.date || '').localeCompare(String(y.date || '')); });
+        var ult = ss[ss.length - 1] || null;
+        var ps = P.filter(function (p) { return p && String(p.madre_id) === id; }).sort(function (x, y) { return String(x.date || '').localeCompare(String(y.date || '')); });
+        var ultP = ps[ps.length - 1] || null;
+        var v = { id: id, lote: l.code, cat: c, raza: (a.breed || a.raza || ''), estado: 'sin servicio', cls: 'pend',
+                  ultServ: null, toro: '', tipo: '', partoProb: null, ultParto: ultP ? ultP.date : null, crias: ps.length,
+                  srvId: null, inm: CATS_INM.test(c) };
+        if (ult) {
+          v.ultServ = ult.date; v.toro = ult.toro_id || ult.semen_lote || ''; v.tipo = ult.tipo_servicio || ''; v.srvId = ult.id;
+          var r = String(ult.result || 'pendiente').toLowerCase();
+          if (/pre[ñn]/.test(r)) {
+            v.estado = 'preñada'; v.cls = 'pre';
+            v.partoProb = (ult.edad_fetal_meses > 0 && ult.diagnosis_date) ? addDias(ult.diagnosis_date, Math.round(GEST - ult.edad_fetal_meses * 30.4)) : addDias(ult.date, GEST);
+            if (ultP && ultP.servicio_id && String(ultP.servicio_id) === String(ult.id)) { v.estado = 'parida'; v.cls = 'pend'; v.partoProb = null; }
+          } else if (/vac/.test(r)) { v.estado = 'vacía'; v.cls = 'vac'; v.vacDesde = ult.diagnosis_date || ult.date; }
+          else { v.estado = 'servida'; v.cls = 'serv'; var dd = dias(ult.date, H); if (dd != null && dd >= TACTO_D) v.tacto = dd; }
+        } else if (ultP) { v.estado = 'parida'; }
+        out.vientres.push(v);
+      });
+    });
+    var codes = {}; LR.forEach(function (l) { codes[l.code] = 1; });
+    out.crias = P.filter(function (p) { return p && p.cria_id && p.cria_id !== 'N/A' && !p.destete_fecha && String(p.estado || '').toLowerCase().indexOf('muert') < 0 && codes[p.lot_code]; })
+                 .sort(function (a, b) { return String(b.date || '').localeCompare(String(a.date || '')); });
+    return out;
+  }
+  function grupoDe(v) {
+    if (v.partoProb && dias(hoy(), v.partoProb) != null && dias(hoy(), v.partoProb) <= PARIR_D) return 'parir';
+    if (v.tacto) return 'tacto';
+    if (v.cls === 'pre') return 'pre';
+    if (v.cls === 'serv') return 'serv';
+    if (v.cls === 'vac') return 'vac';
+    if (v.estado === 'parida') return 'parida';
+    return 'sin';
+  }
+  var G = {
+    parir:  { t: '🍼 Por parir (≤ ' + PARIR_D + ' días)', tone: 'a', cols: ['Arete', 'Lote', 'Servicio', 'Falta', 'Estado', ''] },
+    tacto:  { t: '⚠ Tacto pendiente (≥ ' + TACTO_D + ' días de servida)', tone: 'r', cols: ['Arete', 'Lote', 'Servicio', 'Sin tacto', 'Estado', ''] },
+    pre:    { t: '🤰 Preñadas', tone: 'g', cols: ['Arete', 'Lote', 'Servicio', 'Parto probable', 'Estado', ''] },
+    serv:   { t: '🐂 Servidas, esperando tacto', tone: 'a', cols: ['Arete', 'Lote', 'Servicio', 'Tacto desde', 'Estado', ''] },
+    vac:    { t: '❌ Vacías', tone: 'r', cols: ['Arete', 'Lote', 'Último servicio', 'Vacía desde', 'Estado', ''] },
+    parida: { t: '🐄 Paridas', tone: '', cols: ['Arete', 'Lote', 'Cría al pie', 'Parió', 'Estado', ''] },
+    sin:    { t: '○ Sin servicio', tone: '', cols: ['Arete', 'Lote', 'Categoría', 'Últ. parto', 'Estado', ''] },
+    crias:  { t: '🍼 Crías al pie sin destetar', tone: '', cols: ['Arete cría', 'Lote', 'Madre / nacimiento', 'Edad', 'Peso', ''] }
+  };
+  var ORDEN = ['parir', 'tacto', 'pre', 'serv', 'vac', 'parida', 'sin', 'crias'];
+
+  /* ── acciones por estado (misma matriz que EP Campo 9.9.20) ── */
+  function accionesDe(v) {
+    var S = { k: 'S', txt: '🐂 Servicio', fn: 'vntServicio' }, T = { k: 'T', txt: '🤰 Tacto', fn: 'vntDiag' }, P = { k: 'P', txt: '🍼 Parto', fn: 'vntParto' };
+    if (v.inm) return [T];
+    if (v.cls === 'pre') return [P, T];
+    if (v.cls === 'serv') return [T, S];
+    return [S, T];
+  }
+  function btnsHtml(v) {
+    return accionesDe(v).map(function (a, i) {
+      return '<button class="vnt-ra' + (i === 0 ? ' p' : '') + '" onclick="event.stopPropagation();' + a.fn + '(\'' + esc(v.id) + '\')">' + a.txt + '</button>';
+    }).join('');
+  }
+  function celdas(v, g) {
+    var H = hoy(), c3, c4, pill;
+    if (g === 'parir') { var dp = dias(H, v.partoProb); c3 = (v.tipo === 'IA' ? 'IA' : 'monta') + (v.toro ? ' · ' + esc(v.toro) : ''); c4 = (dp <= 0 ? 'hoy' : dp + ' días'); pill = '<span class="vnt-pill a">parto ' + fdm(v.partoProb) + '</span>'; }
+    else if (g === 'tacto') { c3 = (v.tipo === 'IA' ? 'IA' : 'monta') + (v.toro ? ' · ' + esc(v.toro) : '') + ' · servida ' + fdm(v.ultServ); c4 = v.tacto + ' días'; pill = '<span class="vnt-pill r">tactar</span>'; }
+    else if (g === 'pre') { c3 = (v.tipo === 'IA' ? 'IA' : 'monta') + (v.toro ? ' · ' + esc(v.toro) : '') + ' · servida ' + fdm(v.ultServ); var dd = dias(H, v.partoProb); c4 = fdmy(v.partoProb) + (dd != null ? ' <span style="color:var(--muted)">· ' + dd + ' d</span>' : ''); pill = '<span class="vnt-pill g">preñada</span>'; }
+    else if (g === 'serv') { c3 = (v.tipo === 'IA' ? 'IA' : 'monta') + (v.toro ? ' · ' + esc(v.toro) : '') + ' · servida ' + fdm(v.ultServ); c4 = fdmy(addDias(v.ultServ, TACTO_D)); var ds = dias(v.ultServ, H); pill = '<span class="vnt-pill a">servida ' + (ds != null ? ds + ' d' : '') + '</span>'; }
+    else if (g === 'vac') { c3 = v.ultServ ? ((v.tipo === 'IA' ? 'IA' : 'monta') + (v.toro ? ' · ' + esc(v.toro) : '') + ' · ' + fdm(v.ultServ)) : '—'; c4 = fdmy(v.vacDesde); pill = '<span class="vnt-pill r">vacía</span>'; }
+    else if (g === 'parida') { c3 = v.crias + ' cría(s)' + (v.ultParto ? ' · última ' + fdm(v.ultParto) : ''); var dpa = dias(v.ultParto, H); c4 = fdmy(v.ultParto) + (dpa != null ? ' <span style="color:var(--muted)">· ' + dpa + ' d</span>' : ''); pill = '<span class="vnt-pill">lista servicio</span>'; }
+    else { c3 = esc(v.cat || 'vientre') + (v.raza ? ' · ' + esc(v.raza) : ''); c4 = v.ultParto ? fdmy(v.ultParto) : '—'; pill = v.inm ? '<span class="vnt-pill">🐣 no entra a servicio</span>' : '<span class="vnt-pill">sin servicio</span>'; }
+    return [c3, c4, pill];
+  }
+  function filaVientre(v, g) {
+    var cc = celdas(v, g);
+    return '<div class="vnt-row" data-txt="' + esc((v.id + ' ' + v.lote + ' ' + v.toro + ' ' + v.cat).toLowerCase()) + '" onclick="vntFicha(\'' + esc(v.id) + '\')">' +
+      '<div class="vnt-are">' + esc(v.id) + '</div>' +
+      '<div><span class="vnt-lot">' + esc(v.lote) + '</span></div>' +
+      '<div class="vnt-det">' + cc[0] + '</div>' +
+      '<div class="vnt-num">' + cc[1] + '</div>' +
+      '<div>' + cc[2] + '</div>' +
+      '<div class="vnt-ract">' + btnsHtml(v) + '</div></div>';
+  }
+  function filaCria(p) {
+    var ed = dias(p.date, hoy());
+    return '<div class="vnt-row" data-txt="' + esc(((p.cria_id || '') + ' ' + (p.lot_code || '') + ' ' + (p.madre_id || '')).toLowerCase()) + '">' +
+      '<div class="vnt-are">' + esc(p.cria_id) + '</div>' +
+      '<div><span class="vnt-lot">' + esc(p.lot_code || '') + '</span></div>' +
+      '<div class="vnt-det">madre ' + esc(p.madre_id || '—') + ' · nac. ' + fdm(p.date) + ' ' + (String(p.sexo || '') === 'macho' ? '♂' : '♀') + '</div>' +
+      '<div class="vnt-num">' + (ed != null ? ed + ' d' : '—') + '</div>' +
+      '<div class="vnt-num">' + (p.peso ? p.peso + ' kg' : '—') + '</div>' +
+      '<div class="vnt-ract"><button class="vnt-ra p" onclick="event.stopPropagation();vntDestete(\'' + esc(p.id) + '\')">🍼 Destete</button></div></div>';
+  }
+
+  /* ── render ── */
+  window.renderVientres = function () {
+    var host = document.getElementById('repro-tab-vientres'); if (!host) return;
+    var st = estado();
+    if (!st.lotes.length) {
+      host.innerHTML = '<div class="card"><div class="card-body"><div class="vnt-empty">Ningún lote está marcado como <b>cría</b> o <b>cabaña</b>.<br>Se marca en Ganadería → Lotes, en el badge de actividad del lote.</div></div></div>';
+      return;
+    }
+    var vs = st.vientres.filter(function (v) { return !V.lote || v.lote === V.lote; });
+    var cr = st.crias.filter(function (p) { return !V.lote || p.lot_code === V.lote; });
+    var by = {}; ORDEN.forEach(function (k) { by[k] = []; });
+    vs.forEach(function (v) { by[grupoDe(v)].push(v); });
+    by.crias = cr;
+    by.parir.sort(function (a, b) { return String(a.partoProb).localeCompare(String(b.partoProb)); });
+    by.tacto.sort(function (a, b) { return (b.tacto || 0) - (a.tacto || 0); });
+    by.pre.sort(function (a, b) { return String(a.partoProb).localeCompare(String(b.partoProb)); });
+    by.serv.sort(function (a, b) { return String(b.ultServ || '').localeCompare(String(a.ultServ || '')); });
+    by.parida.sort(function (a, b) { return String(b.ultParto || '').localeCompare(String(a.ultParto || '')); });
+
+    if (V.abre === null) V.abre = by.tacto.length ? 'tacto' : (by.parir.length ? 'parir' : (by.pre.length ? 'pre' : null));
+
+    var K = [
+      { g: 'pre', n: by.pre.length + by.parir.length, l: 'Preñadas', c: 'var(--green2,#56d364)' },
+      { g: 'parir', n: by.parir.length, l: 'Por parir ≤' + PARIR_D + ' d', c: 'var(--amber2,#e3b341)' },
+      { g: 'tacto', n: by.tacto.length, l: 'Tacto pendiente', c: 'var(--red,#f85149)' },
+      { g: 'serv', n: by.serv.length, l: 'Servidas', c: 'var(--amber2,#e3b341)' },
+      { g: 'parida', n: by.parida.length, l: 'Paridas', c: '' },
+      { g: 'sin', n: by.sin.length, l: 'Sin servicio', c: 'var(--muted,#8b949e)' }
+    ];
+    var kpis = '<div class="vnt-kpis">' + K.map(function (k) {
+      return '<div class="vnt-kpi' + (V.abre === k.g ? ' on' : '') + '" onclick="vntKpi(\'' + k.g + '\')"><div class="vnt-n"' + (k.c ? ' style="color:' + k.c + '"' : '') + '>' + k.n + '</div><div class="vnt-l">' + k.l + '</div></div>';
+    }).join('') + '</div>';
+
+    var lotes = st.lotes.map(function (l) { return l.code; });
+    var chips = '<button class="vnt-chip' + (V.lote ? '' : ' on') + '" onclick="vntLote(\'\')">Todos</button>' +
+      lotes.map(function (c) { return '<button class="vnt-chip' + (V.lote === c ? ' on' : '') + '" onclick="vntLote(\'' + esc(c) + '\')">' + esc(c) + '</button>'; }).join('');
+
+    var grupos = ORDEN.filter(function (k) { return by[k].length; }).map(function (k) {
+      var g = G[k], open = V.abre === k;
+      return '<div class="vnt-grp' + (open ? ' open' : '') + '" id="vnt-grp-' + k + '">' +
+        '<div class="vnt-hd" onclick="vntToggle(\'' + k + '\')"><span class="vnt-t">' + g.t + '</span>' +
+        '<span style="display:flex;gap:9px;align-items:center"><span class="vnt-cnt ' + g.tone + '">' + by[k].length + '</span><span class="vnt-car">▾</span></span></div>' +
+        '<div class="vnt-body"><div class="vnt-in"><div class="vnt-rows" id="vnt-rows-' + k + '">' +
+        '<div class="vnt-chd">' + g.cols.map(function (c) { return '<div>' + c + '</div>'; }).join('') + '</div>' +
+        by[k].map(function (x) { return k === 'crias' ? filaCria(x) : filaVientre(x, k); }).join('') +
+        '<div class="vnt-empty vnt-none" style="display:none">Sin coincidencias</div>' +
+        '</div></div></div></div>';
+    }).join('');
+
+    /* ── columna derecha: indicadores calculados con los mismos datos ── */
+    var totalV = vs.length || 1;
+    var pPre = Math.round((by.pre.length + by.parir.length) * 100 / totalV), pSer = Math.round(by.serv.length * 100 / totalV),
+        pVac = Math.round(by.vac.length * 100 / totalV), pRes = Math.max(0, 100 - pPre - pSer - pVac);
+    var conPre = 0, conServ = 0;
+    vs.forEach(function (v) { var ss = st.serv.filter(function (s) { return String(s.animal_id) === v.id; }); conServ += ss.length; if (v.cls === 'pre' || v.estado === 'parida') conPre++; });
+    var sc = conPre ? (conServ / conPre).toFixed(1) : '—';
+    var ipp = (function () {
+      var xs = [];
+      var byM = {};
+      (st.partos || []).forEach(function (p) { if (p && p.madre_id) (byM[p.madre_id] = byM[p.madre_id] || []).push(p.date); });
+      Object.keys(byM).forEach(function (m) {
+        var ds = byM[m].filter(Boolean).sort();
+        for (var i = 1; i < ds.length; i++) { var d = dias(ds[i - 1], ds[i]); if (d > 200 && d < 900) xs.push(d); }
+      });
+      return xs.length ? Math.round(xs.reduce(function (a, b) { return a + b; }, 0) / xs.length) + ' d' : '—';
+    })();
+    var prox = by.parir.slice(0, 5);
+    var der = '<div class="card"><div class="chd" style="display:flex;justify-content:space-between;align-items:center;padding:11px 14px;border-bottom:1px solid var(--bor)">' +
+      '<b style="font-family:Syne,system-ui,sans-serif;font-size:13px">📊 Estado del rodeo</b><span class="vnt-cnt">' + vs.length + ' vientres</span></div>' +
+      '<div style="padding:12px 14px"><div class="vnt-bar">' +
+        '<i style="width:' + pPre + '%;background:var(--green,#3fb950)"></i><i style="width:' + pSer + '%;background:var(--amber,#d29922)"></i>' +
+        '<i style="width:' + pVac + '%;background:var(--red,#f85149)"></i><i style="width:' + pRes + '%;background:#39414d"></i></div>' +
+      '<div class="vnt-leg"><span><i class="vnt-dot" style="background:var(--green,#3fb950)"></i>Preñadas ' + pPre + '%</span>' +
+      '<span><i class="vnt-dot" style="background:var(--amber,#d29922)"></i>Servidas ' + pSer + '%</span>' +
+      '<span><i class="vnt-dot" style="background:var(--red,#f85149)"></i>Vacías ' + pVac + '%</span>' +
+      '<span><i class="vnt-dot" style="background:#39414d"></i>Resto ' + pRes + '%</span></div></div>' +
+      '<div class="vnt-mini"><span style="color:var(--muted)">Tasa de preñez</span><b style="color:var(--green2,#56d364)">' + pPre + ' %</b></div>' +
+      '<div class="vnt-mini"><span style="color:var(--muted)">Servicios / concepción</span><b>' + sc + '</b></div>' +
+      '<div class="vnt-mini"><span style="color:var(--muted)">Intervalo entre partos</span><b>' + ipp + '</b></div>' +
+      '<div class="vnt-mini"><span style="color:var(--muted)">Crías al pie sin destetar</span><b>' + cr.length + '</b></div></div>' +
+      '<div class="card" style="margin-top:14px"><div style="display:flex;justify-content:space-between;align-items:center;padding:11px 14px;border-bottom:1px solid var(--bor)">' +
+      '<b style="font-family:Syne,system-ui,sans-serif;font-size:13px">🗓 Próximos partos</b><span class="vnt-cnt a">' + by.parir.length + '</span></div>' +
+      (prox.length ? prox.map(function (v) { var dp = dias(hoy(), v.partoProb);
+        return '<div class="vnt-mini"><span>' + esc(v.id) + ' <span style="color:var(--muted)">· ' + esc(v.lote) + '</span></span><b class="' + (dp <= 7 ? '' : '') + '" style="color:' + (dp <= 7 ? 'var(--amber2,#e3b341)' : 'inherit') + '">' + (dp <= 0 ? 'hoy' : 'en ' + dp + ' d') + '</b></div>'; }).join('')
+        : '<div class="vnt-empty" style="padding:16px">Ninguno en los próximos ' + PARIR_D + ' días</div>') + '</div>';
+
+    host.innerHTML = kpis +
+      '<div class="vnt-cols"><div><div class="card">' +
+        '<div class="vnt-tool"><input class="vnt-q" id="vnt-q" placeholder="🔍 Buscar por arete, lote o toro…" value="' + esc(V.q) + '" oninput="vntQ(this.value)">' + chips + '</div>' +
+        (grupos || '<div class="vnt-empty">Sin vientres en esos lotes.</div>') +
+      '</div></div><div>' + der + '</div></div>';
+    if (V.q) window.vntQ(V.q);
+    V.listo = true;
+  };
+
+  /* ── interacción ── */
+  window.vntToggle = function (k) {
+    var el = document.getElementById('vnt-grp-' + k); if (!el) return;
+    var abrir = !el.classList.contains('open');
+    var host = document.getElementById('repro-tab-vientres');
+    host.querySelectorAll('.vnt-grp.open').forEach(function (o) { o.classList.remove('open'); });
+    if (abrir) { el.classList.add('open'); V.abre = k; setTimeout(function () { try { el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {} }, 340); }
+    else V.abre = '';
+    host.querySelectorAll('.vnt-kpi').forEach(function (x) { x.classList.remove('on'); });
+    if (abrir) { var i = ['pre', 'parir', 'tacto', 'serv', 'parida', 'sin'].indexOf(k); if (i >= 0) { var kp = host.querySelectorAll('.vnt-kpi')[i]; if (kp) kp.classList.add('on'); } }
+  };
+  window.vntKpi = function (k) { if (!document.getElementById('vnt-grp-' + k)) { if (typeof toast === 'function') toast('No hay vientres en ese estado', 'info'); return; } if (!document.getElementById('vnt-grp-' + k).classList.contains('open')) window.vntToggle(k); };
+  window.vntLote = function (c) { V.lote = c; window.renderVientres(); };
+  window.vntQ = function (q) {
+    V.q = q; q = String(q || '').toLowerCase().trim();
+    document.querySelectorAll('#repro-tab-vientres .vnt-rows').forEach(function (rows) {
+      var n = 0;
+      rows.querySelectorAll('.vnt-row').forEach(function (r) { var ok = !q || (r.dataset.txt || '').indexOf(q) >= 0; r.style.display = ok ? '' : 'none'; if (ok) n++; });
+      var none = rows.querySelector('.vnt-none'); if (none) none.style.display = n ? 'none' : '';
+    });
+  };
+
+  /* ── acciones: abren los modales que ya existen, con el animal cargado ── */
+  function tick(fn) { setTimeout(fn, 60); }
+  window.vntServicio = function (id) {
+    if (typeof openReproNuevoServicio !== 'function') return;
+    openReproNuevoServicio();
+    tick(function () { var i = document.getElementById('repro-srv-animal'); if (i) { i.value = id; i.dispatchEvent(new Event('change', { bubbles: true })); } });
+  };
+  window.vntParto = function (id) {
+    if (typeof openReproNuevoParto !== 'function') return;
+    openReproNuevoParto();
+    tick(function () {
+      var s = document.getElementById('repro-parto-madre'); if (!s) return;
+      var op = Array.prototype.find.call(s.options, function (o) { return o.value === id || (o.textContent || '').indexOf(id) === 0; });
+      if (op) { s.value = op.value; if (typeof _reproPartoOnMadreChange === 'function') _reproPartoOnMadreChange(); }
+      else if (typeof toast === 'function') toast('Esa vaca no figura como preñada pendiente de parto — elegila a mano', 'warn');
+    });
+  };
+  window.vntDiag = function (id) {
+    if (typeof openReproDiagnostico !== 'function') return;
+    openReproDiagnostico();
+    tick(function () {
+      var s = document.getElementById('repro-diag-srv-select'); if (!s) return;
+      var op = Array.prototype.find.call(s.options, function (o) { return (o.textContent || '').indexOf(id) >= 0; });
+      if (op) { s.value = op.value; s.dispatchEvent(new Event('change', { bubbles: true })); }
+      else if (typeof toast === 'function') toast('Sin servicio pendiente para ' + id + ' — cargá primero el servicio', 'warn');
+    });
+  };
+  window.vntDestete = function (partoId) {
+    if (typeof openReproDestete !== 'function') return;
+    openReproDestete();
+    tick(function () { var s = document.getElementById('rd-parto'); if (s) { s.value = partoId; if (typeof reproDesteteInfo === 'function') reproDesteteInfo(); } });
+  };
+  window.vntFicha = function (id) {
+    if (typeof openAnimalHistorial === 'function') { openAnimalHistorial(id); return; }
+    if (typeof verHistorialAnimal === 'function') { verHistorialAnimal(id); return; }
+  };
+
+  /* ── montaje: tab + pane, sin tocar el markup existente ── */
+  function montar() {
+    var page = document.getElementById('page-reproduccion'); if (!page) return false;
+    if (document.getElementById('repro-tab-vientres')) return true;
+    var tabs = page.querySelector('.tabs'); if (!tabs) return false;
+    var pane = document.createElement('div');
+    pane.id = 'repro-tab-vientres'; pane.className = 'tab-pane';
+    pane.style.display = 'none';
+    tabs.parentNode.insertBefore(pane, tabs.nextSibling);
+    var b = document.createElement('button');
+    b.className = 'tab-btn'; b.id = 'repro-tab-vientres-btn'; b.textContent = '🐄 Vientres';
+    b.onclick = function () { switchTab('repro', b, 'repro-tab-vientres'); window.renderVientres(); };
+    tabs.insertBefore(b, tabs.firstChild);
+    /* v1.8.211: Vientres pasa a ser la vista de entrada de Reproducción */
+    var act = tabs.querySelector('.tab-btn.active');
+    if (act && act !== b) {
+      act.classList.remove('active');
+      switchTab('repro', b, 'repro-tab-vientres');
+      try { window.renderVientres(); } catch (e) {}
+    }
+    return true;
+  }
+  function arm() { if (!montar()) setTimeout(arm, 600); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', arm, { once: true }); else arm();
+
+  /* re-render cuando la pestaña está a la vista y entran datos nuevos */
+  var _gr = window.goToRepro;
+  if (typeof _gr === 'function') window.goToRepro = function (sub, el) { var r = _gr.apply(this, arguments); if (sub === 'vientres') { var b = document.getElementById('repro-tab-vientres-btn'); if (b) b.click(); } return r; };
+  window.vntDiag2 = function () { return { version: '1.8.211', vientres: estado().vientres.length, lotes: lotesRepro().length, abre: V.abre, lote: V.lote }; };
+  try { console.log('%c[EP Desktop v1.8.211] 🐄 Vientres — lista estilo EP Campo · vntDiag2() · kill: __VNT_OFF', 'color:#bc8cff;font-weight:bold'); } catch (e) {}
 })();
 </script>
 

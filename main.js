@@ -68,6 +68,18 @@ function createWindow() {
     });
   });
 
+  /* v1.8.210: F12 y Ctrl/Cmd+Shift+I abren/cierran DevTools en cualquier plataforma. Antes en macOS
+     el menu propio pisaba el de Electron y no quedaba NINGUN acelerador registrado. */
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    const mod = input.control || input.meta;
+    if (input.key === 'F12' || (mod && input.shift && String(input.key).toLowerCase() === 'i')) {
+      event.preventDefault();
+      const wc = mainWindow.webContents;
+      if (wc.isDevToolsOpened()) wc.closeDevTools(); else wc.openDevTools({ mode: 'right' });
+    }
+  });
+
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     /* v1.8.201: DevTools ya no se abre solo al iniciar (frena Electron). Se abre desde Configuración → 🛠 DevTools, o con E5M_DEVTOOLS=1 */
@@ -152,6 +164,9 @@ function createTray() {
           { role: 'reload', label: 'Recargar' },
           { type: 'separator' },
           { role: 'togglefullscreen', label: 'Pantalla completa' },
+          { type: 'separator' },
+          { role: 'toggleDevTools', label: 'Alternar DevTools' }, /* v1.8.210 */
+          { type: 'separator' },
           { role: 'zoomIn', label: 'Acercar' },
           { role: 'zoomOut', label: 'Alejar' },
           { role: 'resetZoom', label: 'Tamaño original' },
