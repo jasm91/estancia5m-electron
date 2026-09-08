@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.215';
+window.E5M_HTML_BUILD = '1.8.216';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -7737,6 +7737,7 @@ function pullFromRailwayDesktop(thenPush) {
       var _sinCambios = false; /* v1.8.204: mismo last_modified y mismas versiones que el pull anterior → no re-renderizar 25 páginas */
       try { _sinCambios = !!(remote && remote.last_modified && remote.last_modified === localStorage.getItem('e5m_last_sync_at') && remote._versions && JSON.stringify(remote._versions) === localStorage.getItem('e5m_table_versions')); } catch(eSC){}
       try { if (remote && remote._versions) localStorage.setItem('e5m_table_versions', JSON.stringify(remote._versions)); } catch(eV){} // v1.8.115 SYNC V2
+      try { if (window.e5mMapasDesdePull) window.e5mMapasDesdePull(remote); } catch (eMp) {} /* v1.8.216: mapas del servidor */
       try { if (remote && remote.tc_bcb && remote.tc_bcb.valor) { localStorage.setItem('e5m_tc_bcb', JSON.stringify(remote.tc_bcb)); if (typeof window.tcBcbRender === 'function') window.tcBcbRender(); } } catch(eTc){} /* v1.8.151: TC oficial BCB servido por server v4.42 */
       try { if (remote && remote.animal_costos && typeof remote.animal_costos === 'object') { localStorage.setItem('e5m_animal_costos', JSON.stringify(remote.animal_costos)); } } catch(eAC){} /* v1.8.197: costo por cabeza (server v4.58.1) */
       if (!remote || remote.error) {
@@ -27423,6 +27424,7 @@ var _e5mSesionesData = [];
         if (!m || m.version !== 1 || !Array.isArray(m.potreros) || !m.potreros.length) throw new Error('formato');
         if (m.imagen && String(m.imagen).indexOf('data:image/') !== 0) throw new Error('imagen');
         try { localStorage.setItem(KEY, r.result); } catch (eq) { toast('El mapa es muy grande para guardarlo en este equipo', 'error'); return; }
+        try { if (window.e5mMapaSubir) window.e5mMapaSubir('potreros', m); } catch (eU) {} /* v1.8.216: también al servidor */
         try { localStorage.setItem(KCOL, '0'); } catch (e2) {}
         mpRender();
         toast('Mapa cargado: ' + (m.nombre || '') + ' (' + m.potreros.length + ' potreros) — velo en Lotes → Rotación', 'success');
@@ -27469,8 +27471,9 @@ var _e5mSesionesData = [];
     toast('Potreros del sistema: ' + nuevos + ' creados' + (actualizados ? (', ' + actualizados + ' actualizados') : '') + ' y sincronizados', 'success');
   };
   window.mpQuitar = function () {
-    if (!confirm('¿Quitar el mapa de potreros de este equipo? El archivo JSON no se borra: podés volver a cargarlo cuando quieras.')) return;
+    if (!confirm('¿Quitar el mapa de potreros? Se quita de este equipo y del servidor (los demás equipos dejan de verlo). El archivo JSON no se borra: podés volver a cargarlo cuando quieras.')) return;
     try { localStorage.removeItem(KEY); } catch (e) {}
+    try { if (window.e5mMapaBorrarSrv) window.e5mMapaBorrarSrv('potreros'); } catch (eB) {} /* v1.8.216 */
     mpRender(); toast('Mapa quitado', 'info');
   };
   window.mpRender = mpRender;
@@ -43257,11 +43260,11 @@ function renderReproInteligencia() {
 <div class="modal-overlay agx" id="ag-modal-campana">
   <div class="ag-modal">
     <h2 id="agc-m-title">➕ Nueva campaña</h2>
-    <div class="m-sub">Cultivo sobre una parcela en un ciclo. La rotación = otra campaña sobre la misma parcela.</div>
+    <div class="m-sub">Cultivo sobre una o varias parcelas en un ciclo. La rotación = otra campaña sobre las mismas parcelas.</div>
     <div class="m-body">
       <input type="hidden" id="agc-id">
       <div class="frow">
-        <div><label class="form-label">Parcela *</label><select class="form-input" id="agc-parcela"></select></div>
+        <div><label class="form-label">Parcelas * <span style="font-weight:400;color:var(--muted)">(⌘/Ctrl + click para varias)</span></label><select class="form-input" id="agc-parcela" multiple size="5" style="height:auto"></select><div id="agc-parcela-ha" style="font-size:11px;color:var(--muted);margin-top:4px"></div></div>
         <div><label class="form-label">Cultivo *</label><select class="form-input" id="agc-cultivo"></select></div>
       </div>
       <div class="frow3">
@@ -43762,8 +43765,14 @@ function agFecha(iso){ if(!iso)return '—'; var p=String(iso).split('-'); retur
 function agToast(m,t){ try { if (typeof toast==='function') { toast(m,t); return; } } catch(e){} try { alert(m); } catch(e2){} }
 function agEl(id){ return document.getElementById(id); }
 function agById(a,id){ for(var i=0;i<(a||[]).length;i++) if(String(a[i].id)===String(id)) return a[i]; return null; }
-function campLabel(d,c){ var p=agById(d.parcelas,c.parcela_id); return (p?p.code:'?')+' · '+c.cultivo+' '+(c.ciclo==='verano'?'Verano':'Invierno')+' '+c.anio; }
-function campHa(d,c){ var p=agById(d.parcelas,c.parcela_id); return p?Number(p.ha):0; }
+/* v1.8.216 (José 08-09): campañas MULTI-PARCELA. La campaña guarda parcela_ids[]; parcela_id sigue
+   siendo la primera (compatibilidad). Las ha son la suma y el código se muestra "28B+A1". */
+function agCampIds(c){ if(!c)return[]; var ids=(Array.isArray(c.parcela_ids)&&c.parcela_ids.length)?c.parcela_ids:(c.parcela_id!=null&&c.parcela_id!==''?[c.parcela_id]:[]); var out=[],seen={}; ids.forEach(function(x){ var k=String(x); if(k&&k!=='null'&&!seen[k]){seen[k]=1;out.push(x);} }); return out; }
+function agCampParcelas(d,c){ return agCampIds(c).map(function(id){ return agById(d.parcelas,id); }).filter(Boolean); }
+function agCampTiene(c,pid){ return agCampIds(c).some(function(x){ return String(x)===String(pid); }); }
+function agCampParcelaRep(d,c){ var ps=agCampParcelas(d,c); if(!ps.length)return null; var r={}; Object.keys(ps[0]).forEach(function(k){r[k]=ps[0][k];}); r.code=ps.map(function(p){return p.code;}).join('+'); r.ha=ps.reduce(function(s,p){return s+(Number(p.ha)||0);},0); r.multi=ps.length>1; return r; }
+function campLabel(d,c){ var p=agCampParcelaRep(d,c); return (p?p.code:'?')+' · '+c.cultivo+' '+(c.ciclo==='verano'?'Verano':'Invierno')+' '+c.anio; }
+function campHa(d,c){ var p=agCampParcelaRep(d,c); return p?Number(p.ha)||0:0; }
 window.agOpenModal = window.agOpenModal || function(id){ var el=agEl(id); if(el) el.classList.add('open'); };
 window.agCloseModal = window.agCloseModal || function(id){ var el=agEl(id); if(el) el.classList.remove('open'); };
 
@@ -43861,7 +43870,7 @@ function agRenderParcelas(){
   var d=agGetDB(), html='';
   if (!agEl('agp-tbody')) return;
   d.parcelas.forEach(function(p){
-    var cur=d.campanas.filter(function(c){return String(c.parcela_id)===String(p.id)&&c.estado==='en_curso';}).map(function(c){return c.cultivo+' '+(c.ciclo==='verano'?'☀️':'❄️');}).join(', ');
+    var cur=d.campanas.filter(function(c){return agCampTiene(c,p.id)&&c.estado==='en_curso';}).map(function(c){return c.cultivo+' '+(c.ciclo==='verano'?'☀️':'❄️');}).join(', ');
     html+='<tr><td><b>'+escA(p.code)+'</b></td><td>'+escA(p.nombre||'—')+'</td><td class="num">'+fmtA(p.ha,1)+'</td><td>'+(cur||'<span style="color:var(--muted)">barbecho / libre</span>')+'</td><td>'+(cur?'<span class="pill g">Sembrada</span>':'<span style="color:var(--muted);font-size:12px">Libre</span>') /* v1.8.112 R5 */+'</td>'+
       '<td><button class="btn btn-ghost btn-sm" onclick="agOpenParcela('+agIdq(p.id)+')">✏️ Editar</button></td></tr>';
   });
@@ -43892,7 +43901,7 @@ function agSaveParcela(){
 }
 function agDelParcela(){
   var d=agGetDB(), id=agEl('agp-id').value; if(!id)return;
-  var enUso=d.campanas.some(function(c){return String(c.parcela_id)===String(id);});
+  var enUso=d.campanas.some(function(c){return agCampTiene(c,id);});
   if(enUso){ agToast('No se puede eliminar: tiene campañas asociadas','error'); return; }
   if(!confirm('¿Eliminar la parcela?'))return;
   if (agDbOk()) db.agro_parcelas = db.agro_parcelas.filter(function(p){return String(p.id)!==String(id);});
@@ -43905,7 +43914,7 @@ function agRenderCampanas(){
   if (!agEl('agc-tbody')) return;
   d.campanas.forEach(function(c){
     if(f&&c.estado!==f)return;
-    var p=agById(d.parcelas,c.parcela_id), ha=p?p.ha:0;
+    var p=agCampParcelaRep(d,c), ha=p?p.ha:0;
     var cost=campCosto(d,c.id); var n=d.labores.filter(function(l){return String(l.campana_id)===String(c.id);}).length;
     var pill=c.estado==='en_curso'?'<span class="pill g">En curso</span>':c.estado==='cosechada'?'<span class="pill b">Cosechada</span>':'<span class="pill a">Planificada</span>';
     html+='<tr><td><b>'+escA(p?p.code:'?')+'</b> '+escA(p&&p.nombre?('· '+p.nombre):'')+'</td><td>'+escA(c.cultivo)+'</td><td>'+(c.ciclo==='verano'?'☀️ Verano':'❄️ Invierno')+' '+escA(c.anio)+'</td><td class="num">'+fmtA(ha,1)+'</td><td>'+agFecha(c.siembra_plan)+'</td><td class="num">'+n+'</td><td class="num">'+(cost.total&&ha?fmtA(cost.total/ha):'—')+'</td><td>'+pill+'</td>'+
@@ -43922,7 +43931,7 @@ function agOpenCampana(id){
   d.cultivos.forEach(function(cu){ var o=document.createElement('option'); o.value=cu; o.textContent=cu; selC.appendChild(o); });
   agEl('agc-m-title').textContent=c?'✏️ Editar campaña':'➕ Nueva campaña';
   agEl('agc-id').value=c?c.id:'';
-  if(c){ selP.value=c.parcela_id; selC.value=c.cultivo;
+  if(c){ var _ids=agCampIds(c).map(String); Array.prototype.forEach.call(selP.options,function(o){ o.selected=_ids.indexOf(String(o.value))>=0; }); selC.value=c.cultivo;
     agEl('agc-ciclo').value=c.ciclo; agEl('agc-anio').value=c.anio;
     agEl('agc-siembra').value=c.siembra_plan||''; agEl('agc-estado').value=c.estado; }
   else{ agEl('agc-ciclo').value=(new Date().getMonth()+1>=4&&new Date().getMonth()+1<=8)?'invierno':'verano';
@@ -43933,13 +43942,14 @@ function agOpenCampana(id){
 }
 function agSaveCampana(){
   var d=agGetDB(), id=agEl('agc-id').value;
-  var pid=Number(agEl('agc-parcela').value);
+  var pids=Array.prototype.filter.call(agEl('agc-parcela').options,function(o){return o.selected;}).map(function(o){return Number(o.value);}).filter(Boolean); /* v1.8.216: varias parcelas */
+  var pid=pids[0];
   var cult=agEl('agc-cultivo').value;
   var ciclo=agEl('agc-ciclo').value, anio=agEl('agc-anio').value.trim();
   if(!pid||!cult||!anio){ agToast('Parcela, cultivo y año son obligatorios','error'); return; }
-  var dup=d.campanas.some(function(c){ return String(c.parcela_id)===String(pid)&&c.ciclo===ciclo&&c.anio===anio&&String(c.id)!==String(id); });
-  if(dup && !confirm('Ya hay una campaña en esa parcela para ese ciclo/año. ¿Crear igual?')) return;
-  var data={parcela_id:pid,cultivo:cult,ciclo:ciclo,anio:anio,siembra_plan:agEl('agc-siembra').value,estado:agEl('agc-estado').value,updated_at:new Date().toISOString()};
+  var dup=d.campanas.some(function(c){ return pids.some(function(x){return agCampTiene(c,x);})&&c.ciclo===ciclo&&c.anio===anio&&String(c.id)!==String(id); });
+  if(dup && !confirm('Ya hay una campaña con alguna de esas parcelas para ese ciclo/año. ¿Crear igual?')) return;
+  var data={parcela_id:pid,parcela_ids:pids,cultivo:cult,ciclo:ciclo,anio:anio,siembra_plan:agEl('agc-siembra').value,estado:agEl('agc-estado').value,updated_at:new Date().toISOString()};
   if(id){ var c=agById(d.campanas,id); Object.assign(c,data); }
   else{ data.id=agNextId(d.campanas); data.created_at=data.updated_at; d.campanas.push(data); }
   agSaveDB(); window.agCloseModal('ag-modal-campana'); agRenderAll(); agToast('Campaña guardada','success');
@@ -43993,7 +44003,7 @@ function agRenderCosecha(){
   var rows=d.labores.filter(function(l){return l.tipo==='cosecha'&&l.estado==='ejecutada'&&l.cosecha;});
   rows.sort(function(a,b){return (b.fecha||'').localeCompare(a.fecha||'');}).forEach(function(l){
     var c=agById(d.campanas,l.campana_id); if(!c)return;
-    var p=agById(d.parcelas,c.parcela_id); if(!p)return;
+    var p=agCampParcelaRep(d,c); if(!p)return;
     var ha=campHa(d,c), kg=Number(l.cosecha.kg)||0, tHa=ha?kg/1000/ha:0, ing=kg/1000*(Number(l.cosecha.precio)||0);
     kgT+=kg; ingT+=ing; haT+=ha;
     html+='<tr><td>'+agFecha(l.fecha)+'</td><td><b>'+escA(p.code)+'</b></td><td>'+escA(c.cultivo)+' · '+(c.ciclo==='verano'?'☀️':'❄️')+' '+escA(c.anio)+'</td><td class="num">'+fmtA(ha,1)+'</td><td class="num">'+fmtA(kg)+'</td><td class="num"><b>'+fmtA(tHa,2)+'</b></td><td class="num">'+fmtA(ha?kg/AG_QQ/ha:0,1)+'</td><td class="num">'+fmtA(l.cosecha.hum,1)+'</td><td class="num">'+fmtA(ing)+'</td></tr>';
@@ -44082,7 +44092,7 @@ function agExportCuaderno(){
   var lines=[head.join(',')];
   function q(v){ v=String(v==null?'':v); return /[",\n]/.test(v)?('"'+v.replace(/"/g,'""')+'"'):v; }
   d.labores.slice().sort(function(a,b){return (a.fecha||'').localeCompare(b.fecha||'');}).forEach(function(l){
-    var c=agById(d.campanas,l.campana_id)||{}, p=agById(d.parcelas,c.parcela_id)||{};
+    var c=agById(d.campanas,l.campana_id)||{}, p=agCampParcelaRep(d,c)||{};
     var base=[l.fecha,l.estado,p.code,c.cultivo,c.ciclo,c.anio,l.tipo,l.resp,l.maquina,l.hmaq||0,l.diesel||0];
     var tot=laborCosto(l).total, cos=l.cosecha||{};
     if((l.insumos||[]).length){
@@ -44342,7 +44352,7 @@ function agInfoParcela(code){
   if(!p) return r;
   var hoy=agHoy();
   d.campanas.forEach(function(c){
-    if(String(c.parcela_id)!==String(p.id)) return;
+    if(!agCampTiene(c,p.id)) return;
     if(c.estado==='en_curso' && !r.enCurso) r.enCurso=c;
     else if(c.estado==='planificada') r.plan.push(c);
     else if(c.estado==='cosechada'){ if(!r.ultimaCosechada || String(c.anio)>String(r.ultimaCosechada.anio)) r.ultimaCosechada=c; }
@@ -44406,6 +44416,7 @@ window.agEjecutarLabor=agEjecutarLabor; window.agDelLabor=agDelLabor; window.agE
 window.agOpenInsumos=agOpenInsumos; window.agSaveInsumo=agSaveInsumo; window.agEditInsumo=agEditInsumo;
 window.agDelInsumo=agDelInsumo; window.agInsumoFormReset=agInsumoFormReset;
 window.agGetDB=agGetDB; window.agById=agById; window.agwFinish=agwFinish; window.agwLeerInsumos=agwLeerInsumos; // v1.8.176: capas posteriores y tests dejan de chocar con el closure
+window.agCampIds=agCampIds; window.agCampParcelas=agCampParcelas; window.agCampTiene=agCampTiene; window.agCampParcelaRep=agCampParcelaRep; window.campLabel=campLabel; window.campHa=campHa; // v1.8.216 multi-parcela
 window.agwOpen=agwOpen; window.agwSetTipo=agwSetTipo; window.agwNav=agwNav; window.agwAddInsumo=agwAddInsumo;
 window.agwCrearCampanaInline=agwCrearCampanaInline; window.agwToggleNuevoInsumo=agwToggleNuevoInsumo; window.agwCrearInsumoInline=agwCrearInsumoInline; // v1.8.120: los 3 fixes inline v1.8.112 quedaron dentro del IIFE sin exponer (onclick no los veia)
 window.agwDelInsumo=agwDelInsumo; window.agwRecalcAll=agwRecalcAll; window.agwCampanaInfo=agwCampanaInfo; window.agwCalcRinde=agwCalcRinde;
@@ -46003,6 +46014,7 @@ document.addEventListener('click', function(ev){
         if (!m || m.version !== 1 || !Array.isArray(m.parcelas) || !m.parcelas.length) throw new Error('formato');
         if (m.imagen && String(m.imagen).indexOf('data:image/') !== 0) throw new Error('imagen');
         try { localStorage.setItem(KEY, r.result); } catch (eq) { toast('El mapa es muy grande para guardarlo en este equipo', 'error'); return; }
+        try { if (window.e5mMapaSubir) window.e5mMapaSubir('parcelas', m); } catch (eU) {} /* v1.8.216: también al servidor */
         try { localStorage.setItem(KCOL, '0'); } catch (e2) {}
         mpaRender();
         toast('Mapa de parcelas cargado: ' + (m.nombre || '') + ' (' + m.parcelas.length + ') — velo en Agricultura → Parcelas', 'success');
@@ -46044,8 +46056,9 @@ document.addEventListener('click', function(ev){
     toast('Parcelas del sistema: ' + nuevos + ' creadas' + (act ? (', ' + act + ' actualizadas') : '') + ' y sincronizadas', 'success');
   };
   window.mpaQuitar = function () {
-    if (!confirm('¿Quitar el mapa de parcelas de este equipo? El archivo JSON no se borra.')) return;
+    if (!confirm('¿Quitar el mapa de parcelas? Se quita de este equipo y del servidor (los demás equipos dejan de verlo). El archivo JSON no se borra.')) return;
     try { localStorage.removeItem(KEY); } catch (e) {}
+    try { if (window.e5mMapaBorrarSrv) window.e5mMapaBorrarSrv('parcelas'); } catch (eB) {} /* v1.8.216 */
     mpaRender(); toast('Mapa de parcelas quitado', 'info');
   };
   window.mpaRender = mpaRender;
@@ -55517,6 +55530,79 @@ try {
              par: !!(p && p.querySelector('.vnt-cols2')), parKpis: p ? p.querySelectorAll('.vnt-kpi').length : 0 };
   };
   try { console.log('%c[EP Desktop v1.8.215] Servicios y Partos: KPI compactos, filtros en la tarjeta y columna derecha · vnt3Diag() · kill: __VNT3_OFF', 'color:#bc8cff;font-weight:bold'); } catch (e) {}
+})();
+</script>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     v1.8.216 — MAPAS EN EL SERVIDOR (pedido José 08-09) + ayuda del modal multi-parcela.
+     · Al cargar un mapa (potreros o parcelas) se sube al servidor (PUT /api/mapas/:tipo).
+     · En cada sync-pull, si el servidor tiene un mapa más nuevo que el de este equipo (o este
+       equipo no tiene), se adopta y se redibuja. Si este equipo tiene uno y el servidor no,
+       se sube solo: así el mapa que ya está cargado en la máquina de Chaco Lejos migra sin
+       que nadie haga nada.
+     · Quitar el mapa lo quita también del servidor.
+     · Modal de campaña: muestra la suma de hectáreas de las parcelas elegidas.
+     Kill switch: window.__MAPAS_SRV_OFF = true
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<script>
+(function mapasServidorV1216() {
+  if (window.__MAPAS_SRV_OFF) return;
+  var TIPOS = ['potreros', 'parcelas'];
+  function suf() { try { var t = String(localStorage.getItem('e5m_api_token') || '').replace(/[^a-zA-Z0-9_-]/g, ''); return t ? t.slice(-12) : 'default'; } catch (e) { return 'default'; } }
+  function key(tipo) { return 'e5m_mapa_' + tipo + '_v1::' + suf(); }
+  function local(tipo) { try { var s = localStorage.getItem(key(tipo)); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+  function url() { try { return (typeof getApiUrl === 'function' ? getApiUrl() : 'https://estancia5m-api-production.up.railway.app/api'); } catch (e) { return 'https://estancia5m-api-production.up.railway.app/api'; } }
+  function tok() { try { return (typeof getApiToken === 'function' ? getApiToken() : localStorage.getItem('e5m_api_token')) || ''; } catch (e) { return ''; } }
+  function hdr() { return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tok(), 'x-app-version': (window.E5M_HTML_BUILD || ''), 'x-app-type': 'desktop' }; }
+  function n(tipo, m) { return m && Array.isArray(m[tipo]) ? m[tipo].length : 0; }
+  function redibujar(tipo) { try { if (tipo === 'potreros' && typeof window.mpRender === 'function') window.mpRender(); if (tipo === 'parcelas' && typeof window.mpaRender === 'function') window.mpaRender(); } catch (e) {} }
+
+  window.e5mMapaSubir = function (tipo, m) {
+    if (!tok() || !navigator.onLine || !m || !n(tipo, m)) return Promise.resolve(false);
+    return fetch(url() + '/mapas/' + tipo, { method: 'PUT', headers: hdr(), body: JSON.stringify(m) })
+      .then(function (r) { return r.json().then(function (j) { return r.ok ? j : Promise.reject(new Error(j.error || r.status)); }); })
+      .then(function (j) {
+        try { var loc = local(tipo); if (loc) { loc.updated_at = j.updated_at; localStorage.setItem(key(tipo), JSON.stringify(loc)); } } catch (e) {}
+        console.log('[mapas] ' + tipo + ' subido al servidor (' + n(tipo, m) + ')'); return true;
+      })
+      .catch(function (e) { console.warn('[mapas] no se pudo subir ' + tipo + ':', e.message); if (typeof toast === 'function') toast('El mapa quedó en este equipo pero no se pudo subir al servidor: ' + e.message, 'warn'); return false; });
+  };
+  window.e5mMapaBorrarSrv = function (tipo) {
+    if (!tok() || !navigator.onLine) return;
+    fetch(url() + '/mapas/' + tipo, { method: 'DELETE', headers: hdr() }).then(function () { console.log('[mapas] ' + tipo + ' quitado del servidor'); }).catch(function () {});
+  };
+  window.e5mMapasDesdePull = function (remote) {
+    if (!remote || !remote.mapas || typeof remote.mapas !== 'object') return;
+    TIPOS.forEach(function (tipo) {
+      var srv = remote.mapas[tipo], loc = local(tipo);
+      if (srv && n(tipo, srv)) {
+        var masNuevo = !loc || !loc.updated_at || String(srv.updated_at || '') > String(loc.updated_at || '');
+        if (masNuevo) {
+          try { localStorage.setItem(key(tipo), JSON.stringify(srv)); } catch (e) { return; }
+          redibujar(tipo);
+          console.log('[mapas] ' + tipo + ' bajado del servidor (' + n(tipo, srv) + ')');
+        }
+      } else if (loc && n(tipo, loc) && !loc.updated_at) {
+        /* este equipo lo tiene y el servidor no: migrar (una sola vez, marca updated_at al subir) */
+        window.e5mMapaSubir(tipo, loc);
+      }
+    });
+  };
+
+  /* ayuda de hectáreas en el modal de campaña */
+  function haSel() {
+    var sel = document.getElementById('agc-parcela'), out = document.getElementById('agc-parcela-ha'); if (!sel || !out) return;
+    var d = (typeof agGetDB === 'function') ? agGetDB() : { parcelas: [] };
+    var ps = Array.prototype.filter.call(sel.options, function (o) { return o.selected; }).map(function (o) { return (d.parcelas || []).find(function (p) { return String(p.id) === String(o.value); }); }).filter(Boolean);
+    var ha = ps.reduce(function (s, p) { return s + (Number(p.ha) || 0); }, 0);
+    out.textContent = ps.length ? (ps.length + ' parcela' + (ps.length === 1 ? '' : 's') + ' · ' + ps.map(function (p) { return p.code; }).join(' + ') + ' · ' + (Math.round(ha * 10) / 10) + ' ha en total') : 'Elegí al menos una parcela';
+  }
+  document.addEventListener('change', function (e) { if (e.target && e.target.id === 'agc-parcela') haSel(); });
+  var _open = window.agOpenCampana;
+  if (typeof _open === 'function') window.agOpenCampana = function () { var r = _open.apply(this, arguments); try { haSel(); } catch (e) {} return r; };
+  window.mapasSrvDiag = function () { var o = {}; TIPOS.forEach(function (t) { var l = local(t); o[t] = l ? { n: n(t, l), updated_at: l.updated_at || null } : null; }); return { version: '1.8.216', local: o }; };
+  try { console.log('%c[EP Desktop v1.8.216] mapas en el servidor · campañas multi-parcela · mapasSrvDiag()', 'color:#3fb950;font-weight:bold'); } catch (e) {}
 })();
 </script>
 
