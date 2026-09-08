@@ -7075,6 +7075,40 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
+<!-- ═══ v1.8.216 — MAPAS DE POTREROS Y PARCELAS: no perderlos cuando cambia el token ═══
+     Los dos mapas viven solo en localStorage de este equipo, bajo una clave que termina en los
+     últimos 12 caracteres del token de la API. Si el token cambia (se regenera el dispositivo,
+     se reconfigura la app), la clave ya no coincide y el mapa "desaparece" aunque siga guardado.
+     Ahora: si no hay mapa bajo la clave actual pero sí bajo una clave vieja del mismo tipo, se
+     adopta (se copia a la clave nueva) y se avisa por consola. ═══ -->
+<script>
+(function mapasRescateV1216() {
+  try {
+    var tok = String(localStorage.getItem('e5m_api_token') || '').replace(/[^a-zA-Z0-9_-]/g, '');
+    var suf = tok ? tok.slice(-12) : 'default';
+    ['e5m_mapa_potreros_v1::', 'e5m_mapa_parcelas_v1::'].forEach(function (pref) {
+      var actual = pref + suf;
+      if (localStorage.getItem(actual)) return;
+      var cand = null, candTs = 0;
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (!k || k.indexOf(pref) !== 0 || k === actual) continue;
+        try {
+          var v = JSON.parse(localStorage.getItem(k) || 'null');
+          var n = v && (Array.isArray(v.parcelas) ? v.parcelas.length : Array.isArray(v.potreros) ? v.potreros.length : 0);
+          if (!n) continue;
+          var ts = Number(v.ts || v.updated_at || v.cargado || 0) || 0;
+          if (!cand || ts >= candTs) { cand = k; candTs = ts; }
+        } catch (e) {}
+      }
+      if (cand) {
+        localStorage.setItem(actual, localStorage.getItem(cand));
+        console.log('%c[mapas v1.8.216] mapa recuperado de una clave anterior (' + cand.slice(-12) + ' → ' + suf + ')', 'color:#d29922;font-weight:bold');
+      }
+    });
+  } catch (e) {}
+})();
+</script>
 <script>
 // ══════════════════════════════════════════════════
 // DATA STORE - localStorage persistence
