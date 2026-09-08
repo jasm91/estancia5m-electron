@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.215';
+window.E5M_HTML_BUILD = '1.8.216';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -55517,6 +55517,117 @@ try {
              par: !!(p && p.querySelector('.vnt-cols2')), parKpis: p ? p.querySelectorAll('.vnt-kpi').length : 0 };
   };
   try { console.log('%c[EP Desktop v1.8.215] Servicios y Partos: KPI compactos, filtros en la tarjeta y columna derecha · vnt3Diag() · kill: __VNT3_OFF', 'color:#bc8cff;font-weight:bold'); } catch (e) {}
+})();
+</script>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     v1.8.216 — LOTES → ANIMALES con la estética de EP Campo (pedido José 07-09:
+     "esta pestaña de animales sí quiero que la cambies al estilo EP Campo").
+     Sin reescribir la tabla (checkboxes, selección múltiple, Historial plegable y
+     los 6 botones siguen siendo los mismos nodos): se cambia lo de alrededor.
+     · Tira de KPI compacta en vez de las 4 cajas.
+     · Layout 2:1 — izquierda los controles + la lista; derecha el histograma.
+     · La lista en visor de ~12 filas con scroll, cabecera fija, bitono y botones
+       más chicos que aparecen al pasar el mouse (como en Vientres).
+     Aditivo. Kill switch: window.__ANI_OFF = true
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<style>
+#lotes-tab-animales.ani-v216 .ani-cols{display:grid;grid-template-columns:minmax(0,2.8fr) minmax(300px,1fr);gap:16px;align-items:start}
+#lotes-tab-animales.ani-v216 .ani-cols > div{min-width:0;display:flex;flex-direction:column;gap:12px}
+@media (max-width:1180px){#lotes-tab-animales.ani-v216 .ani-cols{grid-template-columns:1fr}}
+#lotes-tab-animales.ani-v216 #animales-histograma-card{margin-bottom:0!important}
+#lotes-tab-animales.ani-v216 .ani-tool{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--bor,#30363d)}
+#lotes-tab-animales.ani-v216 .ani-tool .form-input,#lotes-tab-animales.ani-v216 .ani-tool .form-select{background:var(--sur2,#21262d);border:1px solid var(--bor,#30363d);border-radius:8px}
+#lotes-tab-animales.ani-v216 .ani-card{background:var(--sur,#161b22);border:1px solid var(--bor,#30363d);border-radius:13px;overflow:hidden}
+#lotes-tab-animales.ani-v216 .ani-card > .card{border:none!important;border-radius:0!important;background:transparent!important;margin:0!important}
+#lotes-tab-animales.ani-v216 #animales-list{max-height:640px;overflow:auto;overscroll-behavior:contain}
+#lotes-tab-animales.ani-v216 #animales-list::-webkit-scrollbar{width:9px}
+#lotes-tab-animales.ani-v216 #animales-list::-webkit-scrollbar-thumb{background:#2f3742;border-radius:5px}
+#lotes-tab-animales.ani-v216 #animales-list table.tbl{width:100%;border-collapse:separate;border-spacing:0}
+#lotes-tab-animales.ani-v216 #animales-list thead th{position:sticky;top:0;z-index:2;background:var(--sur,#161b22);font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#8b949e);padding:8px 10px;border-bottom:1px solid rgba(125,125,125,.16)}
+#lotes-tab-animales.ani-v216 #animales-list tbody tr{transition:background .12s}
+#lotes-tab-animales.ani-v216 #animales-list tbody tr.ani-par{background:rgba(125,125,125,.055)}
+#lotes-tab-animales.ani-v216 #animales-list tbody tr:hover:not([id^="hist-row-"]){background:rgba(88,166,255,.06)}
+#lotes-tab-animales.ani-v216 #animales-list tbody td{padding:8px 10px;border-bottom:1px solid rgba(125,125,125,.13);font-size:12.5px;vertical-align:middle;white-space:nowrap}
+#lotes-tab-animales.ani-v216 #animales-list tbody td:last-child{display:table-cell!important;flex-wrap:nowrap!important}
+#lotes-tab-animales.ani-v216 #animales-list tbody td:last-child .btn{margin-left:3px}
+#lotes-tab-animales.ani-v216 #animales-list tbody tr[id^="hist-row-"] td{white-space:normal}
+#lotes-tab-animales.ani-v216 #animales-list tbody td:last-child{white-space:nowrap;text-align:right}
+#lotes-tab-animales.ani-v216 #animales-list tbody td:last-child .btn{padding:3px 8px!important;font-size:11px!important;opacity:.35;transition:opacity .16s}
+#lotes-tab-animales.ani-v216 #animales-list tbody tr:hover td:last-child .btn{opacity:1}
+#lotes-tab-animales.ani-v216 .ani-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+#lotes-tab-animales.ani-v216 .ani-kpi{background:var(--sur,#161b22);border:1px solid var(--bor,#30363d);border-radius:11px;padding:9px 12px}
+#lotes-tab-animales.ani-v216 .ani-kpi .n{font-family:Syne,system-ui,Arial,sans-serif;font-weight:800;font-size:21px;line-height:1}
+#lotes-tab-animales.ani-v216 .ani-kpi .l{font-size:9.5px;color:var(--muted,#8b949e);text-transform:uppercase;letter-spacing:.05em;margin-top:3px}
+#lotes-tab-animales.ani-v216 #animales-stats{display:none!important}
+@media (prefers-reduced-motion:reduce){#lotes-tab-animales.ani-v216 #animales-list tbody tr,#lotes-tab-animales.ani-v216 #animales-list tbody td:last-child .btn{transition:none}}
+</style>
+<script>
+(function animalesV1216() {
+  if (window.__ANI_OFF) return;
+  function el(id) { return document.getElementById(id); }
+  function txt(n) { return String((n && n.textContent) || '').replace(/\s+/g, ' ').trim(); }
+
+  function armar() {
+    var pane = el('lotes-tab-animales'); if (!pane || pane.dataset.v216) return;
+    var list = el('animales-list'), stats = el('animales-stats'), hist = el('animales-histograma-card'), bulk = el('animales-bulk-bar');
+    if (!list || !stats || !hist) return;
+    var listCard = list.closest('.card') || list.parentNode;
+    /* controles: el div flex que contiene el selector de lote y el buscador */
+    var sel = el('animales-lot-filter'); var tool = sel ? sel.closest('div[style*="flex"]') : null;
+    var head = pane.firstElementChild; /* título + botones de pesaje */
+    /* KPI compactos (se llenan desde animales-stats en cada render) */
+    var k = document.createElement('div'); k.className = 'ani-kpis'; k.id = 'ani-kpis';
+    /* estructura */
+    var cols = document.createElement('div'); cols.className = 'ani-cols';
+    var izq = document.createElement('div'), der = document.createElement('div');
+    var card = document.createElement('div'); card.className = 'ani-card';
+    if (tool) { tool.classList.add('ani-tool'); tool.style.marginBottom = '0'; card.appendChild(tool); }
+    card.appendChild(listCard);
+    izq.appendChild(card);
+    der.appendChild(hist);
+    cols.appendChild(izq); cols.appendChild(der);
+    /* orden final en el pane: título · KPI · barra de selección múltiple · columnas */
+    pane.appendChild(k); if (bulk) pane.appendChild(bulk); pane.appendChild(cols);
+    pane.classList.add('ani-v216'); pane.dataset.v216 = '1';
+  }
+  function refrescar() {
+    var stats = el('animales-stats'), k = el('ani-kpis'), hist = el('animales-histograma-card'); if (!stats || !k) return;
+    var cajas = Array.prototype.slice.call(stats.children);
+    if (!cajas.length || stats.style.display === 'none' && !txt(stats)) { k.style.display = 'none'; }
+    else {
+      k.style.display = '';
+      k.innerHTML = cajas.map(function (c) {
+        var ds = c.querySelectorAll('div'); var l = ds[0] ? txt(ds[0]) : '', v = ds[1] ? ds[1].innerHTML : '';
+        var color = ds[1] ? (ds[1].style.color || '') : '';
+        return '<div class="ani-kpi"><div class="n"' + (color ? ' style="color:' + color + '"' : '') + '>' + v + '</div><div class="l">' + l + '</div></div>';
+      }).join('');
+    }
+    /* la columna derecha se esconde si el histograma no tiene nada que mostrar */
+    if (hist) { var der = hist.parentNode; var cols = der && der.parentNode; if (cols && cols.classList.contains('ani-cols')) { var vacio = hist.style.display === 'none'; der.style.display = vacio ? 'none' : ''; cols.style.gridTemplateColumns = vacio ? '1fr' : ''; } }
+    /* bitono sobre las filas visibles (las de historial plegado no cuentan) */
+    var list = el('animales-list'); if (!list) return;
+    var i = 0;
+    list.querySelectorAll('tbody > tr').forEach(function (tr) {
+      if (/^hist-row-/.test(tr.id) || tr.style.display === 'none') { tr.classList.remove('ani-par'); return; }
+      tr.classList.toggle('ani-par', (i++ % 2) === 1);
+    });
+  }
+  function wrap() {
+    var o = window.renderAnimalesLote;
+    if (typeof o !== 'function' || o.__v216) return;
+    var w = function () { var r = o.apply(this, arguments); try { armar(); refrescar(); } catch (e) { console.warn('[animales v216]', e); } return r; };
+    w.__v216 = true; window.renderAnimalesLote = w;
+  }
+  function arm(n) { wrap(); try { armar(); refrescar(); } catch (e) {} if ((n || 0) < 12) setTimeout(function () { arm((n || 0) + 1); }, 700); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { arm(0); }, { once: true }); else arm(0);
+  /* el toggle de Historial y los checkboxes cambian filas sin pasar por el render → mantener el bitono */
+  var t = null;
+  new MutationObserver(function () { clearTimeout(t); t = setTimeout(function () { try { refrescar(); } catch (e) {} }, 40); })
+    .observe(document.documentElement, { attributes: true, attributeFilter: ['style'], subtree: true });
+  window.aniDiag = function () { var p = el('lotes-tab-animales'); return { version: '1.8.216', armado: !!(p && p.dataset.v216), kpis: document.querySelectorAll('#ani-kpis .ani-kpi').length, filas: document.querySelectorAll('#animales-list tbody tr:not([id^="hist-row-"])').length }; };
+  try { console.log('%c[EP Desktop v1.8.216] Lotes → Animales con la estética de EP Campo · aniDiag() · kill: __ANI_OFF', 'color:#bc8cff;font-weight:bold'); } catch (e) {}
 })();
 </script>
 
