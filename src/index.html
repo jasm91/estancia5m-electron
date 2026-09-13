@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.217';
+window.E5M_HTML_BUILD = '1.8.218';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -43865,9 +43865,13 @@ function loteEstado(d,cid,pid){
   var c=agById(d.campanas,cid); if(!c)return'planificada';
   var li=campLotes(c)[String(pid)]||{}; var ls=loteLabores(d,cid,pid);
   if(Number(li.cosecha_kg)>0||ls.some(function(l){return l.tipo==='cosecha'&&l.estado==='ejecutada'&&l.cosecha&&Number(l.cosecha.kg)>0;})) return 'cosechada';
-  if(li.siembra_fecha_real||ls.some(function(l){return l.estado==='ejecutada'||l.estado==='en_curso';})) return 'en_curso';
+  /* v1.8.218: "sembrado" solo con siembra real; labores previas = preparacion (no ofrecer cosecha) */
+  if(li.siembra_fecha_real||ls.some(function(l){return l.tipo==='siembra'&&(l.estado==='ejecutada'||l.estado==='en_curso');})) return 'en_curso';
+  if(ls.some(function(l){return l.estado==='ejecutada'||l.estado==='en_curso';})) return 'preparacion';
   return 'planificada';
 }
+function loteSembrado(d,cid,pid){ var e=loteEstado(d,cid,pid); return e==='en_curso'||e==='cosechada'; }
+function loteEstadoTxt(e){ return e==='cosechada'?'cosechado':e==='en_curso'?'sembrado':e==='preparacion'?'en preparación':'sin sembrar'; }
 /* estado de la campaña derivado de sus lotes (solo si tiene más de uno; con uno se respeta lo guardado) */
 function campEstadoDerivado(d,c){
   var ids=agCampIds(c); if(ids.length<=1) return c.estado||'planificada';
@@ -44024,7 +44028,7 @@ function agRenderCampanas(){
     var _est=campEstadoDerivado(d,c); /* v1.8.217 */
     var pill=_est==='en_curso'?'<span class="pill g">En curso</span>':_est==='cosechada'?'<span class="pill b">Cosechada</span>':'<span class="pill a">Planificada</span>';
     var _ps=agCampParcelas(d,c), _celda;
-    if(_ps.length>1){ _celda='<b>'+_ps.length+' lotes</b><div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px">'+_ps.map(function(q){ var e=loteEstado(d,c.id,q.id); return '<span class="pill '+(e==='cosechada'?'b':e==='en_curso'?'g':'a')+'" style="font-size:10.5px" title="'+fmtA(q.ha,1)+' ha · '+e+'">'+escA(q.code)+'</span>'; }).join('')+'</div>'; }
+    if(_ps.length>1){ _celda='<b>'+_ps.length+' lotes</b><div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px">'+_ps.map(function(q){ var e=loteEstado(d,c.id,q.id); return '<span class="pill '+(e==='cosechada'?'b':e==='en_curso'?'g':e==='preparacion'?'a':'')+'" style="font-size:10.5px" title="'+fmtA(q.ha,1)+' ha · '+loteEstadoTxt(e)+'">'+escA(q.code)+'</span>'; }).join('')+'</div>'; }
     else _celda='<b>'+escA(p?p.code:'?')+'</b> '+escA(p&&p.nombre?('· '+p.nombre):'');
     html+='<tr><td>'+_celda+'</td><td>'+escA(c.cultivo)+'</td><td>'+(c.ciclo==='verano'?'☀️ Verano':'❄️ Invierno')+' '+escA(c.anio)+'</td><td class="num">'+fmtA(ha,1)+'</td><td>'+agFecha(c.siembra_plan)+'</td><td class="num">'+n+'</td><td class="num">'+(cost.total&&ha?fmtA(cost.total/ha):'—')+'</td><td>'+pill+'</td>'+
       '<td><button class="btn btn-ghost btn-sm" onclick="agOpenCampana('+agIdq(c.id)+')">✏️</button></td></tr>';
@@ -44306,7 +44310,7 @@ function agwLotesRender(){
     var on=AGW.lotes.some(function(x){return String(x)===String(p.id);});
     var est=c?loteEstado(d,c.id,p.id):'planificada';
     var t=document.createElement('div'); t.className='agw-tile'+(on?' sel':''); t.setAttribute('data-lote',p.id);
-    t.innerHTML='🧭<br><b>'+escA(p.code)+'</b><br><span style="font-size:11px;color:var(--muted)">'+fmtA(p.ha,1)+' ha · '+(est==='cosechada'?'cosechado':est==='en_curso'?'en curso':'planificado')+'</span>';
+    t.innerHTML='🧭<br><b>'+escA(p.code)+'</b><br><span style="font-size:11px;color:var(--muted)">'+fmtA(p.ha,1)+' ha · '+loteEstadoTxt(est)+'</span>';
     if(AGW.loteLock){ if(!on) t.style.opacity='.35'; t.style.cursor='default'; }
     else t.onclick=function(){ agwLoteToggle(p.id); };
     wrap.appendChild(t);
@@ -44592,7 +44596,7 @@ window.agDelInsumo=agDelInsumo; window.agInsumoFormReset=agInsumoFormReset;
 window.agGetDB=agGetDB; window.agById=agById; window.agwFinish=agwFinish; window.agwLeerInsumos=agwLeerInsumos; // v1.8.176: capas posteriores y tests dejan de chocar con el closure
 window.laborParcela=laborParcela; window.laborHa=laborHa; window.laborEsDeLote=laborEsDeLote; window.laborLote=laborLote; window.laborLabel=laborLabel; window.agNormalizarLotes=agNormalizarLotes;
 window.AGW=AGW; window.agwLotesRender=agwLotesRender; window.agwLotesHa=agwLotesHa; window.agwCampanaInfo=agwCampanaInfo;
-window.lotesDiag=function(){ var d=agGetDB(); return { version:'1.8.217', labores:d.labores.length, sinLote:d.labores.filter(function(l){return l.tipo!=='servicio_ext'&&(l.parcela_id==null||l.parcela_id==='');}).length, campanasMulti:d.campanas.filter(function(c){return agCampIds(c).length>1;}).map(function(c){ return { id:c.id, cultivo:c.cultivo, estado:c.estado, derivado:campEstadoDerivado(d,c), lotes:agCampIds(c).map(function(pid){ var p=agById(d.parcelas,pid); return { code:p?p.code:pid, ha:p?p.ha:0, estado:loteEstado(d,c.id,pid), costo:loteCosto(d,c.id,pid).total, kg:loteKg(d,c.id,pid) }; }) }; }) }; }; window.campLotes=campLotes; window.loteInfo=loteInfo; window.loteHa=loteHa; window.loteLabores=loteLabores; window.loteCosto=loteCosto; window.loteIngreso=loteIngreso; window.loteKg=loteKg; window.loteEstado=loteEstado; window.campEstadoDerivado=campEstadoDerivado; window.campSyncEstado=campSyncEstado; /* v1.8.217 */
+window.lotesDiag=function(){ var d=agGetDB(); return { version:'1.8.218', labores:d.labores.length, sinLote:d.labores.filter(function(l){return l.tipo!=='servicio_ext'&&(l.parcela_id==null||l.parcela_id==='');}).length, campanasMulti:d.campanas.filter(function(c){return agCampIds(c).length>1;}).map(function(c){ return { id:c.id, cultivo:c.cultivo, estado:c.estado, derivado:campEstadoDerivado(d,c), lotes:agCampIds(c).map(function(pid){ var p=agById(d.parcelas,pid); return { code:p?p.code:pid, ha:p?p.ha:0, estado:loteEstado(d,c.id,pid), costo:loteCosto(d,c.id,pid).total, kg:loteKg(d,c.id,pid) }; }) }; }) }; }; window.campLotes=campLotes; window.loteInfo=loteInfo; window.loteHa=loteHa; window.loteLabores=loteLabores; window.loteCosto=loteCosto; window.loteIngreso=loteIngreso; window.loteKg=loteKg; window.loteEstado=loteEstado; window.loteSembrado=loteSembrado; window.loteEstadoTxt=loteEstadoTxt; window.campEstadoDerivado=campEstadoDerivado; window.campSyncEstado=campSyncEstado; /* v1.8.217 */
 window.agCampIds=agCampIds; window.agCampParcelas=agCampParcelas; window.agCampTiene=agCampTiene; window.agCampParcelaRep=agCampParcelaRep; window.campLabel=campLabel; window.campHa=campHa; // v1.8.216 multi-parcela
 window.agwOpen=agwOpen; window.agwSetTipo=agwSetTipo; window.agwNav=agwNav; window.agwAddInsumo=agwAddInsumo;
 window.agwCrearCampanaInline=agwCrearCampanaInline; window.agwToggleNuevoInsumo=agwToggleNuevoInsumo; window.agwCrearInsumoInline=agwCrearInsumoInline; // v1.8.120: los 3 fixes inline v1.8.112 quedaron dentro del IIFE sin exponer (onclick no los veia)
@@ -44775,7 +44779,7 @@ document.addEventListener('click', function(ev){
         var p = agById(d.parcelas, pid); if (!p) return;
         var lc = loteCosto(d, c.id, pid), lha = Number(p.ha) || 0, ling = loteIngreso(d, c.id, pid), lmg = ling - lc.total;
         var est = loteEstado(d, c.id, pid);
-        html += '<tr class="agk-lote" data-camp="' + escA(String(c.id)) + '" style="display:none;background:rgba(88,166,255,.05);font-size:12px"><td style="padding-left:28px">🧭 <b>' + escA(p.code) + '</b> ' + (est === 'cosechada' ? '<span class="pill b">cosechado</span>' : est === 'en_curso' ? '<span class="pill g">en curso</span>' : '<span class="pill a">planificado</span>') + '</td><td class="num">' + fmtA(lha, 1) + '</td><td class="num">' + fmtA(lc.ins) + '</td><td class="num">' + fmtA(lc.diesel) + '</td><td class="num">' + fmtA(lc.mo) + '</td><td class="num">' + fmtA(lc.maq) + '</td><td class="num">' + fmtA(lc.serv || 0) + '</td><td class="num"><b>' + fmtA(lc.total) + '</b></td><td class="num"><b>' + (lha ? fmtA(lc.total / lha) : '—') + '</b></td><td class="num">' + fmtA(ling) + '</td><td class="num" style="color:' + (lmg >= 0 ? 'var(--green)' : 'var(--red)') + '"><b>' + fmtA(lmg) + '</b></td><td class="num">' + (lha ? fmtA(lmg / lha) : '—') + '</td></tr>';
+        html += '<tr class="agk-lote" data-camp="' + escA(String(c.id)) + '" style="display:none;background:rgba(88,166,255,.05);font-size:12px"><td style="padding-left:28px">🧭 <b>' + escA(p.code) + '</b> ' + ('<span class="pill ' + (est === 'cosechada' ? 'b' : est === 'en_curso' ? 'g' : est === 'preparacion' ? 'a' : '') + '">' + loteEstadoTxt(est) + '</span>') + '</td><td class="num">' + fmtA(lha, 1) + '</td><td class="num">' + fmtA(lc.ins) + '</td><td class="num">' + fmtA(lc.diesel) + '</td><td class="num">' + fmtA(lc.mo) + '</td><td class="num">' + fmtA(lc.maq) + '</td><td class="num">' + fmtA(lc.serv || 0) + '</td><td class="num"><b>' + fmtA(lc.total) + '</b></td><td class="num"><b>' + (lha ? fmtA(lc.total / lha) : '—') + '</b></td><td class="num">' + fmtA(ling) + '</td><td class="num" style="color:' + (lmg >= 0 ? 'var(--green)' : 'var(--red)') + '"><b>' + fmtA(lmg) + '</b></td><td class="num">' + (lha ? fmtA(lmg / lha) : '—') + '</td></tr>';
       });
     });
     agEl('agk-tbody').innerHTML = html || '<tr><td colspan="12" class="empty">Sin datos aún.</td></tr>';
@@ -52651,7 +52655,7 @@ try {
           var allL = all.filter(function (l) { return window.laborEsDeLote(d, l, g.p.id); }), hechL = allL.filter(function (l) { return l.estado === 'ejecutada'; });
           var bsL = 0; hechL.forEach(function (l) { bsL += (h.laborCosto(l).total || 0); });
           var estL = window.loteEstado ? window.loteEstado(d, c.id, g.p.id) : '';
-          html += '<div class="v177-lote-h"><b>🧭 ' + h.escA(g.p.code) + '</b><span>' + h.fmtA(g.p.ha, 1) + ' ha · ' + hechL.length + '/' + allL.length + ' hechas' + (bsL ? ' · Bs ' + h.fmtA(bsL) + ' (' + h.fmtA(bsL / (Number(g.p.ha) || 1)) + '/ha)' : '') + '</span>' + (estL === 'cosechada' ? '<span class="pill b">cosechado</span>' : estL === 'en_curso' ? '<span class="pill g">en curso</span>' : '<span class="pill a">planificado</span>') + '</div>';
+          html += '<div class="v177-lote-h"><b>🧭 ' + h.escA(g.p.code) + '</b><span>' + h.fmtA(g.p.ha, 1) + ' ha · ' + hechL.length + '/' + allL.length + ' hechas' + (bsL ? ' · Bs ' + h.fmtA(bsL) + ' (' + h.fmtA(bsL / (Number(g.p.ha) || 1)) + '/ha)' : '') + '</span>' + ('<span class="pill ' + (estL === 'cosechada' ? 'b' : estL === 'en_curso' ? 'g' : estL === 'preparacion' ? 'a' : '') + '">' + window.loteEstadoTxt(estL) + '</span>') + '</div>';
         }
         g.ls.slice().sort(function (a, b) { var fa = a.fecha || '9999', fb = b.fecha || '9999'; return String(fa).localeCompare(String(fb)); }).forEach(function (l) {
           var venc = esVenc(l, hoy);
