@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.220';
+window.E5M_HTML_BUILD = '1.8.221';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -44784,7 +44784,7 @@ document.addEventListener('click', function(ev){
         var p = agById(d.parcelas, pid); if (!p) return;
         var lc = loteCosto(d, c.id, pid), lha = Number(p.ha) || 0, ling = loteIngreso(d, c.id, pid), lmg = ling - lc.total;
         var est = loteEstado(d, c.id, pid);
-        html += '<tr class="agk-lote" data-camp="' + escA(String(c.id)) + '" style="display:none;background:rgba(88,166,255,.05);font-size:12px"><td style="padding-left:28px">🧭 <b>' + escA(p.code) + '</b> ' + ('<span class="pill ' + (est === 'cosechada' ? 'b' : est === 'en_curso' ? 'g' : est === 'preparacion' ? 'a' : '') + '">' + loteEstadoTxt(est) + '</span>') + '</td><td class="num">' + fmtA(lha, 1) + '</td><td class="num">' + fmtA(lc.ins) + '</td><td class="num">' + fmtA(lc.diesel) + '</td><td class="num">' + fmtA(lc.mo) + '</td><td class="num">' + fmtA(lc.maq) + '</td><td class="num">' + fmtA(lc.serv || 0) + '</td><td class="num"><b>' + fmtA(lc.total) + '</b></td><td class="num"><b>' + (lha ? fmtA(lc.total / lha) : '—') + '</b></td><td class="num">' + fmtA(ling) + '</td><td class="num" style="color:' + (lmg >= 0 ? 'var(--green)' : 'var(--red)') + '"><b>' + fmtA(lmg) + '</b></td><td class="num">' + (lha ? fmtA(lmg / lha) : '—') + '</td></tr>';
+        html += '<tr class="agk-lote l219-lote" data-camp="' + escA(String(c.id)) + '" style="background:rgba(88,166,255,.05);font-size:12px"><td style="padding-left:28px">🧭 <b>' + escA(p.code) + '</b> ' + ('<span class="pill ' + (est === 'cosechada' ? 'b' : est === 'en_curso' ? 'g' : est === 'preparacion' ? 'a' : '') + '">' + loteEstadoTxt(est) + '</span>') + '</td><td class="num">' + fmtA(lha, 1) + '</td><td class="num">' + fmtA(lc.ins) + '</td><td class="num">' + fmtA(lc.diesel) + '</td><td class="num">' + fmtA(lc.mo) + '</td><td class="num">' + fmtA(lc.maq) + '</td><td class="num">' + fmtA(lc.serv || 0) + '</td><td class="num"><b>' + fmtA(lc.total) + '</b></td><td class="num"><b>' + (lha ? fmtA(lc.total / lha) : '—') + '</b></td><td class="num">' + fmtA(ling) + '</td><td class="num" style="color:' + (lmg >= 0 ? 'var(--green)' : 'var(--red)') + '"><b>' + fmtA(lmg) + '</b></td><td class="num">' + (lha ? fmtA(lmg / lha) : '—') + '</td></tr>';
       });
     });
     agEl('agk-tbody').innerHTML = html || '<tr><td colspan="12" class="empty">Sin datos aún.</td></tr>';
@@ -44792,10 +44792,18 @@ document.addEventListener('click', function(ev){
     agEl('agk-tfoot').innerHTML = html ? ('<tr style="font-weight:800;border-top:2px solid var(--bor)"><td>TOTAL</td><td class="num">' + fmtA(T.ha, 1) + '</td><td class="num">' + fmtA(T.ins) + '</td><td class="num">' + fmtA(T.diesel) + '</td><td class="num">' + fmtA(T.mo) + '</td><td class="num">' + fmtA(T.maq) + '</td><td class="num">' + fmtA(T.serv) + '</td><td class="num">' + fmtA(T.total) + '</td><td class="num">' + (T.ha ? fmtA(T.total / T.ha) : '—') + '</td><td class="num">' + fmtA(T.ing) + '</td><td class="num" style="color:' + (mgT >= 0 ? 'var(--green)' : 'var(--red)') + '">' + fmtA(mgT) + '</td><td class="num">' + (T.ha ? fmtA(mgT / T.ha) : '—') + '</td></tr>') : '';
   };
 
-  window.agkToggleLotes = function (tr) { /* v1.8.217 */
+  window.agkToggleLotes = function (tr) { /* v1.8.217 · v1.8.221: transición suave */
     var id = tr.getAttribute('data-camp'), open = tr.classList.toggle('open');
-    var car = tr.querySelector('.agk-caret'); if (car) car.textContent = open ? '▾' : '▸';
-    document.querySelectorAll('tr.agk-lote[data-camp="' + id + '"]').forEach(function (r) { r.style.display = open ? '' : 'none'; });
+    var car = tr.querySelector('.agk-caret'); if (car) { car.classList.add('l219-car'); car.textContent = '▸'; car.classList.toggle('on', open); }
+    document.querySelectorAll('tr.agk-lote[data-camp="' + id + '"]').forEach(function (r, i) {
+      if (!r.dataset.w219) { /* envolver el contenido de cada celda una sola vez */
+        [].forEach.call(r.children, function (td) { var w = document.createElement('div'); w.className = 'l219-w'; while (td.firstChild) w.appendChild(td.firstChild); td.appendChild(w); });
+        r.classList.add('l219-lote'); r.style.display = ''; r.dataset.w219 = '1';
+        void r.offsetHeight; /* reflow: si no, el primer despliegue salta sin animar */
+      }
+      [].forEach.call(r.querySelectorAll('.l219-w'), function (x) { x.style.transitionDelay = open ? (i * 22) + 'ms' : '0ms'; });
+      r.classList.toggle('open', open);
+    });
   };
   /* ═══════════════ WIZARD: valores canónicos ═══════════════ */
   function agmRespVal(prefix) {
@@ -56055,8 +56063,15 @@ try {
   var st = document.createElement('style');
   st.textContent =
     '.l219-lote{background:rgba(88,166,255,.05);font-size:12px}' +
-    '.l219-lote td{border-top:1px dashed var(--bor)}' +
-    '.l219-car{display:inline-block;width:12px;color:var(--muted)}' +
+    /* v1.8.221: la fila queda siempre en el DOM y lo que se anima es su contenido */
+    '.l219-lote>td{border-top:0;padding-top:0!important;padding-bottom:0!important;transition:padding .24s cubic-bezier(.4,0,.2,1)}' +
+    '.l219-lote.open>td{border-top:1px dashed var(--bor);padding-top:6px!important;padding-bottom:6px!important}' +
+    '.l219-w{display:block;overflow:hidden;max-height:0;opacity:0;transform:translateY(-4px);' +
+    'transition:max-height .24s cubic-bezier(.4,0,.2,1),opacity .18s ease,transform .24s cubic-bezier(.4,0,.2,1)}' +
+    '.l219-lote.open .l219-w{max-height:64px;opacity:1;transform:none}' +
+    '.l219-car{display:inline-block;width:12px;color:var(--muted);transition:transform .22s cubic-bezier(.4,0,.2,1)}' +
+    '.l219-car.on{transform:rotate(90deg)}' +
+    '@media (prefers-reduced-motion:reduce){.l219-lote>td,.l219-w,.l219-car{transition:none}}' +
     '.l219-warn{color:var(--amber2,#e3b341);font-size:11px}' +
     '.l219-bar{display:inline-block;width:70px;height:5px;border-radius:3px;background:var(--bor);overflow:hidden;vertical-align:middle;margin-left:6px}' +
     '.l219-bar i{display:block;height:100%;background:var(--green,#3fb950)}';
@@ -56076,7 +56091,7 @@ try {
       var pill = _est === 'en_curso' ? '<span class="pill g">En curso</span>' : _est === 'cosechada' ? '<span class="pill b">Cosechada</span>' : '<span class="pill a">Planificada</span>';
       var _multi = ps.length > 1;
       var celda = _multi
-        ? '<span class="l219-car">▸</span> <b>' + ps.length + ' lotes</b> ' + chipResumen(d, c) +
+        ? '<span class="l219-car' + (window.__l219Open && window.__l219Open[String(c.id)] ? ' on' : '') + '">▸</span> <b>' + ps.length + ' lotes</b> ' + chipResumen(d, c) +
           '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + ps.map(function (q) { return H.escA(q.code); }).join(' + ') + '</div>'
         : '<b>🧭 ' + H.escA(ps[0] ? ps[0].code : '?') + '</b> ' + H.escA(ps[0] && ps[0].nombre ? ('· ' + ps[0].nombre) : '');
       html += '<tr' + (_multi ? ' class="agc-camp" data-camp="' + H.escA(String(c.id)) + '" style="cursor:pointer" onclick="l219ToggleCamp(this)" title="Ver lote por lote"' : '') + '>' +
@@ -56089,21 +56104,30 @@ try {
         var e = H.loteEstado(d, c.id, p.id), lc = H.loteCosto(d, c.id, p.id), lha = Number(p.ha) || 0;
         var ll = loteLaboresReales(d, c.id, p.id), lh = ll.filter(function (x) { return x.estado === 'ejecutada'; }).length;
         var li = (H.campLotes ? H.campLotes(c) : {})[String(p.id)] || {};
-        html += '<tr class="l219-lote agc-lote" data-camp="' + H.escA(String(c.id)) + '" style="display:none">' +
-          '<td style="padding-left:26px">🧭 <b>' + H.escA(p.code) + '</b> ' + estPill(e) + '</td>' +
-          '<td></td><td style="color:var(--muted)">' + (li.germinacion_fecha ? '🌿 germinó ' + H.agFecha(li.germinacion_fecha) : '') + '</td>' +
-          '<td class="num">' + H.fmtA(lha, 1) + '</td>' +
-          '<td>' + (li.siembra_fecha_real ? '🌱 ' + H.agFecha(li.siembra_fecha_real) : '<span style="color:var(--muted)">sin sembrar</span>') + '</td>' +
-          '<td class="num">' + lh + '/' + ll.length + '</td>' +
-          '<td class="num">' + (lc.total && lha ? H.fmtA(lc.total / lha) : '—') + '</td><td></td><td></td></tr>';
+        var W = function (x, cls) { return '<td' + (cls ? ' class="' + cls + '"' : '') + '><div class="l219-w">' + x + '</div></td>'; };
+        var ab219 = !!(window.__l219Open && window.__l219Open[String(c.id)]);
+        html += '<tr class="l219-lote agc-lote' + (ab219 ? ' open' : '') + '" data-camp="' + H.escA(String(c.id)) + '">' +
+          '<td style="padding-left:26px"><div class="l219-w">🧭 <b>' + H.escA(p.code) + '</b> ' + estPill(e) + '</div></td>' +
+          W('') + W(li.germinacion_fecha ? '🌿 germinó ' + H.agFecha(li.germinacion_fecha) : '') +
+          W(H.fmtA(lha, 1), 'num') +
+          W(li.siembra_fecha_real ? '🌱 ' + H.agFecha(li.siembra_fecha_real) : '<span style="color:var(--muted)">sin sembrar</span>') +
+          W(lh + '/' + ll.length, 'num') +
+          W(lc.total && lha ? H.fmtA(lc.total / lha) : '—', 'num') + W('') + W('') + '</tr>';
       });
     });
     H.agEl('agc-tbody').innerHTML = html || '<tr><td colspan="9" class="empty">Sin campañas con ese filtro.</td></tr>';
   }
+  window.__l219Open = window.__l219Open || {};
   H.l219ToggleCamp = function (tr) {
     var id = tr.getAttribute('data-camp'), open = tr.classList.toggle('open');
-    var car = tr.querySelector('.l219-car'); if (car) car.textContent = open ? '▾' : '▸';
-    document.querySelectorAll('tr.agc-lote[data-camp="' + id + '"]').forEach(function (r) { r.style.display = open ? '' : 'none'; });
+    window.__l219Open[String(id)] = open;
+    var car = tr.querySelector('.l219-car'); if (car) car.classList.toggle('on', open);
+    /* v1.8.221: las filas ya están en el DOM; lo que se anima es su contenido */
+    document.querySelectorAll('tr.agc-lote[data-camp="' + id + '"]').forEach(function (r, i) {
+      var w = r.querySelectorAll('.l219-w');
+      [].forEach.call(w, function (x) { x.style.transitionDelay = open ? (i * 22) + 'ms' : '0ms'; });
+      r.classList.toggle('open', open);
+    });
   };
 
   /* ── 2 · PARCELAS: el estado es del LOTE, no de la campaña ───────── */
@@ -56315,10 +56339,8 @@ try {
     var abrir = b.textContent.indexOf('▸') === 0;
     b.textContent = (abrir ? '▾ Cerrar' : '▸ Abrir') + ' todos los lotes';
     document.querySelectorAll('tr.agk-camp').forEach(function (tr) {
-      tr.classList.toggle('open', abrir);
-      var car = tr.querySelector('.agk-caret'); if (car) car.textContent = abrir ? '▾' : '▸';
+      if (tr.classList.contains('open') !== abrir) window.agkToggleLotes(tr);
     });
-    document.querySelectorAll('tr.agk-lote').forEach(function (r) { r.style.display = abrir ? '' : 'none'; });
   };
 
   /* ── 8 · CALENDARIO: selector de lote ────────────────────────────── */
@@ -56483,7 +56505,53 @@ try {
   try { ST = JSON.parse(localStorage.getItem('e5m_lab220') || '{}'); } catch (e) { ST = {}; }
   function guarda() { try { localStorage.setItem('e5m_lab220', JSON.stringify(ST)); } catch (e) {} }
   function abierto(k, def) { return ST[k] === undefined ? def : !!ST[k]; }
-  H.lab220Tog = function (k, def) { ST[k] = !abierto(k, def === '1'); guarda(); H.v177Lab.render(); };
+  /* v1.8.221: abrir/cerrar con transición medida — nada de re-render seco */
+  function anima(el, abrir) {
+    if (!el) return;
+    var reduce = false;
+    try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+    if (reduce) { el.classList.toggle('open', abrir); el.style.maxHeight = abrir ? 'none' : '0px'; return; }
+    if (abrir) {
+      el.classList.add('open');
+      el.style.maxHeight = el.scrollHeight + 'px';
+      var fin = function (ev) { if (ev && ev.target !== el) return; el.style.maxHeight = 'none'; el.removeEventListener('transitionend', fin); };
+      el.addEventListener('transitionend', fin);
+      setTimeout(fin, 340);
+    } else {
+      el.style.maxHeight = el.scrollHeight + 'px';
+      void el.offsetHeight;
+      el.classList.remove('open');
+      el.style.maxHeight = '0px';
+    }
+  }
+  function cuerpo(k) { return document.querySelector('#v177-labores .l220-bd[data-k="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]'); }
+  function cabecera(k) {
+    var b = cuerpo(k); if (!b) return null;
+    var p = b.previousElementSibling;
+    return (p && (p.classList.contains('l220-gh') || p.classList.contains('l220-lh') || p.classList.contains('l220-ch'))) ? p : null;
+  }
+  function marcar(k, abrir) {
+    var hd = cabecera(k); if (!hd) return;
+    var car = hd.classList.contains('l220-gh') ? hd.firstElementChild : hd.querySelector('.car');
+    if (hd.classList.contains('l220-gh')) hd.classList.toggle('on', abrir);
+    else if (car) car.classList.toggle('on', abrir);
+  }
+  H.lab220Tog = function (k) {
+    var abrir = !abierto(k, false) ? true : false;
+    /* el valor guardado manda: si está abierto ahora, se cierra */
+    var bd = cuerpo(k); if (!bd) { ST[k] = !ST[k]; guarda(); H.v177Lab.render(); return; }
+    abrir = !bd.classList.contains('open');
+    /* acordeón por lote: al abrir uno, los hermanos se cierran */
+    if (bd.getAttribute('data-lote') === '1' && abrir) {
+      var pad = bd.parentNode;
+      [].forEach.call(pad.querySelectorAll(':scope > .l220-bd[data-lote="1"]'), function (o2) {
+        if (o2 === bd || !o2.classList.contains('open')) return;
+        var k2 = o2.getAttribute('data-k'); ST[k2] = false; anima(o2, false); marcar(k2, false);
+      });
+    }
+    ST[k] = abrir; guarda();
+    anima(bd, abrir); marcar(k, abrir);
+  };
 
   function css() {
     if (document.getElementById('lab220-css')) return;
@@ -56521,7 +56589,17 @@ try {
       '.l220-r .pill{font-size:10.5px;padding:1px 7px}' +
       '.l220-r.venc .f b{color:var(--red,#f85149)}' +
       '.l220-r.done .m b{color:var(--muted);font-weight:500}' +
-      '.l220-empty{padding:6px 14px 8px 38px;font-size:11.5px;color:var(--muted)}';
+      '.l220-empty{padding:6px 14px 8px 38px;font-size:11.5px;color:var(--muted)}' +
+      /* v1.8.221: transiciones suaves, zebra y viewport de ~5 filas */
+      '.l220-bd{overflow:hidden;max-height:0;opacity:0;transition:max-height .26s cubic-bezier(.4,0,.2,1),opacity .18s ease}' +
+      '.l220-bd.open{opacity:1}' +
+      '.l220-sc{overflow-y:auto;overscroll-behavior:contain}' +
+      '.l220-sc::-webkit-scrollbar{width:7px}.l220-sc::-webkit-scrollbar-thumb{background:var(--bor);border-radius:4px}' +
+      '.car,.l220-gh>span:first-child{display:inline-block;transition:transform .22s cubic-bezier(.4,0,.2,1)}' +
+      '.l220-c .car.on,.l220-gh.on>span:first-child{transform:rotate(90deg)}' +
+      '.l220-r:nth-child(even){background:rgba(255,255,255,.022)}' +
+      '.l220-r:nth-child(even):hover{background:rgba(255,255,255,.05)}' +
+      '@media (prefers-reduced-motion:reduce){.l220-bd,.car,.l220-gh>span:first-child{transition:none}}';
     document.head.appendChild(s);
   }
 
@@ -56586,9 +56664,12 @@ try {
     GRUPOS.forEach(function (g) {
       var arr = by[g.k]; if (!arr.length) return;
       var k = pfx + ':' + g.k, ab = abierto(k, g.def);
-      out += '<div class="l220-gh" onclick="lab220Tog(\'' + k + '\',\'' + (g.def ? '1' : '0') + '\')">' +
-        '<span>' + (ab ? '▾' : '▸') + '</span>' + g.t + '<span class="n">' + arr.length + '</span></div>';
-      if (ab) out += arr.map(function (l) { return fila(l, c, hoy, haLote, d); }).join('');
+      var alto = arr.length > 5 ? ' l220-sc" style="max-height:' + (5 * 34 + 6) + 'px' : '"';
+      out += '<div class="l220-gh' + (ab ? ' on' : '') + '" onclick="lab220Tog(\'' + k + '\')">' +
+        '<span>▸</span>' + g.t + '<span class="n">' + arr.length + '</span></div>' +
+        '<div class="l220-bd' + (ab ? ' open' : '') + '" data-k="' + k + '"' + (ab ? ' style="max-height:none"' : '') + '>' +
+        '<div class="' + (arr.length > 5 ? 'l220-sc' : '') + '"' + (arr.length > 5 ? ' style="max-height:' + (5 * 34 + 6) + 'px"' : '') + '>' +
+        arr.map(function (l) { return fila(l, c, hoy, haLote, d); }).join('') + '</div></div>';
     });
     return out;
   }
@@ -56644,16 +56725,17 @@ try {
           ? (ids.length > 1 ? ids.length + ' lotes · ' + sem + ' sembrado' + (sem === 1 ? '' : 's') + ' · ' : '') +
             H2.fmtA(H2.campHa(d, c), 1) + ' ha' + (c.siembra_plan ? ' · siembra ' + H2.agFecha(c.siembra_plan) : '')
           : 'labores generales';
-        html += '<div class="l220-c"><div class="l220-ch" onclick="lab220Tog(\'' + kc + '\',\'1\')">' +
-          '<span class="car">' + (ac ? '▾' : '▸') + '</span>' +
+        html += '<div class="l220-c"><div class="l220-ch" onclick="lab220Tog(\'' + kc + '\')">' +
+          '<span class="car' + (ac ? ' on' : '') + '">▸</span>' +
           '<div><div class="nm">🌾 ' + H2.escA(c ? H2.campLabel(d, c) : '— Sin campaña') + '</div><div class="mt">' + H2.escA(meta) + '</div></div>' +
           '<div class="rt">' + (venc ? '<span style="color:var(--red,#f85149);font-weight:700">⚠ ' + venc + '</span>' : '') +
             '<span>' + hechas.length + '/' + all.length + '</span>' +
             '<span class="l220-bar"><i style="width:' + pct + '%;background:var(--green,#3fb950)"></i><i style="width:' + pv + '%;background:var(--red,#f85149)"></i></span>' +
             (totBs ? '<b style="color:var(--text)">Bs ' + H2.fmtA(totBs) + '</b>' : '') + '</div></div>';
-        if (ac) {
+        html += '<div class="l220-bd' + (ac ? ' open' : '') + '" data-k="' + kc + '"' + (ac ? ' style="max-height:none"' : '') + '>';
+        {
           /* dentro de la campaña: por lote */
-          var multiL = !!(c && ids.length > 1);
+          var multiL = !!(c && ids.length > 1), yaAbierto = false;
           var byL = {}, ordL = [];
           byC[k].forEach(function (l) {
             var p = c ? H.laborParcela(d, l) : null; var lk = p ? String(p.id) : '_';
@@ -56669,17 +56751,22 @@ try {
             var vL = allL.filter(function (l) { return l.estado === 'planificada' && l.fecha && String(l.fecha).slice(0, 10) < hoy; }).length;
             var bsL = 0; allL.forEach(function (l) { if (l.estado === 'ejecutada') bsL += (H2.laborCosto(l).total || 0); });
             var e = H.loteEstado(d, c.id, g.p.id);
-            var kl = kc + ':' + lk, al = abierto(kl, vL > 0 || hL < allL.length);
-            html += '<div class="l220-lh" onclick="lab220Tog(\'' + kl + '\',\'' + (al ? '1' : '0') + '\')">' +
-              '<span class="car">' + (al ? '▾' : '▸') + '</span><b>🧭 ' + H2.escA(g.p.code) + '</b>' +
+            /* acordeón: por defecto se abre SOLO el primer lote con trabajo pendiente */
+            var quiere = !yaAbierto && (vL > 0 || hL < allL.length);
+            if (quiere) yaAbierto = true;
+            var kl = kc + ':' + lk, al = abierto(kl, quiere);
+            if (al) yaAbierto = true;
+            html += '<div class="l220-lh" onclick="lab220Tog(\'' + kl + '\')">' +
+              '<span class="car' + (al ? ' on' : '') + '">▸</span><b>🧭 ' + H2.escA(g.p.code) + '</b>' +
               '<span style="color:var(--muted)">' + H2.fmtA(haL, 1) + ' ha</span>' +
               '<span class="pill ' + (e === 'cosechada' ? 'b' : e === 'en_curso' ? 'g' : e === 'preparacion' ? 'a' : '') + '">' + H.loteEstadoTxt(e) + '</span>' +
               '<span class="rt">' + (vL ? '<span style="color:var(--red,#f85149);font-weight:700">⚠ ' + vL + '</span>' : '') +
               hL + '/' + allL.length + (bsL ? ' · Bs ' + H2.fmtA(bsL) + ' (' + H2.fmtA(bsL / (haL || 1)) + '/ha)' : '') + '</span></div>';
-            if (al) html += grupos(g.ls, c, hoy, lim, haL, d, kl);
+            html += '<div class="l220-bd' + (al ? ' open' : '') + '" data-k="' + kl + '" data-lote="1"' + (al ? ' style="max-height:none"' : '') + '>' +
+              grupos(g.ls, c, hoy, lim, haL, d, kl) + '</div>';
           });
         }
-        html += '</div>';
+        html += '</div></div>';
       });
       wrap.innerHTML = html;
       return true;
