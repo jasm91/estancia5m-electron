@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.219';
+window.E5M_HTML_BUILD = '1.8.220';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -53268,8 +53268,16 @@ try {
     var d = agGetDB();
     /* mercado del día para prefill */
     _api('/agro/mercado').then(function (r) { if (r.ok) { CIE.mercado = r.j; var m = agEl('cie-mercado'); if (m && r.j) { var cm = r.j.commodities || {}; m.innerHTML = '🌾 CBOT hoy (USD/t): soya <b>' + ((cm.soya || {}).usd_t || '—') + '</b> · maíz <b>' + ((cm.maiz || {}).usd_t || '—') + '</b> · trigo <b>' + ((cm.trigo || {}).usd_t || '—') + '</b> · sorgo <b>' + ((cm.sorgo || {}).usd_t || '—') + '</b>* &nbsp;·&nbsp; 💱 TC <b>' + ((r.j.tc_bcb || {}).valor || '—') + '</b> <span style="font-size:11px">(*ref. maíz)</span>'; } } }).catch(function () {});
-    var camps = (d.campanas || []).filter(function (c) { return c.estado !== 'planificada'; });
-    if (!camps.length) { host.innerHTML = '<div class="panel" style="padding:16px;color:var(--muted)">Sin campañas en curso ni cosechadas.</div>'; return; }
+    /* v1.8.220: el estado guardado puede seguir en 'planificada' aunque ya haya
+       labores hechas en algún lote — se usa el DERIVADO de los lotes, y además
+       entra cualquier campaña que ya tenga costo o labores ejecutadas. */
+    var camps = (d.campanas || []).filter(function (c) {
+      var e = c.estado;
+      try { if (window.campEstadoDerivado) e = window.campEstadoDerivado(d, c); } catch (eD) {}
+      if (e !== 'planificada') return true;
+      try { return (d.labores || []).some(function (l) { return l && String(l.campana_id) === String(c.id) && l.tipo !== 'servicio_ext' && (l.estado === 'ejecutada' || l.estado === 'en_curso'); }); } catch (eL) { return false; }
+    });
+    if (!camps.length) { host.innerHTML = '<div class="panel" style="padding:16px;color:var(--muted)">Sin campañas empezadas todavía. Aparecen acá en cuanto se ejecuta la primera labor de algún lote.</div>'; return; }
     host.innerHTML = camps.map(function (c) {
       var x = v181CierreData(d, c);
       var cerrada = c.estado === 'cosechada';
@@ -56300,7 +56308,7 @@ try {
     try { pintarServExt(); } catch (e) { console.warn('[l219 serv]', e); }
     try { pintarCostos(); } catch (e) { console.warn('[l219 costos]', e); }
     try { parcheDash(); } catch (e) { console.warn('[l219 dash]', e); }
-    try { pintarLabores(); } catch (e) { console.warn('[l219 lab]', e); }
+    try { if (window.__LAB220_OFF) pintarLabores(); } catch (e) { console.warn('[l219 lab]', e); } /* v1.8.220 se encarga de Labores */
   };
   H.l219CostosTodo = function () {
     var b = H.agEl('l219-costos-btn'); if (!b) return;
@@ -56415,6 +56423,273 @@ try {
 
   try { setTimeout(function () { if (typeof H.agRenderAll === 'function') H.agRenderAll(); }, 300); } catch (e) {}
   try { console.log('%c[EP Desktop v1.8.219] 🧭 lotes a la vista en todo Agricultura · lotesDiag219() · kill: __L219_OFF', 'color:#3fb950;font-weight:bold'); } catch (e) {}
+})();
+
+/* ═══════════════════════════════════════════════════════════════════════
+   v1.8.220 — LABORES LEGIBLES (labores-v18220)
+   La lista era plana: 25 filas del mismo peso, una debajo de otra, con la
+   misma botonera repetida y las ha de TODA la campaña en cada renglón.
+   Ahora replica la lógica de EP Agro: campaña › lote › grupos por urgencia,
+   todo plegable, con filas de una sola línea.
+     🔴 Atrasadas · ⏳ En curso · 📍 Esta semana — abiertos
+     📅 Más adelante · ⬜ Sin fecha · ✅ Hechas — plegados
+   Las ha que se muestran son las del LOTE, no las de la campaña.
+   El estado de apertura se recuerda en localStorage (e5m_lab220).
+   Kill switch: window.__LAB220_OFF = true
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  if (window.__LAB220_OFF) return;
+  if (!window.v177Lab || typeof window.v177Lab.render !== 'function') return;
+  var H = window;
+  function h() { return window.__v177H || null; }
+
+  var TCOL = { siembra: '#3fb950', fumigada: '#58a6ff', fertilizacion: '#a371f7', cosecha: '#d4a017', maquinaria: '#e3b341', otra: '#8b949e' };
+  function tCol(t) { return TCOL[t] || '#8b949e'; }
+  function tIco(t) { var H2 = h(); var s = (H2 && H2.TIPOS && H2.TIPOS[t]) || '🔧 x'; return s.split(' ')[0]; }
+  function tNom(l) { var H2 = h(); return l.nombre || String((H2.TIPOS && H2.TIPOS[l.tipo]) || l.tipo || '').replace(/^[^\s]+\s/, ''); }
+  function ddmm(iso) { if (!iso) return '—'; var s = String(iso); return s.slice(8, 10) + '/' + s.slice(5, 7); }
+  function dnum(iso) { return Math.round(new Date(String(iso).slice(0, 10) + 'T12:00:00').getTime() / 86400000); }
+  function offTxt(l, c) {
+    var n = null;
+    if (l.offset_dias != null) n = Number(l.offset_dias);
+    else if (c && c.siembra_plan && l.fecha) n = dnum(l.fecha) - dnum(c.siembra_plan);
+    if (n == null || isNaN(n)) return '';
+    return 'S' + (n >= 0 ? '+' : '−') + Math.abs(n);
+  }
+  function faltanCostos(l) { return l.estado === 'ejecutada' && l.tachado_rapido && l.con_costo !== false && !(l.insumos || []).length && !l.hmaq && !l.diesel_l; }
+  function jorn(id) { var a = (H.agGetDB().agro_jornadas || []); return a.filter(function (j) { return j && String(j.labor_id) === String(id); }); }
+  function diasTxt(l) {
+    if (!l.fecha_inicio) return 'en curso';
+    var n = Math.max(0, Math.round((Date.now() - new Date(l.fecha_inicio).getTime()) / 86400000));
+    return n >= 4 ? '⚠ ' + n + 'd' : 'en curso' + (n ? ' · ' + n + 'd' : '');
+  }
+  /* subtítulo: insumos/máquina/jornadas — con las ha del LOTE, no de la campaña */
+  function sub(l, d, haLote) {
+    var H2 = h();
+    var s = (l.insumos || []).map(function (r) { var i = H.agById(d.insumos, r.insumo_id); return i ? (i.nombre + ' ' + r.dosis + ' ' + i.unidad + '/ha') : ''; }).filter(Boolean).join(' + ');
+    if (l.tipo === 'cosecha' && l.cosecha) s = H2.fmtA(l.cosecha.kg) + ' kg · ' + (l.cosecha.hum || '—') + '% hum';
+    if (l.tipo === 'maquinaria' && !s) s = (l.notas || '');
+    var ex = [];
+    if (l.maquina) ex.push('🚜 ' + l.maquina + (l.implemento ? ' + ' + l.implemento : ''));
+    var js = jorn(l.id);
+    if (js.length) { var ha = 0; js.forEach(function (j) { ha += Number(j.ha) || 0; });
+      ex.push(js.length + ' jorn · ' + H2.fmtA(ha, 1) + '/' + H2.fmtA(Number(l.ha_objetivo) || haLote || 0, 1) + ' ha'); }
+    if (l.resp) ex.push(l.resp);
+    return [s, ex.join(' · ')].filter(Boolean).join(' · ');
+  }
+
+  /* ── estado plegado/desplegado, persistente ───────────────────────── */
+  var ST;
+  try { ST = JSON.parse(localStorage.getItem('e5m_lab220') || '{}'); } catch (e) { ST = {}; }
+  function guarda() { try { localStorage.setItem('e5m_lab220', JSON.stringify(ST)); } catch (e) {} }
+  function abierto(k, def) { return ST[k] === undefined ? def : !!ST[k]; }
+  H.lab220Tog = function (k, def) { ST[k] = !abierto(k, def === '1'); guarda(); H.v177Lab.render(); };
+
+  function css() {
+    if (document.getElementById('lab220-css')) return;
+    var s = document.createElement('style'); s.id = 'lab220-css';
+    s.textContent =
+      '#v177-labores{display:flex;flex-direction:column;gap:10px}' +
+      '.l220-c{border:1px solid var(--bor);border-radius:12px;background:var(--panel,var(--sur,#161b22));overflow:hidden}' +
+      '.l220-ch{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;background:rgba(255,255,255,.02)}' +
+      '.l220-ch:hover{background:rgba(255,255,255,.045)}' +
+      '.l220-ch .car{color:var(--muted);width:12px;flex:0 0 12px}' +
+      '.l220-ch .nm{font-weight:700;font-size:14px}' +
+      '.l220-ch .mt{font-size:11.5px;color:var(--muted)}' +
+      '.l220-ch .rt{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted);white-space:nowrap}' +
+      '.l220-bar{display:inline-block;width:88px;height:5px;border-radius:3px;background:var(--bor);overflow:hidden;vertical-align:middle}' +
+      '.l220-bar i{display:block;height:100%;float:left}' +
+      '.l220-lh{display:flex;align-items:center;gap:8px;padding:7px 14px 7px 26px;cursor:pointer;border-top:1px solid var(--bor);font-size:12.5px}' +
+      '.l220-lh:hover{background:rgba(88,166,255,.06)}' +
+      '.l220-lh b{font-size:13px}' +
+      '.l220-lh .rt{margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--muted);font-size:11.5px}' +
+      '.l220-gh{display:flex;align-items:center;gap:7px;padding:5px 14px 5px 38px;cursor:pointer;font-size:11.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);background:rgba(0,0,0,.12)}' +
+      '.l220-gh:hover{color:var(--text)}' +
+      '.l220-gh .n{margin-left:auto;font-weight:800;letter-spacing:0}' +
+      '.l220-r{display:grid;grid-template-columns:50px 20px minmax(0,1fr) 62px 82px 92px auto;align-items:center;gap:8px;' +
+      'padding:3px 14px 3px 38px;border-top:1px solid rgba(255,255,255,.045);min-height:34px;font-size:12px;line-height:1.25}' +
+      '.l220-r:hover{background:rgba(255,255,255,.035)}' +
+      '.l220-r .f{line-height:1.1}.l220-r .f b{font-size:12px;display:block}.l220-r .f i{font-style:normal;font-size:9.5px;color:var(--muted)}' +
+      '.l220-r .ic{width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11px}' +
+      '.l220-r .m{min-width:0;line-height:1.2}.l220-r .m b{font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+      '.l220-r .m span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+      '.l220-r .ha,.l220-r .bs{text-align:right;font-size:11px;color:var(--muted);white-space:nowrap}' +
+      '.l220-r .st{text-align:center}' +
+      '.l220-r .ac{display:flex;gap:4px;justify-content:flex-end;opacity:.25;transition:opacity .12s}' +
+      '.l220-r:hover .ac,.l220-r.urge .ac{opacity:1}' +
+      '.l220-r .ac .btn{padding:2px 7px;font-size:10.5px;line-height:1.3}' +
+      '.l220-r .pill{font-size:10.5px;padding:1px 7px}' +
+      '.l220-r.venc .f b{color:var(--red,#f85149)}' +
+      '.l220-r.done .m b{color:var(--muted);font-weight:500}' +
+      '.l220-empty{padding:6px 14px 8px 38px;font-size:11.5px;color:var(--muted)}';
+    document.head.appendChild(s);
+  }
+
+  var GRUPOS = [
+    { k: 'venc',   t: '🔴 Atrasadas — resolver primero', def: true },
+    { k: 'curso',  t: '⏳ En curso',                      def: true },
+    { k: 'semana', t: '📍 Esta semana',                   def: true },
+    { k: 'luego',  t: '📅 Más adelante',                  def: false },
+    { k: 'sinf',   t: '⬜ Sin fecha — cuando toque',      def: false },
+    { k: 'done',   t: '✅ Hechas',                        def: false }
+  ];
+  function bucket(l, hoy, lim) {
+    if (l.estado === 'ejecutada') return 'done';
+    if (l.estado === 'en_curso') return 'curso';
+    if (!l.fecha) return 'sinf';
+    var f = String(l.fecha).slice(0, 10);
+    if (f < hoy) return 'venc';
+    return f <= lim ? 'semana' : 'luego';
+  }
+
+  /* la ha sólo se repite en el renglón si NO es la del lote (objetivo distinto):
+     la cabecera del lote ya la dice, repetirla 25 veces es ruido */
+  function haCel(l, haLote, H2) {
+    var o = Number(l.ha_objetivo) || 0;
+    if (o && Math.abs(o - (haLote || 0)) > 0.1) return '<b style="color:var(--amber2,#e3b341)">' + H2.fmtA(o, 1) + ' ha</b>';
+    return '';
+  }
+  function fila(l, c, hoy, haLote, d) {
+    var H2 = h();
+    var b = bucket(l, hoy, ''), venc = b === 'venc';
+    var cost = H2.laborCosto(l);
+    var pill = l.estado === 'ejecutada'
+      ? (faltanCostos(l) ? '<span class="pill a">⚠ sin costos</span>' : '<span class="pill g">Ejecutada</span>')
+      : l.estado === 'en_curso' ? '<span class="pill c179">⏳ ' + H2.escA(diasTxt(l)) + '</span>'
+      : venc ? '<span class="pill r">Vencida</span>' : '<span class="pill a">Planificada</span>';
+    var ac = '';
+    if (l.estado === 'planificada') ac = '<button class="btn btn-primary btn-sm" onclick="v179Iniciar(\'' + l.id + '\')">▶</button>' +
+      '<button class="btn btn-ghost btn-sm" onclick="agEjecutarLabor(' + H.agIdq(l.id) + ')" title="Hecha en un día">✔</button>';
+    else if (l.estado === 'en_curso') ac = '<button class="btn btn-primary btn-sm" onclick="v179JornadaOpen(\'' + l.id + '\')">➕ Jornada</button>' +
+      '<button class="btn btn-ghost btn-sm" onclick="v179Cerrar(\'' + l.id + '\')" title="Cerrar">✔</button>';
+    else if (faltanCostos(l)) ac = '<button class="btn btn-ghost btn-sm" onclick="agEjecutarLabor(' + H.agIdq(l.id) + ')">costos</button>';
+    ac += '<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agDelLabor(' + H.agIdq(l.id) + ')">🗑</button>';
+    var o = offTxt(l, c), sb = sub(l, d, haLote);
+    return '<div class="l220-r' + (venc ? ' venc urge' : '') + (l.estado === 'en_curso' ? ' urge' : '') + (l.estado === 'ejecutada' ? ' done' : '') + '">' +
+      '<div class="f"><b>' + ddmm(l.fecha) + '</b>' + (o ? '<i>' + o + '</i>' : '') + '</div>' +
+      '<div class="ic" style="background:' + tCol(l.tipo) + '22;border:1px solid ' + tCol(l.tipo) + '55">' + tIco(l.tipo) + '</div>' +
+      '<div class="m"><b>' + H2.escA(tNom(l)) + '</b>' + (sb ? '<span>' + H2.escA(sb) + '</span>' : '') + '</div>' +
+      '<div class="ha">' + haCel(l, haLote, H2) + '</div>' +
+      '<div class="bs">' + (l.estado === 'ejecutada' && cost.total ? 'Bs ' + H2.fmtA(cost.total) : '') + '</div>' +
+      '<div class="st">' + pill + '</div>' +
+      '<div class="ac">' + ac + '</div></div>';
+  }
+
+  function grupos(ls, c, hoy, lim, haLote, d, pfx) {
+    var by = {}; GRUPOS.forEach(function (g) { by[g.k] = []; });
+    ls.forEach(function (l) { by[bucket(l, hoy, lim)].push(l); });
+    by.venc.sort(function (a, b) { return String(a.fecha).localeCompare(String(b.fecha)); });
+    by.semana.sort(function (a, b) { return String(a.fecha).localeCompare(String(b.fecha)); });
+    by.luego.sort(function (a, b) { return String(a.fecha).localeCompare(String(b.fecha)); });
+    by.done.sort(function (a, b) { return String(b.fecha || '').localeCompare(String(a.fecha || '')); });
+    var out = '';
+    GRUPOS.forEach(function (g) {
+      var arr = by[g.k]; if (!arr.length) return;
+      var k = pfx + ':' + g.k, ab = abierto(k, g.def);
+      out += '<div class="l220-gh" onclick="lab220Tog(\'' + k + '\',\'' + (g.def ? '1' : '0') + '\')">' +
+        '<span>' + (ab ? '▾' : '▸') + '</span>' + g.t + '<span class="n">' + arr.length + '</span></div>';
+      if (ab) out += arr.map(function (l) { return fila(l, c, hoy, haLote, d); }).join('');
+    });
+    return out;
+  }
+
+  window.v177Lab.render = function () {
+    var H2 = h(); if (!H2) return false;
+    if (window.__V177_OFF) return false;
+    var tbody = H2.agEl('agl-tbody'); if (!tbody) return false;
+    try {
+      css();
+      var d = H.agGetDB();
+      var tblPanel = tbody.closest ? tbody.closest('.panel') : null; if (!tblPanel) return false;
+      var wrap = H2.agEl('v177-labores');
+      if (!wrap) { wrap = document.createElement('div'); wrap.id = 'v177-labores'; tblPanel.parentNode.insertBefore(wrap, tblPanel); }
+      tblPanel.style.display = 'none';
+      var f = (H2.agEl('agl-filter') || {}).value || '';
+      var todas = (d.labores || []).filter(function (l) { return l && l.tipo !== 'servicio_ext'; });
+      var ls = todas.filter(function (l) { return !f || l.estado === f; });
+      if (!ls.length) {
+        wrap.innerHTML = '<div class="panel"><div class="empty">' + (todas.length ? 'Sin labores con ese filtro.' : 'Aún no hay labores. Registrá la primera con “+ Registrar labor”.') + '</div></div>';
+        return true;
+      }
+      var hoy = H2.agHoy();
+      var lim = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+      /* aviso de labores sin lote */
+      var sinLote = todas.filter(function (l) {
+        if (l.parcela_id != null && l.parcela_id !== '') return false;
+        var c = H.agById(d.campanas, l.campana_id);
+        return !!(c && H.agCampIds(c).length > 1);
+      });
+      var html = '';
+      if (sinLote.length) html += '<div class="panel" style="border-color:var(--amber2,#e3b341);padding:9px 12px;font-size:12px">' +
+        '<b style="color:var(--amber2,#e3b341)">⚠ ' + sinLote.length + ' labor' + (sinLote.length === 1 ? '' : 'es') + ' sin lote asignado</b> ' +
+        '<span style="color:var(--muted)">— caen en el primer lote de su campaña y su costo se atribuye ahí. Editalas para asignarles el lote real.</span></div>';
+      /* agrupar por campaña */
+      var byC = {}, ordC = [];
+      ls.forEach(function (l) { var k = String(l.campana_id || '0'); if (!byC[k]) { byC[k] = []; ordC.push(k); } byC[k].push(l); });
+      function maxF(a) { return a.reduce(function (m, l) { return String(l.fecha || '') > m ? String(l.fecha) : m; }, ''); }
+      ordC.sort(function (a, b) { if (a === '0') return 1; if (b === '0') return -1; return maxF(byC[b]).localeCompare(maxF(byC[a])); });
+
+      ordC.forEach(function (k) {
+        var c = k === '0' ? null : H.agById(d.campanas, k);
+        var all = todas.filter(function (l) { return String(l.campana_id || '0') === k; });
+        var hechas = all.filter(function (l) { return l.estado === 'ejecutada'; });
+        var venc = all.filter(function (l) { return l.estado === 'planificada' && l.fecha && String(l.fecha).slice(0, 10) < hoy; }).length;
+        var totBs = 0; hechas.forEach(function (l) { totBs += (H2.laborCosto(l).total || 0); });
+        var pct = all.length ? Math.round(hechas.length * 100 / all.length) : 0;
+        var pv = all.length ? Math.round(venc * 100 / all.length) : 0;
+        var kc = 'c' + k, ac = abierto(kc, true);
+        var ids = c && H.agCampIds ? H.agCampIds(c) : [];
+        var sem = 0; ids.forEach(function (pid) { if (H.loteSembrado(d, c.id, pid)) sem++; });
+        var meta = c
+          ? (ids.length > 1 ? ids.length + ' lotes · ' + sem + ' sembrado' + (sem === 1 ? '' : 's') + ' · ' : '') +
+            H2.fmtA(H2.campHa(d, c), 1) + ' ha' + (c.siembra_plan ? ' · siembra ' + H2.agFecha(c.siembra_plan) : '')
+          : 'labores generales';
+        html += '<div class="l220-c"><div class="l220-ch" onclick="lab220Tog(\'' + kc + '\',\'1\')">' +
+          '<span class="car">' + (ac ? '▾' : '▸') + '</span>' +
+          '<div><div class="nm">🌾 ' + H2.escA(c ? H2.campLabel(d, c) : '— Sin campaña') + '</div><div class="mt">' + H2.escA(meta) + '</div></div>' +
+          '<div class="rt">' + (venc ? '<span style="color:var(--red,#f85149);font-weight:700">⚠ ' + venc + '</span>' : '') +
+            '<span>' + hechas.length + '/' + all.length + '</span>' +
+            '<span class="l220-bar"><i style="width:' + pct + '%;background:var(--green,#3fb950)"></i><i style="width:' + pv + '%;background:var(--red,#f85149)"></i></span>' +
+            (totBs ? '<b style="color:var(--text)">Bs ' + H2.fmtA(totBs) + '</b>' : '') + '</div></div>';
+        if (ac) {
+          /* dentro de la campaña: por lote */
+          var multiL = !!(c && ids.length > 1);
+          var byL = {}, ordL = [];
+          byC[k].forEach(function (l) {
+            var p = c ? H.laborParcela(d, l) : null; var lk = p ? String(p.id) : '_';
+            if (!byL[lk]) { byL[lk] = { p: p, ls: [] }; ordL.push(lk); }
+            byL[lk].ls.push(l);
+          });
+          if (multiL) ordL.sort(function (a, b) { var ia = ids.map(String).indexOf(a), ib = ids.map(String).indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
+          ordL.forEach(function (lk) {
+            var g = byL[lk], haL = g.p ? (Number(g.p.ha) || 0) : (c ? H2.campHa(d, c) : 0);
+            if (!multiL || !g.p) { html += grupos(g.ls, c, hoy, lim, haL, d, kc + ':' + lk); return; }
+            var allL = all.filter(function (l) { return H.laborEsDeLote(d, l, g.p.id); });
+            var hL = allL.filter(function (l) { return l.estado === 'ejecutada'; }).length;
+            var vL = allL.filter(function (l) { return l.estado === 'planificada' && l.fecha && String(l.fecha).slice(0, 10) < hoy; }).length;
+            var bsL = 0; allL.forEach(function (l) { if (l.estado === 'ejecutada') bsL += (H2.laborCosto(l).total || 0); });
+            var e = H.loteEstado(d, c.id, g.p.id);
+            var kl = kc + ':' + lk, al = abierto(kl, vL > 0 || hL < allL.length);
+            html += '<div class="l220-lh" onclick="lab220Tog(\'' + kl + '\',\'' + (al ? '1' : '0') + '\')">' +
+              '<span class="car">' + (al ? '▾' : '▸') + '</span><b>🧭 ' + H2.escA(g.p.code) + '</b>' +
+              '<span style="color:var(--muted)">' + H2.fmtA(haL, 1) + ' ha</span>' +
+              '<span class="pill ' + (e === 'cosechada' ? 'b' : e === 'en_curso' ? 'g' : e === 'preparacion' ? 'a' : '') + '">' + H.loteEstadoTxt(e) + '</span>' +
+              '<span class="rt">' + (vL ? '<span style="color:var(--red,#f85149);font-weight:700">⚠ ' + vL + '</span>' : '') +
+              hL + '/' + allL.length + (bsL ? ' · Bs ' + H2.fmtA(bsL) + ' (' + H2.fmtA(bsL / (haL || 1)) + '/ha)' : '') + '</span></div>';
+            if (al) html += grupos(g.ls, c, hoy, lim, haL, d, kl);
+          });
+        }
+        html += '</div>';
+      });
+      wrap.innerHTML = html;
+      return true;
+    } catch (e) {
+      try { console.warn('[lab220] caída — vuelve la tabla vieja', e); var tp = tbody.closest('.panel'); if (tp) tp.style.display = ''; var w = H2.agEl('v177-labores'); if (w) w.style.display = 'none'; } catch (e2) {}
+      return false;
+    }
+  };
+
+  try { console.log('%c[EP Desktop v1.8.220] 🚜 Labores: campaña › lote › urgencia, plegable · kill: __LAB220_OFF', 'color:#3fb950;font-weight:bold'); } catch (e) {}
 })();
 </script>
 
