@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.221';
+window.E5M_HTML_BUILD = '1.8.222';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -56777,6 +56777,205 @@ try {
   };
 
   try { console.log('%c[EP Desktop v1.8.220] 🚜 Labores: campaña › lote › urgencia, plegable · kill: __LAB220_OFF', 'color:#3fb950;font-weight:bold'); } catch (e) {}
+})();
+
+/* ═══════════════════════════════════════════════════════════════════════
+   v1.8.222 — STOCK AGRO NAVEGABLE (stock-v18222)
+   El catálogo era una lista plana de 53 filas altas, sin buscador y sin
+   forma de llegar a un producto sin scrollear. Ahora, mismo criterio que
+   Labores y que EP Campo:
+     · buscador por nombre o principio activo
+     · grupo "⚠ Atención" arriba y abierto (sin precio o en cero)
+     · el resto agrupado por categoría; si el catálogo no usa categorías,
+       se agrupa por letra inicial
+     · acordeón con transición suave, viewport de ~6 filas con scroll,
+       filas de una línea con zebra
+   Kill switch: window.__STK222_OFF = true
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+  if (window.__STK222_OFF) return;
+  var H = window;
+  function E(id) { return document.getElementById(id); }
+  function n(v) { return Number(v) || 0; }
+  var Q = '', ST;
+  try { ST = JSON.parse(localStorage.getItem('e5m_stk222') || '{}'); } catch (e) { ST = {}; }
+  function guarda() { try { localStorage.setItem('e5m_stk222', JSON.stringify(ST)); } catch (e) {} }
+
+  var CAT_ICO = { 'Herbicidas': '🌿', 'Fungicidas': '🍄', 'Insecticidas': '🐛', 'Fertilizantes': '💧', 'Coadyuvantes': '🧪', 'Tratamiento de semilla': '🫘', 'Bacterias': '🦠', 'Sin categoría': '📦' };
+  var CAT_ORD = ['Herbicidas', 'Fungicidas', 'Insecticidas', 'Fertilizantes', 'Coadyuvantes', 'Tratamiento de semilla', 'Bacterias'];
+
+  function css() {
+    if (E('stk222-css')) return;
+    var s = document.createElement('style'); s.id = 'stk222-css';
+    s.textContent =
+      '#stk222 .s-tools{display:flex;gap:10px;align-items:center;margin:0 0 10px;flex-wrap:wrap}' +
+      '#stk222 .s-q{flex:1;min-width:220px;max-width:420px}' +
+      '#stk222 .s-tot{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap}' +
+      '#stk222 .s-g{border:1px solid var(--bor);border-radius:10px;overflow:hidden;margin-bottom:6px;background:rgba(255,255,255,.015)}' +
+      '#stk222 .s-gh{display:flex;align-items:center;gap:9px;padding:8px 12px;cursor:pointer;font-size:13px}' +
+      '#stk222 .s-gh:hover{background:rgba(255,255,255,.04)}' +
+      '#stk222 .s-gh b{font-weight:700}' +
+      '#stk222 .s-gh .car{display:inline-block;color:var(--muted);transition:transform .22s cubic-bezier(.4,0,.2,1)}' +
+      '#stk222 .s-gh.on .car{transform:rotate(90deg)}' +
+      '#stk222 .s-gh .rt{margin-left:auto;display:flex;gap:9px;align-items:center;font-size:11.5px;color:var(--muted)}' +
+      '#stk222 .s-bd{overflow:hidden;max-height:0;opacity:0;transition:max-height .26s cubic-bezier(.4,0,.2,1),opacity .18s ease}' +
+      '#stk222 .s-bd.open{opacity:1}' +
+      '#stk222 .s-sc{overflow-y:auto;overscroll-behavior:contain}' +
+      '#stk222 .s-sc::-webkit-scrollbar{width:7px}#stk222 .s-sc::-webkit-scrollbar-thumb{background:var(--bor);border-radius:4px}' +
+      '#stk222 .s-r{display:grid;grid-template-columns:minmax(0,1fr) 54px 108px 88px 96px 44px;align-items:center;gap:10px;' +
+      'padding:4px 12px;border-top:1px solid rgba(255,255,255,.05);min-height:36px;font-size:12.5px}' +
+      '#stk222 .s-r:nth-child(even){background:rgba(255,255,255,.022)}' +
+      '#stk222 .s-r:hover{background:rgba(255,255,255,.055)}' +
+      '#stk222 .s-r .nm{min-width:0;line-height:1.2}' +
+      '#stk222 .s-r .nm b{font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+      '#stk222 .s-r .nm span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+      '#stk222 .s-r .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}' +
+      '#stk222 .s-r .ac{text-align:right;opacity:.3;transition:opacity .12s}#stk222 .s-r:hover .ac{opacity:1}' +
+      '#stk222 .s-r .ac .btn{padding:2px 7px;font-size:10.5px}' +
+      '#stk222 .s-cero{color:var(--red,#f85149);font-weight:700}' +
+      '#stk222 .s-sp{color:var(--amber2,#e3b341)}' +
+      '#stk222 .s-vacio{padding:14px 12px;color:var(--muted);font-size:12.5px}' +
+      '@media (prefers-reduced-motion:reduce){#stk222 .s-bd,#stk222 .s-gh .car{transition:none}}';
+    document.head.appendChild(s);
+  }
+
+  function anima(el, abrir) {
+    if (!el) return;
+    var red = false; try { red = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+    if (red) { el.classList.toggle('open', abrir); el.style.maxHeight = abrir ? 'none' : '0px'; return; }
+    if (abrir) {
+      el.classList.add('open'); el.style.maxHeight = el.scrollHeight + 'px';
+      var fin = function (ev) { if (ev && ev.target !== el) return; el.style.maxHeight = 'none'; el.removeEventListener('transitionend', fin); };
+      el.addEventListener('transitionend', fin); setTimeout(fin, 340);
+    } else {
+      el.style.maxHeight = el.scrollHeight + 'px'; void el.offsetHeight;
+      el.classList.remove('open'); el.style.maxHeight = '0px';
+    }
+  }
+
+  H.stk222Tog = function (k) {
+    var bd = document.querySelector('#stk222 .s-bd[data-k="' + k + '"]'); if (!bd) return;
+    var abrir = !bd.classList.contains('open');
+    if (abrir) { /* acordeón: uno a la vez */
+      [].forEach.call(document.querySelectorAll('#stk222 .s-bd.open'), function (o) {
+        var k2 = o.getAttribute('data-k'); if (k2 === k) return;
+        ST[k2] = false; anima(o, false);
+        var h2 = o.previousElementSibling; if (h2) h2.classList.remove('on');
+      });
+    }
+    ST[k] = abrir; guarda();
+    anima(bd, abrir);
+    var hd = bd.previousElementSibling; if (hd) hd.classList.toggle('on', abrir);
+  };
+  H.stk222Buscar = function (v) {
+    Q = String(v || '').toLowerCase().trim();
+    pintar(true);
+    var i = E('stk222-q'); if (i) { i.focus(); try { i.setSelectionRange(i.value.length, i.value.length); } catch (e) {} }
+  };
+
+  function fila(i, tc) {
+    var esc = H.escA, f = H.fmtA;
+    var stock = n(i.stock), costo = n(i.costo), val = stock * costo;
+    var cero = stock <= 0, sinP = !(costo > 0);
+    return '<div class="s-r">' +
+      '<div class="nm"><b>' + esc(i.nombre || '') + '</b>' + (i.principio_activo ? '<span>' + esc(i.principio_activo) + '</span>' : '') + '</div>' +
+      '<div class="num" style="color:var(--muted)">' + esc(i.unidad || '') + '</div>' +
+      '<div class="num">' + (sinP ? '<span class="s-sp">⚠ sin precio</span>' : f(costo, 2)) + '</div>' +
+      '<div class="num' + (cero ? ' s-cero' : '') + '">' + f(stock, 1) + '</div>' +
+      '<div class="num" style="color:var(--muted)">' + (val ? f(val) : '—') + '</div>' +
+      '<div class="ac"><button class="btn btn-ghost btn-sm" onclick="agOpenInsumos();agEditInsumo(' + H.agIdq(i.id) + ')">✏️</button></div>' +
+      '</div>';
+  }
+
+  function grupoHtml(g, tc) {
+    var f = H.fmtA, esc = H.escA;
+    var ab = ST[g.k] === undefined ? !!g.def : !!ST[g.k];
+    var val = 0, cero = 0;
+    g.items.forEach(function (i) { val += n(i.stock) * n(i.costo); if (n(i.stock) <= 0) cero++; });
+    var alto = g.items.length > 6;
+    return '<div class="s-g">' +
+      '<div class="s-gh' + (ab ? ' on' : '') + '" onclick="stk222Tog(\'' + g.k + '\')">' +
+        '<span class="car">▸</span><b>' + esc(g.t) + '</b>' +
+        '<span class="rt">' + (cero ? '<span class="s-cero">' + cero + ' en cero</span>' : '') +
+          (val ? '<span>Bs ' + f(val) + '</span>' : '') +
+          '<b style="color:var(--text)">' + g.items.length + '</b></span></div>' +
+      '<div class="s-bd' + (ab ? ' open' : '') + '" data-k="' + g.k + '"' + (ab ? ' style="max-height:none"' : '') + '>' +
+        '<div class="' + (alto ? 's-sc' : '') + '"' + (alto ? ' style="max-height:' + (6 * 36 + 4) + 'px"' : '') + '>' +
+        g.items.map(function (i) { return fila(i, tc); }).join('') + '</div></div></div>';
+  }
+
+  function pintar(desdeBusqueda) {
+    var tb = E('agsk-tbody'); if (!tb) return;
+    css();
+    var panel = tb.closest ? tb.closest('.panel') : null; if (!panel) return;
+    var host = E('stk222');
+    if (!host) { host = document.createElement('div'); host.id = 'stk222'; panel.parentNode.insertBefore(host, panel); }
+    panel.style.display = 'none';
+    var d = H.agGetDB();
+    var todos = (d.insumos || []).filter(Boolean);
+    var lista = !Q ? todos : todos.filter(function (i) {
+      return String(i.nombre || '').toLowerCase().indexOf(Q) >= 0 || String(i.principio_activo || '').toLowerCase().indexOf(Q) >= 0;
+    });
+    lista = lista.slice().sort(function (a, b) { return String(a.nombre || '').localeCompare(String(b.nombre || '')); });
+    var valT = 0; todos.forEach(function (i) { valT += n(i.stock) * n(i.costo); });
+
+    var grupos = [];
+    var atencion = lista.filter(function (i) { return n(i.stock) <= 0 || !(n(i.costo) > 0); });
+    if (atencion.length) grupos.push({ k: 'atencion', t: '⚠ Atención — sin precio o en cero', items: atencion, def: true });
+    var resto = lista.filter(function (i) { return atencion.indexOf(i) < 0; });
+    /* ¿el catálogo usa categorías? si no, se agrupa por letra inicial */
+    var cats = {}, nCat = 0;
+    resto.forEach(function (i) { var c = String(i.categoria || '').trim(); if (c) { if (!cats[c]) nCat++; cats[c] = 1; } });
+    if (nCat >= 2) {
+      var by = {};
+      resto.forEach(function (i) { var c = String(i.categoria || '').trim() || 'Sin categoría'; (by[c] = by[c] || []).push(i); });
+      var ord = CAT_ORD.filter(function (c) { return by[c]; })
+        .concat(Object.keys(by).filter(function (c) { return CAT_ORD.indexOf(c) < 0; }).sort());
+      ord.forEach(function (c) { grupos.push({ k: 'cat:' + c.replace(/[^a-z0-9]/gi, '_'), t: (CAT_ICO[c] || '📦') + ' ' + c, items: by[c] }); });
+    } else {
+      var byL = {}, ordL = [];
+      resto.forEach(function (i) {
+        var L = String(i.nombre || '#').trim().charAt(0).toUpperCase();
+        if (!/[A-ZÑ0-9]/.test(L)) L = '#';
+        if (!byL[L]) { byL[L] = []; ordL.push(L); }
+        byL[L].push(i);
+      });
+      ordL.sort();
+      /* las letras sueltas se juntan en tramos de ~6 para no dejar grupos de un solo ítem */
+      var blq = [], cur = null;
+      ordL.forEach(function (L) {
+        if (!cur) cur = { de: L, a: L, items: [] };
+        cur.a = L; cur.items = cur.items.concat(byL[L]);
+        if (cur.items.length >= 6) { blq.push(cur); cur = null; }
+      });
+      if (cur) { if (blq.length && cur.items.length < 3) { var u = blq[blq.length - 1]; u.a = cur.a; u.items = u.items.concat(cur.items); } else blq.push(cur); }
+      blq.forEach(function (x) {
+        grupos.push({ k: 'ltr:' + x.de + x.a, t: x.de === x.a ? x.de : (x.de + ' – ' + x.a), items: x.items });
+      });
+    }
+    /* buscando: todo abierto para ver los resultados de una */
+    if (Q) grupos.forEach(function (g) { ST[g.k] = true; });
+
+    host.innerHTML =
+      '<div class="s-tools">' +
+        '<input class="form-input s-q" id="stk222-q" placeholder="🔍 Buscar producto o principio activo…" value="' + H.escA(Q) + '" oninput="stk222Buscar(this.value)">' +
+        '<span class="s-tot">' + todos.length + ' insumos · Bs ' + H.fmtA(valT) + (Q ? ' · <b style="color:var(--text)">' + lista.length + ' con «' + H.escA(Q) + '»</b>' : '') + '</span>' +
+      '</div>' +
+      (grupos.length ? grupos.map(function (g) { return grupoHtml(g); }).join('')
+                     : '<div class="s-vacio">' + (Q ? 'Nada con «' + H.escA(Q) + '».' : 'Sin insumos agro. Cargá el primero con “Gestionar catálogo”.') + '</div>');
+  }
+  H.stk222Pintar = pintar;
+
+  /* engancharse al repintado general de Agricultura */
+  if (typeof H.l219Repintar === 'function') {
+    H.l219Repintar = (function (base) { return function () {
+      base.apply(this, arguments);
+      try { pintar(); } catch (e) { console.warn('[stk222]', e); }
+    }; })(H.l219Repintar);
+  }
+  setTimeout(function () { try { pintar(); } catch (e) {} }, 600);
+
+  try { console.log('%c[EP Desktop v1.8.222] 🧪 Stock Agro con buscador y acordeón · kill: __STK222_OFF', 'color:#3fb950;font-weight:bold'); } catch (e) {}
 })();
 </script>
 
