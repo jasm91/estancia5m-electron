@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.222';
+window.E5M_HTML_BUILD = '1.8.223';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -56976,6 +56976,301 @@ try {
   setTimeout(function () { try { pintar(); } catch (e) {} }, 600);
 
   try { console.log('%c[EP Desktop v1.8.222] 🧪 Stock Agro con buscador y acordeón · kill: __STK222_OFF', 'color:#3fb950;font-weight:bold'); } catch (e) {}
+})();
+</script>
+
+<script id="ss-mirror-v1">
+/* ═══════════════════════════════════════════════════════════════════════════
+   VER PANTALLA — lado del usuario observado (ss-mirror v1.0)
+   ---------------------------------------------------------------------------
+   Espeja el DOM de ESTA pestaña con rrweb cuando alguien de soporte abre una
+   sesión desde el panel super admin. No es control remoto: el que mira no
+   puede tocar nada. Mientras dura, el usuario ve una barra fija que no se
+   puede cerrar — sin ese aviso esto sería vigilancia encubierta.
+
+   rrweb se carga bajo demanda desde el CDN, sólo cuando hay alguien mirando:
+   no le cuesta nada al 99% de las cargas de la app.
+
+   Latido cada 6 s. Si lo miran, manda una tanda de eventos por segundo; la
+   respuesta de ESE MISMO POST trae lo que el visor le mandó (trazos, chat,
+   borrar), así el canal de vuelta no necesita su propio sondeo.
+
+   Kill switch: window.__SS_OFF = true
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  if (window.__SS_OFF || window.__ssMirrorCargado) return;
+  window.__ssMirrorCargado = true;
+
+  var RRWEB = 'https://cdn.jsdelivr.net/npm/rrweb@2.0.0-alpha.4/dist/rrweb.min.js';
+  var LATIDO_MS = 6000, TANDA_MS = 1000;
+
+  function api() {
+    try { if (typeof API_URL === 'string' && API_URL) return API_URL; } catch (e) {}
+    try { if (typeof getApiUrl === 'function') { var u = getApiUrl(); if (u) return u; } } catch (e) {}
+    try {
+      var ls = localStorage;
+      return ls.getItem('e5m_api_url') || ls.getItem('ag_api_url') || ls.getItem('pwa_api_url') || ls.getItem('apiUrl') ||
+        'https://estancia5m-api-production.up.railway.app/api';
+    } catch (e) { return 'https://estancia5m-api-production.up.railway.app/api'; }
+  }
+  function token() {
+    try {
+      var ls = localStorage;
+      return ls.getItem('e5m_api_token') || ls.getItem('ag_api_token') || ls.getItem('pwa_api_token') || ls.getItem('e5m_token') || '';
+    } catch (e) { return ''; }
+  }
+  function hdrs() {
+    try { if (typeof HEADERS === 'object' && HEADERS && HEADERS.Authorization) return Object.assign({}, HEADERS); } catch (e) {}
+    return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token() };
+  }
+  function appNombre() {
+    try { if (typeof AGRO_VERSION !== 'undefined') return 'EP Agro'; } catch (e) {}
+    try { if (typeof PWA_VERSION !== 'undefined') return 'EP Campo'; } catch (e) {}
+    try { if (window.E5M_HTML_BUILD) return (window.estancia && window.estancia.__web) ? 'Desktop Web' : 'Desktop'; } catch (e) {}
+    return 'App';
+  }
+  function appVersion() {
+    try { if (typeof AGRO_VERSION !== 'undefined') return String(AGRO_VERSION); } catch (e) {}
+    try { if (typeof PWA_VERSION !== 'undefined') return String(PWA_VERSION); } catch (e) {}
+    try { if (window.E5M_HTML_BUILD) return String(window.E5M_HTML_BUILD); } catch (e) {}
+    return '';
+  }
+  function quienSoy() {
+    try {
+      var ls = localStorage;
+      return ls.getItem('ag_device_name') || ls.getItem('pwa_device_name') || ls.getItem('e5m_device_name') ||
+        ls.getItem('deviceName') || (document.title || '').slice(0, 40) || 'Dispositivo';
+    } catch (e) { return 'Dispositivo'; }
+  }
+  function paginaActual() {
+    try {
+      var a = document.querySelector('.nav-item.active .nav-label, .nav-item.active, .tab-btn.active, .ag-tabbtn.active');
+      if (a) return String(a.textContent || '').trim().slice(0, 40);
+      var p = document.querySelector('.page.active, .ag-view.active');
+      if (p && p.id) return p.id.replace(/^(pg-|ag-view-)/, '');
+    } catch (e) {}
+    return (location.hash || '').slice(1, 40);
+  }
+  function CLIENTE() {
+    try {
+      var k = 'ss_client_id', v = localStorage.getItem(k);
+      if (!v) { v = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); localStorage.setItem(k, v); }
+      return v;
+    } catch (e) { return 'c' + Math.random().toString(36).slice(2, 10); }
+  }
+
+  var S = {
+    sesion: null, parar: null, buffer: [], enviando: false,
+    cursorMsg: 0, chatPend: '', barra: null, canvas: null, ctx: null, chat: null, timerTanda: null
+  };
+
+  /* ── barra fija: sin botón de cerrar, a propósito ──────────────────── */
+  function barraMostrar(txt) {
+    if (S.barra) { S.barra.querySelector('span').textContent = txt; return; }
+    var b = document.createElement('div');
+    b.id = 'ss-barra'; b.className = 'ss-privado';
+    b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483000;background:#1f6feb;color:#fff;' +
+      'font:600 13px/1.35 system-ui,-apple-system,Segoe UI,sans-serif;padding:8px 14px;text-align:center;' +
+      'box-shadow:0 2px 10px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;gap:8px';
+    b.innerHTML = '<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#ff7b72;' +
+      'animation:ssPulso 1.4s infinite"></span><span></span>';
+    b.querySelector('span:last-child').textContent = txt;
+    var st = document.createElement('style'); st.id = 'ss-css';
+    st.textContent = '@keyframes ssPulso{0%,100%{opacity:1}50%{opacity:.25}}' +
+      '#ss-chat-caja{position:fixed;right:14px;bottom:14px;z-index:2147483000;width:250px;background:#161b22;color:#e6edf3;' +
+      'border:1px solid #30363d;border-radius:12px;font:13px/1.4 system-ui,-apple-system,sans-serif;box-shadow:0 8px 28px rgba(0,0,0,.45);overflow:hidden}' +
+      '#ss-chat-hd{padding:7px 10px;background:#1f6feb;color:#fff;font-weight:700;font-size:12px}' +
+      '#ss-chat-msgs{max-height:190px;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:6px}' +
+      '#ss-chat-msgs .m{padding:5px 8px;border-radius:9px;max-width:92%;font-size:12.5px;word-break:break-word}' +
+      '#ss-chat-msgs .m.v{background:#1f6feb22;border:1px solid #1f6feb66;align-self:flex-start}' +
+      '#ss-chat-msgs .m.y{background:#30363d;align-self:flex-end}' +
+      '#ss-chat-in{display:flex;border-top:1px solid #30363d}' +
+      '#ss-chat-in input{flex:1;background:transparent;border:0;color:inherit;padding:8px 10px;font:inherit;outline:none}' +
+      '#ss-chat-in button{background:#238636;color:#fff;border:0;padding:8px 12px;font:600 12px inherit;cursor:pointer}';
+    document.head.appendChild(st);
+    document.body.appendChild(b);
+    document.body.style.paddingTop = (b.offsetHeight || 34) + 'px';
+    S.barra = b;
+  }
+  function barraOcultar() {
+    if (S.barra) { S.barra.remove(); S.barra = null; }
+    var st = document.getElementById('ss-css'); if (st) st.remove();
+    document.body.style.paddingTop = '';
+  }
+
+  /* ── canvas de trazos: a pantalla completa, sin capturar clics ─────── */
+  function canvasMostrar() {
+    if (S.canvas) return;
+    var c = document.createElement('canvas');
+    c.id = 'ss-trazos'; c.className = 'ss-privado';
+    c.style.cssText = 'position:fixed;inset:0;z-index:2147482999;pointer-events:none';
+    document.body.appendChild(c);
+    S.canvas = c; S.ctx = c.getContext('2d');
+    ajustarCanvas();
+    window.addEventListener('resize', ajustarCanvas);
+  }
+  function ajustarCanvas() {
+    if (!S.canvas) return;
+    var r = window.devicePixelRatio || 1;
+    S.canvas.width = Math.floor(innerWidth * r); S.canvas.height = Math.floor(innerHeight * r);
+    S.canvas.style.width = innerWidth + 'px'; S.canvas.style.height = innerHeight + 'px';
+    S.ctx = S.canvas.getContext('2d'); S.ctx.scale(r, r);
+    S.ctx.lineCap = 'round'; S.ctx.lineJoin = 'round';
+  }
+  function canvasOcultar() {
+    window.removeEventListener('resize', ajustarCanvas);
+    if (S.canvas) { S.canvas.remove(); S.canvas = null; S.ctx = null; }
+  }
+  function trazo(p) {
+    if (!S.ctx || !p || !p.puntos || p.puntos.length < 2) return;
+    S.ctx.strokeStyle = p.color || '#f85149';
+    S.ctx.lineWidth = p.grosor || 3;
+    S.ctx.beginPath();
+    p.puntos.forEach(function (pt, i) {
+      var x = pt[0] * innerWidth, y = pt[1] * innerHeight;
+      if (i === 0) S.ctx.moveTo(x, y); else S.ctx.lineTo(x, y);
+    });
+    S.ctx.stroke();
+  }
+  function borrarTrazos() { if (S.ctx && S.canvas) S.ctx.clearRect(0, 0, S.canvas.width, S.canvas.height); }
+
+  /* ── chat ──────────────────────────────────────────────────────────── */
+  function chatMostrar(quien) {
+    if (S.chat) return;
+    var d = document.createElement('div');
+    d.id = 'ss-chat-caja'; d.className = 'ss-privado';
+    d.innerHTML = '<div id="ss-chat-hd">💬 ' + String(quien || 'Soporte').replace(/[<>&]/g, '') + '</div>' +
+      '<div id="ss-chat-msgs"></div>' +
+      '<div id="ss-chat-in"><input id="ss-chat-txt" placeholder="Escribí acá…" maxlength="500"><button id="ss-chat-btn">Enviar</button></div>';
+    document.body.appendChild(d);
+    S.chat = d;
+    var inp = d.querySelector('#ss-chat-txt'), btn = d.querySelector('#ss-chat-btn');
+    function mandar() {
+      var t = String(inp.value || '').trim(); if (!t) return;
+      S.chatPend = t; inp.value = ''; chatPintar('y', t);
+    }
+    btn.onclick = mandar;
+    inp.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); mandar(); } };
+  }
+  function chatPintar(de, txt) {
+    if (!S.chat) return;
+    var box = S.chat.querySelector('#ss-chat-msgs');
+    var m = document.createElement('div'); m.className = 'm ' + (de === 'v' ? 'v' : 'y'); m.textContent = txt;
+    box.appendChild(m); box.scrollTop = box.scrollHeight;
+  }
+  function chatOcultar() { if (S.chat) { S.chat.remove(); S.chat = null; } }
+
+  /* ── rrweb ─────────────────────────────────────────────────────────── */
+  function cargarRrweb(cb) {
+    if (window.rrweb && window.rrweb.record) return cb(true);
+    var s = document.createElement('script');
+    s.src = RRWEB; s.async = true;
+    s.onload = function () { cb(!!(window.rrweb && window.rrweb.record)); };
+    s.onerror = function () { cb(false); };
+    document.head.appendChild(s);
+  }
+  function grabar() {
+    if (S.parar) return;
+    S.parar = window.rrweb.record({
+      emit: function (ev) { S.buffer.push(ev); },
+      maskAllInputs: false,
+      maskInputOptions: { password: true },     /* las contraseñas nunca viajan */
+      blockClass: 'ss-privado',                 /* clase para tapar lo que quieras */
+      ignoreClass: 'ss-ignorar',
+      maskTextClass: 'ss-tapar',
+      inlineStylesheet: true,                   /* sin esto el visor ve el DOM sin CSS */
+      recordCanvas: false,
+      collectFonts: false,
+      /* mousemove/scroll muestreados para no inundar; el INPUT va completo:
+         ver lo que el usuario escribe es justamente para lo que sirve esto */
+      sampling: { mousemove: 120, scroll: 150 }
+    });
+  }
+  function pararGrabar() {
+    try { if (S.parar) S.parar(); } catch (e) {}
+    S.parar = null; S.buffer = [];
+  }
+  function fotoCompleta() { try { if (window.rrweb && window.rrweb.record) window.rrweb.record.takeFullSnapshot(true); } catch (e) {} }
+
+  /* ── tanda por segundo ─────────────────────────────────────────────── */
+  function tanda() {
+    if (!S.sesion || S.enviando) return;
+    var evs = S.buffer; S.buffer = [];
+    var chat = S.chatPend; S.chatPend = '';
+    /* se manda igual con la tanda vacía: la RESPUESTA de este POST es el canal
+       de vuelta (trazos, chat, borrar). Si sólo se mandara cuando hay eventos,
+       un usuario quieto nunca recibiría un mensaje del que lo está mirando. */
+    S.enviando = true;
+    fetch(api() + '/screen-share/sessions/' + S.sesion.id + '/events', {
+      method: 'POST', headers: hdrs(),
+      body: JSON.stringify({ eventos: evs, chat: chat || undefined, after_msg: S.cursorMsg })
+    }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        S.enviando = false;
+        if (!d) return;
+        if (d.cerrada) { terminar(); return; }
+        if (d.snapshot_requested) fotoCompleta();
+        var cm = parseInt(d.cursor_msg, 10); if (!isNaN(cm) && cm > S.cursorMsg) S.cursorMsg = cm;
+        (d.mensajes || []).forEach(function (m) {
+          var p = m.payload || {};
+          if (m.kind === 'draw') trazo(p);
+          else if (m.kind === 'clear') borrarTrazos();
+          else if (m.kind === 'chat') chatPintar('v', String(p.texto || ''));
+        });
+      })
+      .catch(function () { S.enviando = false; });
+  }
+
+  function arrancar(ses) {
+    S.sesion = ses; S.cursorMsg = 0;
+    barraMostrar(ses.etiqueta || ((ses.viewer_nombre || 'Soporte') + ' está viendo tu pantalla · solo ve esta pestaña · no puede tocar nada'));
+    canvasMostrar();
+    chatMostrar(ses.viewer_nombre);
+    cargarRrweb(function (ok) {
+      if (!ok) { console.warn('[ver-pantalla] no se pudo cargar rrweb'); return; }
+      grabar();
+      if (S.timerTanda) clearInterval(S.timerTanda);
+      S.timerTanda = setInterval(tanda, TANDA_MS);
+    });
+    try { console.log('%c[ver-pantalla] sesión ' + ses.id + ' — ' + (ses.viewer_nombre || 'Soporte') + ' está mirando', 'color:#58a6ff;font-weight:bold'); } catch (e) {}
+  }
+  function terminar() {
+    if (S.timerTanda) { clearInterval(S.timerTanda); S.timerTanda = null; }
+    pararGrabar();
+    barraOcultar(); canvasOcultar(); chatOcultar();
+    S.sesion = null; S.cursorMsg = 0; S.chatPend = '';
+  }
+
+  /* ── latido ────────────────────────────────────────────────────────── */
+  function latido() {
+    /* si la pestaña está oculta y nadie mira, no se gasta un request */
+    if (document.hidden && !S.sesion) return;
+    if (!token()) return;
+    fetch(api() + '/screen-share/me', {
+      method: 'POST', headers: hdrs(),
+      body: JSON.stringify({
+        client_id: CLIENTE(), nombre: quienSoy(), app: appNombre(),
+        version: appVersion(), pagina: paginaActual()
+      })
+    }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d) return;
+        var ses = d.sesion;
+        if (ses && (!S.sesion || String(S.sesion.id) !== String(ses.id))) arrancar(ses);
+        else if (!ses && S.sesion) terminar();
+      })
+      .catch(function () {});
+  }
+
+  setTimeout(latido, 2500);
+  setInterval(latido, LATIDO_MS);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) latido(); });
+
+  window.__ss = {
+    estado: function () { return { sesion: S.sesion, client_id: CLIENTE(), app: appNombre(), version: appVersion(), grabando: !!S.parar, buffer: S.buffer.length }; },
+    latido: latido, terminar: terminar
+  };
+  try { console.log('%c[ver-pantalla] listo · soporte en vivo · kill: __SS_OFF', 'color:#8b949e'); } catch (e) {}
 })();
 </script>
 
