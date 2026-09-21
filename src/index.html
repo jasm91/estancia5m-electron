@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.227';
+window.E5M_HTML_BUILD = '1.8.228';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -43747,6 +43747,134 @@ if (document.readyState !== 'loading') rInit(); else document.addEventListener('
 })();
 </script>
 
+<script id="cat-actividad-v1">
+/* ═══════════════════════════════════════════════════════════════════════════
+   CATÁLOGO POR ACTIVIDAD (cat-actividad v1.0)
+   ---------------------------------------------------------------------------
+   Regla de José (Chaco Lejos, 21-09): cuando hay que elegir algo que se va a
+   CONSUMIR, se muestra sólo lo que corresponde a la actividad. En mantenimiento
+   no aparecen semillas ni químicos; en una fumigada no aparecen semillas; en
+   ninguna labor agro aparece veterinario ni sal.
+
+   Hay dos stocks y esta regla los cruza:
+     · agro_insumos  → tiene `categoria` (Herbicidas, Semillas, …)
+     · products      → el stock general, tiene `type` (aceite, repuesto, …)
+   Los productos del stock general con tipo agro (herbicida, semilla…) se
+   normalizan a la categoría agro equivalente, así la regla se escribe una vez.
+
+   Este bloque es EL MISMO en EP Agro y en el Desktop (se inyecta), y el server
+   tiene la misma tabla en agro-reglas.js para el bot. Si se cambia una, se
+   cambian las tres: hay una prueba que compara las tablas.
+
+   Escape: cada selector tiene un "ver todo el stock" para el caso raro que no
+   encaje. Sin escape, lo raro se registra como "Otra" y ensucia igual.
+
+   Kill switch: window.__AGCAT_OFF = true (vuelve a mostrar todo en todos lados)
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  if (window.AG_CAT && window.AG_CAT.version === '1.0') return;
+
+  /* categorías canónicas del stock agro */
+  var C = {
+    HERB: 'Herbicidas', FUNG: 'Fungicidas', INSE: 'Insecticidas', FERT: 'Fertilizantes',
+    COAD: 'Coadyuvantes', TSEM: 'Tratamiento de semilla', BACT: 'Bacterias', SEMI: 'Semillas'
+  };
+  var TODAS_AGRO = [C.HERB, C.FUNG, C.INSE, C.FERT, C.COAD, C.TSEM, C.BACT, C.SEMI];
+
+  /* tipo del stock general → categoría agro (productos viejos cargados como agro) */
+  var TIPO_A_CAT = {
+    herbicida: C.HERB, fungicida: C.FUNG, insecticida: C.INSE, fertilizante: C.FERT,
+    coadyuvante: C.COAD, tratamiento_semilla: C.TSEM, bacteria: C.BACT, bacterias: C.BACT, semilla: C.SEMI
+  };
+
+  /* LA TABLA. agro = categorías del stock agro; general = tipos del stock general.
+     '*' = todas las agro. [] = ninguna. */
+  var REGLA = {
+    fumigada:            { agro: [C.HERB, C.FUNG, C.INSE, C.COAD, C.FERT], general: [] },
+    fertilizacion:       { agro: [C.FERT, C.BACT],                          general: [] },
+    tratamiento_semilla: { agro: [C.TSEM, C.BACT],                          general: [] },
+    siembra:             { agro: [C.SEMI, C.BACT, C.FERT],                  general: ['aceite', 'repuesto'] },
+    maquinaria:          { agro: [],                                        general: [] },   /* registra trabajo, no consume */
+    mantenimiento:       { agro: [],                                        general: ['aceite', 'repuesto', 'herramienta', 'otros'] },
+    otra:                { agro: '*',                                       general: [] }
+  };
+
+  function norm(s) {
+    return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+  }
+  var _catNorm = {};
+  TODAS_AGRO.forEach(function (c) { _catNorm[norm(c)] = c; });
+
+  /* ¿qué es este ítem? devuelve { origen:'agro'|'general', clave } donde clave es
+     la categoría agro canónica o el type del stock general */
+  function clasificar(item) {
+    if (!item) return { origen: 'general', clave: '' };
+    /* producto del stock general (crudo, con .name/.type) */
+    if (item.name != null && item.nombre == null) {
+      var t = norm(item.type);
+      var amb = norm(item.ambito);
+      if (TIPO_A_CAT[t] || amb === 'agro') return { origen: 'agro', clave: TIPO_A_CAT[t] || '' };
+      return { origen: 'general', clave: t };
+    }
+    /* virtual 'S<id>' que arma insCat() a partir del stock general */
+    if (item._stock || /^S/.test(String(item.id || ''))) {
+      var t2 = norm(item.tipo || item.type);
+      if (TIPO_A_CAT[t2]) return { origen: 'agro', clave: TIPO_A_CAT[t2] };
+      if (item.categoria) return { origen: 'agro', clave: _catNorm[norm(item.categoria)] || String(item.categoria) };
+      return { origen: 'general', clave: t2 };
+    }
+    /* insumo agro propio */
+    var c = norm(item.categoria);
+    return { origen: 'agro', clave: _catNorm[c] || (item.categoria ? String(item.categoria) : '') };
+  }
+
+  function permitidos(actividad) {
+    var r = REGLA[norm(actividad)];
+    if (!r) return null;                       /* actividad sin regla → sin filtro */
+    return r;
+  }
+
+  /* ¿este ítem se muestra para esta actividad? */
+  function pasa(actividad, item) {
+    if (window.__AGCAT_OFF) return true;
+    var r = permitidos(actividad);
+    if (!r) return true;
+    var k = clasificar(item);
+    if (k.origen === 'agro') {
+      if (r.agro === '*') return true;
+      return r.agro.indexOf(k.clave) >= 0;
+    }
+    return r.general.indexOf(k.clave) >= 0;
+  }
+
+  function filtrar(actividad, items, verTodo) {
+    if (verTodo || window.__AGCAT_OFF) return (items || []).slice();
+    return (items || []).filter(function (it) { return pasa(actividad, it); });
+  }
+
+  /* ¿esta actividad saca algo del stock general? (siembra sí, fumigada no) */
+  function usaGeneral(actividad) {
+    var r = permitidos(actividad);
+    return !!(r && r.general && r.general.length);
+  }
+
+  /* etiqueta legible de lo que se ofrece, para el hint del paso */
+  function describir(actividad) {
+    var r = permitidos(actividad);
+    if (!r) return '';
+    var a = r.agro === '*' ? ['todo lo agro'] : r.agro;
+    var g = (r.general || []).map(function (t) { return { aceite: 'aceites', repuesto: 'repuestos', herramienta: 'herramientas', otros: 'otros' }[t] || t; });
+    return a.concat(g).join(' · ');
+  }
+
+  window.AG_CAT = {
+    version: '1.0', CAT: C, TODAS_AGRO: TODAS_AGRO, REGLA: REGLA, TIPO_A_CAT: TIPO_A_CAT,
+    norm: norm, clasificar: clasificar, permitidos: permitidos, pasa: pasa, filtrar: filtrar,
+    usaGeneral: usaGeneral, describir: describir
+  };
+})();
+</script>
+
 <script id="agro-js-v1899">
 // ══════════════════════════════════════════════════
 // v1.8.99 MODULO AGRICULTURA (aditivo). Gate por tenant: getParams().modulo_agro
@@ -46059,6 +46187,331 @@ document.addEventListener('click', function(ev){
 })();
 
 /*__AGM_END__*/
+/*__V228_AGRO_START__*/
+/* ═══ v1.8.228 — Observaciones de Chaco Lejos (21-09), espejo de EP Agro 1.6.3. VIVE ADENTRO del
+   IIFE del módulo agro a propósito: agwLeerInsumos, agwSetTipo, agGetDB y LABOR_TIPOS son
+   privados del closure, y envolverlos desde afuera no cambia lo que el wizard llama por dentro.
+   Kill switch: window.__V228_OFF = true ═══ */
+(function v228agro() {
+  if (window.__V228_OFF) return;
+  var AGC = window.AG_CAT;
+  if (!AGC) { try { console.warn('[v1.8.228] falta AG_CAT'); } catch (e) {} return; }
+  var W = window;
+  var r2 = function (n) { return Math.round((Number(n) || 0) * 100) / 100; };
+  var E = function (id) { return document.getElementById(id); };
+  var esc = function (s) { return escA(s); };
+  var ETIQ = { aceite: 'Aceites', repuesto: 'Repuestos', herramienta: 'Herramientas', otros: 'Otros' };
+  var SUBCATS_SEMILLA = ['Maíz', 'Soya', 'Sorgo', 'Trigo', 'Girasol', 'Chía', 'Otra'];
+
+  function esAgroProd(p) { try { return typeof v176Ambito === 'function' && v176Ambito(p) === 'agro'; } catch (e) { return false; } }
+  function virtualDe(p) {
+    return { id: 'S' + p.id, nombre: p.name, unidad: p.unit || 'u', costo: Number(p.unit_cost) || 0, stock: Number(p.stock_qty) || 0,
+             tipo: p.type || '', codigo: p.codigo || '', subtipo: p.subtipo || '', _stock: true, _general: true };
+  }
+  /* d.insumos + los productos del stock general que NO son agro */
+  function catalogoAmpliado(d) {
+    var base = (d && d.insumos) ? d.insumos.slice() : [];
+    var vistos = {}; base.forEach(function (p) { vistos[String(p.id)] = 1; });
+    ((typeof db !== 'undefined' && db && db.products) || []).forEach(function (p) {
+      if (!p || !p.name || esAgroProd(p) || vistos['S' + p.id]) return;
+      base.push(virtualDe(p));
+    });
+    return base;
+  }
+  var agGetDBBase = agGetDB;
+  function agGetDBPlus() { var d = agGetDBBase(); d.insumos = catalogoAmpliado(d); return d; }
+  function conCatalogoAmpliado(fn) {
+    return function () { var o = agGetDB; agGetDB = agGetDBPlus; try { return fn.apply(this, arguments); } finally { agGetDB = o; } };
+  }
+
+  /* ── ② tipo de labor nuevo ───────────────────────────────────────────── */
+  LABOR_TIPOS.tratamiento_semilla = '🫘 Trat. semilla';
+  (function () {
+    var tiles = E('agw-tiles'); if (!tiles || tiles.querySelector('[data-tipo="tratamiento_semilla"]')) return;
+    var t = document.createElement('div'); t.className = 'agw-tile'; t.setAttribute('data-tipo', 'tratamiento_semilla');
+    t.setAttribute('onclick', "agwSetTipo('tratamiento_semilla')"); t.innerHTML = '🫘<br>Trat. semilla';
+    var fum = tiles.querySelector('[data-tipo="fumigada"]');
+    if (fum && fum.nextSibling) tiles.insertBefore(t, fum.nextSibling); else tiles.appendChild(t);
+  })();
+  var PASOS_NORMAL = ['tipo', 'campana', 'lote', 'insumos', 'recursos', 'confirmar'];
+  var PASOS_TSEM = ['tipo', 'campana', 'lote', 'insumos', 'confirmar'];
+  function esFijo() { return AGW && AGW.tipo === 'tratamiento_semilla'; }
+  function cabeceraInsumos() {
+    var wrap = E('agw-insumos-wrap'); if (!wrap) return;
+    var lbl = wrap.querySelector('label.form-label'), head = wrap.querySelector('.ins-head');
+    if (lbl) lbl.textContent = esFijo() ? 'Productos usados — CANTIDAD TOTAL (el tratamiento se dosifica por kg de semilla, no por hectárea)' : 'Insumos aplicados (dosis por hectárea → total y costo se calculan solos)';
+    if (head && head.children[1]) head.children[1].textContent = esFijo() ? 'Cantidad' : 'Dosis/ha';
+  }
+  agwSetTipo = (function (base) { return function (t) {
+    base(t);
+    AGW.steps = (t === 'tratamiento_semilla') ? PASOS_TSEM.slice() : PASOS_NORMAL.slice();
+    if (AGW.idx >= AGW.steps.length) AGW.idx = AGW.steps.length - 1;
+    cabeceraInsumos();
+    /* si cambió el tipo, el catálogo permitido cambia: se limpian las filas */
+    var rows = E('agw-ins-rows'); if (rows && rows.children.length) { rows.innerHTML = ''; try { agwRecalcAll(); } catch (e) {} }
+  }; })(agwSetTipo);
+  agwOpen = (function (base) { return function () {
+    AGW.steps = PASOS_NORMAL.slice(); AGW.verTodo = false; _fotos = [];
+    base.apply(this, arguments);
+    cabeceraInsumos(); fotosPintar();
+  }; })(agwOpen);
+
+  /* ── ①④ catálogo del paso de insumos ────────────────────────────────── */
+  function opcionesPara() {
+    var d = agGetDBPlus();
+    var lista = AGW.verTodo ? d.insumos : AGC.filtrar(AGW.tipo, d.insumos, false);
+    var by = {}, orden = [];
+    lista.forEach(function (p) {
+      var k = AGC.clasificar(p);
+      var key = k.origen === 'agro' ? ('a:' + (k.clave || 'Sin categoría')) : ('g:' + k.clave);
+      var label = k.origen === 'agro' ? (k.clave || 'Sin categoría') : ((ETIQ[k.clave] || k.clave || 'Stock general') + ' · stock general');
+      if (!by[key]) { by[key] = { label: label, general: k.origen !== 'agro', items: [] }; orden.push(key); }
+      by[key].items.push(p);
+    });
+    orden.sort(function (a, b) { return (by[a].general ? 1 : 0) - (by[b].general ? 1 : 0); });
+    return { by: by, orden: orden, n: lista.length };
+  }
+  function opcionTxt(x) {
+    var extra = [];
+    if (x.principio_activo) extra.push(x.principio_activo);
+    if (x.codigo) extra.push('cód. ' + x.codigo);
+    return esc(x.nombre) + (extra.length ? ' — ' + esc(extra.join(' · ')) : '') + ' (Bs ' + x.costo + '/' + esc(x.unidad) + ' · stock ' + fmtA(x.stock) + ')';
+  }
+  agwAddInsumo = function (presetId, presetDosis) {
+    var wrap = E('agw-ins-rows'); if (!wrap) return;
+    var d = agGetDBPlus();
+    if (!d.insumos.length) { agwToggleNuevoInsumo(true); agToast('No hay insumos en el catálogo agro — crealo acá mismo 👇', 'info'); return; }
+    var g = opcionesPara();
+    var opts = '<option value="">— Insumo —</option>';
+    /* si viene preseleccionado algo fuera del filtro (labor del plan), igual se muestra */
+    if (presetId != null && presetId !== '') {
+      var pre = agById(d.insumos, presetId);
+      var enLista = g.orden.some(function (k) { return g.by[k].items.some(function (x) { return String(x.id) === String(presetId); }); });
+      if (pre && !enLista) opts += '<option value="' + pre.id + '" selected>' + opcionTxt(pre) + '</option>';
+    }
+    g.orden.forEach(function (k) {
+      var gg = g.by[k];
+      gg.items.sort(function (a, b) { return String(a.nombre || '').localeCompare(String(b.nombre || '')); });
+      opts += '<optgroup label="' + esc(gg.label) + '">' + gg.items.map(function (x) {
+        return '<option value="' + x.id + '"' + (String(presetId) === String(x.id) ? ' selected' : '') + '>' + opcionTxt(x) + '</option>';
+      }).join('') + '</optgroup>';
+    });
+    var row = document.createElement('div'); row.className = 'ins-row';
+    row.innerHTML = '<select class="form-input agw-ins-sel" onchange="agwRecalcAll()">' + opts + '</select>' +
+      '<input class="form-input agw-ins-dosis" type="number" min="0" step="0.01" placeholder="' + (esFijo() ? 'cantidad' : 'dosis/ha') + '" value="' + (presetDosis || '') + '" oninput="agwRecalcAll()">' +
+      '<input class="form-input agw-ins-total" readonly placeholder="total">' +
+      '<input class="form-input agw-ins-costo" readonly placeholder="Bs">' +
+      '<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="agwDelInsumo(this)">✕</button>';
+    wrap.appendChild(row);
+    escapePintar();
+    agwRecalcAll();
+  };
+  function escapePintar() {
+    var wrap = E('agw-insumos-wrap'); if (!wrap || W.__AGCAT_OFF || !AGC.permitidos(AGW.tipo)) return;
+    var b = E('agw-vertodo');
+    if (!b) {
+      b = document.createElement('button'); b.id = 'agw-vertodo'; b.type = 'button'; b.className = 'btn btn-ghost btn-sm';
+      b.onclick = function () { AGW.verTodo = !AGW.verTodo; escapePintar(); agToast(AGW.verTodo ? 'Mostrando todo el stock en los insumos nuevos' : 'Mostrando sólo lo de esta actividad', 'info'); };
+      var addBtn = wrap.querySelector('button[onclick="agwAddInsumo()"]');
+      if (addBtn && addBtn.parentNode) addBtn.parentNode.insertBefore(b, addBtn.nextSibling); else wrap.appendChild(b);
+    }
+    b.textContent = AGW.verTodo ? '↩ Sólo ' + AGC.describir(AGW.tipo) : '🔎 Ver todo el stock';
+  }
+  agwRender = (function (base) { return function () { base.apply(this, arguments); try { if (AGW.steps[AGW.idx] === 'insumos') { cabeceraInsumos(); escapePintar(); } if (AGW.steps[AGW.idx] === 'confirmar') fotosPintar(); } catch (e) {} }; })(agwRender);
+
+  /* filas: cantidad fija para trat. de semilla y para lo del stock general */
+  agwLeerInsumos = function (haFija) {
+    var d = agGetDBPlus(), out = [], warn = [];
+    var cid = E('agw-campana').value;
+    var haTot = AGW.lotes.length ? agwLotesHa() : (cid ? campHa(d, agById(d.campanas, cid) || {}) : 0);
+    var ha = (haFija != null) ? haFija : haTot;
+    var fijo = esFijo();
+    document.querySelectorAll('#agw-ins-rows .ins-row').forEach(function (row) {
+      var _idRaw = String(row.querySelector('.agw-ins-sel').value || '');
+      var id = /^\d+$/.test(_idRaw) ? Number(_idRaw) : _idRaw;
+      var v = parseFloat(row.querySelector('.agw-ins-dosis').value);
+      var ins = id ? agById(d.insumos, id) : null;
+      var inp = row.querySelector('.agw-ins-dosis');
+      var fijoFila = fijo || !!(ins && ins._general);
+      if (inp) inp.placeholder = fijoFila ? 'cantidad' : 'dosis/ha';
+      if (!ins || !v || v <= 0) { row.querySelector('.agw-ins-total').value = ''; row.querySelector('.agw-ins-costo').value = ''; return; }
+      var total, costo;
+      if (fijoFila) {
+        var frac = (haFija != null && haTot > 0) ? (haFija / haTot) : 1;
+        total = r2(v * frac); costo = r2(total * ins.costo);
+        out.push({ insumo_id: id, cantidad: total, dosis: null, total: total, fijo: true, costo: costo });
+      } else {
+        total = v * ha; costo = total * ins.costo;
+        out.push({ insumo_id: id, dosis: v, total: r2(total), costo: r2(costo) });
+      }
+      row.querySelector('.agw-ins-total').value = fmtA(total, 1) + ' ' + ins.unidad;
+      row.querySelector('.agw-ins-costo').value = fmtA(costo);
+      if (total > ins.stock) warn.push(ins.nombre + ': necesita ' + fmtA(total, 1) + ' ' + ins.unidad + ' y hay ' + fmtA(ins.stock));
+    });
+    return { rows: out, warn: warn, ha: ha };
+  };
+  agwSummary = (function (base) { return conCatalogoAmpliado(function () {
+    base.apply(this, arguments);
+    var s = E('agw-summary'); if (!s) return;
+    /* "null kg/ha → 5 l": las filas fijas no tienen dosis por ha */
+    s.innerHTML = s.innerHTML.replace(/: (null|undefined) [^\/<]*\/ha → /g, ': ');
+    if (_fotos.length) s.innerHTML += '<div style="margin-top:6px">📷 ' + _fotos.length + ' foto' + (_fotos.length > 1 ? 's' : '') + '</div>';
+  }); })(agwSummary);
+  agwFinish = conCatalogoAmpliado(agwFinish);
+  agwBuildLabor = (function (base) { return function () {
+    var l = base.apply(this, arguments);
+    if (l && _fotos.length) { l.fotos = _fotos.slice(); l.foto = _fotos[0]; }
+    return l;
+  }; })(agwBuildLabor);
+
+  /* ── ④ fotos en la labor ─────────────────────────────────────────────── */
+  var _fotos = [], MAX_FOTOS = 3;
+  function comprimir(img, maxPx, q) {
+    var w = img.width, h = img.height, sc = Math.min(1, maxPx / Math.max(w, h));
+    var cv = document.createElement('canvas'); cv.width = Math.round(w * sc); cv.height = Math.round(h * sc);
+    cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+    return cv.toDataURL('image/jpeg', q);
+  }
+  function fotosPintar() {
+    var st = document.querySelector('.agw-step[data-step="confirmar"]'); if (!st) return;
+    var box = E('agw-fotos-box');
+    if (!box) {
+      box = document.createElement('div'); box.id = 'agw-fotos-box'; box.style.cssText = 'margin-top:10px';
+      box.innerHTML = '<input type="file" id="agw-fotos-file" accept="image/*" multiple style="display:none" onchange="agwFotoPick()">' +
+        '<button type="button" class="btn btn-ghost btn-sm" id="agw-fotos-btn" onclick="document.getElementById(\'agw-fotos-file\').click()">📷 Adjuntar fotos (opcional, hasta 3)</button>' +
+        '<div id="agw-fotos-tira" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>';
+      st.appendChild(box);
+    }
+    var tira = E('agw-fotos-tira');
+    tira.innerHTML = _fotos.map(function (d, i) {
+      return '<div style="position:relative"><img src="' + d + '" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--bor)">' +
+        '<button type="button" onclick="agwFotoQuitar(' + i + ')" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:0;background:#da3633;color:#fff;font-size:12px;line-height:20px;padding:0;cursor:pointer">✕</button></div>';
+    }).join('');
+    var b = E('agw-fotos-btn'); if (b) b.textContent = _fotos.length ? ('📷 ' + _fotos.length + ' foto' + (_fotos.length > 1 ? 's' : '') + (_fotos.length < MAX_FOTOS ? ' · agregar otra' : ' (máximo)')) : '📷 Adjuntar fotos (opcional, hasta 3)';
+  }
+  function fotosResumen() { fotosPintar(); try { if (AGW.steps[AGW.idx] === 'confirmar') agwSummary(); } catch (e) {} }
+  W.agwFotoQuitar = function (i) { _fotos.splice(i, 1); fotosResumen(); };
+  W.agwFotoPick = function () {
+    var input = E('agw-fotos-file'); var files = input && input.files ? Array.prototype.slice.call(input.files) : [];
+    files.slice(0, MAX_FOTOS - _fotos.length).forEach(function (file) {
+      var rd = new FileReader();
+      rd.onload = function () {
+        var img = new Image();
+        img.onload = function () {
+          var data = comprimir(img, 900, 0.7); if (data.length > 300000) data = comprimir(img, 640, 0.55);
+          if (_fotos.length < MAX_FOTOS) _fotos.push(data);
+          fotosResumen();
+        };
+        img.src = rd.result;
+      };
+      rd.readAsDataURL(file);
+    });
+    if (input) input.value = '';
+  };
+
+  /* ── ③ el formulario del insumo agro: categoría, semillas, principio activo ── */
+  var PA_SUGERIDOS = [
+    'Glifosato (sal potásica) 62%', 'Glifosato 48% SL', 'Glifosato 66,2% (sal potásica)', 'Paraquat 20%', '2,4-D amina 72%', 'Atrazina 50%', 'Atrazina 90% WG',
+    'Clethodim 24%', 'Haloxifop-R-metil 54%', 'Fomesafen 25%', 'Imazetapir 10%', 'Metsulfuron metil 60%', 'Glufosinato de amonio 20%',
+    'Sulfentrazone 50%', 'Diclosulam 84%', 'Flumioxazin 48%', 'Dicamba 48%', 'Picloram 24%', 'Saflufenacil 70%', 'Clomazone 48%',
+    'Cipermetrina 25%', 'Lambdacialotrina 5%', 'Clorpirifos 48%', 'Imidacloprid 35%', 'Imidacloprid 70% WG', 'Tiametoxam 25% WG', 'Tiametoxam + Lambdacialotrina',
+    'Acetamiprid 20%', 'Metomil 90%', 'Emamectina benzoato 5%', 'Lufenuron 5%', 'Bifentrina 10%', 'Clorantraniliprole 20%', 'Fipronil 20% SC', 'Spinosad 48%',
+    'Azoxistrobina 25%', 'Azoxistrobina + Ciproconazol', 'Tebuconazol 43%', 'Carbendazim 50%', 'Mancozeb 80%', 'Trifloxistrobina + Protioconazol',
+    'Piraclostrobina + Epoxiconazol', 'Picoxistrobina + Ciproconazol', 'Difenoconazol 25%', 'Azufre 80%',
+    'Tiametoxam 35% FS', 'Fipronil 25% FS', 'Imidacloprid 60% FS', 'Carbendazim + Tiram', 'Fludioxonil + Metalaxil-M', 'Piraclostrobina + Tiofanato + Fipronil',
+    'Aceite mineral 85%', 'Nonilfenol etoxilado', 'Bradyrhizobium japonicum (inoculante)', 'Azospirillum brasilense'
+  ];
+  var MARCA_A_PA = { interglifo: 'Glifosato (sal potásica) 62%', roundup: 'Glifosato 48% SL', gramoxone: 'Paraquat 20%', actara: 'Tiametoxam 25% WG',
+    engeo: 'Tiametoxam + Lambdacialotrina', karate: 'Lambdacialotrina 5%', lorsban: 'Clorpirifos 48%', coragen: 'Clorantraniliprole 20%', regent: 'Fipronil 20% SC',
+    amistar: 'Azoxistrobina 25%', 'priori xtra': 'Azoxistrobina + Ciproconazol', folicur: 'Tebuconazol 43%', fox: 'Trifloxistrobina + Protioconazol', opera: 'Piraclostrobina + Epoxiconazol',
+    'aproach prima': 'Picoxistrobina + Ciproconazol', cruiser: 'Tiametoxam 35% FS', standak: 'Fipronil 25% FS', 'standak top': 'Piraclostrobina + Tiofanato + Fipronil',
+    gaucho: 'Imidacloprid 60% FS', 'maxim xl': 'Fludioxonil + Metalaxil-M', 'derosal plus': 'Carbendazim + Tiram', select: 'Clethodim 24%', verdict: 'Haloxifop-R-metil 54%',
+    flex: 'Fomesafen 25%', pivot: 'Imazetapir 10%', ally: 'Metsulfuron metil 60%', basta: 'Glufosinato de amonio 20%', boral: 'Sulfentrazone 50%', spider: 'Diclosulam 84%',
+    sumisoya: 'Flumioxazin 48%', banvel: 'Dicamba 48%', heat: 'Saflufenacil 70%', gamit: 'Clomazone 48%' };
+  function formInsumoArmar() {
+    if (E('agi-cat')) return true;
+    var uni = E('agi-unidad'); if (!uni) return false;
+    var frow = uni.closest('.frow'); if (!frow || !frow.parentNode) return false;
+    var bloque = document.createElement('div');
+    bloque.id = 'agi-extra';
+    bloque.innerHTML =
+      '<div class="frow">' +
+        '<div><label class="form-label">Categoría</label><select class="form-input" id="agi-cat" onchange="agiCatCambio()"><option value="">Sin categoría</option>' +
+          AGC.TODAS_AGRO.map(function (c) { return '<option value="' + esc(c) + '">' + esc(c) + '</option>'; }).join('') + '</select></div>' +
+        '<div id="agi-pa-box"><label class="form-label">Principio activo <span style="color:var(--muted);font-weight:400;font-size:11px">(sugerido — verificá la etiqueta)</span></label>' +
+          '<input class="form-input" id="agi-pa" list="agi-pa-list" placeholder="Ej: Glifosato (sal potásica) 62%" autocomplete="off"></div>' +
+      '</div>' +
+      '<div class="frow" id="agi-sem-box" style="display:none">' +
+        '<div><label class="form-label">Cultivo</label><select class="form-input" id="agi-subcat">' + SUBCATS_SEMILLA.map(function (s) { return '<option value="' + esc(s) + '">' + esc(s) + '</option>'; }).join('') + '</select></div>' +
+        '<div><label class="form-label">Proveedor / marca</label><input class="form-input" id="agi-prov" placeholder="Ej: Dekalb, Syngenta"></div>' +
+      '</div>';
+    frow.parentNode.insertBefore(bloque, frow.nextSibling);
+    if (!E('agi-pa-list')) { var dl = document.createElement('datalist'); dl.id = 'agi-pa-list'; dl.innerHTML = PA_SUGERIDOS.map(function (s) { return '<option value="' + esc(s) + '">'; }).join(''); document.body.appendChild(dl); }
+    var nom = E('agi-nombre'), pa = E('agi-pa');
+    if (nom && pa && !nom.__v228) {
+      nom.__v228 = true;
+      nom.addEventListener('input', function () {
+        if (pa.value) return;
+        var n = String(nom.value || '').toLowerCase().trim();
+        var k = Object.keys(MARCA_A_PA).find(function (m) { return n === m || n.indexOf(m + ' ') === 0; });
+        if (k) pa.value = MARCA_A_PA[k];
+      });
+    }
+    return true;
+  }
+  W.agiCatCambio = function () {
+    var cat = (E('agi-cat') || {}).value || '';
+    var esSem = cat === 'Semillas';
+    var sb = E('agi-sem-box'); if (sb) sb.style.display = esSem ? '' : 'none';
+    var pb = E('agi-pa-box'); if (pb) pb.style.visibility = esSem ? 'hidden' : '';
+    if (esSem) { var u = E('agi-unidad'); if (u) u.value = 'kg'; }
+  };
+  agInsumoFormReset = (function (base) { return function () {
+    base.apply(this, arguments);
+    if (!formInsumoArmar()) return;
+    E('agi-cat').value = ''; E('agi-pa').value = ''; E('agi-prov').value = ''; E('agi-subcat').value = SUBCATS_SEMILLA[0];
+    W.agiCatCambio();
+  }; })(agInsumoFormReset);
+  agEditInsumo = (function (base) { return function (id) {
+    base.apply(this, arguments);
+    if (/^S/.test(String(id)) || !formInsumoArmar()) return;
+    var rec = agById((typeof db !== 'undefined' && db && db.agro_insumos) || [], id); if (!rec) return;
+    E('agi-cat').value = rec.categoria || '';
+    if (E('agi-cat').value !== (rec.categoria || '')) { /* categoría que no está en la lista */ var o = document.createElement('option'); o.value = rec.categoria; o.textContent = rec.categoria; E('agi-cat').appendChild(o); E('agi-cat').value = rec.categoria; }
+    E('agi-pa').value = rec.principio_activo || '';
+    E('agi-prov').value = rec.proveedor || '';
+    E('agi-subcat').value = rec.subcategoria || SUBCATS_SEMILLA[0];
+    W.agiCatCambio();
+  }; })(agEditInsumo);
+  agSaveInsumo = (function (base) { return function () {
+    if (!formInsumoArmar()) return base.apply(this, arguments);
+    var id = E('agi-id').value;
+    var arr = (typeof db !== 'undefined' && db && db.agro_insumos) || [];
+    var antes = arr.length;
+    var cat = E('agi-cat').value || '', esSem = cat === 'Semillas';
+    var extra = { categoria: cat, principio_activo: esSem ? '' : String(E('agi-pa').value || '').trim(),
+                  subcategoria: esSem ? (E('agi-subcat').value || '') : '', proveedor: esSem ? String(E('agi-prov').value || '').trim() : '' };
+    base.apply(this, arguments);
+    var rec = null;
+    if (id && !/^S/.test(String(id))) rec = agById(arr, id);
+    else if (arr.length > antes) rec = arr[arr.length - 1];
+    if (!rec) return;
+    rec.categoria = extra.categoria; rec.principio_activo = extra.principio_activo;
+    if (esSem) { rec.subcategoria = extra.subcategoria; rec.proveedor = extra.proveedor; } else { delete rec.subcategoria; delete rec.proveedor; }
+    rec.updated_at = new Date().toISOString();
+    try { agSaveDB(); } catch (e) {}
+    try { agRenderInsumos(); } catch (e) {}
+  }; })(agSaveInsumo);
+  agOpenInsumos = (function (base) { return function () { var r = base.apply(this, arguments); try { formInsumoArmar(); W.agiCatCambio(); } catch (e) {} return r; }; })(agOpenInsumos);
+
+
+  /* re-exportar lo que el HTML y las capas de afuera llaman por window.* */
+  window.agwAddInsumo = agwAddInsumo; window.agwLeerInsumos = agwLeerInsumos; window.agwFinish = agwFinish;
+  window.agwSetTipo = agwSetTipo; window.agwOpen = agwOpen; window.agGetDB = agGetDB;
+  window.agSaveInsumo = agSaveInsumo; window.agEditInsumo = agEditInsumo; window.agInsumoFormReset = agInsumoFormReset; window.agOpenInsumos = agOpenInsumos;
+  try { console.log('%c[EP Desktop v1.8.228] agro: catálogo por actividad · trat. de semilla · semillas con cultivo/proveedor · siembra con stock general · fotos', 'color:#3fb950;font-weight:bold'); } catch (e) {}
+})();
+/*__V228_AGRO_END__*/
 })();
 </script>
 
@@ -56976,6 +57429,142 @@ try {
   setTimeout(function () { try { pintar(); } catch (e) {} }, 600);
 
   try { console.log('%c[EP Desktop v1.8.222] 🧪 Stock Agro con buscador y acordeón · kill: __STK222_OFF', 'color:#3fb950;font-weight:bold'); } catch (e) {}
+})();
+</script>
+
+<script id="agro-v228-general">
+/* ═══════════════════════════════════════════════════════════════════════════
+   EP Desktop v1.8.228 (parte general) — mantenimiento, repuestos con código, stock agro
+   ---------------------------------------------------------------------------
+   ① CATÁLOGO POR ACTIVIDAD en el wizard de labores y en mantenimiento (regla
+      compartida cat-actividad.js). Con escape "ver todo el stock".
+   ② TRATAMIENTO DE SEMILLA como tipo de labor: sin paso de recursos, cantidad
+      TOTAL fija (el server 4.68.0 la resuelve igual, mande lo que mande).
+   ③ STOCK AGRO: el formulario de insumo por fin tiene categoría (con Semillas →
+      cultivo + proveedor) y principio activo con sugerencias. Antes el Desktop
+      creaba insumos sin categoría y EP Agro los mostraba en "Sin categoría".
+   ④ SIEMBRA: además de semillas, aceites y repuestos del stock general, en
+      cantidad total (un aceite no se dosifica por ha). Y fotos en la labor.
+   ⑤ REPUESTOS: código y subtipo (filtro de aire, de aceite, hidráulico, diesel…)
+      en el producto del stock, visibles al elegirlo en mantenimiento.
+
+   Kill switch: window.__V228_OFF = true
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function v228general() {
+  if (window.__V228_OFF) return;
+  var AGC = window.AG_CAT;
+  if (!AGC) return;
+  var W = window;
+  var E = function (id) { return document.getElementById(id); };
+  var SUBTIPOS_REPUESTO = [['', '— sin subtipo —'], ['filtro_aire_motor', 'Filtro de aire motor'], ['filtro_aceite_motor', 'Filtro de aceite motor'],
+    ['filtro_hidraulico', 'Filtro de aceite hidráulico'], ['filtro_diesel', 'Filtro de diesel'], ['manguera', 'Manguera'], ['correa', 'Correa'], ['rodamiento', 'Rodamiento'], ['otro', 'Otro']];
+
+  /* ── el catálogo unificado, con lo que la regla necesita saber ──────── */
+  if (typeof W.v176CatalogoInsumos === 'function') {
+    W.v176CatalogoInsumos = (function (base) { return function (legacy) {
+      var out = base(legacy);
+      var prods = (typeof db !== 'undefined' && db && db.products) || [];
+      out.forEach(function (it) {
+        if (!it || !it._stock || it.tipo) return;
+        var p = prods.find(function (x) { return x && 'S' + x.id === String(it.id); });
+        if (p) { it.tipo = p.type || ''; it.codigo = p.codigo || ''; it.subtipo = p.subtipo || ''; if (p.principio_activo) it.principio_activo = p.principio_activo; }
+      });
+      return out;
+    }; })(W.v176CatalogoInsumos);
+  }
+  /* la lista del stock agro (stk222) muestra el principio activo en gris: para las
+     semillas ahí va cultivo · proveedor, y el ícono de la categoría es 🌽 */
+  function decorarSemillas() {
+    var host = E('stk222'); if (!host) return;
+    var arr = (typeof db !== 'undefined' && db && db.agro_insumos) || [];
+    var sem = {}; arr.forEach(function (i) { if (i && String(i.categoria || '') === 'Semillas') sem[String(i.nombre || '').trim()] = i; });
+    if (!Object.keys(sem).length) return;
+    host.querySelectorAll('.s-r .nm').forEach(function (nm) {
+      var b = nm.querySelector('b'); if (!b) return;
+      var i = sem[b.textContent.trim()]; if (!i || nm.querySelector('span')) return;
+      var txt = [i.subcategoria, i.proveedor].filter(Boolean).join(' · '); if (!txt) return;
+      var sp = document.createElement('span'); sp.textContent = txt; nm.appendChild(sp);
+    });
+    host.querySelectorAll('.s-gh').forEach(function (h) { if (/📦\s*Semillas/.test(h.textContent)) h.innerHTML = h.innerHTML.replace('📦', '🌽'); });
+  }
+  if (typeof W.stk222Pintar === 'function') W.stk222Pintar = (function (base) { return function () { base.apply(this, arguments); try { decorarSemillas(); } catch (e) {} }; })(W.stk222Pintar);
+  if (typeof W.l219Repintar === 'function') W.l219Repintar = (function (base) { return function () { base.apply(this, arguments); try { decorarSemillas(); } catch (e) {} }; })(W.l219Repintar);
+  setTimeout(function () { try { decorarSemillas(); } catch (e) {} }, 900);
+  /* ── ① mantenimiento: sólo aceites, repuestos y herramientas ─────────── */
+  W._mntVerTodo = false;
+  if (typeof _mntProductsAvailable === 'function') {
+    _mntProductsAvailable = (function (base) { return function () {
+      var todos = base.apply(this, arguments);
+      return AGC.filtrar('mantenimiento', todos, !!W._mntVerTodo);
+    }; })(_mntProductsAvailable);
+  }
+  W.mntVerTodo = function () { W._mntVerTodo = !W._mntVerTodo; try { renderMntStockRows(); } catch (e) {} };
+  if (typeof renderMntStockRows === 'function') {
+    renderMntStockRows = (function (base) { return function () {
+      base.apply(this, arguments);
+      try {
+        var list = E('mnt-stock-items-list'); if (!list) return;
+        /* código del repuesto en la opción */
+        var prods = (typeof db !== 'undefined' && db && db.products) || [];
+        list.querySelectorAll('select option').forEach(function (o) {
+          var p = prods.find(function (x) { return String(x.id) === String(o.value); });
+          if (p && (p.codigo || p.subtipo) && o.textContent.indexOf('cód.') < 0) {
+            var ex = []; if (p.subtipo) ex.push(String(p.subtipo).replace(/_/g, ' ')); if (p.codigo) ex.push('cód. ' + p.codigo);
+            o.textContent = o.textContent + ' — ' + ex.join(' · ');
+          }
+        });
+        var addBtn = E('mnt-add-stock-row'); if (!addBtn || W.__AGCAT_OFF) return;
+        if (addBtn.style.display === 'none') { var t0 = E('mnt-vertodo'); if (t0) t0.style.display = 'none'; return; }
+        var t = E('mnt-vertodo');
+        if (!t) { t = document.createElement('button'); t.type = 'button'; t.id = 'mnt-vertodo'; t.className = 'btn btn-ghost btn-sm'; t.style.cssText = 'font-size:11px;padding:4px 10px;margin-left:6px'; t.onclick = W.mntVerTodo; addBtn.parentNode.insertBefore(t, addBtn.nextSibling); }
+        t.style.display = ''; t.textContent = W._mntVerTodo ? '↩ Sólo aceites, repuestos y herramientas' : '🔎 Ver todo el stock';
+      } catch (e) {}
+    }; })(renderMntStockRows);
+  }
+
+  /* ── ⑤ código y subtipo en los repuestos del stock ───────────────────── */
+  function formProductoArmar() {
+    if (E('prod-codigo')) return true;
+    var sup = E('prod-supplier'); if (!sup) return false;
+    var grupo = sup.closest('.form-group'); if (!grupo || !grupo.parentNode) return false;
+    var caja = document.createElement('div'); caja.id = 'prod-rep-box'; caja.style.display = 'none';
+    caja.innerHTML = '<div class="form-group"><label class="form-label">Subtipo del repuesto</label><select class="form-input" id="prod-subtipo">' +
+        SUBTIPOS_REPUESTO.map(function (s) { return '<option value="' + s[0] + '">' + s[1] + '</option>'; }).join('') + '</select></div>' +
+      '<div class="form-group"><label class="form-label">Código <span style="color:var(--muted);font-weight:400;font-size:11px">(el que trae la caja o el catálogo)</span></label><input class="form-input" id="prod-codigo" placeholder="Ej: RE68048"></div>';
+    grupo.parentNode.insertBefore(caja, grupo.nextSibling);
+    var tipo = E('prod-type');
+    if (tipo && !tipo.__v228) { tipo.__v228 = true; tipo.addEventListener('change', formProductoVis); }
+    return true;
+  }
+  function formProductoVis() {
+    var tipo = (E('prod-type') || {}).value || '';
+    var caja = E('prod-rep-box'); if (caja) caja.style.display = (tipo === 'repuesto') ? '' : 'none';
+  }
+  if (typeof openNewProduct === 'function') openNewProduct = (function (base) { return function () { base.apply(this, arguments); if (formProductoArmar()) { E('prod-codigo').value = ''; E('prod-subtipo').value = ''; formProductoVis(); } }; })(openNewProduct);
+  if (typeof openEditProduct === 'function') openEditProduct = (function (base) { return function (id) {
+    base.apply(this, arguments);
+    if (!formProductoArmar()) return;
+    var p = ((typeof db !== 'undefined' && db && db.products) || []).find(function (x) { return x.id == id; }) || {};
+    E('prod-codigo').value = p.codigo || ''; E('prod-subtipo').value = p.subtipo || ''; formProductoVis();
+  }; })(openEditProduct);
+  if (typeof saveProduct === 'function') saveProduct = (function (base) { return function () {
+    var listo = formProductoArmar();
+    var editId = (typeof editingProductId !== 'undefined') ? editingProductId : null;
+    var arr = (typeof db !== 'undefined' && db && db.products) || [];
+    var antes = arr.length;
+    var tipo = (E('prod-type') || {}).value || '';
+    var extra = listo ? { codigo: tipo === 'repuesto' ? String(E('prod-codigo').value || '').trim() : '', subtipo: tipo === 'repuesto' ? (E('prod-subtipo').value || '') : '' } : null;
+    var r = base.apply(this, arguments);
+    if (!extra) return r;
+    var rec = null;
+    if (editId !== null && editId !== undefined) rec = arr.find(function (x) { return x.id == editId; });
+    else if (arr.length > antes) rec = arr[arr.length - 1];
+    if (!rec) return r;
+    if (extra.codigo || extra.subtipo || rec.codigo || rec.subtipo) { rec.codigo = extra.codigo; rec.subtipo = extra.subtipo; try { saveDB(); } catch (e) {} }
+    return r;
+  }; })(saveProduct);
+
+  try { console.log('%c[EP Desktop v1.8.228] general: mantenimiento filtrado · código de repuesto', 'color:#3fb950;font-weight:bold'); } catch (e) {}
 })();
 </script>
 
