@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* ═══════════════════════════════════════════════════════════════════════════
-   RED DE SEGURIDAD DEL UPLOAD (v1.8.226)
+   RED DE SEGURIDAD DEL UPLOAD (v1.8.229)
    ---------------------------------------------------------------------------
    Subir a GitHub es lo ÚLTIMO que hace electron-builder en un job que tarda
    entre 5 y 30 minutos, y es el tramo que más se cae. Ya van tres:
@@ -8,6 +8,11 @@
      v1.8.223  Mac      ⨯ Request timed out         (faltó latest-mac.yml)
      v1.8.224  Windows  ⨯ Request timed out         (.exe a medio subir)
      v1.8.225  Mac      ⨯ 500 "Error saving asset"  (uploads.github.com)
+     v1.8.226  Mac      ⨯ colgado en el último zip  (faltó latest-mac.yml)
+     v1.8.228  Mac      ⨯ 422 already_exists        (el blockmap del zip con ESPACIOS:
+                          GitHub lo guarda con puntos, el "overwrite" borra un nombre
+                          que no existe y el re-POST choca. Arreglado con artifactName
+                          literal en package.json — sin espacios no hay fantasma)
 
    Los 500 de uploads.github.com son de GitHub, no nuestros: "Error saving
    asset" y "Error creating asset temp dir". Contra eso sólo sirve reintentar
@@ -35,6 +40,10 @@
 
    3. Reintentos. Ver arriba: es literalmente la diferencia entre un release
       completo y uno roto.
+
+   5. NO RE-SUBIR LO QUE YA ESTÁ. Se le pregunta al release qué assets tiene y con
+      qué tamaño; lo que ya está entero se saltea. Antes se volvían a subir los
+      430 MB completos, con más chances de comerse otro 500 y otros 5 minutos.
 
    4. GENERAR EL latest*.yml SI FALTA. Este es el que nos mordió dos veces sin
       que se notara. electron-builder escribe el latest-mac.yml / latest.yml
@@ -182,14 +191,42 @@ function gh(args) {
   return { status: -1, error: ultimo };
 }
 
+/* qué tiene ya el release (nombre → tamaño). Si no se puede consultar, se sube todo. */
+function yaSubidos() {
+  const out = {};
+  try {
+    const cands = process.platform === 'win32' ? ['gh', 'gh.exe'] : ['gh'];
+    for (const bin of cands) {
+      const r = spawnSync(bin, ['release', 'view', tag, '--json', 'assets'], { encoding: 'utf8', shell: false });
+      if (r.error) { if (r.error.code === 'ENOENT') continue; break; }
+      if (r.status !== 0 || !r.stdout) break;
+      const j = JSON.parse(r.stdout);
+      (j.assets || []).forEach((a) => { if (a && a.name) out[a.name] = Number(a.size) || 0; });
+      break;
+    }
+  } catch (e) {}
+  return out;
+}
+const arriba = yaSubidos();
+const nArriba = Object.keys(arriba).length;
+if (nArriba) console.log('El release ya tiene ' + nArriba + ' asset(s): se sube sólo lo que falta o quedó a medias.');
+
 /* uno por uno: si uno se cae, los demás igual suben. Con reintentos, que para
    eso está — lo que falla es la red o GitHub, no el archivo.
    Los latest*.yml van AL FINAL: si un binario no logra subir, es preferible que
    el índice ni exista a que apunte a una URL que da 404. */
 const orden = subir.slice().sort((a, b) => (esLatest(path.basename(a)) ? 1 : 0) - (esLatest(path.basename(b)) ? 1 : 0));
 let fallados = [];
+let salteados = 0;
 orden.forEach((f) => {
   const nombre = path.basename(f);
+  /* ya está, y entero: no se toca. Los latest*.yml se suben siempre (son chicos y
+     pueden haber cambiado) */
+  if (!esLatest(nombre) && arriba[nombre] != null) {
+    let local = 0; try { local = fs.statSync(f).size; } catch (e) {}
+    if (local && arriba[nombre] === local) { salteados++; console.log('   = ' + nombre + ' (ya estaba, ' + kb(f) + ' KB)'); return; }
+    console.log('   ~ ' + nombre + ' está a medias arriba (' + Math.round(arriba[nombre] / 1024) + ' KB de ' + kb(f) + '): se reemplaza');
+  }
   let ok = false;
   for (let i = 1; i <= REINTENTOS && !ok; i++) {
     if (i > 1) console.log('   reintento ' + i + '/' + REINTENTOS + ' de ' + nombre);
@@ -207,5 +244,5 @@ if (fallados.length) {
   salir('\n⚠ Quedaron sin subir: ' + fallados.join(', ') +
     '\n  El release está INCOMPLETO. Revisá el job antes de anunciar la versión.');
 }
-salir('\n✅ ' + subir.length + ' asset(s) subidos: el release quedó completo SIN rebuildear.' +
+salir('\n✅ ' + (subir.length - salteados) + ' asset(s) subidos' + (salteados ? ' (' + salteados + ' ya estaban)' : '') + ': el release quedó completo SIN rebuildear.' +
   '\n   El job igual queda rojo a propósito — revisá por qué se cortó el publish.');

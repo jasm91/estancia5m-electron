@@ -1,6 +1,6 @@
 {
   "name": "estancia5m",
-  "version": "1.8.228",
+  "version": "1.8.229",
   "description": "Sistema de Gestión Ganadera — Estancia 5M",
   "main": "main.js",
   "scripts": {
@@ -50,7 +50,8 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "notarize": true
+      "notarize": true,
+      "artifactName": "Estancia-Pro-${version}-${arch}.${ext}"
     },
     "dmg": {
       "title": "Estancia Pro",
@@ -66,7 +67,8 @@
           ]
         }
       ],
-      "icon": "assets/icon.ico"
+      "icon": "assets/icon.ico",
+      "artifactName": "Estancia-Pro-Setup-${version}.${ext}"
     },
     "files": [
       "main.js",
