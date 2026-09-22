@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.229';
+window.E5M_HTML_BUILD = '1.8.230';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -43974,7 +43974,7 @@ function loteLabores(d,cid,pid){ return d.labores.filter(function(l){ return l&&
 /* costo de UN lote: labores del lote + servicios asignados al lote + prorrateo por ha de los asignados a toda la campaña */
 function loteCosto(d,cid,pid){
   var t={ins:0,diesel:0,mo:0,maq:0,serv:0,total:0,n:0};
-  var c=agById(d.campanas,cid); var haC=c?campHa(d,c):0, haL=loteHa(d,pid);
+  var c=agById(d.campanas,cid); var haC=c?campHa(d,c):0, haL=loteHa(d,pid,c); /* v1.8.230: la parte de la campaña */
   d.labores.forEach(function(l){
     if(!l||String(l.campana_id)!==String(cid)) return;
     if(l.tipo==='servicio_ext'){
@@ -44438,7 +44438,7 @@ function agwLotesRender(){
     var on=AGW.lotes.some(function(x){return String(x)===String(p.id);});
     var est=c?loteEstado(d,c.id,p.id):'planificada';
     var t=document.createElement('div'); t.className='agw-tile'+(on?' sel':''); t.setAttribute('data-lote',p.id);
-    t.innerHTML='🧭<br><b>'+escA(p.code)+'</b><br><span style="font-size:11px;color:var(--muted)">'+fmtA(p.ha,1)+' ha · '+loteEstadoTxt(est)+'</span>';
+    var _hp=c?loteHa(d,p.id,c):(Number(p.ha)||0); t.innerHTML='🧭<br><b>'+escA(p.code)+'</b><br><span style="font-size:11px;color:var(--muted)">'+(_hp<(Number(p.ha)||0)?'<b>'+fmtA(_hp,1)+' ha</b> de '+fmtA(p.ha,1):fmtA(p.ha,1)+' ha')+' · '+loteEstadoTxt(est)+'</span>'; /* v1.8.230 */
     if(AGW.loteLock){ if(!on) t.style.opacity='.35'; t.style.cursor='default'; }
     else t.onclick=function(){ agwLoteToggle(p.id); };
     wrap.appendChild(t);
@@ -44563,7 +44563,7 @@ function agwSummary(){
   var d=agGetDB(), r=agwLeerInsumos();
   var cid=agEl('agw-campana').value, c=agById(d.campanas,cid);
   var l=agwBuildLabor(r); var cost=laborCosto(l);
-  var _lotesTxt=AGW.lotes.map(function(pid){ var p=agById(d.parcelas,pid); return p?escA(p.code)+' '+fmtA(p.ha,1)+' ha':'?'; }).join(' · '); /* v1.8.217 */
+  var _lotesTxt=AGW.lotes.map(function(pid){ var p=agById(d.parcelas,pid); if(!p)return '?'; var _hp=loteHa(d,p.id,c); return escA(p.code)+' '+fmtA(_hp,1)+' ha'+(_hp<(Number(p.ha)||0)-0.001?' de '+fmtA(p.ha,1):''); }).join(' · '); /* v1.8.217 · v1.8.230: la parte */
   var htm='<b>'+LABOR_TIPOS[AGW.tipo]+'</b> — '+(c?escA((c.cultivo||'')+' '+(c.ciclo==='verano'?'Verano':'Invierno')+' '+c.anio):'?')+'<br>🧭 <b>'+(AGW.lotes.length>1?AGW.lotes.length+' lotes':'Lote')+':</b> '+_lotesTxt+' ('+fmtA(r.ha,1)+' ha)'+(AGW.lotes.length>1?' → <b>'+AGW.lotes.length+' labores</b>, cada una con las ha de su lote':'')+'<br>'+
     '📅 '+agFecha(l.fecha)+' · 👤 '+escA(l.resp||'—')+(AGW.mode==='plan'?' · <span class="pill a">PLANIFICADA</span>':'')+'<br>';
   if(AGW.tipo==='cosecha'&&l.cosecha){ htm+='🌾 '+fmtA(l.cosecha.kg)+' kg ('+fmtA(r.ha?l.cosecha.kg/1000/r.ha:0,2)+' t/ha) · humedad '+(l.cosecha.hum||'—')+'% · ingreso Bs '+fmtA((l.cosecha.kg/1000)*(l.cosecha.precio||0))+'<br>'; }
@@ -44576,7 +44576,7 @@ function agwBuildLabor(r,pid){
   var _d=agGetDB(); var _pid=(pid!=null)?pid:(AGW.lotes.length===1?AGW.lotes[0]:null); var _p=_pid!=null?agById(_d.parcelas,_pid):null; /* v1.8.217 */
   return {
     campana_id:Number(agEl('agw-campana').value),
-    parcela_id:_p?_p.id:(_pid!=null?_pid:null), parcela_codigo:_p?_p.code:'', ha:_p?(Number(_p.ha)||0):(r&&r.ha||0),
+    parcela_id:_p?_p.id:(_pid!=null?_pid:null), parcela_codigo:_p?_p.code:'', ha:_p?loteHa(_d,_p.id,agById(_d.campanas,agEl('agw-campana').value)):(r&&r.ha||0), /* v1.8.230 */
     tipo:AGW.tipo,
     estado:AGW.mode==='plan'?'planificada':'ejecutada',
     fecha:agEl('agw-fecha').value,
@@ -44598,9 +44598,9 @@ function agwFinish(){
   /* v1.8.217: UNA LABOR POR LOTE — insumos re-dosificados con las ha de cada lote */
   var creadas=[], totalCost=0, totalHa=0;
   AGW.lotes.forEach(function(pid,idx){
-    var rl=agwLeerInsumos(loteHa(d,pid)); var data=agwBuildLabor(rl,pid);
+    var _cw=agById(d.campanas,agEl('agw-campana').value); var rl=agwLeerInsumos(loteHa(d,pid,_cw)); var data=agwBuildLabor(rl,pid); /* v1.8.230 */
     if(!data.campana_id||!data.fecha||!AGW.tipo){ return; }
-    if(AGW.lotes.length>1){ var _fr=agwLotesHa()>0?loteHa(d,pid)/agwLotesHa():1/AGW.lotes.length; /* máquina y diésel se reparten por ha entre los lotes */
+    if(AGW.lotes.length>1){ var _fr=agwLotesHa()>0?loteHa(d,pid,_cw)/agwLotesHa():1/AGW.lotes.length; /* máquina y diésel se reparten por ha entre los lotes */
       data.hmaq=Math.round((data.hmaq||0)*_fr*100)/100; data.diesel=Math.round((data.diesel||0)*_fr*100)/100; data.mo_h=Math.round((data.mo_h||0)*_fr*100)/100; }
     data.updated_at=new Date().toISOString();
     if(AGW.execId&&idx===0){
@@ -46512,6 +46512,127 @@ document.addEventListener('click', function(ev){
   try { console.log('%c[EP Desktop v1.8.228] agro: catálogo por actividad · trat. de semilla · semillas con cultivo/proveedor · siembra con stock general · fotos', 'color:#3fb950;font-weight:bold'); } catch (e) {}
 })();
 /*__V228_AGRO_END__*/
+/*__V230_AGRO_START__*/
+/* ═══ v1.8.230 — PARTIR LAS HECTÁREAS DE UNA PARCELA ENTRE CAMPAÑAS (José 22-09), espejo de EP Agro 1.6.4
+   "San Sebastián bloque 2: la mitad sésamo y la otra mitad otra semilla."
+   campana.lotes[parcela_id].ha = la parte de esa campaña; si falta, la parcela entera (las campañas
+   viejas no cambian). loteHa(d, pid, campana) gana el tercer parámetro; campHa suma las partes;
+   el wizard dosifica, reparte y costea sobre la parte. Adentro del IIFE porque estos helpers son
+   privados del closure. Kill switch: window.__V230_OFF = true ═══ */
+(function v230agro() {
+  if (window.__V230_OFF) return;
+  var r2 = function (n) { return Math.round((Number(n) || 0) * 100) / 100; };
+  var E = function (id) { return document.getElementById(id); };
+
+  function campDe(d, c) { return (c && typeof c === 'object') ? c : (c != null && c !== '' ? agById(d.campanas, c) : null); }
+  function haParcela(d, pid) { var p = agById(d.parcelas, pid); return p ? Number(p.ha) || 0 : 0; }
+  loteHa = function (d, pid, c) {
+    var camp = campDe(d, c);
+    if (camp) {
+      var L = camp.lotes && typeof camp.lotes === 'object' && !Array.isArray(camp.lotes) ? camp.lotes[String(pid)] : null;
+      var h = L ? Number(L.ha) : 0;
+      if (h > 0) return h;
+    }
+    return haParcela(d, pid);
+  };
+  campHa = function (d, c) { if (!c) return 0; var t = 0; agCampIds(c).forEach(function (pid) { t += loteHa(d, pid, c); }); return r2(t); };
+  laborHa = function (d, l) {
+    if (!l) return 0;
+    var p = laborParcela(d, l);
+    if (p) return loteHa(d, p.id, l.campana_id);
+    var c = agById(d.campanas, l && l.campana_id); return c ? campHa(d, c) : 0;
+  };
+  agwLotesHa = function () { var d = agGetDB(); var c = agById(d.campanas, agEl('agw-campana').value); return AGW.lotes.reduce(function (s, pid) { return s + loteHa(d, pid, c); }, 0); };
+
+  function haOcupadas(d, pid, ciclo, anio, exceptoId) {
+    var t = 0, quien = [];
+    (d.campanas || []).forEach(function (c) {
+      if (!c || c.estado === 'cosechada') return;
+      if (exceptoId != null && exceptoId !== '' && String(c.id) === String(exceptoId)) return;
+      if (String(c.ciclo || '') !== String(ciclo || '') || String(c.anio || '') !== String(anio || '')) return;
+      if (!agCampIds(c).some(function (x) { return String(x) === String(pid); })) return;
+      var h = loteHa(d, pid, c); t += h; quien.push((c.cultivo || '?') + ' ' + fmtA(h, 1) + ' ha');
+    });
+    return { ha: r2(t), quien: quien };
+  }
+
+  /* ── el modal de campaña: cuántas ha de cada parcela ─────────────────── */
+  var HA = {};   /* pid → ha en el modal abierto */
+  function cajaHa() {
+    var info = E('agc-parcela-ha'); if (!info) return null;
+    var box = E('agc-ha-box');
+    if (!box) { box = document.createElement('div'); box.id = 'agc-ha-box'; box.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:8px'; info.parentNode.insertBefore(box, info.nextSibling); }
+    return box;
+  }
+  function seleccion() { var sel = E('agc-parcela'); return sel ? Array.prototype.filter.call(sel.options, function (o) { return o.selected; }).map(function (o) { return o.value; }) : []; }
+  function pintarHa() {
+    var box = cajaHa(); if (!box) return;
+    var d = agGetDB(), id = (E('agc-id') || {}).value || '';
+    var ciclo = (E('agc-ciclo') || {}).value || '', anio = String((E('agc-anio') || {}).value || '').trim();
+    var c = id ? agById(d.campanas, id) : null;
+    var sel = seleccion();
+    box.innerHTML = sel.map(function (pid) {
+      var tot = haParcela(d, pid), p = agById(d.parcelas, pid);
+      var oc = haOcupadas(d, pid, ciclo, anio, id);
+      var libre = r2(Math.max(0, tot - oc.ha));
+      if (HA[pid] == null) { var actual = c ? loteHa(d, pid, c) : 0; HA[pid] = c && actual > 0 ? actual : (libre > 0 && libre < tot ? libre : tot); }
+      return '<div style="display:flex;align-items:center;gap:8px;font-size:12px">' +
+        '<div style="flex:1;min-width:0"><b>' + escA(p ? p.code : pid) + '</b> <span style="color:var(--muted)">· ' + fmtA(tot, 1) + ' ha' +
+          (oc.ha > 0 ? ' · ya usadas ' + fmtA(oc.ha, 1) + ' (' + escA(oc.quien.join(', ')) + ')' : '') + '</span></div>' +
+        '<input class="form-input" type="number" min="0" max="' + tot + '" step="0.1" style="width:90px;text-align:right" value="' + HA[pid] + '" oninput="agcHaInput(\'' + escA(pid) + '\',this.value)"><span style="color:var(--muted)">ha</span></div>';
+    }).join('');
+    totalHa();
+  }
+  function totalHa() {
+    var info = E('agc-parcela-ha'); if (!info) return;
+    var sel = seleccion(), t = 0; sel.forEach(function (pid) { t += Number(HA[pid]) || 0; });
+    var d = agGetDB();
+    info.textContent = sel.length ? (sel.length + ' parcela' + (sel.length === 1 ? '' : 's') + ' · ' + sel.map(function (pid) { var p = agById(d.parcelas, pid); return p ? p.code : pid; }).join(' + ') + ' · ' + fmtA(t, 1) + ' ha en esta campaña') : 'Elegí al menos una parcela';
+  }
+  window.agcHaInput = function (pid, v) { HA[pid] = parseFloat(v) || 0; totalHa(); };
+  /* en setTimeout(0): el listener de v1.8.216 (haSel) corre después y pisaría la línea de total */
+  document.addEventListener('change', function (e) { if (e.target && (e.target.id === 'agc-parcela' || e.target.id === 'agc-ciclo' || e.target.id === 'agc-anio')) { setTimeout(function () { try { pintarHa(); } catch (er) {} }, 0); } });
+  agOpenCampana = (function (base) { return function () { HA = {}; base.apply(this, arguments); setTimeout(function () { try { pintarHa(); } catch (e) {} }, 40); }; })(agOpenCampana);
+  agSaveCampana = (function (base) { return function () {
+    var d0 = agGetDB(), id = (E('agc-id') || {}).value || '';
+    var sel = seleccion();
+    var ciclo = (E('agc-ciclo') || {}).value || '', anio = String((E('agc-anio') || {}).value || '').trim();
+    for (var i = 0; i < sel.length; i++) {
+      var pid = sel[i], tot = haParcela(d0, pid), h = Number(HA[pid] != null ? HA[pid] : tot), code = (agById(d0.parcelas, pid) || {}).code || pid;
+      if (!(h > 0)) { agToast('Poné las hectáreas de ' + code, 'error'); return; }
+      if (h > tot + 0.001) { agToast(code + ' tiene ' + fmtA(tot, 1) + ' ha, no ' + fmtA(h, 1), 'error'); return; }
+      var oc = haOcupadas(d0, pid, ciclo, anio, id);
+      if (oc.ha + h > tot + 0.001 && !confirm(code + ': ' + fmtA(oc.ha, 1) + ' ha ya están en ' + oc.quien.join(' y ') + ' y quedan ' + fmtA(Math.max(0, tot - oc.ha), 1) + '. ¿Guardás igual con ' + fmtA(h, 1) + '?')) return;
+    }
+    var antes = (d0.campanas || []).length;
+    /* la base pregunta por el solape de parcelas: con hectáreas partidas es lo buscado y ya se validó */
+    var _confirm = window.confirm;
+    window.confirm = function (msg) { return /Ya hay una campaña con alguna de esas parcelas/.test(String(msg)) ? true : _confirm(msg); };
+    try { base.apply(this, arguments); } finally { window.confirm = _confirm; }
+    var d = agGetDB(), c = null;
+    if (id) c = agById(d.campanas, id); else if ((d.campanas || []).length > antes) c = d.campanas[d.campanas.length - 1];
+    if (!c) return;
+    var lotes = c.lotes && typeof c.lotes === 'object' && !Array.isArray(c.lotes) ? c.lotes : {};
+    var cambio = false;
+    sel.forEach(function (pid) {
+      var tot = haParcela(d, pid), h = Number(HA[pid] != null ? HA[pid] : tot);
+      var k = String(pid); lotes[k] = lotes[k] || {};
+      if (h > 0 && h < tot) { if (lotes[k].ha !== r2(h)) { lotes[k].ha = r2(h); cambio = true; } }
+      else if (lotes[k].ha != null) { delete lotes[k].ha; cambio = true; }
+    });
+    if (!cambio) return;
+    c.lotes = lotes; c.updated_at = new Date().toISOString();
+    try { agSaveDB(); } catch (e) {}
+    try { agRenderAll(); } catch (e) {}
+  }; })(agSaveCampana);
+
+  window.loteHa = loteHa; window.campHa = campHa; window.laborHa = laborHa; window.agwLotesHa = agwLotesHa;
+  window.agOpenCampana = agOpenCampana; window.agSaveCampana = agSaveCampana; window.loteHaOcupadas = function (pid, ciclo, anio, exc) { return haOcupadas(agGetDB(), pid, ciclo, anio, exc); };
+  /* el calendario/labores (v1.8.177) capturaron campHa al exportar __v177H: que vean la versión partida */
+  try { if (window.__v177H) window.__v177H.campHa = campHa; } catch (e) {}
+  try { console.log('%c[EP Desktop v1.8.230] hectáreas por campaña: una parcela se puede partir entre cultivos', 'color:#3fb950;font-weight:bold'); } catch (e) {}
+})();
+/*__V230_AGRO_END__*/
 })();
 </script>
 
@@ -56667,7 +56788,7 @@ try {
   function haSembradasReales(d) {
     var s = 0;
     (d.campanas || []).filter(function (c) { return c.estado === 'en_curso'; }).forEach(function (c) {
-      ids(c).forEach(function (pid) { if (H.loteSembrado(d, c.id, pid)) s += H.loteHa(d, pid); });
+      ids(c).forEach(function (pid) { if (H.loteSembrado(d, c.id, pid)) s += H.loteHa(d, pid, c); }); /* v1.8.230 */
     });
     return s;
   }
@@ -56679,7 +56800,7 @@ try {
     (d.campanas || []).filter(function (c) { return c.estado !== 'cosechada'; }).forEach(function (c) {
       ids(c).forEach(function (pid) {
         usadas[String(pid)] = 1;
-        if (H.loteEstado(d, c.id, pid) === 'preparacion') enPrep += H.loteHa(d, pid);
+        if (H.loteEstado(d, c.id, pid) === 'preparacion') enPrep += H.loteHa(d, pid, c);
       });
     });
     (d.parcelas || []).forEach(function (p) { if (!usadas[String(p.id)]) libres += Number(p.ha) || 0; });
@@ -57197,7 +57318,7 @@ try {
           });
           if (multiL) ordL.sort(function (a, b) { var ia = ids.map(String).indexOf(a), ib = ids.map(String).indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
           ordL.forEach(function (lk) {
-            var g = byL[lk], haL = g.p ? (Number(g.p.ha) || 0) : (c ? H2.campHa(d, c) : 0);
+            var g = byL[lk], haL = g.p ? (window.loteHa ? window.loteHa(d, g.p.id, c) : (Number(g.p.ha) || 0)) : (c ? H2.campHa(d, c) : 0); /* v1.8.230 */
             if (!multiL || !g.p) { html += grupos(g.ls, c, hoy, lim, haL, d, kc + ':' + lk); return; }
             var allL = all.filter(function (l) { return H.laborEsDeLote(d, l, g.p.id); });
             var hL = allL.filter(function (l) { return l.estado === 'ejecutada'; }).length;
@@ -57565,6 +57686,56 @@ try {
   }; })(saveProduct);
 
   try { console.log('%c[EP Desktop v1.8.228] general: mantenimiento filtrado · código de repuesto', 'color:#3fb950;font-weight:bold'); } catch (e) {}
+})();
+</script>
+
+<script id="agro-v230-general">
+/* ═══ v1.8.230 — LABORES: LAS CAMPAÑAS SIN LABORES TAMBIÉN SE VEN (José 22-09)
+   "aquí no me aparecen las otras campañas": la vista agrupa por campaña a partir de las labores,
+   así que una campaña recién creada (0 labores) no existía en la lista. Ahora cada campaña
+   viva (no cosechada) sin labores aparece como tarjeta vacía con "📋 Planificar labor" que abre
+   el wizard ya parado en esa campaña. Kill switch: window.__V230_OFF = true ═══ */
+(function v230labores() {
+  if (window.__V230_OFF || !window.v177Lab || typeof window.v177Lab.render !== 'function') return;
+  var base = window.v177Lab.render;
+  function vacias() {
+    var d = window.agGetDB(); var wrap = document.getElementById('v177-labores'); if (!wrap || !d) return;
+    var f = (document.getElementById('agl-filter') || {}).value || '';
+    var con = {};
+    (d.labores || []).forEach(function (l) { if (l && l.tipo !== 'servicio_ext' && (!f || l.estado === f)) con[String(l.campana_id || '0')] = 1; });
+    var sin = (d.campanas || []).filter(function (c) { return c && c.estado !== 'cosechada' && !con[String(c.id)]; });
+    if (!sin.length) return;
+    /* si la única cosa que había era el aviso "Sin labores…", que no tape a las campañas */
+    var vacio = wrap.querySelector('.panel > .empty'); if (vacio && wrap.children.length === 1) wrap.innerHTML = '';
+    sin.sort(function (a, b) { return String(a.siembra_plan || '9999').localeCompare(String(b.siembra_plan || '9999')); });
+    var html = sin.map(function (c) {
+      var ids = window.agCampIds(c), ha = window.campHa(d, c);
+      var meta = (ids.length > 1 ? ids.length + ' lotes · ' : '') + window.fmtA(ha, 1) + ' ha' + (c.siembra_plan ? ' · siembra ' + window.agFecha(c.siembra_plan) : '') + ' · sin labores todavía';
+      return '<div class="l220-c v230-vacia" style="opacity:.8"><div class="l220-ch" style="cursor:default">' +
+        '<span class="car" style="visibility:hidden">▸</span>' +
+        '<div><div class="nm">🌾 ' + window.escA(window.campLabel(d, c)) + '</div><div class="mt">' + window.escA(meta) + '</div></div>' +
+        '<div class="rt"><span>0/0</span><span class="pill ' + (c.estado === 'en_curso' ? 'g' : 'a') + '">' + (c.estado === 'en_curso' ? 'En curso' : 'Planificada') + '</span>' +
+        '<button class="btn btn-ghost btn-sm" onclick="v230Planificar(\'' + window.escA(String(c.id)) + '\')">📋 Planificar labor</button></div></div></div>';
+    }).join('');
+    var box = document.createElement('div'); box.innerHTML = html;
+    while (box.firstChild) wrap.appendChild(box.firstChild);
+  }
+  window.v177Lab.render = function () {
+    var r = base.apply(this, arguments);
+    if (r === false) return r;
+    try { vacias(); } catch (e) { console.warn('[v230-labores]', e); }
+    return r;
+  };
+  window.v230Planificar = function (cid) {
+    window.agwOpen(null, 'plan');
+    setTimeout(function () {
+      var s = document.getElementById('agw-campana'); if (!s) return;
+      s.value = String(cid);
+      try { window.agwCampanaInfo(); } catch (e) {}
+      try { s.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+    }, 60);
+  };
+  try { console.log('%c[EP Desktop v1.8.230] labores: las campañas sin labores también aparecen', 'color:#3fb950;font-weight:bold'); } catch (e) {}
 })();
 </script>
 
