@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.230';
+window.E5M_HTML_BUILD = '1.8.231';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -46556,40 +46556,106 @@ document.addEventListener('click', function(ev){
     return { ha: r2(t), quien: quien };
   }
 
-  /* ── el modal de campaña: cuántas ha de cada parcela ─────────────────── */
+  /* ── el modal de campaña (v1.8.231, José 23-09: "se ve muy de diseño básico"): las parcelas son
+     tarjetas que se tocan para elegir; la elegida abre su campo de ha (por defecto lo libre) y avisa
+     qué otra campaña ya la usa. El <select multiple> nativo sigue en el DOM, oculto: es la fuente de
+     verdad que leen agSaveCampana y el ayudante de v1.8.216. ─────────────────────────────────── */
   var HA = {};   /* pid → ha en el modal abierto */
-  function cajaHa() {
-    var info = E('agc-parcela-ha'); if (!info) return null;
-    var box = E('agc-ha-box');
-    if (!box) { box = document.createElement('div'); box.id = 'agc-ha-box'; box.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:8px'; info.parentNode.insertBefore(box, info.nextSibling); }
+  function selectP() { return E('agc-parcela'); }
+  function seleccion() { var sel = selectP(); return sel ? Array.prototype.filter.call(sel.options, function (o) { return o.selected; }).map(function (o) { return o.value; }) : []; }
+  function setSel(pid, on) { var sel = selectP(); if (!sel) return; Array.prototype.forEach.call(sel.options, function (o) { if (String(o.value) === String(pid)) o.selected = on; }); }
+  function cssModal() {
+    if (E('agc231-css')) return;
+    var st = document.createElement('style'); st.id = 'agc231-css';
+    st.textContent =
+      '#ag-modal-campana.agx .ag-modal{width:680px}' +
+      '#ag-modal-campana.agx .frow{grid-template-columns:1fr}' +
+      '#ag-modal-campana.agx .frow3{grid-template-columns:1.1fr 1.1fr .7fr 1fr}' +
+      '.agx .agc-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:7px;margin:6px 0 8px;max-height:340px;overflow-y:auto;padding:2px 2px 2px 0}' +
+      '.agx .agc-tile{background:var(--sur2);border:1.5px solid var(--bor);border-radius:12px;padding:9px 10px;cursor:pointer;transition:border-color .15s,background .15s,transform .1s;display:flex;flex-direction:column;gap:6px;user-select:none}' +
+      '.agx .agc-tile:hover{border-color:var(--muted)}' +
+      '.agx .agc-tile:active{transform:scale(.985)}' +
+      '.agx .agc-tile.sel{border-color:var(--green);background:var(--green2,#1A4D24)}' +
+      '.agx .agc-tile-h{display:flex;align-items:center;gap:8px}' +
+      '.agx .agc-tile .chk{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--bor);display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;flex:0 0 18px;background:var(--sur)}' +
+      '.agx .agc-tile.sel .chk{background:var(--green);border-color:var(--green)}' +
+      '.agx .agc-tile-t{display:flex;flex-direction:column;min-width:0;flex:1}' +
+      '.agx .agc-tile-t b{font-size:13px;line-height:1.15}' +
+      '.agx .agc-tile-t span{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+      '.agx .agc-tile-ha{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}' +
+      '.agx .agc-tile-oc{font-size:10.5px;color:var(--amber2);line-height:1.25}' +
+      '.agx .agc-tile-in{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);cursor:default;padding-top:6px;border-top:1px dashed var(--bor);min-width:0}' +
+      '.agx .agc-tile-in input{width:64px;min-width:0;flex:0 1 64px;padding:5px 6px;border-radius:8px;border:1px solid var(--bor);background:var(--sur);color:var(--text);font-size:13px;font-weight:700;text-align:right;font-variant-numeric:tabular-nums}' +
+      '.agx .agc-tile-in input:focus{outline:none;border-color:var(--green)}' +
+      '.agx .agc-parte{margin-left:auto;font-size:10px;color:var(--amber2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+      '#ag-modal-campana.agx #agc-parcela-ha{display:flex;align-items:center;gap:6px;font-size:11.5px!important;color:var(--text)!important;background:var(--sur2);border:1px solid var(--bor);border-radius:999px;padding:5px 11px;margin-top:2px!important}' +
+      '#ag-modal-campana.agx #agc-parcela-ha:empty{display:none}' +
+      '.agx .agc-tip{font-size:11px;color:var(--muted);margin-top:2px}';
+    document.head.appendChild(st);
+  }
+  function cajaTiles() {
+    var sel = selectP(); if (!sel) return null;
+    cssModal();
+    var box = E('agc-tiles');
+    if (!box) {
+      box = document.createElement('div'); box.id = 'agc-tiles'; box.className = 'agc-tiles';
+      sel.parentNode.insertBefore(box, sel); sel.style.display = 'none';
+      /* la etiqueta: chau "(⌘/Ctrl + click para varias)" */
+      var lab = sel.parentNode.querySelector('.form-label');
+      if (lab) lab.innerHTML = 'Parcelas * <span style="font-weight:400;color:var(--muted)">· tocá una o varias</span>';
+      /* el cultivo pasa a la fila del ciclo: las parcelas se quedan con todo el ancho */
+      try {
+        var cult = E('agc-cultivo') && E('agc-cultivo').parentNode, fr3 = document.querySelector('#ag-modal-campana .frow3');
+        if (cult && fr3 && cult.parentNode !== fr3) fr3.insertBefore(cult, fr3.firstChild);
+      } catch (e) {}
+      var viejo = E('agc-ha-box'); if (viejo) viejo.remove();
+    }
     return box;
   }
-  function seleccion() { var sel = E('agc-parcela'); return sel ? Array.prototype.filter.call(sel.options, function (o) { return o.selected; }).map(function (o) { return o.value; }) : []; }
   function pintarHa() {
-    var box = cajaHa(); if (!box) return;
+    var box = cajaTiles(); if (!box) return;
     var d = agGetDB(), id = (E('agc-id') || {}).value || '';
     var ciclo = (E('agc-ciclo') || {}).value || '', anio = String((E('agc-anio') || {}).value || '').trim();
     var c = id ? agById(d.campanas, id) : null;
-    var sel = seleccion();
-    box.innerHTML = sel.map(function (pid) {
-      var tot = haParcela(d, pid), p = agById(d.parcelas, pid);
+    var selSet = {}; seleccion().forEach(function (x) { selSet[String(x)] = 1; });
+    box.innerHTML = (d.parcelas || []).map(function (p) {
+      var pid = String(p.id), on = !!selSet[pid], tot = Number(p.ha) || 0;
       var oc = haOcupadas(d, pid, ciclo, anio, id);
       var libre = r2(Math.max(0, tot - oc.ha));
-      if (HA[pid] == null) { var actual = c ? loteHa(d, pid, c) : 0; HA[pid] = c && actual > 0 ? actual : (libre > 0 && libre < tot ? libre : tot); }
-      return '<div style="display:flex;align-items:center;gap:8px;font-size:12px">' +
-        '<div style="flex:1;min-width:0"><b>' + escA(p ? p.code : pid) + '</b> <span style="color:var(--muted)">· ' + fmtA(tot, 1) + ' ha' +
-          (oc.ha > 0 ? ' · ya usadas ' + fmtA(oc.ha, 1) + ' (' + escA(oc.quien.join(', ')) + ')' : '') + '</span></div>' +
-        '<input class="form-input" type="number" min="0" max="' + tot + '" step="0.1" style="width:90px;text-align:right" value="' + HA[pid] + '" oninput="agcHaInput(\'' + escA(pid) + '\',this.value)"><span style="color:var(--muted)">ha</span></div>';
-    }).join('');
+      if (on && HA[pid] == null) { var yaEstaba = !!(c && agCampIds(c).some(function (x) { return String(x) === pid; })); var actual = yaEstaba ? loteHa(d, pid, c) : 0; HA[pid] = actual > 0 ? actual : (libre > 0 && libre < tot ? libre : tot); }
+      var h = on ? Number(HA[pid]) || 0 : 0;
+      return '<div class="agc-tile' + (on ? ' sel' : '') + '" data-pid="' + escA(pid) + '" onclick="agcTileTog(this)">' +
+        '<div class="agc-tile-h"><span class="chk">' + (on ? '✓' : '') + '</span>' +
+          '<div class="agc-tile-t"><b>' + escA(p.code) + '</b>' + (p.nombre ? '<span title="' + escA(p.nombre) + '">' + escA(p.nombre) + '</span>' : '') + '</div>' +
+          '<span class="agc-tile-ha">' + fmtA(tot, 1) + ' ha</span></div>' +
+        (oc.ha > 0 ? '<div class="agc-tile-oc">' + (libre > 0 ? fmtA(libre, 1) + ' ha libres' : 'sin ha libres') + ' · ' + escA(oc.quien.join(', ')) + '</div>' : '') +
+        (on ? '<div class="agc-tile-in" onclick="event.stopPropagation()" title="Hectáreas de esta parcela que entran en la campaña">' +
+          '<input type="number" min="0" max="' + tot + '" step="0.1" value="' + h + '" oninput="agcHaInput(\'' + escA(pid) + '\',this.value)"><span>ha</span>' +
+          (h > 0 && h < tot - 0.001 ? '<span class="agc-parte">parte de ' + fmtA(tot, 1) + '</span>' : '') + '</div>' : '') +
+        '</div>';
+    }).join('') || '<div class="empty">Primero creá una parcela</div>';
     totalHa();
   }
   function totalHa() {
     var info = E('agc-parcela-ha'); if (!info) return;
     var sel = seleccion(), t = 0; sel.forEach(function (pid) { t += Number(HA[pid]) || 0; });
     var d = agGetDB();
-    info.textContent = sel.length ? (sel.length + ' parcela' + (sel.length === 1 ? '' : 's') + ' · ' + sel.map(function (pid) { var p = agById(d.parcelas, pid); return p ? p.code : pid; }).join(' + ') + ' · ' + fmtA(t, 1) + ' ha en esta campaña') : 'Elegí al menos una parcela';
+    info.textContent = sel.length ? ('🧭 ' + sel.length + ' parcela' + (sel.length === 1 ? '' : 's') + ' · ' + sel.map(function (pid) { var p = agById(d.parcelas, pid); return p ? p.code : pid; }).join(' + ') + ' · ' + fmtA(t, 1) + ' ha en esta campaña') : 'Elegí al menos una parcela';
   }
-  window.agcHaInput = function (pid, v) { HA[pid] = parseFloat(v) || 0; totalHa(); };
+  window.agcTileTog = function (tile) {
+    var pid = tile.getAttribute('data-pid'), on = !tile.classList.contains('sel');
+    setSel(pid, on); if (!on) delete HA[pid];
+    pintarHa();
+    try { selectP().dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+  };
+  window.agcHaInput = function (pid, v) {
+    HA[pid] = parseFloat(v) || 0; totalHa();
+    var tile = document.querySelector('.agc-tile[data-pid="' + pid + '"]'); if (!tile) return;
+    var tot = haParcela(agGetDB(), pid), tag = tile.querySelector('.agc-parte'), h = HA[pid];
+    var quiere = h > 0 && h < tot - 0.001;
+    if (quiere && !tag) { tag = document.createElement('span'); tag.className = 'agc-parte'; tag.textContent = 'parte de ' + fmtA(tot, 1); tile.querySelector('.agc-tile-in').appendChild(tag); }
+    else if (!quiere && tag) tag.remove();
+  };
   /* en setTimeout(0): el listener de v1.8.216 (haSel) corre después y pisaría la línea de total */
   document.addEventListener('change', function (e) { if (e.target && (e.target.id === 'agc-parcela' || e.target.id === 'agc-ciclo' || e.target.id === 'agc-anio')) { setTimeout(function () { try { pintarHa(); } catch (er) {} }, 0); } });
   agOpenCampana = (function (base) { return function () { HA = {}; base.apply(this, arguments); setTimeout(function () { try { pintarHa(); } catch (e) {} }, 40); }; })(agOpenCampana);
@@ -46626,11 +46692,12 @@ document.addEventListener('click', function(ev){
     try { agRenderAll(); } catch (e) {}
   }; })(agSaveCampana);
 
+  window.agSaveDB = agSaveDB; window.agToast = agToast; /* v1.8.231: los usa el borrado en cascada */
   window.loteHa = loteHa; window.campHa = campHa; window.laborHa = laborHa; window.agwLotesHa = agwLotesHa;
   window.agOpenCampana = agOpenCampana; window.agSaveCampana = agSaveCampana; window.loteHaOcupadas = function (pid, ciclo, anio, exc) { return haOcupadas(agGetDB(), pid, ciclo, anio, exc); };
   /* el calendario/labores (v1.8.177) capturaron campHa al exportar __v177H: que vean la versión partida */
   try { if (window.__v177H) window.__v177H.campHa = campHa; } catch (e) {}
-  try { console.log('%c[EP Desktop v1.8.230] hectáreas por campaña: una parcela se puede partir entre cultivos', 'color:#3fb950;font-weight:bold'); } catch (e) {}
+  try { console.log('%c[EP Desktop v1.8.231] hectáreas por campaña: una parcela se puede partir entre cultivos · modal de campaña con tarjetas', 'color:#3fb950;font-weight:bold'); } catch (e) {}
 })();
 /*__V230_AGRO_END__*/
 })();
@@ -57736,6 +57803,97 @@ try {
     }, 60);
   };
   try { console.log('%c[EP Desktop v1.8.230] labores: las campañas sin labores también aparecen', 'color:#3fb950;font-weight:bold'); } catch (e) {}
+})();
+</script>
+
+<script id="agro-v231-general">
+/* ═══ v1.8.231 — ELIMINAR CAMPAÑA CON TODO LO SUYO (José 23-09)
+   Antes el 🗑 del modal se negaba si la campaña tenía labores. Ahora muestra qué se va
+   (labores, jornadas, servicios externos) y, con confirmación, borra todo: local + tombstone
+   en el server por cada registro (mismo camino que borrado-agro-v18180), así ni EP Agro ni
+   el bot lo resucitan. Kill switch: window.__V231_OFF = true ═══ */
+(function v231delCampana() {
+  if (window.__V231_OFF) return;
+  var E = function (id) { return document.getElementById(id); };
+  function css() {
+    if (E('v231-css')) return;
+    var st = document.createElement('style'); st.id = 'v231-css';
+    st.textContent =
+      '#v231-ov{position:fixed;inset:0;background:rgba(0,0,0,.66);z-index:400;display:flex;align-items:center;justify-content:center;padding:16px;animation:agxFade .15s ease}' +
+      '#v231-ov .bx{background:var(--sur);border:1px solid var(--bor);border-radius:14px;width:460px;max-width:94vw;padding:20px 20px 16px;box-shadow:0 24px 60px rgba(0,0,0,.45)}' +
+      '#v231-ov h3{font-size:16px;margin:0 0 6px;display:flex;align-items:center;gap:8px}' +
+      '#v231-ov .sub{font-size:12.5px;color:var(--muted);margin-bottom:12px;line-height:1.4}' +
+      '#v231-ov .lst{display:flex;flex-direction:column;gap:6px;margin:10px 0 12px}' +
+      '#v231-ov .it{display:flex;align-items:center;gap:10px;font-size:13px;background:var(--sur2);border:1px solid var(--bor);border-radius:10px;padding:8px 11px}' +
+      '#v231-ov .it b{font-variant-numeric:tabular-nums;min-width:26px;text-align:right}' +
+      '#v231-ov .it span{color:var(--muted);font-size:11.5px;margin-left:auto}' +
+      '#v231-ov .warn{font-size:12px;color:var(--amber2);background:rgba(212,160,23,.1);border:1px solid rgba(212,160,23,.3);border-radius:10px;padding:8px 11px;line-height:1.4}' +
+      '#v231-ov .ft{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}' +
+      '#v231-ov .btn-del{background:var(--red,#f85149);color:#fff;border:none;font-weight:700}' +
+      '#v231-ov .btn-del:hover{filter:brightness(1.1)}';
+    document.head.appendChild(st);
+  }
+  function cerrar() { var o = E('v231-ov'); if (o) o.remove(); }
+  window.v231Cerrar = cerrar;
+  function confirmar(op, cb) {
+    css(); cerrar();
+    var ov = document.createElement('div'); ov.id = 'v231-ov';
+    ov.innerHTML = '<div class="bx agx">' +
+      '<h3>' + (op.titulo || '¿Eliminar?') + '</h3>' +
+      (op.sub ? '<div class="sub">' + op.sub + '</div>' : '') +
+      (op.items && op.items.length ? '<div class="lst">' + op.items.map(function (it) { return '<div class="it">' + it.ico + ' <b>' + it.n + '</b> ' + it.txt + (it.sub ? '<span>' + it.sub + '</span>' : '') + '</div>'; }).join('') + '</div>' : '') +
+      (op.warn ? '<div class="warn">' + op.warn + '</div>' : '') +
+      '<div class="ft"><button class="btn btn-ghost" onclick="v231Cerrar()">Cancelar</button><button class="btn btn-del" id="v231-ok">' + (op.ok || 'Eliminar') + '</button></div></div>';
+    ov.onclick = function (e) { if (e.target === ov) cerrar(); };
+    document.body.appendChild(ov);
+    E('v231-ok').onclick = function () { cerrar(); cb(); };
+    setTimeout(function () { try { E('v231-ok').focus(); } catch (e) {} }, 30);
+  }
+  function plural(n, s, p) { return n + ' ' + (n === 1 ? s : p); }
+  function pal(n, s, p) { return n === 1 ? s : p; }
+
+  window.agDelCampana = function () {
+    var d = window.agGetDB(), id = (E('agc-id') || {}).value || ''; if (!id) return;
+    var c = window.agById(d.campanas, id); if (!c) return;
+    var labs = (d.labores || []).filter(function (l) { return l && String(l.campana_id) === String(id); });
+    var servs = labs.filter(function (l) { return l.tipo === 'servicio_ext'; });
+    var trab = labs.filter(function (l) { return l.tipo !== 'servicio_ext'; });
+    var hechas = trab.filter(function (l) { return l.estado === 'ejecutada' || l.estado === 'en_curso'; });
+    var labIds = {}; labs.forEach(function (l) { labIds[String(l.id)] = 1; });
+    var jorn = (db.agro_jornadas || []).filter(function (j) { return j && (labIds[String(j.labor_id)] || String(j.campana_id) === String(id)); });
+    var conStock = hechas.some(function (l) { return (l.insumos || []).length; });
+    var items = [];
+    if (trab.length) items.push({ ico: '🚜', n: trab.length, txt: pal(trab.length, 'labor', 'labores'), sub: hechas.length ? hechas.length + ' ejecutada' + (hechas.length === 1 ? '' : 's') + ' o en curso' : 'todas planificadas' });
+    if (jorn.length) items.push({ ico: '👷', n: jorn.length, txt: pal(jorn.length, 'jornada', 'jornadas') });
+    if (servs.length) items.push({ ico: '🤝', n: servs.length, txt: pal(servs.length, 'servicio externo', 'servicios externos') });
+    confirmar({
+      titulo: '🗑 Eliminar la campaña',
+      sub: '<b style="color:var(--text)">' + window.escA(window.campLabel(d, c)) + '</b>' + (items.length ? ' — se borra con todo lo que tiene cargado. Esto no se puede deshacer.' : ' — no tiene labores cargadas. Esto no se puede deshacer.'),
+      items: items,
+      warn: conStock ? '⚠ Hay labores ejecutadas con insumos: el stock que descontaron <b>no se repone solo</b>. Si hace falta, ajustalo a mano en Stock Agro.' : '',
+      ok: items.length ? 'Eliminar todo' : 'Eliminar'
+    }, function () {
+      var now = Date.now();
+      /* jornadas → labores → campaña; cada una con su tombstone en el server */
+      if (Array.isArray(db.agro_jornadas)) db.agro_jornadas = db.agro_jornadas.filter(function (j) { return !(j && (labIds[String(j.labor_id)] || String(j.campana_id) === String(id))); });
+      db.agro_labores = (db.agro_labores || []).filter(function (l) { return !(l && String(l.campana_id) === String(id)); });
+      db.agro_campanas = (db.agro_campanas || []).filter(function (x) { return String(x.id) !== String(id); });
+      try {
+        if (window.e5mDelRegistroSrv) {
+          jorn.forEach(function (j) { window.e5mDelRegistroSrv('agro_jornadas', j.id); });
+          labs.forEach(function (l) { window.e5mDelRegistroSrv('agro_labores', l.id); });
+          window.e5mDelRegistroSrv('agro_campanas', id);
+        }
+      } catch (e) { console.warn('[v231] tombstones', e); }
+      try { window.agSaveDB ? window.agSaveDB() : saveDB(); } catch (e) { try { saveDB(); } catch (e2) {} }
+      try { window.agCloseModal('ag-modal-campana'); } catch (e) {}
+      try { window.agRenderAll(); } catch (e) {}
+      try { (window.agToast || toast)('Campaña eliminada' + (labs.length || jorn.length ? ' con ' + plural(labs.length, 'labor', 'labores') + (jorn.length ? ' y ' + plural(jorn.length, 'jornada', 'jornadas') : '') : ''), 'info'); } catch (e) {}
+      console.log('[v231] campaña ' + id + ' eliminada: ' + labs.length + ' labores, ' + jorn.length + ' jornadas (' + (Date.now() - now) + 'ms)');
+    });
+  };
+  window.agDelCampana.__v129 = true; /* que borrado-real-v18129 no lo envuelva: los tombstones los manda este bloque */
+  try { console.log('%c[EP Desktop v1.8.231] eliminar campaña = con labores, jornadas y servicios (previa confirmación)', 'color:#3fb950;font-weight:bold'); } catch (e) {}
 })();
 </script>
 
