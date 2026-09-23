@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.231';
+window.E5M_HTML_BUILD = '1.8.232';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -57827,7 +57827,8 @@ try {
       '#v231-ov .it{display:flex;align-items:center;gap:10px;font-size:13px;background:var(--sur2);border:1px solid var(--bor);border-radius:10px;padding:8px 11px}' +
       '#v231-ov .it b{font-variant-numeric:tabular-nums;min-width:26px;text-align:right}' +
       '#v231-ov .it span{color:var(--muted);font-size:11.5px;margin-left:auto}' +
-      '#v231-ov .warn{font-size:12px;color:var(--amber2);background:rgba(212,160,23,.1);border:1px solid rgba(212,160,23,.3);border-radius:10px;padding:8px 11px;line-height:1.4}' +
+      '#v231-ov .warn{font-size:12px;color:var(--amber2);background:rgba(212,160,23,.1);border:1px solid rgba(212,160,23,.3);border-radius:10px;padding:8px 11px;line-height:1.45}' +
+      '#v231-ov .warn input{accent-color:var(--amber2)}' +
       '#v231-ov .ft{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}' +
       '#v231-ov .btn-del{background:var(--red,#f85149);color:#fff;border:none;font-weight:700}' +
       '#v231-ov .btn-del:hover{filter:brightness(1.1)}';
@@ -57846,11 +57847,62 @@ try {
       '<div class="ft"><button class="btn btn-ghost" onclick="v231Cerrar()">Cancelar</button><button class="btn btn-del" id="v231-ok">' + (op.ok || 'Eliminar') + '</button></div></div>';
     ov.onclick = function (e) { if (e.target === ov) cerrar(); };
     document.body.appendChild(ov);
-    E('v231-ok').onclick = function () { cerrar(); cb(); };
+    E('v231-ok').onclick = function () { var rv = E('v231-rev'); var o = { rev: !rv || rv.checked }; cerrar(); cb(o); };
     setTimeout(function () { try { E('v231-ok').focus(); } catch (e) {} }, 30);
   }
   function plural(n, s, p) { return n + ' ' + (n === 1 ? s : p); }
   function pal(n, s, p) { return n === 1 ? s : p; }
+
+  /* ── qué dejó en el resto del sistema una campaña: diésel despachado, insumos descontados,
+     plata de servicios externos asignada. Se calcula ANTES de borrar para mostrarlo y revertirlo. ── */
+  function r2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+  function huella(d, id, labs, jorn) {
+    var labIds = {}; labs.forEach(function (l) { labIds[String(l.id)] = 1; });
+    /* diésel: cada labor ejecutada con litros de un tanque dejó un despacho (_despacho_id) */
+    var desp = [];
+    labs.forEach(function (l) { if (l && l._despacho_id != null) { var r = (db.diesel || []).find(function (x) { return x && String(x.id) === String(l._despacho_id); }); if (r) desp.push(r); } });
+    var litros = 0; desp.forEach(function (r) { litros += Number(r.litros) || 0; });
+    /* insumos: lo que descontaron las labores ejecutadas / en curso (r.total ya está a las ha reales) */
+    var ins = {};
+    labs.forEach(function (l) {
+      if (!l || (l.estado !== 'ejecutada' && l.estado !== 'en_curso')) return;
+      (l.insumos || []).forEach(function (r) {
+        var q = Number(r.total) || 0; if (!(q > 0)) return;
+        var sid = String(r.insumo_id || ''); if (!sid) return;
+        if (!ins[sid]) {
+          var nom = '', un = '';
+          if (/^S/.test(sid)) { var pp = (db.products || []).find(function (p) { return String(p.id) === sid.slice(1); }); if (pp) { nom = pp.name; un = pp.unit || ''; } }
+          else { var ii = (db.agro_insumos || []).find(function (p) { return String(p.id) === sid; }); if (ii) { nom = ii.nombre; un = ii.unidad || ''; } }
+          ins[sid] = { id: sid, nombre: nom || sid, unidad: un, q: 0 };
+        }
+        ins[sid].q = r2(ins[sid].q + q);
+      });
+    });
+    /* servicios externos: plata asignada a esta campaña (el servicio sigue; la plata vuelve a "pendiente") */
+    var asig = [], bsServ = 0;
+    (d.labores || []).forEach(function (s) {
+      if (!s || s.tipo !== 'servicio_ext' || String(s.campana_id) === String(id)) return;
+      (s.asignaciones || []).forEach(function (a) { if (a && String(a.campana_id) === String(id)) { asig.push({ s: s, a: a }); bsServ += Number(a.monto) || 0; } });
+    });
+    return { desp: desp, litros: r2(litros), ins: Object.keys(ins).map(function (k) { return ins[k]; }), asig: asig, bsServ: r2(bsServ) };
+  }
+  function reponer(h) {
+    var now = new Date().toISOString();
+    /* diésel: se anula el despacho (el nivel del tanque se re-deriva de los movimientos) */
+    if (h.desp.length) {
+      var ids = {}; h.desp.forEach(function (r) { ids[String(r.id)] = 1; });
+      db.diesel = (db.diesel || []).filter(function (r) { return !(r && ids[String(r.id)]); });
+      try { h.desp.forEach(function (r) { window.e5mDelRegistroSrv && window.e5mDelRegistroSrv('diesel', r.id); }); } catch (e) {}
+      try { recalcTankLevel(); } catch (e) {}
+    }
+    /* insumos: vuelven al stock con sello nuevo (mismo camino que un ajuste manual) */
+    h.ins.forEach(function (it) {
+      if (/^S/.test(it.id)) { var pp = (db.products || []).find(function (p) { return String(p.id) === it.id.slice(1); }); if (pp) { pp.stock_qty = r2((Number(pp.stock_qty) || 0) + it.q); pp.stock_updated_at = now; pp.updated_at = now; } }
+      else { var ii = (db.agro_insumos || []).find(function (p) { return String(p.id) === it.id; }); if (ii) { ii.stock = r2((Number(ii.stock) || 0) + it.q); ii.updated_at = now; } }
+    });
+    /* servicios: se quita la asignación; el servicio y su monto quedan, como pendiente de asignar */
+    h.asig.forEach(function (x) { x.s.asignaciones = (x.s.asignaciones || []).filter(function (a) { return a !== x.a; }); x.s.updated_at = now; });
+  }
 
   window.agDelCampana = function () {
     var d = window.agGetDB(), id = (E('agc-id') || {}).value || ''; if (!id) return;
@@ -57861,19 +57913,28 @@ try {
     var hechas = trab.filter(function (l) { return l.estado === 'ejecutada' || l.estado === 'en_curso'; });
     var labIds = {}; labs.forEach(function (l) { labIds[String(l.id)] = 1; });
     var jorn = (db.agro_jornadas || []).filter(function (j) { return j && (labIds[String(j.labor_id)] || String(j.campana_id) === String(id)); });
-    var conStock = hechas.some(function (l) { return (l.insumos || []).length; });
+    var h = huella(d, id, labs, jorn);
     var items = [];
     if (trab.length) items.push({ ico: '🚜', n: trab.length, txt: pal(trab.length, 'labor', 'labores'), sub: hechas.length ? hechas.length + ' ejecutada' + (hechas.length === 1 ? '' : 's') + ' o en curso' : 'todas planificadas' });
     if (jorn.length) items.push({ ico: '👷', n: jorn.length, txt: pal(jorn.length, 'jornada', 'jornadas') });
     if (servs.length) items.push({ ico: '🤝', n: servs.length, txt: pal(servs.length, 'servicio externo', 'servicios externos') });
+    var rev = [];
+    if (h.desp.length) rev.push('⛽ ' + window.fmtA(h.litros, 1) + ' L de diésel vuelven al tanque (' + h.desp.length + ' ' + pal(h.desp.length, 'despacho', 'despachos') + ')');
+    if (h.ins.length) rev.push('🧪 vuelven al stock: ' + h.ins.map(function (it) { return window.fmtA(it.q, 1) + ' ' + it.unidad + ' ' + it.nombre; }).join(', '));
+    if (h.asig.length) rev.push('🤝 Bs ' + window.fmtA(h.bsServ) + ' de servicios externos quedan sin asignar (el servicio no se borra)');
+    var hayRev = rev.length > 0;
     confirmar({
       titulo: '🗑 Eliminar la campaña',
       sub: '<b style="color:var(--text)">' + window.escA(window.campLabel(d, c)) + '</b>' + (items.length ? ' — se borra con todo lo que tiene cargado. Esto no se puede deshacer.' : ' — no tiene labores cargadas. Esto no se puede deshacer.'),
       items: items,
-      warn: conStock ? '⚠ Hay labores ejecutadas con insumos: el stock que descontaron <b>no se repone solo</b>. Si hace falta, ajustalo a mano en Stock Agro.' : '',
+      warn: hayRev
+        ? '<label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="v231-rev" checked style="margin-top:2px"><span><b>Deshacer lo que descontó</b> — como si nunca hubiera pasado:<br>' + rev.map(function (t) { return '· ' + window.escA(t); }).join('<br>') + '<br><span style="opacity:.8">Destildá si el diésel y los insumos sí se usaron y solo querés borrar el registro.</span></span></label>'
+        : (hechas.length ? 'Las labores ejecutadas no descontaron diésel ni insumos: no hay nada que reponer.' : ''),
       ok: items.length ? 'Eliminar todo' : 'Eliminar'
-    }, function () {
+    }, function (opts) {
+      var revertir = hayRev && opts.rev;
       var now = Date.now();
+      if (revertir) { try { reponer(h); } catch (e) { console.warn('[v231] reponer', e); } }
       /* jornadas → labores → campaña; cada una con su tombstone en el server */
       if (Array.isArray(db.agro_jornadas)) db.agro_jornadas = db.agro_jornadas.filter(function (j) { return !(j && (labIds[String(j.labor_id)] || String(j.campana_id) === String(id))); });
       db.agro_labores = (db.agro_labores || []).filter(function (l) { return !(l && String(l.campana_id) === String(id)); });
@@ -57886,14 +57947,15 @@ try {
         }
       } catch (e) { console.warn('[v231] tombstones', e); }
       try { window.agSaveDB ? window.agSaveDB() : saveDB(); } catch (e) { try { saveDB(); } catch (e2) {} }
+      try { if (revertir && h.desp.length && typeof renderDieselDesktop === 'function') renderDieselDesktop(); } catch (e) {}
       try { window.agCloseModal('ag-modal-campana'); } catch (e) {}
       try { window.agRenderAll(); } catch (e) {}
-      try { (window.agToast || toast)('Campaña eliminada' + (labs.length || jorn.length ? ' con ' + plural(labs.length, 'labor', 'labores') + (jorn.length ? ' y ' + plural(jorn.length, 'jornada', 'jornadas') : '') : ''), 'info'); } catch (e) {}
-      console.log('[v231] campaña ' + id + ' eliminada: ' + labs.length + ' labores, ' + jorn.length + ' jornadas (' + (Date.now() - now) + 'ms)');
+      try { (window.agToast || toast)('Campaña eliminada' + (labs.length || jorn.length ? ' con ' + plural(labs.length, 'labor', 'labores') + (jorn.length ? ' y ' + plural(jorn.length, 'jornada', 'jornadas') : '') : '') + (revertir ? ' · diésel e insumos repuestos' : ''), 'info'); } catch (e) {}
+      console.log('[v231] campaña ' + id + ' eliminada: ' + labs.length + ' labores, ' + jorn.length + ' jornadas, revertir=' + revertir + ' (' + (Date.now() - now) + 'ms)');
     });
   };
   window.agDelCampana.__v129 = true; /* que borrado-real-v18129 no lo envuelva: los tombstones los manda este bloque */
-  try { console.log('%c[EP Desktop v1.8.231] eliminar campaña = con labores, jornadas y servicios (previa confirmación)', 'color:#3fb950;font-weight:bold'); } catch (e) {}
+  try { console.log('%c[EP Desktop v1.8.232] eliminar campaña = con labores, jornadas y servicios; deshace diésel, insumos y asignaciones (previa confirmación)', 'color:#3fb950;font-weight:bold'); } catch (e) {}
 })();
 </script>
 
