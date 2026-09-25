@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.232';
+window.E5M_HTML_BUILD = '1.8.233';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -57956,6 +57956,292 @@ try {
   };
   window.agDelCampana.__v129 = true; /* que borrado-real-v18129 no lo envuelva: los tombstones los manda este bloque */
   try { console.log('%c[EP Desktop v1.8.232] eliminar campaña = con labores, jornadas y servicios; deshace diésel, insumos y asignaciones (previa confirmación)', 'color:#3fb950;font-weight:bold'); } catch (e) {}
+})();
+</script>
+
+<script id="agro-v233-analisis">
+/* ═══ v1.8.233 — ANÁLISIS DE CAMPAÑA COMO EN EP AGRO (José 25-09)
+   "En la pestaña de análisis no se reflejan todas las campañas creadas, y debería ser con un
+   estilo similar al que tenemos en EP Agro, que está bastante completo."
+   Antes: una tarjeta por campaña EMPEZADA (las planificadas no aparecían) con costo total y
+   una tabla por lote. Ahora, igual que EP Agro:
+     · pestañas En proceso / Finalizadas con TODAS las campañas, en tarjetas (campo, cultivo,
+       lotes, ha, siembra, avance del plan, atrasadas, costo, lotes con su estado)
+     · al elegir una: selector Toda la campaña / cada lote, resultado (en proceso o cierre
+       real), costos desglosados (insumos, diésel, maquinaria, servicios; L de diésel, horas
+       de máquina, labores sin costo), insumos aplicados, labores y la tabla por lote.
+   Mismo cálculo que el desglose de EP Agro (labores ejecutadas y en curso + servicios externos
+   asignados, prorrateados por ha cuando se mira un lote). El cierre sigue siendo el de v1.8.181
+   (v181CierreOpen). La vista vieja (#cie-list) queda oculta y sigue viva: cuando se repinta, se
+   repinta esta. Kill switch: window.__AN233_OFF = true ═══ */
+(function an233() {
+  if (window.__AN233_OFF) return;
+  var W = window, E = function (id) { return document.getElementById(id); };
+  var TAR = typeof W.AG_TARIFA_MAQ_BS_H === 'number' ? W.AG_TARIFA_MAQ_BS_H : 145;
+  var ST = { modo: 'proceso', camp: null, lote: null };
+  var r2 = function (n) { return Math.round((Number(n) || 0) * 100) / 100; };
+  var f0 = function (n) { return W.fmtA(n, 0); }, f1 = function (n) { return W.fmtA(n, 1); };
+  var esc = function (s) { return W.escA(s); };
+  function DB() { return W.agGetDB(); }
+  function RAW() { try { return (typeof db !== 'undefined' && db) ? db : (W.db || {}); } catch (e) { return W.db || {}; } }  /* `let db`: no está en window */
+  function byId(a, id) { return W.agById(a, id); }
+  function ddmm(iso) { if (!iso) return '—'; var s = String(iso); return s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(2, 4); }
+
+  function css() {
+    if (E('an233-css')) return;
+    var st = document.createElement('style'); st.id = 'an233-css';
+    st.textContent =
+      '#an233{--g:var(--green,#3fb950);--a:var(--amber2,#e3b341);--r:var(--red,#f85149);--b:var(--blue,#58a6ff)}' +
+      '#an233 .seg{display:inline-flex;gap:4px;padding:4px;background:var(--sur2);border:1px solid var(--bor);border-radius:12px;margin-bottom:14px}' +
+      '#an233 .seg button{border:0;border-radius:9px;padding:8px 18px;font:inherit;font-size:13px;font-weight:700;background:transparent;color:var(--muted);cursor:pointer}' +
+      '#an233 .seg button.on{background:var(--sur);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.25)}' +
+      '#an233 .seg button:disabled{opacity:.45;cursor:default}' +
+      '#an233 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px}' +
+      '#an233 .card{display:block;width:100%;text-align:left;background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:14px 16px;color:var(--text);cursor:pointer;font:inherit;transition:border-color .15s,transform .1s}' +
+      '#an233 .card:hover{border-color:var(--muted)}#an233 .card:active{transform:scale(.99)}' +
+      '#an233 .r1{display:flex;justify-content:space-between;align-items:baseline;gap:8px}' +
+      '#an233 .n{font-weight:700;font-size:16px}' +
+      '#an233 .m{font-size:12.5px;color:var(--muted);margin-top:4px}' +
+      '#an233 .m.nom{display:flex;white-space:nowrap;overflow:hidden}#an233 .m.nom b{color:var(--text);overflow:hidden;text-overflow:ellipsis;min-width:0}#an233 .m.nom span{flex:none}' +
+      '#an233 .bdg{font-size:11px;font-weight:700;padding:2px 9px;border-radius:10px;border:1px solid var(--bor);color:var(--muted);white-space:nowrap}' +
+      '#an233 .bdg.curso{color:var(--a);border-color:color-mix(in srgb,var(--a) 45%,transparent);background:color-mix(in srgb,var(--a) 12%,transparent)}' +
+      '#an233 .bdg.cos{color:var(--b);border-color:color-mix(in srgb,var(--b) 45%,transparent)}' +
+      '#an233 .bar{height:6px;border-radius:4px;background:var(--sur2);overflow:hidden;margin:9px 0 6px;display:flex}#an233 .bar i{display:block;height:100%;background:var(--g)}#an233 .bar i.r{background:var(--r)}' +
+      '#an233 .chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:9px}' +
+      '#an233 .chip{font-size:12px;padding:2px 9px;border-radius:14px;border:1px solid var(--bor);color:var(--muted)}' +
+      '#an233 .chip.on{border-color:var(--g);color:var(--g)}#an233 .chip.prep{border-color:var(--a);color:var(--a)}#an233 .chip.done{border-color:var(--b);color:var(--b)}' +
+      '#an233 .crumb{font-size:13px;color:var(--muted);margin-bottom:10px;cursor:pointer;display:inline-flex;gap:6px}#an233 .crumb:hover{color:var(--text)}#an233 .crumb b{color:var(--g)}' +
+      '#an233 .head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}' +
+      '#an233 .ttl{font-size:19px;font-weight:800}' +
+      '#an233 .lotes{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}' +
+      '#an233 .lote{border:1px solid var(--bor);background:var(--sur2);color:var(--text);border-radius:18px;padding:6px 13px;font:inherit;font-size:13px;cursor:pointer;display:inline-flex;gap:6px;align-items:center}' +
+      '#an233 .lote.sel{border-color:var(--g);background:color-mix(in srgb,var(--g) 14%,var(--sur2));font-weight:700}' +
+      '#an233 .dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}#an233 .dot.on{background:var(--g)}#an233 .dot.prep{background:var(--a)}#an233 .dot.done{background:var(--b)}' +
+      '#an233 .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:12px;margin-top:12px;align-items:start}' +
+      '#an233 .pn{background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:14px 16px}' +
+      '#an233 .pn h4{margin:0 0 8px;font-size:14px;font-weight:700}' +
+      '#an233 .row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:8px 0;border-bottom:1px solid var(--bor);font-size:13px}#an233 .row:last-child{border-bottom:0}' +
+      '#an233 .row .k{color:var(--muted)}#an233 .row .v{font-variant-numeric:tabular-nums;text-align:right}#an233 .row .v b{font-size:15px}' +
+      '#an233 .stk{height:10px;border-radius:5px;overflow:hidden;display:flex;margin:4px 0 8px;background:var(--sur2)}' +
+      '#an233 .leg{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-bottom:4px}#an233 .leg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}' +
+      '#an233 .warn{font-size:12.5px;color:var(--a);margin-top:8px}' +
+      '#an233 table{width:100%;border-collapse:collapse;font-size:12.5px}#an233 th{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);text-align:left;padding:6px 8px;border-bottom:1px solid var(--bor);font-weight:600}' +
+      '#an233 td{padding:7px 8px;border-bottom:1px solid var(--bor);font-variant-numeric:tabular-nums}#an233 tr:last-child td{border-bottom:0}#an233 .num{text-align:right}' +
+      '#an233 .vacio{color:var(--muted);font-size:13px;padding:6px 0}';
+    document.head.appendChild(st);
+  }
+
+  /* ── datos ─────────────────────────────────────────────────────────── */
+  function estadoCamp(d, c) { var e = c.estado; try { if (W.campEstadoDerivado) e = W.campEstadoDerivado(d, c) || e; } catch (x) {} return String(e || 'planificada'); }
+  function esFinal(c) { return String(c.estado) === 'cosechada'; }
+  function parcelas(d, c) { try { return W.agCampParcelas(d, c) || []; } catch (e) { return []; } }
+  function haCamp(d, c) { try { return W.campHa(d, c) || 0; } catch (e) { return 0; } }
+  function haLote(d, c, pid) { try { return W.loteHa ? W.loteHa(d, pid, c) : ((byId(d.parcelas, pid) || {}).ha || 0); } catch (e) { return 0; } }
+  function esDeLote(d, l, pid) { try { if (W.laborEsDeLote) return W.laborEsDeLote(d, l, pid); } catch (e) {} var p = W.laborParcela ? W.laborParcela(d, l) : null; return p && String(p.id) === String(pid); }
+  function loteEst(d, c, pid) { try { return W.loteEstado ? W.loteEstado(d, c.id, pid) : ''; } catch (e) { return ''; } }
+  function estClase(e) { return e === 'cosechada' ? 'done' : e === 'en_curso' ? 'on' : e === 'preparacion' ? 'prep' : ''; }
+  function estTxt(e) { try { if (W.loteEstadoTxt) return W.loteEstadoTxt(e); } catch (x) {} return e || 'planificado'; }
+  function nombreCampo(d, c) {
+    var hay = (d.parcelas || []).some(function (p) { return p && String(p.nombre || '').trim(); }); if (!hay) return '';
+    var est = ''; try { est = String(((typeof getRp === 'function' ? getRp() : {}) || {}).nombre_estancia || '').trim(); } catch (e) {}
+    var vistos = {}, out = [];
+    parcelas(d, c).forEach(function (p) { var n = String((p && p.nombre) || '').trim() || est; if (!n) return; var k = n.toLowerCase(); if (!vistos[k]) { vistos[k] = 1; out.push(n); } });
+    return out.join(' + ');
+  }
+  function nombreInsumo(d, id) {
+    var sid = String(id == null ? '' : id);
+    if (/^S/.test(sid)) { var p = (RAW().products || []).find(function (x) { return String(x.id) === sid.slice(1); }); return { n: p ? p.name : 'Producto ' + sid, u: p ? (p.unit || '') : '' }; }
+    var i = byId(d.insumos, sid); return { n: i ? i.nombre : 'Insumo ' + sid, u: i ? (i.unidad || '') : '' };
+  }
+  function jornadas() { var r = RAW(); return Array.isArray(r.agro_jornadas) ? r.agro_jornadas : []; }
+  /* el mismo desglose que EP Agro (an2Desglose) */
+  function desglose(d, c, pid) {
+    var o = { insumos: 0, diesel: 0, dieselL: 0, maquinaria: 0, hmaq: 0, servicios: 0, total: 0, labores: [], hechas: 0, pendientes: 0, enCurso: 0, venc: 0, sinCosto: 0, insDet: {} };
+    var jor = jornadas(), haC = haCamp(d, c), haL = pid != null ? haLote(d, c, pid) : 0, hoy = W.agHoy ? W.agHoy() : new Date().toISOString().slice(0, 10);
+    (d.labores || []).forEach(function (l) {
+      if (!l) return;
+      if (l.tipo === 'servicio_ext') {
+        (l.asignaciones || []).forEach(function (a) {
+          if (String(a.campana_id) !== String(c.id)) return;
+          var m = Number(a.monto) || 0;
+          if (pid != null) { if (a.parcela_id != null && a.parcela_id !== '') { if (String(a.parcela_id) !== String(pid)) return; } else m = haC > 0 ? m * haL / haC : 0; }
+          o.servicios += m;
+          o.labores.push({ nombre: l.nombre || l.proveedor || 'Servicio externo', tipo: 'servicio_ext', fecha: l.fecha || a.fecha || '', estado: 'ejecutada', costo: m, lote: a.parcela_codigo || '' });
+        });
+        return;
+      }
+      if (String(l.campana_id) !== String(c.id)) return;
+      if (pid != null && !esDeLote(d, l, pid)) return;
+      var est = String(l.estado || 'planificada');
+      var lp = W.laborParcela ? W.laborParcela(d, l) : null;
+      if (est === 'ejecutada') o.hechas++; else if (est === 'en_curso') o.enCurso++; else { o.pendientes++; if (l.fecha && String(l.fecha).slice(0, 10) < hoy) o.venc++; }
+      if (est === 'planificada') { o.labores.push({ nombre: l.nombre || l.tipo || 'Labor', tipo: l.tipo, fecha: l.fecha || '', estado: est, costo: 0, lote: lp ? lp.code : '', venc: l.fecha && String(l.fecha).slice(0, 10) < hoy }); return; }
+      var ins = 0;
+      (l.insumos || []).forEach(function (r) {
+        var cst = Number(r.costo) || 0; ins += cst;
+        var ni = nombreInsumo(d, r.insumo_id), k = ni.n;
+        if (!o.insDet[k]) o.insDet[k] = { nombre: ni.n, unidad: ni.u, total: 0, costo: 0 };
+        o.insDet[k].total += Number(r.total) || 0; o.insDet[k].costo += cst;
+      });
+      var dl = Number(l.diesel) || 0; if (!dl) jor.forEach(function (j) { if (j && String(j.labor_id) === String(l.id)) dl += Number(j.diesel_l) || 0; });
+      var die = dl * (Number(l.diesel_bs) || 3.74);
+      var hm = Number(l.hmaq) || 0; if (!hm) jor.forEach(function (j) { if (j && String(j.labor_id) === String(l.id)) hm += Number(j.horas_maq || j.horas) || 0; });
+      var maq = hm * TAR;
+      o.insumos += ins; o.diesel += die; o.dieselL += dl; o.maquinaria += maq; o.hmaq += hm;
+      var costo = ins + die + maq;
+      if (est === 'ejecutada' && !costo && l.tipo !== 'cosecha') o.sinCosto++;
+      o.labores.push({ nombre: l.nombre || l.tipo || 'Labor', tipo: l.tipo, fecha: l.fecha || l.fecha_fin || '', estado: est, costo: costo, lote: lp ? lp.code : '' });
+    });
+    o.total = o.insumos + o.diesel + o.maquinaria + o.servicios;
+    o.labores.sort(function (a, b) { return String(a.fecha || '9999').localeCompare(String(b.fecha || '9999')); });
+    return o;
+  }
+  W.an233Desglose = function (cid, pid) { var d = DB(); var c = byId(d.campanas, cid); return c ? desglose(d, c, pid) : null; };
+  function kgDe(d, c, pid) {
+    if (pid != null) { try { return W.loteKg ? (W.loteKg(d, c.id, pid) || 0) : 0; } catch (e) { return 0; } }
+    var kg = 0; (d.labores || []).forEach(function (l) { if (l && String(l.campana_id) === String(c.id) && l.estado === 'ejecutada' && l.tipo === 'cosecha' && l.cosecha) kg += Number(l.cosecha.kg) || 0; });
+    return kg;
+  }
+
+  /* ── vista 1: lista ────────────────────────────────────────────────── */
+  function tarjeta(d, c) {
+    var o = desglose(d, c, null), e = estadoCamp(d, c), ps = parcelas(d, c), ha = haCamp(d, c), nom = nombreCampo(d, c);
+    var n = o.hechas + o.enCurso + o.pendientes, pct = n ? Math.round(o.hechas * 100 / n) : 0;
+    var meta = ps.length + ' lote' + (ps.length === 1 ? '' : 's') + ' · ' + f0(ha) + ' ha' + (c.siembra_plan ? ' · 🌱 ' + ddmm(c.siembra_plan) : '');
+    var lin = [];
+    if (o.enCurso) lin.push('<span style="color:var(--a)">⏳ ' + o.enCurso + ' en curso</span>');
+    if (o.venc) lin.push('<span style="color:var(--r);font-weight:700">⚠ ' + o.venc + ' atrasada' + (o.venc === 1 ? '' : 's') + '</span>');
+    lin.push(o.hechas + ' de ' + n + ' labores');
+    if (o.total) lin.push('Bs ' + f0(o.total) + (ha ? ' · ' + f0(o.total / ha) + '/ha' : ''));
+    var cerrada = esFinal(c) && c.cierre;
+    return '<button type="button" class="card" onclick="an233Elegir(\'' + esc(c.id) + '\')">' +
+      '<div class="r1"><span class="n">' + esc((c.cultivo || '?') + ' · ' + (c.ciclo === 'verano' ? 'Verano' : 'Invierno') + ' ' + (c.anio || '')) + '</span>' +
+      '<span class="bdg ' + (e === 'cosechada' ? 'cos' : e === 'en_curso' ? 'curso' : '') + '">' + (e === 'cosechada' ? 'cosechada' : e === 'en_curso' ? 'en curso' : 'planificada') + '</span></div>' +
+      (nom ? '<div class="m nom" title="' + esc(nom) + '"><b>' + esc(nom) + '</b><span>&nbsp;·&nbsp;' + esc(meta) + '</span></div>' : '<div class="m">' + esc(meta) + '</div>') +
+      (cerrada ? '<div class="m">🏁 ' + f0(c.cierre.kg) + ' kg · ' + W.fmtA(c.cierre.rinde, 2) + ' t/ha · margen <b style="color:' + (c.cierre.margen_bs >= 0 ? 'var(--g)' : 'var(--r)') + '">Bs ' + f0(c.cierre.margen_bs) + '</b></div>'
+        : (n ? '<div class="bar"><i style="width:' + pct + '%"></i>' + (o.venc ? '<i class="r" style="width:' + Math.round(o.venc * 100 / n) + '%"></i>' : '') + '</div><div class="m">' + lin.join(' · ') + '</div>' : '<div class="m">sin plan cargado' + (o.total ? ' · Bs ' + f0(o.total) : '') + '</div>')) +
+      (ps.length ? '<div class="chips">' + ps.map(function (p) { return '<span class="chip ' + estClase(loteEst(d, c, p.id)) + '">' + esc(p.code) + '</span>'; }).join('') + '</div>' : '') +
+      '</button>';
+  }
+  function vLista(d, host) {
+    var todas = (d.campanas || []).filter(Boolean);
+    var nP = todas.filter(function (c) { return !esFinal(c); }).length, nF = todas.length - nP;
+    if (ST.modo === 'proceso' && !nP && nF) ST.modo = 'final';
+    var lista = todas.filter(function (c) { return (ST.modo === 'final') === esFinal(c); })
+      .sort(function (a, b) { var ea = estadoCamp(d, a) === 'en_curso' ? 0 : 1, eb = estadoCamp(d, b) === 'en_curso' ? 0 : 1; if (ea !== eb) return ea - eb; return String(a.siembra_plan || '9999').localeCompare(String(b.siembra_plan || '9999')); });
+    host.innerHTML =
+      '<div class="seg"><button type="button" class="' + (ST.modo === 'proceso' ? 'on' : '') + '"' + (nP ? '' : ' disabled') + ' onclick="an233Modo(\'proceso\')">🌱 En proceso ' + nP + '</button>' +
+      '<button type="button" class="' + (ST.modo === 'final' ? 'on' : '') + '"' + (nF ? '' : ' disabled') + ' onclick="an233Modo(\'final\')">✅ Finalizadas ' + nF + '</button></div>' +
+      (lista.length ? '<div class="grid">' + lista.map(function (c) { return tarjeta(d, c); }).join('') + '</div>'
+        : '<div class="pn vacio">' + (todas.length ? 'Sin campañas ' + (ST.modo === 'final' ? 'finalizadas' : 'en proceso') + '.' : 'Todavía no hay campañas. Se crean en Campañas → ➕ Nueva campaña.') + '</div>');
+  }
+
+  /* ── vista 2: detalle ──────────────────────────────────────────────── */
+  function fila(k, v) { return '<div class="row"><span class="k">' + k + '</span><span class="v">' + v + '</span></div>'; }
+  function vDetalle(d, host, c) {
+    var ps = parcelas(d, c), multi = ps.length > 1;
+    var pid = ST.lote != null && ps.some(function (p) { return String(p.id) === String(ST.lote); }) ? ST.lote : null;
+    var o = desglose(d, c, pid), e = estadoCamp(d, c), cerrada = esFinal(c);
+    var ha = pid != null ? haLote(d, c, pid) : haCamp(d, c);
+    var n = o.hechas + o.enCurso + o.pendientes, pct = n ? Math.round(o.hechas * 100 / n) : 0;
+    var nom = nombreCampo(d, c), titulo = (c.cultivo || '?') + ' · ' + (c.ciclo === 'verano' ? 'Verano' : 'Invierno') + ' ' + (c.anio || '');
+    var kg = kgDe(d, c, pid);
+    /* cabecera + selector de lote */
+    var h = '<div class="crumb" onclick="an233Volver()">← Campañas · <b>' + esc(titulo) + '</b></div>' +
+      '<div class="pn"><div class="head"><div><div class="ttl">' + (nom ? esc(nom) + ' · ' : '') + esc(titulo) + ' <span class="bdg ' + (e === 'cosechada' ? 'cos' : e === 'en_curso' ? 'curso' : '') + '" style="vertical-align:3px">' + (cerrada ? '🏁 cerrada' : e === 'en_curso' ? 'en curso' : 'planificada') + '</span></div>' +
+      '<div class="m">' + ps.map(function (p) { return p.code; }).join(' + ') + ' · ' + f1(haCamp(d, c)) + ' ha' + (c.siembra_plan ? ' · siembra ' + ddmm(c.siembra_plan) : '') + '</div></div>' +
+      (cerrada ? '' : '<button class="btn btn-primary btn-sm" onclick="v181CierreOpen(\'' + esc(c.id) + '\')">🏁 Cerrar con números reales</button>') + '</div>' +
+      (n ? '<div class="bar"><i style="width:' + pct + '%"></i>' + (o.venc ? '<i class="r" style="width:' + Math.round(o.venc * 100 / n) + '%"></i>' : '') + '</div><div class="m">' + o.hechas + ' de ' + n + ' labores del plan' + (pid != null ? ' en este lote' : '') + '</div>' : '') +
+      (multi ? '<div class="lotes"><button type="button" class="lote' + (pid == null ? ' sel' : '') + '" onclick="an233Lote(null)">Toda la campaña · ' + f1(haCamp(d, c)) + ' ha</button>' +
+        ps.map(function (p) { return '<button type="button" class="lote' + (String(pid) === String(p.id) ? ' sel' : '') + '" onclick="an233Lote(\'' + esc(p.id) + '\')"><span class="dot ' + estClase(loteEst(d, c, p.id)) + '"></span>🧭 ' + esc(p.code) + ' · ' + f1(haLote(d, c, p.id)) + ' ha</button>'; }).join('') + '</div>' : '') +
+      '</div>';
+    /* resultado */
+    var res;
+    var ci = c.cierre;
+    if (cerrada && ci) {
+      var cl = pid != null && Array.isArray(ci.lotes) ? ci.lotes.find(function (x) { return String(x.parcela_id) === String(pid); }) : null;
+      var kgR = cl ? cl.kg : ci.kg, ingR = cl ? cl.ingreso : ci.ingreso_bs, cosR = cl ? cl.costo : ci.costo_bs, marR = cl ? cl.margen : ci.margen_bs;
+      res = '<div class="pn"><h4>🏁 Resultado real' + (cl ? ' del lote' : '') + '</h4>' +
+        fila('Cosechado', '<b>' + f0(kgR) + ' kg</b> · ' + (ha && kgR ? W.fmtA(kgR / 1000 / ha, 2) + ' t/ha' : '—')) +
+        fila('Precio y TC del cierre', W.fmtA(ci.precio_usd_t, 2) + ' USD/t · TC ' + ci.tc) +
+        fila('Ingreso', '<b>Bs ' + f0(ingR) + '</b>') + fila('Costo', 'Bs ' + f0(cosR) + (ha ? ' · ' + f0(cosR / ha) + '/ha' : '')) +
+        fila('Margen', '<b style="color:' + (marR >= 0 ? 'var(--g)' : 'var(--r)') + '">Bs ' + f0(marR) + '</b>' + (ha ? ' · ' + f0(marR / ha) + '/ha' : '')) +
+        '<div class="m">cerrada el ' + esc(ci.fecha || '') + '</div></div>';
+    } else {
+      res = '<div class="pn"><h4>🌱 En proceso</h4><div class="m" style="margin:0 0 6px">' + (kg ? 'Cosecha registrada hasta ahora: <b style="color:var(--text)">' + f0(kg) + ' kg</b>' + (ha ? ' (' + W.fmtA(kg / 1000 / ha, 2) + ' t/ha)' : '') + '. El margen se calcula al cerrar.' : 'Todavía sin cosecha registrada. El resultado se calcula cuando se cierre con los números reales.') + '</div>' +
+        fila('Avance del plan', n ? '<b>' + o.hechas + ' de ' + n + ' labores</b> (' + pct + '%)' : 'sin plan cargado') +
+        (o.enCurso ? fila('En curso', o.enCurso) : '') + (o.venc ? fila('Atrasadas', '<b style="color:var(--r)">' + o.venc + '</b>') : '') +
+        fila('Costo acumulado', '<b>Bs ' + f0(o.total) + '</b>' + (ha ? ' · Bs ' + f0(o.total / ha) + '/ha' : '')) + '</div>';
+    }
+    /* costos */
+    var partes = [['Insumos', o.insumos, 'var(--g)'], ['Diésel', o.diesel, '#a0782d'], ['Maquinaria', o.maquinaria, 'var(--b)'], ['Servicios externos', o.servicios, '#a371f7']];
+    var cos = '<div class="pn"><h4>💰 Costos — Bs ' + f0(o.total) + (ha ? ' · Bs ' + f0(o.total / ha) + '/ha' : '') + '</h4>' +
+      (o.total ? '<div class="stk">' + partes.filter(function (x) { return x[1] > 0; }).map(function (x) { return '<i style="display:block;height:100%;width:' + (x[1] * 100 / o.total) + '%;background:' + x[2] + '"></i>'; }).join('') + '</div>' +
+        '<div class="leg">' + partes.filter(function (x) { return x[1] > 0; }).map(function (x) { return '<span><i style="background:' + x[2] + '"></i>' + x[0] + ' ' + Math.round(x[1] * 100 / o.total) + '%</span>'; }).join('') + '</div>' : '') +
+      partes.map(function (x) { return fila(x[0], '<b>Bs ' + f0(x[1]) + '</b>' + (ha ? ' · ' + f0(x[1] / ha) + '/ha' : '')); }).join('') +
+      fila('Diésel consumido', '<b>' + f0(o.dieselL) + ' L</b>' + (ha ? ' · ' + f1(o.dieselL / ha) + ' L/ha' : '')) +
+      fila('Horas de máquina', '<b>' + f1(o.hmaq) + ' h</b> · Bs ' + f0(TAR) + '/h') +
+      (o.sinCosto ? '<div class="warn">⚠ ' + o.sinCosto + ' labor' + (o.sinCosto === 1 ? '' : 'es') + ' ejecutada' + (o.sinCosto === 1 ? '' : 's') + ' sin costos cargados</div>' : '') + '</div>';
+    /* insumos aplicados */
+    var ins = Object.keys(o.insDet).map(function (k) { return o.insDet[k]; }).sort(function (a, b) { return b.costo - a.costo; });
+    var insH = '<div class="pn"><h4>🧪 Insumos aplicados</h4>' + (ins.length ? '<table><thead><tr><th>Producto</th><th class="num">Cantidad</th><th class="num">por ha</th><th class="num">Bs</th></tr></thead><tbody>' +
+      ins.map(function (x) { return '<tr><td>' + esc(x.nombre) + '</td><td class="num">' + f1(x.total) + ' ' + esc(x.unidad) + '</td><td class="num">' + (ha ? f1(x.total / ha) : '—') + '</td><td class="num"><b>' + f0(x.costo) + '</b></td></tr>'; }).join('') + '</tbody></table>'
+      : '<div class="vacio">Sin insumos aplicados todavía.</div>') + '</div>';
+    /* labores */
+    var labH = '<div class="pn"><h4>🚜 Labores (' + o.labores.length + ')</h4>' + (o.labores.length ? '<div style="max-height:420px;overflow:auto"><table><thead><tr><th>Fecha</th><th>Labor</th>' + (multi && pid == null ? '<th>Lote</th>' : '') + '<th>Estado</th><th class="num">Bs</th></tr></thead><tbody>' +
+      o.labores.map(function (l) {
+        var est = l.estado === 'ejecutada' ? '<span style="color:var(--g)">hecha</span>' : l.estado === 'en_curso' ? '<span style="color:var(--a)">en curso</span>' : (l.venc ? '<span style="color:var(--r)">atrasada</span>' : '<span style="color:var(--muted)">plan</span>');
+        return '<tr><td>' + ddmm(l.fecha) + '</td><td>' + esc(l.nombre) + '</td>' + (multi && pid == null ? '<td>' + esc(l.lote || '—') + '</td>' : '') + '<td>' + est + '</td><td class="num">' + (l.costo ? f0(l.costo) : '—') + '</td></tr>';
+      }).join('') + '</tbody></table></div>' : '<div class="vacio">Sin labores cargadas.</div>') + '</div>';
+    /* por lote (toda la campaña, varias parcelas) */
+    var porLote = '';
+    if (multi && pid == null) {
+      porLote = '<div class="pn" style="margin-top:12px"><h4>🧭 Por lote</h4><table><thead><tr><th>Lote</th><th class="num">ha</th><th class="num">kg</th><th class="num">t/ha</th><th class="num">Costo Bs</th><th class="num">Bs/ha</th><th>Estado</th></tr></thead><tbody>' +
+        ps.map(function (p) {
+          var ol = desglose(d, c, p.id), hl = haLote(d, c, p.id), kl = kgDe(d, c, p.id), el = loteEst(d, c, p.id);
+          return '<tr style="cursor:pointer" onclick="an233Lote(\'' + esc(p.id) + '\')"><td><b>🧭 ' + esc(p.code) + '</b></td><td class="num">' + f1(hl) + '</td><td class="num">' + f0(kl) + '</td><td class="num">' + (hl && kl ? W.fmtA(kl / 1000 / hl, 2) : '—') + '</td><td class="num">' + f0(ol.total) + '</td><td class="num">' + (hl ? f0(ol.total / hl) : '—') + '</td><td><span class="chip ' + estClase(el) + '">' + esc(estTxt(el)) + '</span></td></tr>';
+        }).join('') + '</tbody></table></div>';
+    }
+    host.innerHTML = h + '<div class="cols"><div style="display:grid;gap:12px">' + res + cos + '</div><div style="display:grid;gap:12px">' + insH + labH + '</div></div>' + porLote;
+  }
+
+  /* ── montaje ───────────────────────────────────────────────────────── */
+  function host() {
+    var view = E('ag-view-cierres'); if (!view) return null;
+    var h = E('an233');
+    if (!h) { h = document.createElement('div'); h.id = 'an233'; var old = E('cie-list'); view.insertBefore(h, old || null); }
+    var old2 = E('cie-list'); if (old2) old2.style.display = 'none';
+    return h;
+  }
+  function render() {
+    if (W.__AN233_OFF) return;
+    var h = host(); if (!h) return;
+    css();
+    var d = DB(); if (!d) return;
+    var c = ST.camp != null ? byId(d.campanas, ST.camp) : null;
+    if (ST.camp != null && !c) ST.camp = null;
+    try { if (c) vDetalle(d, h, c); else vLista(d, h); } catch (e) { console.error('[an233]', e); var o = E('cie-list'); if (o) o.style.display = ''; h.innerHTML = ''; }
+  }
+  W.an233Render = render;
+  W.an233Modo = function (m) { ST.modo = m; ST.camp = null; render(); };
+  W.an233Elegir = function (id) { ST.camp = String(id); ST.lote = null; render(); try { E('an233').scrollIntoView({ block: 'start' }); } catch (e) {} };
+  W.an233Volver = function () { ST.camp = null; ST.lote = null; render(); };
+  W.an233Lote = function (pid) { ST.lote = pid == null ? null : String(pid); render(); };
+  /* la vista vieja se repinta al entrar a la pestaña y al cerrar una campaña: seguirla */
+  var mo = null;
+  function enganchar() {
+    var old = E('cie-list'); if (!old || old.__an233) return !!old;
+    old.__an233 = true;
+    mo = new MutationObserver(function () { render(); });
+    mo.observe(old, { childList: true });
+    return true;
+  }
+  if (typeof W.agShowPage === 'function') {
+    W.agShowPage = (function (base) { return function (v) { var r = base.apply(this, arguments); if (v === 'cierres') { setTimeout(function () { enganchar(); render(); }, 0); } return r; }; })(W.agShowPage);
+  }
+  var t = setInterval(function () { if (enganchar()) clearInterval(t); }, 1000);
+  setTimeout(function () { clearInterval(t); }, 60000);
+  try { console.log('%c[EP Desktop v1.8.233] Análisis de campaña como EP Agro: todas las campañas, desglose de costos, insumos y labores · kill: __AN233_OFF', 'color:#3fb950;font-weight:bold'); } catch (e) {}
 })();
 </script>
 
