@@ -51,6 +51,9 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "notarize": true,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Estancia Pro usa el micrófono solo durante una llamada de voz con soporte, cuando vos la aceptás."
+      },
       "artifactName": "Estancia-Pro-${version}-${arch}.${ext}"
     },
     "dmg": {

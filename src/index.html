@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.233';
+window.E5M_HTML_BUILD = '1.8.234';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -58247,7 +58247,7 @@ try {
 
 <script id="ss-mirror-v1">
 /* ═══════════════════════════════════════════════════════════════════════════
-   VER PANTALLA — lado del usuario observado (ss-mirror v1.1)
+   VER PANTALLA — lado del usuario observado (ss-mirror v1.2 · con llamada de voz)
    ---------------------------------------------------------------------------
    Espeja el DOM de ESTA pestaña con rrweb cuando alguien de soporte abre una
    sesión desde el panel super admin. Mientras dura, el usuario ve una barra
@@ -58609,7 +58609,8 @@ try {
     fetch(api() + '/screen-share/sessions/' + S.sesion.id + '/events', {
       method: 'POST', headers: hdrs(),
       body: JSON.stringify({ eventos: evs, chat: chat || undefined, after_msg: S.cursorMsg,
-        ctrl_off: corte || undefined })
+        ctrl_off: corte || undefined,
+        rtc: (window.__ssLlamada && window.__ssLlamada.pendientes()) || undefined /* v1.2: señalización de la llamada */ })
     }).then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
         S.enviando = false;
@@ -58625,6 +58626,7 @@ try {
           else if (m.kind === 'ctrl_on') { if (!window.__SS_NOCTRL) { S.control = true; barraPintar(); tandaRitmo(); } }
           else if (m.kind === 'ctrl_off') { S.control = false; barraPintar(); tandaRitmo(); }
           else if (m.kind === 'ctrl') ejecutar(p);
+          else if (m.kind === 'rtc') { try { if (window.__ssLlamada) window.__ssLlamada.recibir(p); } catch (e) {} } /* v1.2 */
         });
       })
       .catch(function () { S.enviando = false; });
@@ -58644,6 +58646,7 @@ try {
     try { console.log('%c[ver-pantalla] sesión ' + ses.id + ' — ' + (ses.viewer_nombre || 'Soporte') + ' está mirando', 'color:#58a6ff;font-weight:bold'); } catch (e) {}
   }
   function terminar() {
+    try { if (window.__ssLlamada) window.__ssLlamada.colgar('sesion_cerrada', true); } catch (e) {} /* v1.2: sin sesión no hay llamada */
     if (S.timerTanda) { clearInterval(S.timerTanda); S.timerTanda = null; }
     pararGrabar();
     barraOcultar(); canvasOcultar(); chatOcultar();
@@ -58684,6 +58687,187 @@ try {
   };
   try { console.log('%c[ver-pantalla] listo · soporte en vivo · kill: __SS_OFF', 'color:#8b949e'); } catch (e) {}
 })();
+
+/* ═══ ss-call v1 ═══ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   LLAMADA DE VOZ — lado del usuario (ss-call v1.0)
+   ---------------------------------------------------------------------------
+   Mientras soporte mira la pantalla (ss-mirror), puede llamar. Acá se muestra
+   "📞 Soporte te está llamando" con Aceptar / Rechazar; si acepta, se pide el
+   micrófono y se arma una llamada WebRTC de solo audio, punto a punto. Nada
+   se graba y el server no oye: solo pasa la señalización por la misma tanda
+   de Ver pantalla (kind 'rtc'). Durante la llamada hay un botón para colgar;
+   si se cierra la sesión de Ver pantalla, se corta sola.
+   Kill switch: window.__SS_NOCALL = true
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  if (window.__SS_NOCALL || window.__ssLlamadaCargada) return;
+  window.__ssLlamadaCargada = true;
+  var C = { pc: null, mic: null, audio: null, estado: 'libre', cola: [], oferta: null, t0: 0, timer: null, caja: null, muted: false, tRing: null, vib: null };
+
+  function api() {
+    try { if (typeof API_URL === 'string' && API_URL) return API_URL; } catch (e) {}
+    try { if (typeof getApiUrl === 'function') { var u = getApiUrl(); if (u) return u; } } catch (e) {}
+    try {
+      var ls = localStorage;
+      return ls.getItem('e5m_api_url') || ls.getItem('ag_api_url') || ls.getItem('pwa_api_url') || ls.getItem('apiUrl') ||
+        'https://estancia5m-api-production.up.railway.app/api';
+    } catch (e) { return 'https://estancia5m-api-production.up.railway.app/api'; }
+  }
+  function token() {
+    try {
+      var ls = localStorage;
+      return ls.getItem('e5m_api_token') || ls.getItem('ag_api_token') || ls.getItem('pwa_api_token') || ls.getItem('e5m_token') || '';
+    } catch (e) { return ''; }
+  }
+  function hdrs() {
+    try { if (typeof HEADERS === 'object' && HEADERS && HEADERS.Authorization) return Object.assign({}, HEADERS); } catch (e) {}
+    return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token() };
+  }
+  function quien() { try { var s = window.__ss && window.__ss.estado().sesion; return (s && s.viewer_nombre) || 'Soporte'; } catch (e) { return 'Soporte'; } }
+  function mandar(p) { C.cola.push(p); }
+  function ice() {
+    return fetch(api() + '/screen-share/ice', { headers: hdrs() }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { return (d && d.iceServers) || [{ urls: 'stun:stun.l.google.com:19302' }]; })
+      .catch(function () { return [{ urls: 'stun:stun.l.google.com:19302' }]; });
+  }
+  function juntar(pc) {
+    return new Promise(function (res) {
+      if (pc.iceGatheringState === 'complete') return res();
+      var t = setTimeout(res, 4000);
+      pc.addEventListener('icegatheringstatechange', function () { if (pc.iceGatheringState === 'complete') { clearTimeout(t); res(); } });
+    });
+  }
+
+  /* ── cajita: sonando / en llamada ── */
+  function css() {
+    if (document.getElementById('ss-call-css')) return;
+    var st = document.createElement('style'); st.id = 'ss-call-css';
+    st.textContent =
+      '#ss-call{position:fixed;left:50%;top:52px;transform:translateX(-50%);z-index:2147483001;width:min(340px,calc(100vw - 24px));' +
+        'background:#161b22;color:#e6edf3;border:1px solid #30363d;border-radius:14px;padding:14px 16px;' +
+        'font:14px/1.4 system-ui,-apple-system,Segoe UI,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.55);text-align:center}' +
+      '#ss-call.suena{animation:ssCallB .9s infinite}' +
+      '@keyframes ssCallB{50%{box-shadow:0 12px 40px rgba(0,0,0,.55),0 0 0 6px rgba(35,134,54,.35)}}' +
+      '#ss-call .ic{font-size:34px;line-height:1;margin-bottom:6px}' +
+      '#ss-call b{display:block;font-size:15px}' +
+      '#ss-call .s{color:#8b949e;font-size:12.5px;margin-top:2px}' +
+      '#ss-call .bt{display:flex;gap:10px;margin-top:12px}' +
+      '#ss-call .bt button{flex:1;border:0;border-radius:10px;padding:11px 8px;font:700 14px inherit;cursor:pointer;color:#fff}' +
+      '#ss-call .ok{background:#238636}#ss-call .no{background:#da3633}#ss-call .mu{background:#30363d;flex:0 0 52px}#ss-call .mu.on{background:#d4a017;color:#000}';
+    document.head.appendChild(st);
+  }
+  function caja(html, cls) {
+    css();
+    if (!C.caja) { C.caja = document.createElement('div'); C.caja.id = 'ss-call'; C.caja.className = 'ss-privado'; document.body.appendChild(C.caja); }
+    C.caja.className = 'ss-privado ' + (cls || '');
+    C.caja.innerHTML = html;
+  }
+  function cajaFuera() { if (C.caja) { C.caja.remove(); C.caja = null; } }
+  function vibrar(on) {
+    try {
+      if (on) { navigator.vibrate && navigator.vibrate([400, 300, 400]); C.vib = setInterval(function () { try { navigator.vibrate([400, 300, 400]); } catch (e) {} }, 2000); }
+      else { clearInterval(C.vib); C.vib = null; navigator.vibrate && navigator.vibrate(0); }
+    } catch (e) {}
+  }
+  function reloj() {
+    var s = Math.round((Date.now() - C.t0) / 1000), e = C.caja && C.caja.querySelector('.s');
+    if (e) e.textContent = 'En llamada · ' + Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+  }
+
+  /* ── suena ── */
+  function sonar(p) {
+    if (C.estado !== 'libre') { mandar({ t: 'error', msg: 'ya hay una llamada' }); return; }
+    C.estado = 'suena'; C.oferta = p.sdp;
+    caja('<div class="ic">📞</div><b>' + quien().replace(/[<>&]/g, '') + ' te está llamando</b><div class="s">Llamada de voz de soporte · podés rechazarla</div>' +
+      '<div class="bt"><button class="no" id="ss-call-no">Rechazar</button><button class="ok" id="ss-call-ok">Aceptar</button></div>', 'suena');
+    C.caja.querySelector('#ss-call-ok').onclick = aceptar;
+    C.caja.querySelector('#ss-call-no').onclick = function () { rechazar('reject'); };
+    vibrar(true);
+    mandar({ t: 'ringing' });
+    C.tRing = setTimeout(function () { if (C.estado === 'suena') rechazar(null); }, 50000);
+  }
+  function rechazar(t) {
+    clearTimeout(C.tRing); vibrar(false);
+    C.estado = 'libre'; C.oferta = null; cajaFuera();
+    if (t) mandar({ t: t });
+  }
+  function aceptar() {
+    clearTimeout(C.tRing); vibrar(false);
+    if (!navigator.mediaDevices || !window.RTCPeerConnection) { rechazar('error'); alert('Este equipo no permite llamadas.'); return; }
+    C.estado = 'conectando';
+    caja('<div class="ic">🎤</div><b>Permitir el micrófono</b><div class="s">Aceptá el permiso para que soporte te oiga</div>');
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false })
+      .then(function (mic) {
+        C.mic = mic;
+        caja('<div class="ic">📞</div><b>Conectando…</b><div class="s">Un momento</div>');
+        return ice().then(function (servers) {
+          var pc = new RTCPeerConnection({ iceServers: servers, iceCandidatePoolSize: 4 });
+          C.pc = pc;
+          mic.getTracks().forEach(function (t) { pc.addTrack(t, mic); });
+          pc.ontrack = function (ev) { oir(ev.streams[0] || new MediaStream([ev.track])); };
+          pc.onconnectionstatechange = function () {
+            if (pc.connectionState === 'connected' && C.estado !== 'en') enLlamada();
+            else if (pc.connectionState === 'failed') colgar('no se pudo conectar', false);
+            else if (pc.connectionState === 'disconnected') setTimeout(function () { if (C.pc === pc && pc.connectionState === 'disconnected') colgar('se cortó', false); }, 6000);
+          };
+          return pc.setRemoteDescription({ type: 'offer', sdp: C.oferta })
+            .then(function () { return pc.createAnswer(); })
+            .then(function (a) { return pc.setLocalDescription(a); })
+            .then(function () { return juntar(pc); })
+            .then(function () { if (C.pc === pc) mandar({ t: 'answer', sdp: pc.localDescription.sdp }); });
+        });
+      })
+      .catch(function (e) {
+        limpiar(); C.estado = 'libre'; cajaFuera();
+        mandar({ t: 'error', msg: 'micrófono: ' + (e && e.name ? e.name : 'error') });
+        alert('No se pudo usar el micrófono' + (e && e.name === 'NotAllowedError' ? ': el permiso fue rechazado.' : '.'));
+      });
+  }
+  function enLlamada() {
+    C.estado = 'en'; C.t0 = Date.now();
+    caja('<div class="ic">📞</div><b>En llamada con ' + quien().replace(/[<>&]/g, '') + '</b><div class="s">En llamada · 0:00</div>' +
+      '<div class="bt"><button class="mu" id="ss-call-mu" title="Silenciar mi micrófono">🎤</button><button class="no" id="ss-call-fin">Colgar</button></div>');
+    C.caja.querySelector('#ss-call-fin').onclick = function () { colgar('colgaste', true); };
+    C.caja.querySelector('#ss-call-mu').onclick = function () {
+      C.muted = !C.muted; if (C.mic) C.mic.getAudioTracks().forEach(function (t) { t.enabled = !C.muted; });
+      var b = C.caja.querySelector('#ss-call-mu'); b.textContent = C.muted ? '🔇' : '🎤'; b.classList.toggle('on', C.muted);
+    };
+    C.timer = setInterval(reloj, 1000);
+  }
+  function oir(stream) {
+    if (!C.audio) { C.audio = document.createElement('audio'); C.audio.autoplay = true; C.audio.setAttribute('playsinline', ''); C.audio.style.display = 'none'; document.body.appendChild(C.audio); }
+    C.audio.srcObject = stream;
+    var p = C.audio.play(); if (p && p.catch) p.catch(function () {});
+  }
+  function limpiar() {
+    clearInterval(C.timer); C.timer = null; clearTimeout(C.tRing); vibrar(false);
+    try { if (C.pc) C.pc.close(); } catch (e) {}
+    try { if (C.mic) C.mic.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+    try { if (C.audio) C.audio.srcObject = null; } catch (e) {}
+    C.pc = null; C.mic = null; C.oferta = null; C.muted = false; C.t0 = 0;
+  }
+  function colgar(motivo, avisar) {
+    if (C.estado === 'libre') return;
+    C.estado = 'libre';
+    if (avisar) mandar({ t: 'hangup' });
+    limpiar(); cajaFuera();
+    try { console.log('[llamada] terminada: ' + motivo); } catch (e) {}
+  }
+
+  window.__ssLlamada = {
+    recibir: function (p) {
+      p = p || {};
+      if (p.t === 'offer') sonar(p);
+      else if (p.t === 'hangup') { if (C.estado === 'suena') rechazar(null); else colgar('soporte colgó', false); }
+    },
+    pendientes: function () { if (!C.cola.length) return null; var c = C.cola; C.cola = []; return c; },
+    colgar: function (motivo, silencioso) { if (C.estado === 'suena') rechazar(null); else colgar(motivo, !silencioso); },
+    estado: function () { return C.estado; }, _C: C
+  };
+  try { console.log('%c[llamada] listo · llamada de voz de soporte · kill: __SS_NOCALL', 'color:#8b949e'); } catch (e) {}
+})();
+/* ═══ /ss-call v1 ═══ */
 </script>
 
 </body>
