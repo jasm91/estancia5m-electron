@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.234';
+window.E5M_HTML_BUILD = '1.8.235';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -58868,6 +58868,262 @@ try {
   try { console.log('%c[llamada] listo · llamada de voz de soporte · kill: __SS_NOCALL', 'color:#8b949e'); } catch (e) {}
 })();
 /* ═══ /ss-call v1 ═══ */
+
+/* ═══ sg-soporte v1 ═══ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   BOTÓN «SOPORTE» DE SG — widget para EstanciaPro (Desktop / EP Campo / EP Agro) · v1.0
+   Basado en widget-soporte.js del paquete sg-soporte-integracion (26-09-2026).
+   Habla con /api/support/chat del server de EstanciaPro (con la sesión normal de la
+   app), nunca con el CRM directo. Aitana responde con el manual; «Hablar con una
+   persona» lo pasa a la mesa SG Soporte. Toma los colores de la app (variables CSS
+   --sur/--bg/--bor/--text/--muted) así se ve bien en tema claro y oscuro.
+   Kill switch: window.__SGSOP_OFF = true
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+  if (window.SGSoporte) return;
+  var O = null, U = {}, S = { abierto: false, ultimo: 0, msgs: [], estado: null, timer: null, enviando: false, noLeidos: 0, csatDado: false, cargado: false };
+  var LS = 'sg_soporte_estado';
+
+  var CSS =
+    '.sgs-float{position:fixed;right:14px;bottom:var(--sgs-bottom,18px);z-index:2147482000;width:46px;height:46px;border-radius:50%;border:1px solid var(--bor,#30363d);' +
+      'background:var(--sur,#161b22);color:var(--text,#e6edf3);box-shadow:0 6px 18px rgba(0,0,0,.28);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;padding:0;-webkit-tap-highlight-color:transparent}' +
+    '.sgs-float:active{transform:scale(.94)}' +
+    '.sgs-badge{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#dc2626;color:#fff;font:700 11px/18px system-ui,sans-serif;text-align:center;display:none}' +
+    '.sgs-panel{position:fixed;top:0;right:0;bottom:0;width:min(400px,100vw);background:var(--bg,#0d1117);color:var(--text,#e6edf3);box-shadow:-6px 0 28px rgba(0,0,0,.35);z-index:2147482500;display:none;flex-direction:column;' +
+      'font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;border-left:1px solid var(--bor,#30363d)}' +
+    '.sgs-panel.abierto{display:flex}' +
+    '.sgs-head{padding:12px 14px;border-bottom:1px solid var(--bor,#30363d);display:flex;align-items:center;gap:10px;background:var(--sur,#161b22)}' +
+    '.sgs-head .ic{font-size:22px}.sgs-head b{flex:1;font-size:15px}.sgs-head small{display:block;color:var(--muted,#8b949e);font-weight:400;font-size:12px}' +
+    '.sgs-x{border:0;background:none;font-size:24px;line-height:1;cursor:pointer;color:var(--muted,#8b949e);padding:4px 6px}' +
+    '.sgs-msgs{flex:1;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px;-webkit-overflow-scrolling:touch}' +
+    '.sgs-m{max-width:88%;padding:8px 11px;border-radius:12px;white-space:pre-wrap;word-break:break-word}' +
+    '.sgs-m.yo{align-self:flex-end;background:#1f6feb;color:#fff;border-bottom-right-radius:4px}' +
+    '.sgs-m.otro{align-self:flex-start;background:var(--sur,#161b22);border:1px solid var(--bor,#30363d);border-bottom-left-radius:4px}' +
+    '.sgs-m .sgs-de{font-size:11px;color:var(--muted,#8b949e);margin-bottom:2px;font-weight:600}' +
+    '.sgs-m .sgs-goto{display:inline-block;margin-top:7px;padding:6px 11px;border-radius:8px;background:rgba(31,111,235,.14);color:#58a6ff;border:1px solid rgba(88,166,255,.45);cursor:pointer;font-size:13px}' +
+    '.sgs-sys{align-self:center;font-size:12.5px;color:var(--muted,#8b949e);text-align:center;max-width:92%}' +
+    '.sgs-chips{display:flex;gap:6px;padding:8px 14px;border-top:1px solid var(--bor,#30363d);flex-wrap:wrap;background:var(--sur,#161b22)}' +
+    '.sgs-chip{border:1px solid var(--bor,#30363d);background:var(--bg,#0d1117);color:var(--text,#e6edf3);border-radius:999px;padding:6px 11px;font-size:12.5px;cursor:pointer}' +
+    '.sgs-in{display:flex;gap:8px;padding:10px 14px calc(12px + env(safe-area-inset-bottom));background:var(--sur,#161b22)}' +
+    '.sgs-in textarea{flex:1;resize:none;height:42px;padding:10px;border:1px solid var(--bor,#30363d);border-radius:10px;font:inherit;background:var(--bg,#0d1117);color:var(--text,#e6edf3);outline:none}' +
+    '.sgs-in button{padding:0 16px;border:0;border-radius:10px;background:#1f6feb;color:#fff;cursor:pointer;font:600 14px inherit}' +
+    '.sgs-in button:disabled{opacity:.5}' +
+    '.sgs-csat{display:flex;gap:10px;justify-content:center;padding:6px 0}.sgs-csat span{font-size:28px;cursor:pointer;opacity:.7}.sgs-csat span:active{transform:scale(1.2);opacity:1}' +
+    '.sgs-typing{align-self:flex-start;color:var(--muted,#8b949e);font-size:12.5px;padding:2px 4px}' +
+    '@media(max-width:720px){.sgs-panel{width:100vw;border-left:0}}';
+
+  function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+  function esc(t) { return String(t == null ? '' : t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function movil() { return /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) || window.innerWidth < 720; }
+  function ctx() {
+    var ex = {}, r = '';
+    try { ex = (O.extra && O.extra()) || {}; } catch (e) {}
+    try { r = (O.ruta && O.ruta()) || ''; } catch (e) {}
+    var v = O.version; try { if (typeof v === 'function') v = v(); } catch (e) { v = ''; }
+    return { ruta: String(r).slice(0, 200), version: String(v || ''), app: O.app || '', movil: movil(), extra: ex };
+  }
+  function guardar() { try { localStorage.setItem(LS, JSON.stringify({ escalado: !!(S.estado && S.estado.escalado && !S.estado.resuelto), ultimo: S.ultimo })); } catch (e) {} }
+  function leer() { try { return JSON.parse(localStorage.getItem(LS) || 'null'); } catch (e) { return null; } }
+
+  function api(method, path, body, query) {
+    var url = O.base + (path || '') + (query ? '?' + new URLSearchParams(query) : '');
+    var h = { 'Content-Type': 'application/json' };
+    try { Object.assign(h, (O.headers && O.headers()) || {}); } catch (e) {}
+    return fetch(url, { method: method, headers: h, body: body ? JSON.stringify(body) : undefined })
+      .then(function (r) { return r.text().then(function (t) { var d = null; try { d = JSON.parse(t); } catch (e) {} if (!r.ok) throw new Error((d && d.error) || ('HTTP ' + r.status)); return d || {}; }); });
+  }
+
+  /* ── UI ── */
+  function construir() {
+    if (U.panel) return;
+    var st = el('style', null, CSS); st.id = 'sgs-css'; document.head.appendChild(st);
+    U.panel = el('div', 'sgs-panel ss-privado');
+    U.panel.innerHTML =
+      '<div class="sgs-head"><span class="ic">🆘</span><b>Soporte <small class="sgs-sub">Aitana responde al toque</small></b><button class="sgs-x" title="Cerrar" aria-label="Cerrar">×</button></div>' +
+      '<div class="sgs-msgs"></div>' +
+      '<div class="sgs-chips"><button class="sgs-chip" data-a="persona">🙋 Hablar con una persona</button><button class="sgs-chip" data-a="bug">🐞 Reportar un problema</button></div>' +
+      '<div class="sgs-in"><textarea placeholder="Contanos qué pasa…" maxlength="4000"></textarea><button>Enviar</button></div>';
+    document.body.appendChild(U.panel);
+    U.sub = U.panel.querySelector('.sgs-sub'); U.msgs = U.panel.querySelector('.sgs-msgs');
+    U.ta = U.panel.querySelector('textarea'); U.send = U.panel.querySelector('.sgs-in button');
+    U.panel.querySelector('.sgs-x').onclick = cerrar;
+    U.send.onclick = function () { enviar(U.ta.value); };
+    U.ta.onkeydown = function (e) { if (e.key === 'Enter' && !e.shiftKey && !movil()) { e.preventDefault(); enviar(U.ta.value); } };
+    U.panel.querySelectorAll('.sgs-chip').forEach(function (c) { c.onclick = function () { chip(c.getAttribute('data-a')); }; });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && S.abierto) cerrar(); });
+
+    if (O.boton === 'flotante') {
+      U.btn = el('button', 'sgs-float ss-privado', '🆘<span class="sgs-badge"></span>');
+      U.btn.title = 'Soporte'; U.btn.setAttribute('aria-label', 'Soporte'); U.btn.onclick = toggle;
+      if (O.bottom) U.btn.style.setProperty('--sgs-bottom', O.bottom);
+      document.body.appendChild(U.btn);
+      U.badge = U.btn.querySelector('.sgs-badge');
+    } else if (typeof O.boton === 'function') {
+      U.badge = O.boton(toggle) || null;   /* la app pone el botón donde quiera y devuelve el elemento del badge */
+    }
+  }
+  function badge() {
+    if (!U.badge) return;
+    U.badge.style.display = S.noLeidos > 0 ? 'inline-block' : 'none'; U.badge.textContent = S.noLeidos > 99 ? '99+' : S.noLeidos;
+  }
+  function pintar() {
+    if (!U.msgs) return;
+    U.msgs.innerHTML = '';
+    if (!S.msgs.length && S.cargado) U.msgs.appendChild(el('div', 'sgs-sys', 'Hola 👋 Contanos qué necesitás. Aitana responde con el manual de ' + esc(O.producto) + '; si no puede, te pasa con una persona de SG.'));
+    if (!S.cargado) U.msgs.appendChild(el('div', 'sgs-sys', 'Cargando…'));
+    S.msgs.forEach(function (m) {
+      var mio = m.de === 'yo';
+      var d = el('div', 'sgs-m ' + (mio ? 'yo' : 'otro'));
+      d.innerHTML = (mio ? '' : '<div class="sgs-de">' + esc(m.nombre || (m.de === 'aitana' ? 'Aitana' : 'Soporte SG')) + '</div>') + esc(m.texto);
+      if (m.goto && m.goto.id && O.irA) {
+        var g = el('span', 'sgs-goto', '→ Ir a ' + esc(m.goto.label || m.goto.id));
+        g.onclick = function () { var ok = false; try { ok = O.irA(m.goto.id, m.goto.label); } catch (e) {} if (ok !== false) cerrar(); };
+        d.appendChild(g);
+      }
+      U.msgs.appendChild(d);
+    });
+    if (S.enviando) U.msgs.appendChild(el('div', 'sgs-typing', 'Aitana está escribiendo…'));
+    var e = S.estado || {};
+    if (e.modo === 'persona' && e.agente) U.sub.textContent = 'Te atiende ' + e.agente;
+    else if (e.escalado && !e.resuelto) U.sub.textContent = 'Esperando a una persona de SG…';
+    else if (e.resuelto) U.sub.textContent = 'Caso resuelto';
+    else U.sub.textContent = 'Aitana responde al toque';
+    if (e.pide_csat && !S.csatDado) {
+      var w = el('div', 'sgs-sys', '¿Cómo te fue con soporte?'), c = el('div', 'sgs-csat');
+      ['😡', '😕', '😐', '🙂', '🤩'].forEach(function (cara, i) { var sp = el('span', null, cara); sp.title = (i + 1) + '/5'; sp.onclick = function () { csat(i + 1); }; c.appendChild(sp); });
+      w.appendChild(c); U.msgs.appendChild(w);
+    }
+    U.msgs.scrollTop = U.msgs.scrollHeight;
+    badge();
+  }
+  function agregar(lista) {
+    var nuevos = 0;
+    (lista || []).forEach(function (m) {
+      if (!m || m.id == null) return;
+      if (S.msgs.some(function (x) { return x.id === m.id; })) return;
+      S.msgs.push(m); if (m.id > S.ultimo) S.ultimo = m.id;
+      if (m.de !== 'yo' && !S.abierto) nuevos++;
+    });
+    S.msgs.sort(function (a, b) { return (a.id > 0 && b.id > 0) ? a.id - b.id : 0; });
+    if (nuevos) S.noLeidos += nuevos;
+    return nuevos;
+  }
+  function sistema(texto) { S.msgs.push({ id: -Math.random(), de: 'aitana', nombre: 'Soporte', texto: texto }); }
+
+  /* ── acciones ── */
+  function enviar(texto) {
+    texto = String(texto || '').trim(); if (!texto || S.enviando) return;
+    S.enviando = true; U.send.disabled = true; U.ta.value = '';
+    var tmp = { id: -Date.now(), de: 'yo', texto: texto }; S.msgs.push(tmp); S.csatDado = false; pintar();
+    api('POST', '', { text: texto, ctx: ctx() }).then(function (r) {
+      S.msgs = S.msgs.filter(function (m) { return m !== tmp; });
+      agregar([{ id: r.mensaje_id, de: 'yo', texto: texto }]);
+      if (r.respuesta) agregar([{ id: r.respuesta.id, de: 'aitana', nombre: 'Aitana', texto: r.respuesta.texto, goto: r.respuesta.goto }]);
+      else if (r.error) sistema(r.error);
+      S.estado = r.estado || S.estado; guardar();
+    }).catch(function (e) {
+      S.msgs = S.msgs.filter(function (m) { return m !== tmp; }); S.msgs.push({ id: -Math.random(), de: 'yo', texto: texto });
+      sistema('No se pudo enviar: ' + e.message);
+    }).then(function () { S.enviando = false; U.send.disabled = false; pintar(); programar(); });
+  }
+  function chip(a) {
+    if (a === 'persona') {
+      api('POST', '/escalar', { ctx: ctx(), text: '' }).then(function (r) {
+        S.estado = r.estado || S.estado; guardar();
+        sistema('Te paso con una persona de SG. Podés seguir escribiendo mientras tanto; te avisamos acá cuando conteste.');
+      }).catch(function (e) { sistema('No se pudo pedir una persona: ' + e.message); })
+        .then(function () { pintar(); programar(); });
+    } else if (a === 'bug') { U.ta.value = '🐞 Problema: '; U.ta.focus(); }
+  }
+  function csat(score) {
+    S.csatDado = true; pintar();
+    api('POST', '/csat', { score: score }).catch(function () {}).then(function () { sistema('¡Gracias por calificar!'); pintar(); });
+  }
+  function sondear() {
+    if (S.enviando) { programar(); return; }
+    api('GET', '', null, { after: S.ultimo }).then(function (r) {
+      S.cargado = true;
+      var n = agregar(r.mensajes), cambio = JSON.stringify(r.estado) !== JSON.stringify(S.estado);
+      S.estado = r.estado || S.estado; guardar();
+      if (n || cambio || S.abierto) pintar(); else badge();
+    }).catch(function (e) { if (!S.cargado) { S.cargado = true; sistema(e.message); pintar(); } })
+      .then(programar);
+  }
+  function programar() {
+    if (S.timer) { clearTimeout(S.timer); S.timer = null; }
+    var ms = S.abierto ? 3000 : ((S.estado && S.estado.escalado && !S.estado.resuelto) ? 20000 : 0);
+    if (ms) S.timer = setTimeout(sondear, ms);
+  }
+  function abrir() { construir(); S.abierto = true; S.noLeidos = 0; U.panel.classList.add('abierto'); pintar(); if (!movil()) U.ta.focus(); sondear(); }
+  function cerrar() { S.abierto = false; if (U.panel) U.panel.classList.remove('abierto'); badge(); programar(); }
+  function toggle() { S.abierto ? cerrar() : abrir(); }
+
+  window.SGSoporte = {
+    instalar: function (opts) {
+      if (window.__SGSOP_OFF) return;
+      O = Object.assign({ base: '/api/support/chat', producto: 'EstanciaPro', version: '', app: '', boton: 'flotante' }, opts || {});
+      function arranque() {
+        construir();
+        var prev = leer();
+        if (prev && prev.escalado) sondear();   /* si había una persona atendiendo, seguir escuchando aunque el panel esté cerrado */
+      }
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', arranque); else arranque();
+      try { console.log('%c[SG Soporte] widget listo · ' + O.app + ' · kill: __SGSOP_OFF', 'color:#58a6ff'); } catch (e) {}
+    },
+    abrir: abrir, cerrar: cerrar, toggle: toggle,
+    abrirCon: function (texto) { abrir(); if (U.ta) { U.ta.value = texto || ''; U.ta.focus(); } },
+    _S: S
+  };
+})();
+(function sgSoporteInstalar() {
+  if (window.__SGSOP_OFF) return;
+/* helpers compartidos (misma resolución que ss-mirror) */
+function sgsApi() {
+  try { if (typeof API_URL === 'string' && API_URL) return API_URL; } catch (e) {}
+  try { if (typeof getApiUrl === 'function') { var u = getApiUrl(); if (u) return u; } } catch (e) {}
+  try { var ls = localStorage; return ls.getItem('e5m_api_url') || ls.getItem('ag_api_url') || ls.getItem('pwa_api_url') || ls.getItem('apiUrl') || 'https://estancia5m-api-production.up.railway.app/api'; } catch (e) { return 'https://estancia5m-api-production.up.railway.app/api'; }
+}
+function sgsTok() { try { var ls = localStorage; return ls.getItem('e5m_api_token') || ls.getItem('ag_api_token') || ls.getItem('pwa_api_token') || ls.getItem('e5m_token') || ''; } catch (e) { return ''; } }
+function sgsHdrs(app) {
+  try { if (typeof HEADERS === 'object' && HEADERS && HEADERS.Authorization) return Object.assign({}, HEADERS); } catch (e) {}
+  return { 'Authorization': 'Bearer ' + sgsTok(), 'X-App-Type': app };
+}
+function sgsSlug(t) { return String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
+function sgsOtraApp(id) {
+  var m = /^(desktop|campo|agro)\//.exec(String(id || ''));
+  var n = { desktop: 'el Desktop (la compu)', campo: 'EP Campo (celular)', agro: 'EP Agro (celular)' };
+  if (m && n[m[1]]) { try { if (typeof toast === 'function') toast('Esa pantalla está en ' + n[m[1]]); else alert('Esa pantalla está en ' + n[m[1]]); } catch (e) {} }
+  return false;
+}
+
+function sgsPagina() {
+  try { var b = document.querySelector('.nav-btn.active'); var lb = b ? b.getAttribute('data-label') : ''; var sub = document.querySelector('#page-agro.active .ag-tabbtn.active, .page.active .tab-btn.active'); return 'desktop/' + sgsSlug(lb) + (sub ? ' · ' + String(sub.textContent || '').trim().slice(0, 30) : ''); } catch (e) { return 'desktop/'; }
+}
+SGSoporte.instalar({
+  base: sgsApi() + '/support/chat', headers: function () { return sgsHdrs('desktop'); },
+  producto: 'EstanciaPro', app: 'Desktop', version: function () { return window.E5M_HTML_BUILD ? String(window.E5M_HTML_BUILD) : ''; },
+  ruta: sgsPagina,
+  extra: function () { var e = { app: 'Desktop' }; try { var br = JSON.parse(localStorage.getItem('e5m_branding') || '{}'); e.estancia = br.name || localStorage.getItem('e5m_tenant_name') || ''; e.usuario = localStorage.getItem('e5m_device_name') || localStorage.getItem('deviceName') || ''; } catch (x) {} return e; },
+  irA: function (id) {
+    var m = /^desktop\/([a-z0-9_-]+)/.exec(String(id || '')); if (!m) return sgsOtraApp(id);
+    var bs = document.querySelectorAll('.nav-btn[data-label]');
+    for (var i = 0; i < bs.length; i++) { if (sgsSlug(bs[i].getAttribute('data-label')) === m[1]) { try { bs[i].click(); } catch (e) {} return true; } }
+    return false;
+  },
+  /* en el Desktop el botón va al pie del menú lateral, siempre a la vista (las secciones se pliegan) */
+  boton: function (toggle) {
+    var side = document.querySelector('aside.sidebar'); if (!side || document.getElementById('nav-soporte-sg')) return null;
+    var w = document.createElement('div'); w.id = 'nav-soporte-sg-sec'; w.style.cssText = 'margin-top:auto;padding-top:8px;border-top:1px solid var(--bor)';
+    var b = document.createElement('button'); b.className = 'nav-btn'; b.id = 'nav-soporte-sg'; b.setAttribute('data-label', 'Soporte'); b.title = 'Soporte: Aitana y el equipo de SG';
+    b.innerHTML = '<span class="nav-icon">🆘</span><span class="nav-text">Soporte</span><span class="nav-badge nb-red" id="nb-soporte-sg" style="display:none">0</span>';
+    b.onclick = function () { toggle(); };
+    w.appendChild(b); side.appendChild(w);
+    return document.getElementById('nb-soporte-sg');
+  }
+});
+})();
+/* ═══ /sg-soporte v1 ═══ */
 </script>
 
 </body>
