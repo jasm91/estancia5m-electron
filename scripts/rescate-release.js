@@ -144,10 +144,13 @@ function generarYml(destino, candidatos, ordenar) {
   return ruta;
 }
 
-const hayMac = nombres.some((n) => /-mac\.zip$/i.test(n) || /\.dmg$/i.test(n));
+/* v1.8.238: los zips se llaman Estancia-Pro-X-x64.zip / -arm64.zip (sin '-mac') → el filtro viejo los
+   dejaba afuera y el latest-mac.yml salía SOLO con dmg: electron-updater en Mac exige el zip (v1.8.237). */
+const esMac = (n) => (/\.zip$/i.test(n) && !/\.exe/i.test(n)) || /\.dmg$/i.test(n);
+const hayMac = nombres.some(esMac);
 const hayWin = nombres.some((n) => /\.exe$/i.test(n));
 if (hayMac && !nombres.some((n) => /^latest-mac\.yml$/i.test(n))) {
-  generarYml('latest-mac.yml', (n) => /-mac\.zip$/i.test(n) || /\.dmg$/i.test(n), ordenMac);
+  generarYml('latest-mac.yml', esMac, ordenMac);
 }
 if (hayWin && !nombres.some((n) => /^latest\.yml$/i.test(n))) {
   generarYml('latest.yml', (n) => /\.exe$/i.test(n), (a, b) => a.localeCompare(b));
