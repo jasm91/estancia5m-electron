@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.235';
+window.E5M_HTML_BUILD = '1.8.236';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -27688,172 +27688,152 @@ function _mostrarSesionesActivas() {
 // v1.8.20: migración — normaliza animales de partos + reconcilia con sus partos.
 // Vincula cada parto con su animal (por madre+fecha+lote) y copia cría_id + peso correctos.
 (function migrarAnimalesPartoViejos() {
+  /* v1.8.236 — REESCRITA SEGURA (incidente 30-09-2026, tenant 1: 901 → 902 + 4 animales renombrados).
+     La v1.8.38 corría "una vez" según la marca e5m_migracion_animales_v1838, pero las 3 limpiezas
+     de caché (switcher de estancias, cambio de token en Config, huella tenant-fp) borran TODO e5m_*,
+     marca incluida → la migración volvía a correr cada vez que el equipo cambiaba de estancia, sobre
+     datos reales. Sus respaldos eran destructivos:
+       · "primer Torillo/Ternera del lote con la misma madre" — ningún parto tiene madre cargada,
+         '' === '' → siempre el mismo animal, que después se RENOMBRABA con el cria_id de cada parto;
+       · "crear la cría si no hay un animal con ese nombre EXACTO" — «AURORA JSN 04» vs el animal real
+         «AURORA DE JISUNÚ JSN 04» → cría duplicada.
+     Reglas nuevas (todo idempotente, puede correr N veces sin daño):
+       1. NUNCA renombra un animal con ID real: solo reemplaza IDs placeholder (CRIA-######, N/A, vacío).
+       2. NUNCA crea animales: un parto sin cría solo deja un aviso en consola.
+       3. Nunca usa madre vacía para matchear; un animal ya reclamado por otro parto no se reasigna.
+       4. Solo re-vincula parto_id (dato de trazabilidad) con evidencia fuerte: nombre exacto,
+          parto_id propio, o UNA sola cría sin vínculo con peso en la fecha del parto.
+     Kill switch: window.__MIGCRIAS_OFF = true */
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', migrarAnimalesPartoViejos);
     return;
   }
-  // v1.8.38: flag nuevo para que la reconciliación mejorada (matcheo por lote+sexo de crías
-  // huérfanas) corra una vez más, aunque la v1820 ya se haya ejecutado.
-  if (localStorage.getItem('e5m_migracion_animales_v1838') === 'done') return;
+  var FLAG = 'e5m_migracion_animales_v18236';
+  if (localStorage.getItem(FLAG) === 'done') return;
   setTimeout(function() {
+    if (window.__MIGCRIAS_OFF === true) return;
     try {
       var animDB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : null;
       if (!animDB) return;
-      var cambios = false;
+      if (!Array.isArray(db.partos) || !db.partos.length) { localStorage.setItem(FLAG, 'done'); return; }
+      var cambios = false, log = [];
 
-      // Paso 1: normalizar estructura (id→animal_id, breed, etc.)
-      Object.keys(animDB).forEach(function(lotCode){
-        var arr = animDB[lotCode];
-        if (!Array.isArray(arr)) return;
-        arr.forEach(function(a){
+      var esPlaceholder = function(id){
+        var s = String(id == null ? '' : id).trim();
+        return !s || s.toLowerCase() === 'n/a' || /^CRIA-\d{6}(-\d+)?$/.test(s);
+      };
+      var idDe = function(x){ return String((x && (x.animal_id || x.id)) || ''); };
+      var esCria = function(x){
+        var br = String(x.breed || x.raza || '').toLowerCase();
+        return br === 'torillo' || br === 'ternera' || br === 'ternero' || x.origin === 'parto';
+      };
+      var criaIdDe = function(p){ var c = String(p.cria_id || '').trim(); return (c && c.toLowerCase() !== 'n/a') ? c : ''; };
+
+      // Paso 1: normalizar estructura (id→animal_id, breed) — igual que antes, no destructivo
+      Object.keys(animDB).forEach(function(lc){
+        (Array.isArray(animDB[lc]) ? animDB[lc] : []).forEach(function(a){
           if (!a || typeof a !== 'object') return;
-          if (!a.animal_id && a.id) { a.animal_id = a.id; delete a.id; cambios = true; }
+          if (!a.animal_id && a.id) { a.animal_id = a.id; cambios = true; }
           if (!a.breed && a.raza) { a.breed = a.raza; cambios = true; }
         });
       });
 
-      // Paso 2: reconciliar cada parto con su animal (por madre+fecha+lote)
-      // Copiar el cría_id y peso correctos del PARTO al ANIMAL (el parto es la fuente de verdad
-      // porque César cargó ahí los datos vía modal pesar).
-      if (Array.isArray(db.partos)) {
-        db.partos.forEach(function(p){
-          if (p.estado === 'muerto' || !p.lot_code) return;
-          var arr = animDB[p.lot_code];
-          if (!Array.isArray(arr)) return;
-          // Buscar animal por parto_id, o por madre+fecha (origin parto)
-          var a = arr.find(function(x){ return x.parto_id && String(x.parto_id) === String(p.id); });
-          if (!a) {
-            a = arr.find(function(x){
-              return x.origin === 'parto' &&
-                     String(x.madre_id||'') === String(p.madre_id||'') &&
-                     String(x.entry_date||'') === String(p.date||'');
-            });
-          }
-          // Si no hay origin marcado (animales muy viejos), intentar por raza Torillo/Ternera + madre
-          if (!a) {
-            a = arr.find(function(x){
-              var br = String(x.breed||x.raza||'').toLowerCase();
-              return (br === 'torillo' || br === 'ternera') &&
-                     String(x.madre_id||'') === String(p.madre_id||'');
-            });
-          }
-          // v1.8.38: último recurso — crías huérfanas con ID placeholder que NO tienen madre_id
-          // ni parto_id (partos viejos previos al vínculo). Reconciliar por lote + sexo↔raza:
-          // Torillo = cría macho, Ternera = cría hembra. Solo se emparejan crías con ID placeholder
-          // (CRIA-XXXXXX-XXX) y se marcan como usadas (_reconciliado) para no asignar el mismo parto dos veces.
-          if (!a) {
-            var sexoParto = String(p.sexo||'').toLowerCase();
-            var razaEsperada = (sexoParto === 'macho' || sexoParto === 'm') ? 'torillo'
-                             : (sexoParto === 'hembra' || sexoParto === 'h') ? 'ternera' : '';
-            a = arr.find(function(x){
-              if (x._reconciliado) return false; // ya emparejada con otro parto
-              if (!String(x.animal_id||'').match(/^CRIA-\d{6}(-\d+)?$/)) return false; // v1.8.74: placeholder con o SIN sufijo (saveReproParto genera CRIA-###### sin sufijo)
-              var br = String(x.breed||x.raza||'').toLowerCase();
-              // matchear por sexo↔raza si hay; si no hay raza, aceptar cualquier placeholder del lote
-              return razaEsperada ? (br === razaEsperada) : true;
-            });
-            if (a) a._reconciliado = true;
-          }
-          if (a) {
-            // Vincular establemente
-            if (!a.parto_id) { a.parto_id = p.id; cambios = true; }
-            if (!a.origin) { a.origin = 'parto'; cambios = true; }
-            // v1.8.38: copiar madre y fecha del parto si faltan (para que no vuelva a quedar huérfana)
-            if (!a.madre_id && p.madre_id) { a.madre_id = p.madre_id; cambios = true; }
-            if (!a.entry_date && p.date) { a.entry_date = p.date; cambios = true; }
-            // Copiar cría_id real del parto (si lo tiene y es distinto del temporal)
-            if (p.cria_id && p.cria_id !== 'N/A' && a.animal_id !== p.cria_id) {
-              a.animal_id = p.cria_id;
-              delete a._needs_id;
-              cambios = true;
-            }
-            // Copiar peso del parto si el animal no lo tiene
-            if (p.peso && p.peso > 0) {
-              if (!Array.isArray(a.pesajes)) a.pesajes = [];
-              var tienePeso = a.pesajes.some(function(pj){ return pj.fecha === p.date; });
-              if (!tienePeso) { a.pesajes.push({ fecha: p.date, peso: p.peso }); cambios = true; }
-            }
-          }
-        });
-      }
+      var partosVivos = db.partos.filter(function(p){ return p && p.estado !== 'muerto' && p.lot_code && Array.isArray(animDB[p.lot_code]); });
+      var partoPorId = {}; db.partos.forEach(function(p){ if (p) partoPorId[String(p.id)] = p; });
+      var reclamado = new Map(); // animal → parto.id (en memoria, no se guarda)
+      var vinculado = {};        // parto.id → animal
 
-      // v1.8.38 — Paso 2.5: crear el animal faltante para cada parto vivo que NO tenga su
-      // cría en e5m_animals. Así cada parto tiene su cabeza real (Animales y Partos quedan
-      // sincronizados). Se evita duplicar verificando por parto_id y por cria_id existente.
-      if (Array.isArray(db.partos)) {
-        db.partos.forEach(function(p){
-          if (p.estado === 'muerto' || !p.lot_code) return;
-          if (!animDB[p.lot_code]) animDB[p.lot_code] = [];
-          var arr = animDB[p.lot_code];
-          // ¿Ya existe un animal para este parto? (por parto_id o por cria_id real)
-          var yaExiste = arr.some(function(x){
-            if (x.parto_id && String(x.parto_id) === String(p.id)) return true;
-            if (p.cria_id && p.cria_id !== 'N/A' && String(x.animal_id||'') === String(p.cria_id)) return true;
-            return false;
-          });
-          if (yaExiste) return;
-          // Crear el animal-cría
-          var sexoP = String(p.sexo||'').toLowerCase();
-          var razaCria = (sexoP === 'macho' || sexoP === 'm') ? 'Torillo'
-                       : (sexoP === 'hembra' || sexoP === 'h') ? 'Ternera' : '';
-          var nuevoAnimalId = (p.cria_id && p.cria_id !== 'N/A')
-                            ? p.cria_id
-                            : ('CRIA-' + String(Date.now()).slice(-6) + '-' + Math.floor(Math.random()*1000));
-          var nuevaCria = {
-            animal_id: nuevoAnimalId,
-            sexo: p.sexo || '',
-            breed: razaCria,
-            raza: razaCria,
-            madre_id: p.madre_id || '',
-            entry_date: p.date || '',
-            origin: 'parto',
-            parto_id: p.id,
-            pesajes: (p.peso && p.peso > 0) ? [{ fecha: p.date, peso: p.peso, tipo: 'nacimiento', nota: 'Peso al nacer' }] : []
-          };
-          if (!p.cria_id || p.cria_id === 'N/A') nuevaCria._needs_id = true;
-          arr.push(nuevaCria);
-          cambios = true;
-          console.log('[Migración v1.8.38] Cría creada para parto sin animal: ' + nuevoAnimalId + ' en ' + p.lot_code);
-        });
-      }
+      var vincular = function(p, a, motivo){
+        reclamado.set(a, String(p.id)); vinculado[String(p.id)] = a;
+        if (String(a.parto_id || '') !== String(p.id)) {
+          log.push('parto ' + p.id + ' ↔ ' + idDe(a) + ' (' + motivo + (a.parto_id ? ', antes parto_id ' + a.parto_id : '') + ')');
+          a.parto_id = p.id; cambios = true;
+        }
+      };
 
-      // Paso 3: los que quedaron con N/A y no se pudieron reconciliar → ID temporal
-      Object.keys(animDB).forEach(function(lotCode){
-        var arr = animDB[lotCode];
-        if (!Array.isArray(arr)) return;
-        arr.forEach(function(a){
+      // Pasada A — nombre EXACTO del parto (evidencia más fuerte). Repara parto_id contradictorios.
+      partosVivos.forEach(function(p){
+        var c = criaIdDe(p); if (!c) return;
+        var a = animDB[p.lot_code].find(function(x){ return idDe(x) === c && !reclamado.has(x); });
+        if (a) vincular(p, a, 'nombre exacto');
+      });
+      // Pasada B — parto_id propio, entre los no reclamados
+      partosVivos.forEach(function(p){
+        if (vinculado[String(p.id)]) return;
+        var a = animDB[p.lot_code].find(function(x){ return x.parto_id != null && String(x.parto_id) === String(p.id) && !reclamado.has(x); });
+        if (a) vincular(p, a, 'parto_id');
+      });
+      // Pasada C — madre + fecha, SOLO si el parto tiene madre cargada
+      partosVivos.forEach(function(p){
+        if (vinculado[String(p.id)]) return;
+        var madre = String(p.madre_id || '').trim(); if (!madre) return;
+        var cands = animDB[p.lot_code].filter(function(x){
+          return !reclamado.has(x) && !x.parto_id && esCria(x) && String(x.madre_id || '').trim() === madre;
+        });
+        if (cands.length === 1) vincular(p, cands[0], 'madre');
+      });
+      // Pasada D — UNA sola cría sin vínculo con pesaje en la fecha del parto (peso al nacer)
+      partosVivos.forEach(function(p){
+        if (vinculado[String(p.id)] || !p.date) return;
+        var cands = animDB[p.lot_code].filter(function(x){
+          if (reclamado.has(x) || !esCria(x)) return false;
+          if (x.parto_id != null && x.parto_id !== '' && partoPorId[String(x.parto_id)]) return false; // vinculada a otro parto que existe
+          return (x.pesajes || []).some(function(pj){ return pj && pj.fecha === p.date; });
+        });
+        if (cands.length === 1) vincular(p, cands[0], 'fecha de nacimiento');
+        else if (cands.length > 1) console.warn('[Migración v1.8.236] parto ' + p.id + ' (' + p.lot_code + ' ' + p.date + '): ' + cands.length + ' crías posibles — no se vincula, revisar a mano');
+      });
+      // Pasada E — placeholders CRIA-###### sin vínculo (caso original de junio), por sexo↔raza
+      partosVivos.forEach(function(p){
+        if (vinculado[String(p.id)]) return;
+        var sx = String(p.sexo || '').toLowerCase();
+        var raza = (sx === 'macho' || sx === 'm') ? 'torillo' : (sx === 'hembra' || sx === 'h') ? 'ternera' : '';
+        var a = animDB[p.lot_code].find(function(x){
+          if (reclamado.has(x) || x.parto_id || !/^CRIA-\d{6}(-\d+)?$/.test(idDe(x))) return false;
+          var br = String(x.breed || x.raza || '').toLowerCase();
+          return raza ? br === raza : true;
+        });
+        if (a) vincular(p, a, 'placeholder');
+      });
+
+      // Completar datos del animal vinculado — sin renombrar IDs reales
+      partosVivos.forEach(function(p){
+        var a = vinculado[String(p.id)];
+        if (!a) { console.warn('[Migración v1.8.236] parto ' + p.id + ' (' + (criaIdDe(p) || 'sin cría_id') + ', ' + p.lot_code + ') sin animal vinculado — NO se crea nada'); return; }
+        if (!a.madre_id && p.madre_id) { a.madre_id = p.madre_id; cambios = true; }
+        if (!a.entry_date && p.date) { a.entry_date = p.date; cambios = true; }
+        var c = criaIdDe(p);
+        if (c && esPlaceholder(idDe(a))) {
+          var ocupado = animDB[p.lot_code].some(function(x){ return x !== a && idDe(x) === c; });
+          if (!ocupado) { log.push('placeholder ' + idDe(a) + ' → ' + c); a.animal_id = c; a.id = c; delete a._needs_id; cambios = true; }
+        }
+        // peso al nacer: solo si el animal no tiene NINGÚN pesaje (no mezclar pesos entre animales)
+        if (p.peso && p.peso > 0 && !(Array.isArray(a.pesajes) && a.pesajes.length)) {
+          if (!Array.isArray(a.pesajes)) a.pesajes = [];
+          if (!a.pesajes.some(function(pj){ return pj && pj.fecha === p.date; })) { a.pesajes.push({ fecha: p.date, peso: p.peso }); cambios = true; }
+        }
+      });
+
+      // Paso 3 (igual que antes): IDs vacíos o N/A → placeholder, para que no queden sin identificar
+      Object.keys(animDB).forEach(function(lc){
+        (Array.isArray(animDB[lc]) ? animDB[lc] : []).forEach(function(a){
           if (!a || typeof a !== 'object') return;
           var aid = String(a.animal_id || '');
-          if (!aid || aid === 'N/A' || aid.toLowerCase() === 'n/a') {
+          if (!aid || aid.toLowerCase() === 'n/a') {
             a.animal_id = 'CRIA-' + String(Date.now()).slice(-6) + '-' + Math.floor(Math.random()*1000);
-            a._needs_id = true;
-            cambios = true;
+            a._needs_id = true; cambios = true;
           }
         });
       });
 
       if (cambios) {
         if (typeof saveAnimalesDB === 'function') saveAnimalesDB(animDB);
-        // v1.8.38: recalcular animal_count de los lotes desde e5m_animals, para que las crías
-        // recién creadas se reflejen en el conteo de cada lote y en el header.
-        if (db && Array.isArray(db.lots)) {
-          db.lots.forEach(function(lt){
-            var anims = animDB[lt.code];
-            if (anims && anims.length > 0) {
-              lt.animal_count = Math.max(lt.animal_count || 0, anims.length);
-            }
-          });
-          if (typeof saveDB === 'function') try { saveDB(true); } catch(e){}
-        }
-        console.log('[Migración v1.8.20] Crías de partos reconciliadas con sus animales');
+        console.log('[Migración v1.8.236] crías↔partos: ' + (log.length ? log.join(' · ') : 'sin cambios de vínculo'));
         if (typeof renderAnimalesLote === 'function') try { renderAnimalesLote(); } catch(e){}
         if (typeof renderReproPartos === 'function') try { renderReproPartos(); } catch(e){}
-        if (typeof renderLotes === 'function') try { renderLotes(); } catch(e){}
-        if (typeof renderTopbarSummary === 'function') try { renderTopbarSummary(); } catch(e){}
       }
-      localStorage.setItem('e5m_migracion_animales_v1820', 'done');
-      localStorage.setItem('e5m_migracion_animales_v1838', 'done');
-    } catch(e) { console.warn('[Migración v1.8.20] error', e); }
+      localStorage.setItem(FLAG, 'done');
+    } catch(e) { console.warn('[Migración v1.8.236] error', e); }
   }, 2500);
 })();
 
