@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.236';
+window.E5M_HTML_BUILD = '1.8.237';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -59106,5 +59106,48 @@ SGSoporte.instalar({
 /* ═══ /sg-soporte v1 ═══ */
 </script>
 
+<script id="sanidad-desde-ingreso-v18237">
+/* v1.8.237 — UNA CURACIÓN DE LOTE NO SE LE ATRIBUYE A UN ANIMAL QUE TODAVÍA NO EXISTÍA
+   (César 30-09: el 2414, comprado el 21-09 directo a ENFERMERIA, mostraba en Trazabilidad las
+   curaciones de lote de ENFERMERIA de marzo, mayo y agosto).
+   Causa: v168LoteEnFecha devuelve el lote ACTUAL para cualquier fecha cuando el animal no tiene
+   traslados → "estaba en ENFERMERIA desde siempre". Acá se calcula la fecha de INGRESO del animal
+   (compra de origen, entry_date, primer pesaje: la más vieja que exista) y para fechas anteriores
+   se contesta null → no es destinatario. Cubre Trazabilidad, costo por animal y el índice de sanidad.
+   Kill: window.__V237_OFF = true */
+(function () {
+  if (typeof window.v168LoteEnFecha !== 'function' || window.v168LoteEnFecha.__v237) return;
+  function _f(x) { return String(x || '').slice(0, 10); }
+  var cache = {}, firma = '';
+  function ingresoDe(a, loteActual) {
+    var aid = String((a && (a.animal_id || a.id)) || '').trim();
+    var fk = (typeof window.db === 'object' && window.db) ? ((db.compras_ganado || []).length + '|' + (db.animal_movements || []).length) : '';
+    if (fk !== firma) { cache = {}; firma = fk; }
+    if (cache[aid] !== undefined) return cache[aid];
+    var fechas = [];
+    if (a && a.entry_date) fechas.push(_f(a.entry_date));
+    (Array.isArray(a && a.pesajes) ? a.pesajes : []).forEach(function (p) { if (p && p.fecha) fechas.push(_f(p.fecha)); });
+    try {
+      var hit = (typeof window.v169CompraDe === 'function') ? window.v169CompraDe(aid, a, loteActual) : null;
+      if (hit && hit.compra) { var fc = _f(hit.compra.fecha || hit.compra.date || hit.compra.created_at); if (fc) fechas.push(fc); }
+    } catch (e) {}
+    fechas = fechas.filter(function (x) { return /^\d{4}-\d{2}-\d{2}$/.test(x); }).sort();
+    cache[aid] = fechas.length ? fechas[0] : '';
+    return cache[aid];
+  }
+  var base = window.v168LoteEnFecha;
+  var w = function (a, loteActual, fecha) {
+    if (window.__V237_OFF) return base.apply(this, arguments);
+    var f = _f(fecha);
+    if (f) { var ing = ingresoDe(a, loteActual); if (ing && f < ing) return null; }
+    return base.apply(this, arguments);
+  };
+  w.__v237 = true; w.__v169 = base.__v169;
+  window.v168LoteEnFecha = w;
+  window.v237IngresoDe = ingresoDe;
+  try { if (typeof v168InvalidarCache === 'function') v168InvalidarCache(); } catch (e) {}
+  console.log('[v1.8.237] curaciones de lote solo desde el ingreso del animal — activo');
+})();
+</script>
 </body>
 </html>
