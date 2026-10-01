@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.237';
+window.E5M_HTML_BUILD = '1.8.238';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -51867,9 +51867,36 @@ try {
   function v169CompraDe(animalId, animalObj, loteActual, _saltos) {
     _saltos = _saltos || 0;
     var C = _T('compras_ganado');
+    /* v1.8.238 (caso 1208, César 01-10): la cadena de lotes sola elegía la compra equivocada
+       (2 vacas de cabaña de Nelorí a Bs 41.540/cab, o una compra POSTERIOR al primer pesaje).
+       Evidencia fuerte primero: (1) la compra que lista al animal por id; (2) la nota del pesaje
+       de marcaje "Marcaje desde CUAR-X". En la cadena se descarta toda compra que nombra sus
+       animales sin incluir a éste, o cuya fecha es posterior al primer pesaje del animal.
+       Kill switch: window.__V238_OFF = true */
+    var _aid = String(animalId == null ? '' : animalId).trim();
+    var _pes = (animalObj && Array.isArray(animalObj.pesajes)) ? animalObj.pesajes : [];
+    var _lista = function (c) { return Array.isArray(c && c.animales) ? c.animales.filter(function (x) { return x && (x.id || x.animal_id); }) : []; };
+    var _nombra = function (c) { return _lista(c).some(function (x) { return String(x.id || x.animal_id).trim() === _aid; }); };
+    var _f0 = _pes.map(function (x) { return String((x && x.fecha) || '').slice(0, 10); }).filter(Boolean).sort()[0] || '';
+    var _sirve = function (c) {
+      if (window.__V238_OFF === true) return true;
+      if (_lista(c).length && !_nombra(c)) return false;
+      var fc = String(c.fecha || c.date || '').slice(0, 10);
+      if (_f0 && fc && fc > _f0) return false;
+      return true;
+    };
+    if (window.__V238_OFF !== true) {
+      var _cn = C.find(function (c) { return c && _nombra(c); });
+      if (_cn) return { compra: _cn, lote: _cn.lot_code || '' };
+      for (var _p = 0; _p < _pes.length; _p++) {
+        var _m = String((_pes[_p] && _pes[_p].nota) || '').match(/Marcaje desde\s+(.+)/i);
+        if (_m) { var _cl = _m[1].trim().toLowerCase(); var _cm = C.find(function (c) { return c && String(c.lot_code || '').toLowerCase() === _cl; }); if (_cm) return { compra: _cm, lote: _cm.lot_code }; }
+      }
+    }
     function buscar(code) {
       if (!code) return null;
       return C.find(function (c) {
+        if (!c || !_sirve(c)) return false;
         if (c.lot_code === code) return true;
         if (Array.isArray(c.lote_destinos) && c.lote_destinos.indexOf(code) >= 0) return true;
         /* tolerar diferencias de mayúsculas: hay compras que dicen "TROPA 1" y el lote es "Tropa 1" */
