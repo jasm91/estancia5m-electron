@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.239';
+window.E5M_HTML_BUILD = '1.8.240';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -32454,6 +32454,16 @@ window.e5mRfidValidarBatch = function(rows){
 };
 
 function saveAnimalesDB(d){
+  /* v1.8.240 — FRENO: nadie guarda una tabla de animales con MENOS lotes que la actual. Si llega un
+     objeto parcial (un módulo que trabaja con una vista filtrada), se completa con los lotes que faltan
+     en vez de pisar la tabla. Kill switch: window.__V240_OFF = true */
+  try {
+    if (window.__V240_OFF !== true && d && typeof d === 'object' && !Array.isArray(d)) {
+      var _cur = JSON.parse(localStorage.getItem("e5m_animals") || "{}"), _falt = [];
+      Object.keys(_cur).forEach(function(k){ if (!(k in d) && Array.isArray(_cur[k]) && _cur[k].length) { d[k] = _cur[k]; _falt.push(k + ' (' + _cur[k].length + ')'); } });
+      if (_falt.length) console.warn('[v1.8.240] saveAnimalesDB recibió una tabla PARCIAL — se preservaron los lotes que faltaban: ' + _falt.join(', '));
+    }
+  } catch(eG){}
   localStorage.setItem("e5m_animals",JSON.stringify(d));
   // Auto-push animals to Railway
   if (navigator.onLine) {
@@ -43676,7 +43686,18 @@ window.saveReproCabana = function(){
   a.serie_sui=(rEl('rc-serie').value||'').trim();
   a.tatuaje=(rEl('rc-tatuaje').value||'').trim();
   a.updated_at=new Date().toISOString();
-  try { if (typeof saveAnimalesDB==='function') saveAnimalesDB(all); } catch(e){}
+  /* v1.8.240 (incidente 01-10, 5M: 843 bajas fantasma): `all` viene de rcAll() y SOLO trae los lotes
+     cabaña — guardarlo entero pisaba la tabla con 11 animales y el comparador R0 daba de baja al resto.
+     Se edita el animal DENTRO de la tabla completa y se guarda ésa. */
+  try {
+    var _full = (typeof getAnimalesDB==='function') ? (getAnimalesDB()||{}) : null;
+    if (_full && Array.isArray(_full[lot])) {
+      var _i = _full[lot].findIndex(function(x){ return String(x.animal_id||x.id||'')===String(id); });
+      if (_i >= 0) { var _b = _full[lot][_i]; ['rgn','nombre_pedigri','color','or_pais','rgd','serie_sui','tatuaje','updated_at'].forEach(function(k){ if (a[k] !== undefined) _b[k] = a[k]; }); }
+      else _full[lot].push(a);
+      if (typeof saveAnimalesDB==='function') saveAnimalesDB(_full);
+    }
+  } catch(e){}
   try { if (typeof saveDB==='function') saveDB(); } catch(e2){}
   rToast('Registro cabaña guardado: '+id+(a.rgn?(' · RGN '+a.rgn):''),'success');
 };
@@ -50493,6 +50514,12 @@ try {
       if (intencion.salida === 'venta') {
         evs.push({ tipo: 'venta', animal_ids: salieron.slice(), fecha: fecha,
                    lot_code: intencion.lot_code || (A[salieron[0]] && A[salieron[0]].lote) || '' });
+      } else if (salieron.length > 10 && !intencion.causa && !intencion.masiva) {
+        /* v1.8.240: más de 10 bajas derivadas de un diff SIN causa ni intención explícita no son del
+           usuario — son una tabla parcial o un estado local roto. No se emiten; se re-basa la sombra. */
+        console.error('[R0] ' + salieron.length + ' bajas derivadas sin causa — NO se emiten (incidente 01-10). Lotes: ' +
+          Array.from(new Set(salieron.map(function (id) { return A[id].lote; }))).join(', '));
+        try { if (typeof window.__r0Rebasar === 'function') setTimeout(window.__r0Rebasar, 0); } catch (eR) {}
       } else {
         salieron.forEach(function (id) {
           evs.push({ tipo: 'baja', animal_id: id, fecha: fecha, lot_code: A[id].lote,
@@ -50715,6 +50742,9 @@ try {
     window[nombre] = w;
   }
   pista('saveSale', { salida: 'venta' });
+  /* v1.8.240: operaciones que legítimamente sacan muchos animales de una vez */
+  pista('deleteCompraGanado', { masiva: true, causa: 'compra de ganado eliminada' });
+  pista('deleteLot', { masiva: true, causa: 'lote eliminado' });
   pista('_releaseCG', { alta: 'compra' });
   pista('confirmarBajaAnimal', function () {
     var el = document.getElementById('baja-causa');
@@ -50722,6 +50752,7 @@ try {
   });
 
   window.__r0Suspender = suspender;
+  window.__r0Rebasar = function () { rebasar('tope de bajas v1.8.240'); };
 
   /* ── arranque ─────────────────────────────────────────────────────────── */
   try {
