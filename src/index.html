@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.242';
+window.E5M_HTML_BUILD = '1.8.243';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -1109,7 +1109,7 @@ function publishTasksToPWA() {
   <div class="nav-sec" data-sec="sistema">
     <button class="nav-lbl-btn" onclick="toggleNavSec('sistema')"><span class="nav-lbl">Sistema</span><span class="nav-lbl-chevron">▾</span></button>
     <div class="nav-sec-body">
-    <button class="nav-btn" id="nav-config" data-label="Configuración" onclick="showPage('config',this)"><span class="nav-icon">⚙️</span><span class="nav-text">Configuración</span><span id="cfg-dot" style="width:7px;height:7px;border-radius:50%;background:var(--muted2);display:inline-block;margin-left:4px"></span></button>
+    <button class="nav-btn" id="nav-config" data-label="Configuración" onclick="showPage('config',this);try{cfgSoporteRemotoPintar()}catch(e){}"><span class="nav-icon">⚙️</span><span class="nav-text">Configuración</span><span id="cfg-dot" style="width:7px;height:7px;border-radius:50%;background:var(--muted2);display:inline-block;margin-left:4px"></span></button>
     </div>
   </div>
 </aside>
@@ -5222,6 +5222,15 @@ function orMarcajeGo(){
     </div>
   </div>
 
+  <!-- v1.8.243: soporte remoto (comandos de soporte sin molestar al usuario) -->
+  <div class="card" style="margin-bottom:16px" id="cfg-soporte-remoto-card">
+  <div class="card-hd"><div class="card-title">🛠 Soporte remoto</div></div>
+  <div class="card-body">
+  <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="cfg-soporte-remoto" onchange="cfgSoporteRemotoToggle(this)"> Permitir que Soporte EstanciaPro aplique ajustes en este equipo sin tener que tomar la pantalla</label>
+  <div style="font-size:11.5px;color:var(--muted);margin-top:6px">Sólo el equipo de soporte puede enviarlos, sólo mientras este equipo está en línea, y cada ajuste queda registrado acá abajo (y en la consola). Si lo apagás, soporte tendrá que pedirte Ver pantalla para ayudarte.</div>
+  <div id="cfg-soporte-log" style="font-size:11.5px;color:var(--muted);margin-top:8px;max-height:120px;overflow:auto"></div>
+  </div></div>
+
   <!-- Onboarding inicial -->
   
   <div class="card" style="margin-bottom:16px">
@@ -7143,6 +7152,26 @@ function saveDB(lotChanged) {
   }
 }
 
+/* v1.8.243: soporte remoto — preferencia local (default: permitido) + bitácora de comandos aplicados */
+function cfgSoporteRemotoOn() {
+  try { if (window.__SOPORTE_REMOTO_OFF === true) return false; return localStorage.getItem('e5m_soporte_remoto') !== '0'; } catch (e) { return true; }
+}
+function cfgSoporteRemotoToggle(el) {
+  try { localStorage.setItem('e5m_soporte_remoto', el && el.checked ? '1' : '0'); } catch (e) {}
+  try { if (typeof toast === 'function') toast(el && el.checked ? 'Soporte remoto permitido' : 'Soporte remoto desactivado'); } catch (e) {}
+}
+function cfgSoporteRemotoPintar() {
+  try {
+    var cb = document.getElementById('cfg-soporte-remoto'); if (cb) cb.checked = cfgSoporteRemotoOn();
+    var log = document.getElementById('cfg-soporte-log'); if (!log) return;
+    var arr = JSON.parse(localStorage.getItem('e5m_soporte_log') || '[]');
+    log.innerHTML = arr.length ? arr.slice(-15).reverse().map(function (x) {
+      return '<div>· ' + new Date(x.t).toLocaleString() + ' — ' + String(x.nota || x.id || '').replace(/</g, '&lt;') + (x.ok === false ? ' <span style="color:#f85149">(error)</span>' : '') + '</div>';
+    }).join('') : '<div>Todavía no se aplicó ningún ajuste remoto.</div>';
+  } catch (e) {}
+}
+document.addEventListener('DOMContentLoaded', function () { setTimeout(cfgSoporteRemotoPintar, 1500); });
+
 // Tracking de IDs borrados para que el merge no los traiga de vuelta
 function getDeletedIds(table) {
   try { 
@@ -7839,6 +7868,7 @@ function pullFromRailwayDesktop(thenPush) {
             if (k.indexOf('lots:') === 0) serverDeletedLotIds[k.substring(5)] = true;
           });
         } catch(e) {}
+        try { if (window.e5mTombLevantados) window.e5mTombLevantados(remote); } catch(eTL) {} /* v1.8.243 */
         try { if (window.e5mTombstonesPull) window.e5mTombstonesPull(remote); } catch(eTS) {} /* v1.8.129 */
         var localDeleted = getDeletedIds('lots');
 
@@ -49346,6 +49376,36 @@ window.e5mTombstonesPull = function(remote){
   if (cambios) { console.log('[del-real] pull aplicó '+cambios+' tombstone(s) del server'); try{ saveDB(); }catch(e){} }
 };
 
+/* v1.8.243: tombstones levantados por el server (restauración admin). Si el server levantó la lápida
+   de un animal DESPUÉS de que este equipo lo tumbó, se borra la lápida local (e5m_deleted_ids) para que
+   este equipo no la vuelva a subir ni vuelva a filtrar al animal en el merge. También se descartan
+   bajas pendientes del outbox R0 de esos mismos animales. Kill switch: window.__TOMB_LEV_OFF = true */
+window.e5mTombLevantados = function(remote){
+  if (window.__TOMB_LEV_OFF === true || !remote) return 0;
+  var lev = remote.tomb_levantados; if (!lev || typeof lev !== 'object') return 0;
+  var ms = function(v){ var t = (typeof v === 'number') ? v : new Date(v).getTime(); return isFinite(t) ? t : 0; };
+  var quitadas = 0, ids = {};
+  try {
+    var del = JSON.parse(localStorage.getItem('e5m_deleted_ids') || '{}'), cambio = false;
+    Object.keys(lev).forEach(function(k){
+      var id = k.replace(/^animals?:/, ''); var lt = ms(lev[k]);
+      ['animal:' + id, 'animals:' + id].forEach(function(kk){
+        if (del[kk] !== undefined && ms(del[kk]) <= lt) { delete del[kk]; cambio = true; quitadas++; ids[id] = true; }
+      });
+    });
+    if (cambio) localStorage.setItem('e5m_deleted_ids', JSON.stringify(del));
+  } catch (e) {}
+  try {
+    var ob = JSON.parse(localStorage.getItem('e5m_animal_outbox') || '[]');
+    if (Array.isArray(ob) && ob.length) {
+      var ob2 = ob.filter(function(ev){ return !(ev && ev.tipo === 'baja' && ids[String(ev.animal_id || ev.id || '')]); });
+      if (ob2.length !== ob.length) { localStorage.setItem('e5m_animal_outbox', JSON.stringify(ob2)); console.log('[tomb-lev] ' + (ob.length - ob2.length) + ' baja(s) pendiente(s) descartada(s) del outbox'); }
+    }
+  } catch (e2) {}
+  if (quitadas) console.log('[tomb-lev] ' + quitadas + ' lápida(s) local(es) levantada(s) por el server');
+  return quitadas;
+};
+
 /* dedupe local por id (espejo del server v4.29): gana updated_at/created_at más nuevo */
 window.e5mDedupeLocal = function(){
   if (off() || typeof db==='undefined' || !db) return 0;
@@ -58735,8 +58795,58 @@ try {
         var ses = d.sesion;
         if (ses && (!S.sesion || String(S.sesion.id) !== String(ses.id))) arrancar(ses);
         else if (!ses && S.sesion) terminar();
+        try { if (d.comandos && d.comandos.length) comandosProcesar(d.comandos); } catch (eC) {}
       })
       .catch(function () {});
+  }
+
+  /* v1.8.243: comandos de soporte. El server (sólo admin) deja código para este client_id; se corre
+     acá sin necesidad de sesión de Ver pantalla y el resultado vuelve por POST. Respeta la preferencia
+     "Permitir soporte remoto" de Configuración y el kill switch window.__SOPORTE_REMOTO_OFF. */
+  var CMD_HECHOS = {};
+  function comandoResultado(id, txt) {
+    try {
+      fetch(api() + '/screen-share/comandos/' + encodeURIComponent(id) + '/resultado', {
+        method: 'POST', headers: hdrs(), body: JSON.stringify({ resultado: String(txt).slice(0, 4000) })
+      }).catch(function () {});
+    } catch (e) {}
+  }
+  function comandoLog(c, ok, txt) {
+    try {
+      var arr = JSON.parse(localStorage.getItem('e5m_soporte_log') || '[]');
+      arr.push({ t: Date.now(), id: c.id, nota: c.nota || ('comando #' + c.id), ok: ok, r: String(txt).slice(0, 200) });
+      if (arr.length > 50) arr = arr.slice(-50);
+      localStorage.setItem('e5m_soporte_log', JSON.stringify(arr));
+      if (typeof cfgSoporteRemotoPintar === 'function') cfgSoporteRemotoPintar();
+    } catch (e) {}
+  }
+  function comandoAviso(c) {
+    try {
+      var a = document.createElement('div');
+      a.textContent = '🛠 Soporte EstanciaPro aplicó un ajuste: ' + (c.nota || 'mantenimiento');
+      a.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#1f2a37;color:#e6edf3;border:1px solid #3d4a5c;border-radius:10px;padding:8px 14px;font-size:12.5px;z-index:2147483000;box-shadow:0 6px 24px rgba(0,0,0,.35);max-width:90vw';
+      document.body.appendChild(a);
+      setTimeout(function () { try { a.remove(); } catch (e) {} }, 6000);
+    } catch (e) {}
+  }
+  function comandosProcesar(lista) {
+    var permitido = (typeof cfgSoporteRemotoOn === 'function') ? cfgSoporteRemotoOn() : !(window.__SOPORTE_REMOTO_OFF === true);
+    lista.forEach(function (c) {
+      if (!c || c.id == null || CMD_HECHOS[c.id]) return;
+      CMD_HECHOS[c.id] = true;
+      if (!permitido) { comandoResultado(c.id, '⛔ el usuario tiene desactivado el soporte remoto en este equipo'); return; }
+      var out, ok = true;
+      try { out = (new Function('return (' + String(c.code || '') + ')'))(); }
+      catch (e1) { try { out = (new Function(String(c.code || '')))(); } catch (e2) { out = 'ERROR: ' + e2.message; ok = false; } }
+      var fin = function (val) {
+        var txt; try { txt = (typeof val === 'string') ? val : JSON.stringify(val); } catch (e3) { txt = String(val); }
+        if (txt === undefined) txt = 'undefined';
+        comandoResultado(c.id, txt); comandoLog(c, ok, txt); comandoAviso(c);
+        try { console.log('%c[soporte] comando #' + c.id + (c.nota ? ' (' + c.nota + ')' : '') + ' →', 'color:#d29922', val); } catch (e4) {}
+      };
+      if (out && typeof out.then === 'function') out.then(fin, function (er) { ok = false; fin('ERROR: ' + (er && er.message || er)); });
+      else fin(out);
+    });
   }
 
   setTimeout(latido, 2500);
@@ -58746,7 +58856,7 @@ try {
   window.__ss = {
     estado: function () { return { sesion: S.sesion, client_id: CLIENTE(), app: appNombre(), version: appVersion(),
       grabando: !!S.parar, buffer: S.buffer.length, control: S.control, tanda_ms: S.tandaMs,
-      control_deshabilitado: !!window.__SS_NOCTRL }; },
+      control_deshabilitado: !!window.__SS_NOCTRL, soporte_remoto: (typeof cfgSoporteRemotoOn === 'function') ? cfgSoporteRemotoOn() : true }; },
     cortar: cortarControl,
     latido: latido, terminar: terminar
   };
