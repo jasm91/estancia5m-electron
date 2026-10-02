@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.238';
+window.E5M_HTML_BUILD = '1.8.239';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -58570,12 +58570,39 @@ try {
       try { blanco.form.requestSubmit(); } catch (e) {}
     }
   }
+  /* v1.8.239: click por selector CSS o por texto visible cuando el id del espejo no resuelve, y
+     acción 'js' (sólo con control tomado por un admin): corre código y devuelve el resultado por el
+     chat de la sesión. Kill switch: window.__SS_NOJS = true */
+  function nodoPorSel(p) {
+    try { if (p.sel) { var n = document.querySelector(p.sel); if (n) return n; } } catch (e) {}
+    if (p.texto) {
+      var t = String(p.texto).trim().toLowerCase(), cands = document.querySelectorAll('button, a, [onclick], [role=button], .btn, label, li, td, th, div, span');
+      for (var i = 0; i < cands.length; i++) {
+        var c = cands[i]; if (!c.offsetParent && c.tagName !== 'BODY') continue;
+        if (String(c.textContent || '').trim().toLowerCase() === t) return c;
+      }
+    }
+    return null;
+  }
   function ejecutar(p) {
     if (window.__SS_NOCTRL || !S.control || !p) return;
     var el = p.id ? nodoPorId(p.id) : null;
+    if (!el && (p.sel || p.texto)) el = nodoPorSel(p);
+    if (p.accion === 'js') {
+      if (window.__SS_NOJS) { S.chatPend = '⛔ js deshabilitado en este equipo'; return; }
+      var out;
+      try { out = (new Function('return (' + String(p.code || '') + ')'))(); }
+      catch (e1) { try { out = (new Function(String(p.code || '')))(); } catch (e2) { out = 'ERROR: ' + e2.message; } }
+      var txt; try { txt = (typeof out === 'string') ? out : JSON.stringify(out); } catch (e3) { txt = String(out); }
+      if (txt === undefined) txt = 'undefined';
+      S.chatPend = '⌨ ' + String(txt).slice(0, 480);
+      try { console.log('[ver-pantalla] js remoto:', p.code, '→', out); } catch (e4) {}
+      try { tanda(); } catch (e5) {}
+      return;
+    }
     try {
       switch (p.accion) {
-        case 'click': if (el) clickReal(el); break;
+        case 'click': if (el) clickReal(el); else S.chatPend = '⚠ click: no encontré el elemento' + (p.sel ? ' ' + p.sel : p.texto ? ' «' + p.texto + '»' : ''); break;
         case 'input': if (el) escribir(el, String(p.valor == null ? '' : p.valor)); break;
         case 'select': if (el) elegir(el, String(p.valor == null ? '' : p.valor)); break;
         case 'focus': if (el) { aLaVista(el); el.focus({ preventScroll: true }); } break;
