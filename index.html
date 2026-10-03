@@ -724,7 +724,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.243';
+window.E5M_HTML_BUILD = '1.8.244';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -24986,7 +24986,9 @@ function recalcTankLevel() {
       else tank.current_level -= litros;
     }
     else tank.current_level -= litros;
-    if (tank.current_level < 0) tank.current_level = 0;
+    /* v1.8.244: el saldo PUEDE quedar negativo (la próxima recarga lo absorbe) — igual que el server 4.78.0.
+       Se marca con ⚠ en el medidor y en los selectores. Kill switch: window.__DIESEL_NEG_OFF = true */
+    if (tank.current_level < 0 && window.__DIESEL_NEG_OFF === true) tank.current_level = 0;
     r._balance = Math.round(tank.current_level * 10) / 10;
     r._tank_name = tank.name;
   });
@@ -25003,7 +25005,7 @@ function populateTankSelector(selId) {
   tanks.forEach(function(t) {
     var o = document.createElement('option');
     o.value = t.id;
-    o.textContent = t.name + ' (' + t.current_level + ' / ' + t.capacity + ' L)';
+    o.textContent = (t.current_level < 0 ? '⚠ ' : '') + t.name + ' (' + t.current_level + ' / ' + t.capacity + ' L)';
     sel.appendChild(o);
   });
 }
@@ -25984,15 +25986,17 @@ function renderDieselDesktop() {
     tanksContainer.innerHTML = tanks.map(function(tank) {
       var pct = tank.capacity ? Math.round((tank.current_level / tank.capacity) * 100) : 0;
       pct = Math.min(100, Math.max(0, pct));
+      var neg = tank.current_level < 0; /* v1.8.244 */
       var fillColor = pct < 20 ? 'linear-gradient(to top,#DC2626,#EF4444)' : pct < 50 ? 'linear-gradient(to top,#D97706,#F59E0B)' : 'linear-gradient(to top,#2563EB,#60A5FA)';
-      return '<div style="background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:14px;text-align:center;min-width:120px">' +
+      return '<div style="background:var(--sur);border:1px solid ' + (neg ? '#DC2626' : 'var(--bor)') + ';border-radius:12px;padding:14px;text-align:center;min-width:120px;position:relative"' + (neg ? ' title="Saldo negativo: se registraron más despachos que combustible disponible. La próxima recarga lo absorbe."' : '') + '>' +
+        (neg ? '<div style="position:absolute;top:6px;right:8px;font-size:14px" title="Saldo negativo">⚠️</div>' : '') +
         '<div style="font-size:9px;color:var(--muted);font-weight:700;margin-bottom:6px;text-transform:uppercase">' + escH(tank.name) + '</div>' +
         '<div style="width:60px;height:100px;border:3px solid var(--bor);border-radius:8px;margin:0 auto 6px;position:relative;overflow:hidden;background:var(--sur2)">' +
           '<div style="position:absolute;bottom:0;left:0;right:0;height:' + pct + '%;background:' + fillColor + ';transition:height .5s"></div>' +
           '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.5)">' + pct + '%</div>' +
         '</div>' +
-        '<div style="font-size:14px;font-weight:700;color:var(--blue)">' + tank.current_level + ' L</div>' +
-        '<div style="font-size:10px;color:var(--muted)">de ' + tank.capacity + ' L</div>' +
+        '<div style="font-size:14px;font-weight:700;color:' + (neg ? '#DC2626' : 'var(--blue)') + '">' + tank.current_level + ' L</div>' +
+        '<div style="font-size:10px;color:' + (neg ? '#DC2626' : 'var(--muted)') + '">' + (neg ? '⚠ saldo negativo · falta recarga' : 'de ' + tank.capacity + ' L') + '</div>' +
       '</div>';
     }).join('') +
     '<div style="display:flex;align-items:flex-end;padding-bottom:12px">' +
@@ -26463,7 +26467,7 @@ function calcDieselTotal() {
       var espacio=Math.round((tank.capacity-tank.current_level)*10)/10;
       warn.style.display='block'; warn.textContent='⚠️ Excede capacidad: '+tank.name+' tiene '+tank.current_level+'/'+tank.capacity+' L. Espacio: '+espacio+' L';
     } else if(type!=='recarga' && l>tank.current_level) {
-      warn.style.display='block'; warn.textContent='⚠️ Stock insuficiente: '+tank.current_level+' L disponibles';
+      warn.style.display='block'; warn.textContent='⚠️ Quedará con saldo negativo: '+tank.current_level+' L disponibles, se registra igual y la próxima recarga lo absorbe';
     } else { warn.style.display='none'; }
   } else if(warn) { warn.style.display='none'; }
 }
@@ -26487,10 +26491,7 @@ function saveDiesel() {
     if (!tankDestId) { toast('Seleccioná el tanque destino', 'error'); return; }
     if (tankDestId === tankId) { toast('Origen y destino deben ser distintos', 'error'); return; }
     var tankDest = getTankById(tanks, tankDestId);
-    if (litros > tank.current_level) {
-      toast('Stock insuficiente en ' + tank.name + ': ' + tank.current_level + ' L disponibles', 'error');
-      return;
-    }
+    if (litros > tank.current_level) { toast('⚠ ' + tank.name + ' queda con saldo negativo (' + tank.current_level + ' L disponibles). Registrá la recarga cuando llegue.', 'warning'); } /* v1.8.244 */
     if ((tankDest.current_level + litros) > tankDest.capacity) {
       var espacio = Math.round((tankDest.capacity - tankDest.current_level)*10)/10;
       toast('Excede capacidad de ' + tankDest.name + ' (' + tankDest.capacity + ' L). Espacio: ' + espacio + ' L', 'error');
@@ -26530,8 +26531,7 @@ function saveDiesel() {
       created_at: nowIso,
       traspaso_pair: nowIso
     };
-    tank.current_level = Math.round((tank.current_level - litros) * 10) / 10;
-    if (tank.current_level < 0) tank.current_level = 0;
+    tank.current_level = Math.round((tank.current_level - litros) * 10) / 10; /* v1.8.244: puede quedar negativo */
     tankDest.current_level = Math.round((tankDest.current_level + litros) * 10) / 10;
     if (tankDest.current_level > tankDest.capacity) tankDest.current_level = tankDest.capacity;
     db.diesel.push(recOut);
@@ -26547,7 +26547,7 @@ function saveDiesel() {
   }
 
   // ── RECARGA / DESPACHO (lógica original) ──
-  if(type!=='recarga' && litros>tank.current_level){toast('Stock insuficiente: '+tank.current_level+' L disponibles','error');return;}
+  if(type!=='recarga' && type!=='ajuste' && litros>tank.current_level){ toast('⚠ '+tank.name+' queda con saldo negativo ('+tank.current_level+' L disponibles). Registrá la recarga cuando llegue.','warning'); } /* v1.8.244: no bloquea */
   if(type==='recarga' && (tank.current_level+litros)>tank.capacity){
     var espacioDisp = Math.round((tank.capacity - tank.current_level)*10)/10;
     toast('Excede capacidad del tanque '+tank.name+' ('+tank.capacity+' L). Espacio disponible: '+espacioDisp+' L','error');return;
@@ -44878,8 +44878,7 @@ document.addEventListener('click', function(ev){
       by: 'Desktop', created_at: new Date().toISOString()
     };
     if (opts.maq_id != null) rec.maq_id = opts.maq_id;
-    tank.current_level = Math.round((tank.current_level - litros) * 10) / 10;
-    if (tank.current_level < 0) tank.current_level = 0;
+    tank.current_level = Math.round((tank.current_level - litros) * 10) / 10; /* v1.8.244: puede quedar negativo */
     db.diesel.push(rec);
     try { saveDieselTanks(tanks); } catch (e) {}
     try { if (typeof replaceTableInRailway === 'function') replaceTableInRailway('diesel', db.diesel); } catch (e) {}
@@ -45093,7 +45092,7 @@ document.addEventListener('click', function(ev){
     var html = '';
     tanks.forEach(function (t) {
       var on = state.tank != null && String(state.tank) === String(t.id);
-      html += '<button type="button" class="agm-tank' + (on ? ' on' : '') + '" data-tk="' + escA(t.id) + '">⛽ ' + escA(t.name || t.id) + '<span>' + fmtA(t.current_level || 0, 1) + ' L</span></button>';
+      html += '<button type="button" class="agm-tank' + (on ? ' on' : '') + '" data-tk="' + escA(t.id) + '">⛽ ' + escA(t.name || t.id) + '<span>' + (t.current_level < 0 ? '⚠ ' : '') + fmtA(t.current_level || 0, 1) + ' L</span></button>';
     });
     html += '<button type="button" class="agm-tank' + (state.tank === 'none' ? ' on' : '') + '" data-tk="none">Surtidor<span>sin tanque</span></button>';
     host.innerHTML = html;
