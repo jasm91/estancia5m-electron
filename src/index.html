@@ -603,6 +603,30 @@ function validatePositive(valor, etiqueta, opts){
   if (o.max != null && n > o.max) return confirm((etiqueta || 'El valor') + ' de ' + n + ' parece demasiado alto. ¿Guardar igual?');
   return true;
 }
+/* v1.8.250 (terneras, fase 1): una sola forma de guardar y leer categorías y sexo — mismas reglas que el
+   server 4.82 (e5mCatKey / e5mSexoPorCategoria). La categoría de un lote se guardaba de tres formas
+   ('recria_mixta' en crear lote, 'recria mixta' en el wizard, 'Recria mixta' en compra de ganado). */
+function e5mCatKey(c){
+  return String(c == null ? '' : c).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+}
+function e5mSexoPorCategoria(cat){
+  var c = e5mCatKey(cat);
+  if (!c || /mixt/.test(c)) return '';
+  if (/hembra|vaca|vaquill|ternera|novilla/.test(c)) return 'hembra';
+  if (/macho|toro|torillo|novillo|ternero/.test(c)) return 'macho';
+  return '';
+}
+/* Sexo de un animal: 'macho' | 'hembra' | ''. Acepta 'M'/'H' (crías viejas del bot) y 'macho'/'hembra';
+   si no tiene sexo, cae a su categoría/raza y después a la del lote. */
+function e5mSexo(a, lote){
+  var s = String((a && a.sexo) || '').trim().toLowerCase();
+  if (s === 'm' || s.indexOf('macho') === 0) return 'macho';
+  if (s === 'h' || s === 'f' || s.indexOf('hembra') === 0) return 'hembra';
+  var x = e5mSexoPorCategoria(a && (a.categoria || a.category)) || e5mSexoPorCategoria(a && (a.raza || a.breed));
+  if (x) return x;
+  var lc = (lote && typeof lote === 'object') ? lote.category : (lote ? (((typeof db !== 'undefined' && db.lots) || []).find(function(l){ return l && l.code === lote; }) || {}).category : '');
+  return e5mSexoPorCategoria(lc);
+}
 // v1.8.245: id temporal para crías sin identificar, único contra toda la tabla. El esquema anterior
 // (reloj + azar entre 0 y 99) repetía ids dentro del mismo milisegundo y el dedupe borraba la cría.
 function e5mCriaTempId(animDB){
@@ -751,7 +775,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.249';
+window.E5M_HTML_BUILD = '1.8.250';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -1377,7 +1401,7 @@ function orMarcajeGo(){
     setv('wc-fecha', (typeof localDate==='function'?localDate():new Date().toISOString().slice(0,10)));
     $w('wc-modo-cuar').classList.remove('on'); $w('wc-modo-marca').classList.remove('on');
     var params=(typeof getParams==='function')?getParams():{categorias:[],razas:[]};
-    $w('wc-cat').innerHTML=((params.categorias||[]).map(function(c){return '<option>'+c.name+'</option>';}).join(''))||'<option>Novillo</option><option>Vaca</option><option>Vaquillona</option><option>Toro</option><option>Ternero</option>';
+    $w('wc-cat').innerHTML=((params.categorias||[]).map(function(c){return '<option>'+c.name+'</option>';}).join(''))||'<option>Novillo</option><option>Vaca</option><option>Vaquillona</option><option>Toro</option><option>Ternero</option><option>Ternera</option>';
     $w('wc-raza').innerHTML=((params.razas||[]).map(function(r){return '<option>'+r.name+'</option>';}).join(''))||'<option>Nelore</option><option>Brahman</option><option>Criollo</option>';
     var adb=(typeof getAnimalesDB==='function')?getAnimalesDB():{};
     var loteSel=$w('wc-lote'); loteSel.innerHTML='<option value="">Seleccionar lote...</option>';
@@ -1413,7 +1437,7 @@ function orMarcajeGo(){
     var newLot={
       id:(db.next_ids && typeof db.next_ids.lot==='number') ? db.next_ids.lot++ : Date.now(),
       code:finalCode,
-      category:String(val('wc-cat')||'novillo').toLowerCase(),
+      category:e5mCatKey(val('wc-cat')||'novillo'), /* v1.8.250: antes 'recria mixta' con espacio */
       breed:val('wc-raza')||'',
       paddock:'',
       animal_count:0,
@@ -5695,8 +5719,9 @@ function orMarcajeGo(){
   <div class="form-group"><label class="form-label">Codigo *</label><input class="form-input" id="lot-code" placeholder="Ej: G-01"></div>
   <div class="form-group"><label class="form-label">Categoria</label>
     <select class="form-select" id="lot-category">
-      <option value="novillo">Novillo</option><option value="ternero">Ternero</option>
+      <option value="novillo">Novillo</option><option value="ternero">Ternero</option><option value="ternera">Ternera</option>
       <option value="vaquillona">Vaquillona</option><option value="recria_mixta">Recria mixta</option>
+      <option value="recria_hembra">Recria hembra</option><option value="recria_macho">Recria macho</option>
       <option value="toro">Toro</option><option value="vaca">Vaca</option>
     </select>
   </div>
@@ -6099,9 +6124,10 @@ function orMarcajeGo(){
   </div>
   <div class="form-group"><label class="form-label">Categoria</label>
     <select class="form-select" id="cg-categoria">
-      <option value="Novillo">Novillo</option><option value="Ternero">Ternero</option>
+      <option value="Novillo">Novillo</option><option value="Ternero">Ternero</option><option value="Ternera">Ternera</option>
       <option value="Vaquillona">Vaquillona</option><option value="Vaca">Vaca</option>
       <option value="Toro">Toro</option><option value="Recria mixta">Recria mixta</option>
+      <option value="Recria hembra">Recria hembra</option><option value="Recria macho">Recria macho</option>
     </select>
   </div>
 </div>
@@ -6216,6 +6242,8 @@ function orMarcajeGo(){
           <option value="ternero">Ternero</option>
           <option value="ternera">Ternera</option>
           <option value="vaquillona">Vaquillona</option>
+          <option value="recria_hembra">Recria hembra</option>
+          <option value="recria_macho">Recria macho</option>
           <option value="toro">Toro</option>
         </select>
       </div>
@@ -15355,7 +15383,7 @@ function saveCompraGanado() {
       breed: raza,
       status: 'cuarentena',
       paddock: 'Cuarentena',
-      category: categoria,
+      category: e5mCatKey(categoria), /* v1.8.250: antes 'Recria mixta' con mayúscula */
       avg_weight: pesoPromCuar,
       entry_date: fecha,
       animal_count: cantCuar,
@@ -18494,7 +18522,7 @@ function _alRenderProyeccion(lot, animales) {
     var cat = (lot.category || '').toLowerCase();
     if (cat.indexOf('vaca') >= 0) defaultTarget = 420;
     else if (cat.indexOf('toro') >= 0) defaultTarget = 600;
-    else if (cat.indexOf('vaquill') >= 0 || cat.indexOf('ternero') >= 0) defaultTarget = 380;
+    else if (cat.indexOf('vaquill') >= 0 || cat.indexOf('ternero') >= 0 || cat.indexOf('ternera') >= 0 || cat.indexOf('recria') >= 0) defaultTarget = 380; /* v1.8.250 */
     // Usar valor del input si ya existe, sino default
     var inputEl = document.getElementById('al-faena-target');
     var targetWeight = inputEl && inputEl.value ? parseFloat(inputEl.value) : defaultTarget;
@@ -31027,7 +31055,7 @@ function renderChangelogHTML(version) {
 
 var PARAM_DEFAULTS = {
   potreros:    [{name:'Potrero Norte',capacity:100,hectares:50,pasture_type:'Brachiaria',max_days:30,rest_days:25},{name:'Potrero Sur',capacity:80,hectares:40,pasture_type:'Brachiaria',max_days:30,rest_days:25},{name:'Potrero Este',capacity:120,hectares:60,pasture_type:'Brachiaria',max_days:30,rest_days:25},{name:'Potrero Oeste',capacity:90,hectares:45,pasture_type:'Brachiaria',max_days:30,rest_days:25},{name:'Potrero Central',capacity:150,hectares:70,pasture_type:'Brachiaria',max_days:30,rest_days:25}],
-  categorias:  [{name:'Novillo'},{name:'Ternero'},{name:'Vaquillona'},{name:'Recria mixta'},{name:'Toro'},{name:'Vaca'}],
+  categorias:  [{name:'Novillo'},{name:'Ternero'},{name:'Ternera'},{name:'Vaquillona'},{name:'Recria mixta'},{name:'Recria hembra'},{name:'Recria macho'},{name:'Toro'},{name:'Vaca'}], /* v1.8.250: +Ternera, +Recria hembra/macho */
   razas:       [{name:'Nelore'},{name:'Brahman'},{name:'Criollo'},{name:'Angus'},{name:'Hereford'}],
   actividades: [{name:'Curacion'},{name:'Pesaje'},{name:'Movimiento de lote'},{name:'Vacunacion'},{name:'Alimentacion'},{name:'Inspeccion de potrero'},{name:'Cavado de pozo'},{name:'Otro'}],
   cuentas:     [
@@ -31097,6 +31125,38 @@ function getParams() {
   }
   return saved;
 }
+/* v1.8.250: las estancias con categorías propias reciben Ternera / Recria hembra / Recria macho una sola
+   vez, si tienen la categoría hermana (Ternero / Recria mixta). Idempotente entre equipos: sólo agrega lo
+   que falta y guarda con saveParams (updated_at + push), así el server y los otros equipos lo reciben.
+   Kill: window.__CAT_TERNERA_OFF = true */
+function e5mMigrarCategoriasTernera(){
+  if (window.__CAT_TERNERA_OFF === true) return;
+  try {
+    var ins = function(arr, despuesDe, nuevos, mk){
+      var keys = arr.map(function(c){ return e5mCatKey(c && c.name); });
+      var i = keys.indexOf(despuesDe); if (i < 0) return 0;
+      var n = 0;
+      nuevos.forEach(function(nm){ if (keys.indexOf(e5mCatKey(nm)) < 0) { arr.splice(i + 1 + n, 0, mk(nm)); n++; } });
+      return n;
+    };
+    var p = getParams(); var cats = Array.isArray(p.categorias) ? p.categorias : null;
+    if (cats) {
+      var n = ins(cats, 'ternero', ['Ternera'], function(nm){ return { name: nm }; }) + ins(cats, 'recria_mixta', ['Recria hembra', 'Recria macho'], function(nm){ return { name: nm }; });
+      if (n) { saveParams(p); try { if (typeof updateParamSelects === 'function') updateParamSelects(); } catch (eU) {} console.log('[v1.8.250] categorías: +' + n + ' (Ternera / Recria hembra / Recria macho)'); }
+    }
+    if (typeof getRp === 'function') {
+      var rp = getRp(); var rc = Array.isArray(rp.categorias) ? rp.categorias : null;
+      if (rc) {
+        var obj = { 'Ternera': { peso_objetivo:400, gmd_objetivo:0.600, dias_objetivo:180 }, 'Recria hembra': { peso_objetivo:400, gmd_objetivo:0.600, dias_objetivo:180 }, 'Recria macho': { peso_objetivo:430, gmd_objetivo:0.700, dias_objetivo:150 } };
+        var mk2 = function(nm){ return Object.assign({ name: nm }, obj[nm]); };
+        var m = ins(rc, 'ternero', ['Ternera'], mk2) + ins(rc, 'recria_mixta', ['Recria hembra', 'Recria macho'], mk2);
+        if (m) { rp.updated_at = new Date().toISOString(); saveRp(rp); try { replaceTableInRailway('report_params', rp); } catch (e) {} console.log('[v1.8.250] objetivos por categoría: +' + m); }
+      }
+    }
+  } catch (e) { console.warn('[v1.8.250] migración de categorías:', e.message); }
+}
+/* después del primer pull, para no pisar parámetros que el server todavía no bajó */
+try { setTimeout(e5mMigrarCategoriasTernera, 20000); } catch (e) {}
 function lsGetParamsJSON(k){ try{var v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch(e){return null;} }
 function lsSetParamsJSON(k,v){ try{localStorage.setItem(k,JSON.stringify(v));}catch(e){} }
 
@@ -31753,7 +31813,7 @@ function updateParamSelects() {
     var cur = catSel.value;
     catSel.innerHTML = '<option value="">Seleccionar...</option>';
     params.categorias.forEach(function(c){
-      var o=document.createElement('option'); o.value=c.name.toLowerCase().replace(/ /g,'_'); o.textContent=c.name;
+      var o=document.createElement('option'); o.value=e5mCatKey(c.name); o.textContent=c.name; /* v1.8.250: sin tildes */
       if(o.value===cur) o.selected=true;
       catSel.appendChild(o);
     });
@@ -35523,8 +35583,11 @@ var RP_DEFAULTS = {
   categorias: [
     {name:'Novillo', peso_objetivo:520, gmd_objetivo:0.800, dias_objetivo:120},
     {name:'Ternero', peso_objetivo:430, gmd_objetivo:0.700, dias_objetivo:150},
+    {name:'Ternera', peso_objetivo:400, gmd_objetivo:0.600, dias_objetivo:180},        /* v1.8.250: valores de partida = Vaquillona */
     {name:'Vaquillona', peso_objetivo:400, gmd_objetivo:0.600, dias_objetivo:180},
     {name:'Recria mixta', peso_objetivo:450, gmd_objetivo:0.650, dias_objetivo:130},
+    {name:'Recria hembra', peso_objetivo:400, gmd_objetivo:0.600, dias_objetivo:180},  /* v1.8.250: = Vaquillona */
+    {name:'Recria macho', peso_objetivo:430, gmd_objetivo:0.700, dias_objetivo:150},   /* v1.8.250: = Ternero */
     {name:'Toro', peso_objetivo:600, gmd_objetivo:0.500, dias_objetivo:200},
   ]
 };
@@ -40691,8 +40754,9 @@ function _reproPopulateAnimalsList() {
   // Excluir machos (toros/novillos) y terneros si tienen category
   var hembras = animalsOfLot.filter(function(a) {
     if (!a) return false;
-    var cat = String(a.category || a.categoria || '').toLowerCase();
-    if (cat && (cat === 'toro' || cat === 'novillo' || cat === 'ternero')) return false;
+    var cat = e5mCatKey(a.category || a.categoria || '');
+    if (cat && (cat === 'toro' || cat === 'novillo' || cat === 'ternero' || cat === 'torillo' || cat === 'recria_macho')) return false;
+    if (e5mSexo(a) === 'macho') return false;   /* v1.8.250: sexo 'M' del bot o 'macho' sin categoría */
     return true;
   });
 
@@ -43980,7 +44044,7 @@ window.reproCabanaElegir = function(id,lot){
   rEl('rc-animal-id').value=id; rEl('rc-lot').value=lot;
   rEl('rc-results').style.display='none'; rEl('rc-buscar').value=id;
   rEl('rc-form').style.display='';
-  rEl('rc-animal-info').innerHTML='<b>'+id+'</b> · lote '+lot+(a.raza||a.breed?(' · '+(a.raza||a.breed)):'')+(a.sexo?(' · '+a.sexo):'');
+  rEl('rc-animal-info').innerHTML='<b>'+id+'</b> · lote '+lot+(a.raza||a.breed?(' · '+(a.raza||a.breed)):'')+(e5mSexo(a, lot)?(' · '+(e5mSexo(a, lot)==='macho'?'♂ macho':'♀ hembra')):''); /* v1.8.250 */
   rEl('rc-rgn').value=a.rgn||''; rEl('rc-rgd').value=a.rgd||'';
   if(rEl('rc-nombre')) rEl('rc-nombre').value=a.nombre_pedigri||''; if(rEl('rc-color')) rEl('rc-color').value=a.color||'';
   if(rEl('rc-orpais')) rEl('rc-orpais').value=(a.or_pais!=null?a.or_pais:'');
