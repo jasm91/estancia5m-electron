@@ -749,7 +749,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.245';
+window.E5M_HTML_BUILD = '1.8.246';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -8207,7 +8207,9 @@ function pullFromRailwayDesktop(thenPush) {
           merged[lc] = (remoteAnimals[lc]||[]).map(function(a) {
             var aid = a.animal_id || a.id || '';
             var la = localById[String(aid)] || {};
-            var obj = { id: aid, animal_id: aid, raza: a.breed || a.raza || la.raza || '', breed: a.breed || a.raza || la.breed || '', pesajes: a.pesajes || [] };
+            /* v1.8.246 (A-02): pesajes era el único campo del animal sin respaldo local — si el server omitía
+               el campo o lo mandaba vacío, se borraba la curva de peso. Server-first si trae algo; si no, local. */
+            var obj = { id: aid, animal_id: aid, raza: a.breed || a.raza || la.raza || '', breed: a.breed || a.raza || la.breed || '', pesajes: (Array.isArray(a.pesajes) && a.pesajes.length) ? a.pesajes : (Array.isArray(la.pesajes) ? la.pesajes : []) };
             // v1.8.100 ANIMAL_FIELDS: reemplaza el carry manual (parto_id/sexo/id_updated_at/_needs_id)
             // por la lista única — suma rfid + campos cabaña (rgn/rgd/serie_sui/tatuaje) con la MISMA
             // semántica: server-first para los que viajan, local para los markers.
@@ -8261,14 +8263,49 @@ function pullFromRailwayDesktop(thenPush) {
           var _remA=0;
           Object.keys(merged).forEach(function(lc){
             var arr=merged[lc]; if(!Array.isArray(arr)) return;
-            var keep=arr.filter(function(a){ var id=String((a&&(a.animal_id||a.id))||''); if(id && _delAnim['animal:'+id]){ _remA++; return false; } return true; });
+            var keep=arr.filter(function(a){ var id=String((a&&(a.animal_id||a.id))||''); if(id && (_delAnim['animal:'+id] || _delAnim['animals:'+id])){ _remA++; return false; } return true; }); /* v1.8.246 (A-03): las dos convenciones */
             if(keep.length!==arr.length) merged[lc]=keep;
           });
           if(_remA) console.log('[Sync] '+_remA+' animal(es) tumbado(s) filtrados del merge (anti-resurrección)');
         } catch(eDA){}
-        localStorage.setItem('e5m_animals', JSON.stringify(merged));
-        var totalMerged = Object.values(merged).reduce(function(s, a){ return s + (a ? a.length : 0); }, 0);
-        console.log('[Sync] Animals OK: ' + Object.keys(merged).length + ' lots, ' + totalMerged + ' animals (server-wins)');
+        /* v1.8.246 (A-01, mitad cliente): el merge aceptaba cualquier recorte del server y lo escribía (server {}
+           → 0 animales, y el push siguiente lo devolvía). Antes de escribir: si quedan menos animales que los
+           que había y faltan más de E5M_PULL_RECORTE_MAX aretes que el server NO explica (sin lápida en
+           _deleted_ids, sin venta ni baja en la misma respuesta), se PREGUNTA en vez de aplicar. Un freno que
+           bloquee rompería a los tenants con varios equipos (una venta de 50 cabezas desde el celular llega por
+           el pull como baja legítima — esa sí viene explicada). Kill: window.__PULL_RECORTE_OFF = true */
+        var _aplicarMerge = true;
+        try {
+          if (window.__PULL_RECORTE_OFF !== true) {
+            var _max = (window.E5M_PULL_RECORTE_MAX != null) ? Number(window.E5M_PULL_RECORTE_MAX) : 10;
+            var _idsM = {}; Object.keys(merged).forEach(function(lc){ (merged[lc]||[]).forEach(function(a){ var k=String((a&&(a.animal_id||a.id))||''); if(k) _idsM[k]=1; }); });
+            var _tomb = remote._deleted_ids || remote.deleted_ids || {};
+            var _expl = {};
+            try { (Array.isArray(remote.sales)?remote.sales:[]).forEach(function(sv){ (sv && (sv.animal_ids||sv.animales||[])).forEach(function(x){ var k=String((x&&(x.animal_id||x.id))||x||''); if(k) _expl[k]=1; }); }); } catch(e1){}
+            try { (Array.isArray(remote.bajas)?remote.bajas:[]).forEach(function(b){ var k=String((b&&b.animal_id)||''); if(k) _expl[k]=1; }); } catch(e2){}
+            var _faltan = [], _totLocal = 0;
+            Object.keys(localAnimals).forEach(function(lc){ (localAnimals[lc]||[]).forEach(function(a){ var k=String((a&&(a.animal_id||a.id))||''); if(!k) return; _totLocal++; if(_idsM[k]) return; if(_tomb['animal:'+k]||_tomb['animals:'+k]||_expl[k]) return; _faltan.push(k+'@'+lc); }); });
+            var _totM = Object.values(merged).reduce(function(s2,a){ return s2 + (a ? a.length : 0); }, 0);
+            if (_faltan.length > _max && _totM < _totLocal) {
+              var _firma = _faltan.length + ':' + _totM;
+              console.warn('[Sync] RECORTE no explicado en el pull: tenés ' + _totLocal + ' animales y el server manda ' + _totM + ' — ' + _faltan.length + ' sin baja/venta/lápida: ' + _faltan.slice(0,10).join(', ') + (_faltan.length>10?' …':''));
+              if (window.__pullRecorteFirma === _firma) { _aplicarMerge = false; }
+              else if (document.hidden || typeof confirm !== 'function') { _aplicarMerge = false; try { toast('⚠ El servidor manda ' + (_totLocal - _totM) + ' animales menos y no hay baja ni venta que lo explique. No se aplicó; revisá Sincronización.', 'warning'); } catch(e3){} }
+              else {
+                _aplicarMerge = confirm('⚠ El servidor manda ' + _totM + ' animales y en este equipo hay ' + _totLocal + '.\n\n' + _faltan.length + ' aretes desaparecerían sin que haya una baja, venta o borrado registrado (ej.: ' + _faltan.slice(0,6).map(function(x){return x.split('@')[0];}).join(', ') + ').\n\n¿Aplicar igual?\n\nAceptar: se toma lo del servidor.\nCancelar: se conserva tu copia local y se vuelve a comparar en el próximo pull.');
+                if (!_aplicarMerge) window.__pullRecorteFirma = _firma;
+              }
+              try { if (typeof auditLog === 'function') auditLog(_aplicarMerge ? 'update' : 'warning', 'animals', 'pull-recorte', 'Pull con recorte no explicado: local ' + _totLocal + ' → server ' + _totM + ' (' + _faltan.length + ' sin lápida) · ' + (_aplicarMerge ? 'APLICADO por el usuario' : 'NO aplicado')); } catch(e4){}
+            }
+          }
+        } catch(eRC) { console.warn('[Sync] freno de recorte:', eRC.message); }
+        if (_aplicarMerge) {
+          localStorage.setItem('e5m_animals', JSON.stringify(merged));
+          var totalMerged = Object.values(merged).reduce(function(s, a){ return s + (a ? a.length : 0); }, 0);
+          console.log('[Sync] Animals OK: ' + Object.keys(merged).length + ' lots, ' + totalMerged + ' animals (server-wins)');
+        } else {
+          console.warn('[Sync] Animals: merge NO aplicado (recorte sin explicar) — se conserva la copia local');
+        }
       }
 
       // FIX v1.4.33: helper de last-write-wins por timestamp 'updated_at'.
