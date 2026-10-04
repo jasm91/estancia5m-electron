@@ -58,14 +58,44 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'src/index.html'));
 
-  // Allow all inline scripts — required for onclick handlers
+  /* v1.8.249 (auditoría A-04): la política de contenido ya no admite scripts desde cualquier https:.
+     Scripts sólo del propio HTML y de los dos CDN que usa (Chart.js/jsPDF/html2canvas en cdnjs, rrweb en
+     jsdelivr); iframes sólo de los mapas (Google, OneSoil, OSM); object-src 'none'. 'unsafe-inline' y
+     'unsafe-eval' siguen porque el HTML usa onclick= y el soporte remoto ejecuta código. connect-src queda
+     en https: porque la URL del API es configurable. La misma política va como <meta> en src/index.html
+     (el documento se carga por file:, donde este header no siempre llega) y acá sólo se aplica al
+     documento principal: aplicársela a los iframes de terceros los rompería. */
+  const E5M_CSP = [
+    "default-src 'self' file: data: blob:",
+    "script-src 'self' file: 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net",
+    "style-src 'self' file: 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' file: data: https://fonts.gstatic.com",
+    "img-src 'self' file: data: blob: https:",
+    "media-src 'self' file: data: blob: https:",
+    "connect-src 'self' https: wss:",
+    "frame-src https://*.google.com https://*.onesoil.ai https://*.openstreetmap.org",
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'"
+  ].join('; ');
   mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Content-Security-Policy': ["default-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:"]
-      }
-    });
+    if (details.resourceType !== 'mainFrame') return callback({});
+    const headers = { ...details.responseHeaders };
+    Object.keys(headers).forEach((k) => { if (k.toLowerCase() === 'content-security-policy') delete headers[k]; });
+    headers['Content-Security-Policy'] = [E5M_CSP];
+    callback({ responseHeaders: headers });
+  });
+
+  /* v1.8.249: window.open() ya no abre ventanas de Electron — los enlaces https van al navegador del
+     sistema (igual que el canal openExternal del preload) y cualquier otro esquema se descarta. Y el
+     documento principal no navega fuera de su propio archivo. */
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https:\/\//i.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!/^file:/i.test(url)) { event.preventDefault(); if (/^https:\/\//i.test(url)) shell.openExternal(url); }
   });
 
   /* v1.8.210: F12 y Ctrl/Cmd+Shift+I abren/cierran DevTools en cualquier plataforma. Antes en macOS
