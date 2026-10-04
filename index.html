@@ -749,7 +749,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.246';
+window.E5M_HTML_BUILD = '1.8.247';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -11362,17 +11362,77 @@ function toggleSaleIds(id) {
 }
 
 function deleteSale(id) {
-  if (!confirm('¿Eliminar esta venta?')) return;
-  
+  /* v1.8.247 (M-01): eliminar una venta ahora DESHACE lo que la venta hizo — devuelve los animales a su
+     lote (desde sale.animal_snapshot), recompone animal_count/estado/rotación del lote y borra el asiento
+     de kardex. Las ventas registradas antes de 1.8.247 no tienen copia: sólo se borra el registro y se avisa.
+     Kill switch: window.__SALE_REVERSA_OFF = true */
+  var _sale = (db.sales || []).find(function(r){ return String(r.id) === String(id); });
+  var _snap = (_sale && window.__SALE_REVERSA_OFF !== true && _sale.animal_snapshot && typeof _sale.animal_snapshot === 'object') ? _sale.animal_snapshot : null;
+  var _nSnap = _snap ? Object.keys(_snap).reduce(function(n,lc){ return n + (_snap[lc]||[]).length; }, 0) : 0;
+  var _msg = _snap && _nSnap
+    ? '¿Eliminar esta venta?\n\nSe devuelven ' + _nSnap + ' animal(es) a su lote (' + Object.keys(_snap).join(', ') + '), se recompone el conteo del lote y se borra el asiento de venta del kardex.'
+    : '¿Eliminar esta venta?\n\n⚠ Esta venta no tiene copia de los animales vendidos (se registró antes de la versión 1.8.247): sólo se borra el registro; los animales y el kardex NO se recuperan solos.';
+  if (!confirm(_msg)) return;
+
   // FIX v1.4.35: audit log para deleteSale
-  var _delRec_deleteSale = (db.sales || []).find(function(r){ return String(r.id) === String(id); });
-  var _delSummary_deleteSale = _delRec_deleteSale ? _summarizeRecord('sales', _delRec_deleteSale) : 'Venta #' + id;
-  try { auditLog('delete', 'sales', id, _delSummary_deleteSale); } catch(e){}
+  var _delSummary_deleteSale = _sale ? _summarizeRecord('sales', _sale) : 'Venta #' + id;
+  try { auditLog('delete', 'sales', id, _delSummary_deleteSale + (_nSnap ? ' · reversa: ' + _nSnap + ' animal(es) devueltos' : '')); } catch(e){}
   trackDeletion(id, 'sales');
   db.sales = db.sales.filter(function(s){ return String(s.id)!==String(id); });
+
+  var _devueltos = 0;
+  if (_snap && _nSnap) {
+    try {
+      var rawAnim = JSON.parse(localStorage.getItem('e5m_animals') || '{}');
+      Object.keys(_snap).forEach(function(lc){
+        if (!Array.isArray(rawAnim[lc])) rawAnim[lc] = [];
+        var ya = {}; rawAnim[lc].forEach(function(a){ var k = String((a && (a.animal_id || a.id)) || ''); if (k) ya[k] = 1; });
+        /* el mismo arete puede haber vuelto a entrar por otra compra: no se duplica */
+        var ocupados = {}; Object.keys(rawAnim).forEach(function(l2){ if (l2 === lc) return; (rawAnim[l2]||[]).forEach(function(a){ var k = String((a && (a.animal_id || a.id)) || ''); if (k) ocupados[k] = l2; }); });
+        (_snap[lc] || []).forEach(function(a){
+          var k = String((a && (a.animal_id || a.id)) || ''); if (!k || ya[k] || ocupados[k]) return;
+          var copia = JSON.parse(JSON.stringify(a));
+          /* el pesaje "venta" que se agregó al vender no corresponde a un animal que no se vendió */
+          if (Array.isArray(copia.pesajes)) copia.pesajes = copia.pesajes.filter(function(p){ return !(p && p.tipo === 'venta' && (!_sale.date || p.fecha === _sale.date)); });
+          rawAnim[lc].push(copia); ya[k] = 1; _devueltos++;
+        });
+        var lot = (db.lots || []).find(function(l){ return l.code === lc; });
+        if (lot) {
+          lot.animal_count = rawAnim[lc].length;
+          var antes = (_sale.lot_antes || {})[lc];
+          if ((lot.status === 'vendido' || lot.status === 'sold') && rawAnim[lc].length) lot.status = (antes && antes.status && antes.status !== 'vendido' && antes.status !== 'sold') ? antes.status : 'active';
+          var pesos = rawAnim[lc].map(function(a){ return a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length-1].peso : 0; }).filter(function(p){ return p > 0; });
+          if (pesos.length) lot.avg_weight = Math.round(pesos.reduce(function(s2,p){ return s2+p; },0)/pesos.length*10)/10;
+          /* reabrir la rotación que la venta cerró */
+          (db.rotation_history || []).forEach(function(rh){ if (rh.lot_code === lc && rh.exit_reason === 'venta' && rh.exit_date === _sale.date) { delete rh.exit_date; delete rh.exit_reason; } });
+        }
+      });
+      try { window.__r0Intencion = { entrada: 'venta_eliminada', sale_id: id, _ts: Date.now() }; } catch(eI) {}
+      localStorage.setItem('e5m_animals', JSON.stringify(rawAnim));
+    } catch(eRev) { console.warn('[deleteSale] reversa:', eRev.message); }
+  }
+  /* asiento(s) de kardex de esta venta: por sale_id (1.8.247+) o, para ventas viejas, el auto de la misma fecha/lote/cabezas */
+  var _kx0 = (db.kardex || []).length;
+  db.kardex = (db.kardex || []).filter(function(k){
+    if (!k || k.tipo !== 'venta') return true;
+    if (k.sale_id != null) return String(k.sale_id) !== String(id);
+    if (!_sale || !k.auto) return true;
+    var lotes = _sale.lot_codes || [_sale.lot_code];
+    return !(lotes.indexOf(k.lote) >= 0 && k.fecha === _sale.date && Number(k.cabezas) === Number(_sale.animals) && Number(k.precio) === Number(_sale.price_per_kg));
+  });
+  var _kxQuitados = _kx0 - db.kardex.length;
   saveDB(); renderVentas(); renderDashboard();
-  replaceTableInRailway('sales', db.sales || []);
-  toast('Venta eliminada', 'success');
+  try { renderLotes(); } catch(e){}
+  if (_devueltos || _kxQuitados) {
+    var animalsCache = {}; try { animalsCache = JSON.parse(localStorage.getItem('e5m_animals') || '{}'); } catch(e) {}
+    replaceTableInRailway('animals', animalsCache).then(function(){ return replaceTableInRailway('lots', db.lots || []); }).then(function(){
+      replaceTableInRailway('sales', db.sales || []); replaceTableInRailway('kardex', db.kardex || []);
+      try { replaceTableInRailway('rotation_history', db.rotation_history || []); } catch(e){}
+    });
+  } else {
+    replaceTableInRailway('sales', db.sales || []);
+  }
+  toast('Venta eliminada' + (_devueltos ? ' · ' + _devueltos + ' animal(es) devueltos a su lote' : '') + (_kxQuitados ? ' · kardex corregido' : ''), 'success');
 }
 
 
@@ -12055,6 +12115,15 @@ function saveSale() {
         }
       });
 
+      /* v1.8.247 (M-01): copia de los animales vendidos con su lote y el estado previo del lote,
+         para que eliminar la venta pueda devolverlos (como animal_snapshot en las bajas) */
+      try {
+        sale.animal_snapshot = sale.animal_snapshot || {};
+        sale.animal_snapshot[lc] = rawAnimalsOfLot.filter(function(a){ return idsSet[String(a.animal_id||a.id||'')]; }).map(function(a){ return JSON.parse(JSON.stringify(a)); });
+        var _lotPrev = db.lots.find(function(l){return l.code===lc;});
+        sale.lot_antes = sale.lot_antes || {};
+        if (_lotPrev) sale.lot_antes[lc] = { status: _lotPrev.status || 'active', animal_count: _lotPrev.animal_count || 0, avg_weight: _lotPrev.avg_weight || 0 };
+      } catch(eSnap) {}
       // FIX: Eliminar vendidos del raw storage (preservando todos los campos originales)
       var remainingRaw = rawAnimalsOfLot.filter(function(a){ return !idsSet[String(a.animal_id||a.id||'')]; });
       rawAnimalsStorage[lc] = remainingRaw;
@@ -12206,6 +12275,7 @@ function saveSale() {
       if(saleLot) saleLot.avg_weight=pesoPorAnimal;
     }
     if(saleLot) {
+      var _saleLotPrevStatus = saleLot.status || 'active', _saleLotPrevCount = saleLot.animal_count || 0; /* v1.8.247 */
       saleLot.animal_count=Math.max(0,saleLot.animal_count-animals_count);
       if(saleLot.animal_count===0) {
         saleLot.status='vendido';
@@ -12226,6 +12296,10 @@ function saveSale() {
         var rawAnim = JSON.parse(localStorage.getItem('e5m_animals') || '{}');
         if (rawAnim[lot_code] && Array.isArray(rawAnim[lot_code])) {
           var keepCount = Math.max(0, rawAnim[lot_code].length - animals_count);
+          try { /* v1.8.247 (M-01) */
+            sale.animal_snapshot = { }; sale.animal_snapshot[lot_code] = rawAnim[lot_code].slice(keepCount).map(function(a){ return JSON.parse(JSON.stringify(a)); });
+            sale.lot_antes = { }; sale.lot_antes[lot_code] = { status: _saleLotPrevStatus, animal_count: _saleLotPrevCount, avg_weight: saleLot.avg_weight || 0 };
+          } catch(eSnap2) {}
           rawAnim[lot_code] = rawAnim[lot_code].slice(0, keepCount);
           localStorage.setItem('e5m_animals', JSON.stringify(rawAnim));
           console.log('[saveSale lot-scope] Cache animals['+lot_code+'] reducido a '+keepCount+' (vendidos '+animals_count+')');
@@ -12270,7 +12344,7 @@ function saveSale() {
     });
   } else {
     // Comportamiento normal (single lote)
-    db.kardex.push({id:Date.now(),lote:lot_code,tipo:'venta',fecha:sale.date,cabezas:sale.animals||0,precio:sale.price_per_kg||0,total:sale.total||0,desc:'Venta a '+(buyer||'')+ ' — '+((sale.kg||0))+' kg',by:'Desktop',created_at:new Date().toISOString(),auto:true});
+    db.kardex.push({id:Date.now(),lote:lot_code,tipo:'venta',fecha:sale.date,cabezas:sale.animals||0,precio:sale.price_per_kg||0,total:sale.total||0,desc:'Venta a '+(buyer||'')+ ' — '+((sale.kg||0))+' kg',sale_id:sale.id,by:'Desktop',created_at:new Date().toISOString(),auto:true}); /* v1.8.247: sale_id para poder revertir */
   }
   addActivity('Sistema','otro',isMultiLot?sale.lot_codes.join(','):lot_code,'Venta: '+sale.animals+' animales a '+buyer+' - Bs. '+sale.total.toLocaleString());
   saveDB(); closeModal('modal-sale'); renderVentas(); renderLotes(); renderDashboard();
@@ -12351,7 +12425,19 @@ function renderCompras() {
 }
 
 function deletePurchase(id) {
-  if (!confirm('Eliminar esta compra?')) return;
+  /* v1.8.247 (M-04): eliminar una compra de un producto del inventario descuenta el stock que había
+     sumado (antes quedaba sumado). Si el resultado quedara negativo porque ya se usó, se avisa y se
+     pide confirmación en vez de bloquear. Kill switch: window.__PURCHASE_REVERSA_OFF = true */
+  var _pur = (db.purchases || []).find(function(r){ return String(r.id) === String(id); });
+  var _prod = (_pur && _pur.product_id != null && window.__PURCHASE_REVERSA_OFF !== true) ? (db.products || []).find(function(p){ return String(p.id) === String(_pur.product_id); }) : null;
+  var _qty = _pur ? (parseFloat(_pur.qty) || 0) : 0;
+  var _msgP = 'Eliminar esta compra?';
+  if (_prod && _qty > 0) {
+    var _resta = Math.round(((_prod.stock_qty || 0) - _qty) * 100) / 100;
+    _msgP += '\n\nSe descuentan ' + _qty + ' ' + (_prod.unit || '') + ' del stock de ' + _prod.name + ' (' + (_prod.stock_qty || 0) + ' → ' + _resta + ').';
+    if (_resta < 0) _msgP += '\n\n⚠ El stock quedaría NEGATIVO (' + _resta + '): parte de esta compra ya se usó. ¿Eliminar igual?';
+  }
+  if (!confirm(_msgP)) return;
   
   // FIX v1.4.35: audit log para deletePurchase
   var _delRec_deletePurchase = (db.purchases || []).find(function(r){ return String(r.id) === String(id); });
@@ -12359,6 +12445,12 @@ function deletePurchase(id) {
   try { auditLog('delete', 'purchases', id, _delSummary_deletePurchase); } catch(e){}
   trackDeletion(id, 'purchases');
   db.purchases = db.purchases.filter(function(p){ return p.id!==id; });
+  if (_prod && _qty > 0) { /* v1.8.247 (M-04) */
+    _prod.stock_qty = Math.round(((_prod.stock_qty || 0) - _qty) * 100) / 100;
+    _prod.stock_updated_at = new Date().toISOString();
+    try { replaceTableInRailway('vet_products', db.products || []); } catch(e) {}
+    try { if (typeof renderStock === 'function') renderStock(); } catch(e) {}
+  }
   saveDB(); renderCompras();
   replaceTableInRailway('purchases', db.purchases || []);
   // Pushear eliminacion a Railway inmediatamente
@@ -38282,7 +38374,8 @@ function renderHistorialAnimales() {
 </script>
 
 <!-- ═══ ASISTENTE IA ═══ -->
-<div id="ai-fab" onclick="toggleAiChat()" style="position:fixed;bottom:20px;right:20px;width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#F5A623,#E8912D);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 4px 16px rgba(245,166,35,.4);z-index:999;transition:transform .2s" onmouseenter="this.style.transform='scale(1.1)'" onmouseleave="this.style.transform='scale(1)'">🤖</div>
+<!-- v1.8.247: el botón flotante del Asistente IA se oculta — el soporte va por Ver pantalla/soporte remoto. Reactivar desde consola: document.getElementById('ai-fab').style.display='flex' -->
+<div id="ai-fab" onclick="toggleAiChat()" style="position:fixed;bottom:20px;right:20px;width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#F5A623,#E8912D);cursor:pointer;display:none;align-items:center;justify-content:center;font-size:24px;box-shadow:0 4px 16px rgba(245,166,35,.4);z-index:999;transition:transform .2s" onmouseenter="this.style.transform='scale(1.1)'" onmouseleave="this.style.transform='scale(1)'">🤖</div>
 
 <div id="ai-panel" style="position:fixed;bottom:84px;right:20px;width:380px;height:520px;background:var(--sur);border:1px solid var(--bor);border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:999;overflow:hidden;display:none;flex-direction:column">
   <div style="padding:12px 16px;border-bottom:1px solid var(--bor);display:flex;align-items:center;justify-content:space-between;background:rgba(245,166,35,.06)">
