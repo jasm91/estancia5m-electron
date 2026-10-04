@@ -4,6 +4,16 @@ on:
   push:
     tags:
       - 'v*'
+  # Para publicar sin poder empujar el tag (p.ej. desde una sesión remota): Actions → Run workflow,
+  # tag = v<versión de package.json>. softprops crea el tag sobre el commit que se está construyendo.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "tag a publicar (ej. v1.8.250) — debe coincidir con package.json"
+        required: true
+
+env:
+  REL_TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
 # Permisos necesarios para crear Releases
 permissions:
@@ -19,11 +29,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Tag coincide con package.json
+        run: |
+          V="v$(node -p "require('./package.json').version")"
+          [ "$V" = "$REL_TAG" ] || { echo "::error::tag $REL_TAG no coincide con package.json ($V)"; exit 1; }
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
+          tag_name: ${{ env.REL_TAG }}
+          name: ${{ env.REL_TAG }}
+          target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
           generate_release_notes: true
@@ -88,6 +104,6 @@ jobs:
     steps:
       - name: Checkout PWA repo (si está separado) o notificar
         run: |
-          echo "Desktop v${{ github.ref_name }} publicado exitosamente"
+          echo "Desktop ${{ env.REL_TAG }} publicado exitosamente"
           echo "Recuerda hacer bump de la PWA si hubo cambios en ella:"
           echo "  cd estancia5m-pwa && npm run version:patch"
