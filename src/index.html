@@ -775,7 +775,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.251';
+window.E5M_HTML_BUILD = '1.8.252';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -2775,6 +2775,7 @@ function orMarcajeGo(){
             <div id="repro-kpi-paricion-bar" style="height:100%;background:linear-gradient(90deg,var(--blue),#7CB9FF);width:0%;transition:width .3s"></div>
           </div>
           <div style="font-size:9.5px;margin-top:6px" id="repro-kpi-paricion-status">—</div>
+          <div style="font-size:9.5px;margin-top:4px;color:var(--muted)" id="repro-kpi-paricion-extra" title="Terneros nacidos (vivos y muertos) por vaca parida · partos gemelares sobre el total de partos"></div>
         </div>
       </div>
     </div>
@@ -3195,6 +3196,10 @@ function orMarcajeGo(){
       </div>
       <div id="repro-parto-crias-extra"></div>
 
+      <div id="repro-parto-fm-wrap" style="display:none;background:rgba(212,160,23,.08);border:1px solid rgba(212,160,23,.3);border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:11.5px;line-height:1.5">
+        <div style="color:var(--amber)">⚠ <b>Gemela de macho — riesgo freemartin.</b> Nueve de cada diez nacen con el aparato reproductor incompleto y no quedan preñadas. Confirmar con el veterinario antes de servirla, o destinarla a engorde.</div>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:6px;cursor:pointer;color:var(--text)"><input type="checkbox" id="repro-parto-fm-fertil"> Confirmada fértil — quitar la marca</label>
+      </div>
       <div>
         <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Notas (opcional)</label>
         <textarea id="repro-parto-notes" rows="2" placeholder="Observaciones del parto..." style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;width:100%;resize:vertical;font-family:inherit"></textarea>
@@ -40794,7 +40799,7 @@ function _reproPopulateAnimalsList() {
     if (!hasLetters && !isPureShortNum) return; // descartar timestamps gigantes y autogenerados
     if (seen[key]) return;
     seen[key] = true;
-    unique.push({ key: key, raza: a.raza || a.breed || '' });
+    unique.push({ key: key, raza: a.raza || a.breed || '', fm: !!a.freemartin_riesgo || e5mFreemartin(key, selectedLote) }); /* v1.8.252 */
   });
 
   // Ordenar: las que parecen caravanas con prefijo letra (V-..., VT...) primero
@@ -40809,7 +40814,7 @@ function _reproPopulateAnimalsList() {
   list.innerHTML = unique.map(function(a) {
     var label = String(a.key).replace(/"/g, '&quot;');
     var raza = a.raza ? (' — ' + String(a.raza).replace(/"/g, '&quot;')) : '';
-    return '<option value="' + label + '">' + label + raza + '</option>';
+    return '<option value="' + label + '">' + label + raza + (a.fm ? ' — ⚠ gemela de macho (freemartin?)' : '') + '</option>';
   }).join('');
 
   // Hint según resultado
@@ -41051,6 +41056,10 @@ function saveReproServicio() {
   var existing = id ? _reproGetServicios().find(function(r) { return r.id === id; }) : null;
   if (!existing && (db.reproductive_services || []).some(function(r){ return String(r.animal_id || '') === animalId && r.date === date && (r.tipo_servicio || '') === tipo; })) {
     if (!confirm('Ya hay un servicio de ' + animalId + ' el ' + date + '. ¿Registrar otro igual?')) return;
+  }
+  /* v1.8.252: gemela de macho — se avisa una vez, el productor decide */
+  if (!existing && typeof e5mFreemartin === 'function' && e5mFreemartin(animalId, (document.getElementById('repro-srv-lote') || {}).value)) {
+    if (!confirm('⚠ ' + animalId + ' nació gemela de un macho (riesgo freemartin): 9 de cada 10 son estériles.\n\n¿Registrar el servicio igual? Si el veterinario la confirmó fértil, quitá la marca desde Partos → ✎ → "Confirmada fértil".')) return;
   }
 
   /* v1.8.245: se parte del registro existente. Armarlo de cero perdía todo campo que no estuviera en
@@ -41315,6 +41324,28 @@ function _reproPartosEventos(records) {
     m[k].crias.push(p);
   });
   return orden.map(function(k) { var e = m[k]; e.n = e.crias.length; e.gemelar = e.n > 1; e.crias.sort(function(a, b) { return (a.cria_num || 0) - (b.cria_num || 0); }); return e; });
+}
+/* v1.8.252 (fase 4): ¿este animal está marcado como gemela de macho (riesgo freemartin)? Se mira el animal
+   y, por si la marca viajó sólo en el parto, el registro de parto de esa cría. */
+function e5mFreemartin(animalId, lote) {
+  var id = String(animalId || '').trim(); if (!id) return false;
+  try {
+    var adb = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
+    var lots = lote ? [lote] : Object.keys(adb || {});
+    for (var i = 0; i < lots.length; i++) { var a = (adb[lots[i]] || []).find(function(x){ return String(x.animal_id || x.id || '') === id; }); if (a) { if (a.freemartin_riesgo) return true; break; } }
+  } catch (e) {}
+  return (_reproGetPartos() || []).some(function(p){ return p && p.freemartin_riesgo && String(p.cria_id || '') === id; });
+}
+/* "Confirmada fértil": quita la marca del parto y del animal */
+function e5mFreemartinQuitar(partoId) {
+  var p = _reproGetPartos().find(function(x){ return String(x.id) === String(partoId); }); if (!p) return;
+  var now = new Date().toISOString();
+  delete p.freemartin_riesgo; p.freemartin_confirmada_fertil = now; p.updated_at = now;
+  try { var adb = getAnimalesDB(); var lc = p.lot_code; var a = ((adb[lc] || []).find(function(x){ return String(x.animal_id || x.id || '') === String(p.cria_id); })) || null;
+    if (!a) Object.keys(adb).some(function(k){ a = (adb[k] || []).find(function(x){ return String(x.animal_id || x.id || '') === String(p.cria_id) && x.freemartin_riesgo; }); return !!a; });
+    if (a && a.freemartin_riesgo) { delete a.freemartin_riesgo; a.id_updated_at = now; saveAnimalesDB(adb); }
+  } catch (e) {}
+  try { _reproPushParto(p); } catch (e) {}
 }
 function _reproPartoNuevoGrupoId() { return 'pg_' + Date.now().toString(36) + '_' + Math.floor(Math.random() * 1e6).toString(36); }
 function _reproPartoTipo(n) { return n >= 3 ? 'triple' : n === 2 ? 'gemelar' : 'simple'; }
@@ -41911,6 +41942,7 @@ function openReproEditarParto(partoId) {
   var _nc = document.getElementById('repro-parto-ncrias'); if (_nc) _nc.value = '1';
   _reproPartoPintarCrias();
   var _ba = document.getElementById('repro-parto-btn-agregar-cria'); if (_ba) _ba.style.display = '';
+  var _fw = document.getElementById('repro-parto-fm-wrap'); if (_fw) { _fw.style.display = p.freemartin_riesgo ? '' : 'none'; var _fc = document.getElementById('repro-parto-fm-fertil'); if (_fc) _fc.checked = false; }
 
   // Poblar selectors y luego setear valores
   if (typeof _reproPartoPopulateMadres === 'function') _reproPartoPopulateMadres();
@@ -41960,6 +41992,7 @@ function openReproNuevoParto() {
   var _nw = document.getElementById('repro-parto-ncrias-wrap'); if (_nw) _nw.style.display = '';
   var _nc = document.getElementById('repro-parto-ncrias'); if (_nc) _nc.value = '1';
   var _ba = document.getElementById('repro-parto-btn-agregar-cria'); if (_ba) _ba.style.display = 'none';
+  var _fw = document.getElementById('repro-parto-fm-wrap'); if (_fw) _fw.style.display = 'none';
   _reproPartoPintarCrias();
   _reproPartoPopulateMadres();
   _reproPartoPopulateLoteSelector();
@@ -42188,6 +42221,8 @@ function saveReproParto() {
         }
       }
     } catch(e){ console.warn('[Repro] propagar cria_id editado al animal', e); }
+    /* v1.8.252: confirmada fértil → se quita la marca freemartin del parto y del animal */
+    try { var _fc = document.getElementById('repro-parto-fm-fertil'); if (_fc && _fc.checked && db.partos[idx].freemartin_riesgo) { e5mFreemartinQuitar(db.partos[idx].id); if (typeof addActivity === 'function') addActivity('', 'parto', db.partos[idx].lot_code, '✅ ' + db.partos[idx].cria_id + ': confirmada fértil, se quita la marca freemartin', date); } } catch(e) {}
     try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch(e) {}
     if (typeof saveDB === 'function') saveDB(true);
     closeModal('modal-repro-parto');
@@ -42542,7 +42577,11 @@ function _reproIndicadoresCompute(periodoMonths) {
     if (!e || isNaN(e.getTime()) || e > _now) return false;
     return !_cutoff || e >= _cutoff;
   });
-  var paricionPct = _prenDue.length > 0 ? Math.min(100, Math.round((_reproPartosEventos(partosF).length / _prenDue.length) * 100)) : null; /* v1.8.251: eventos */
+  var _evF = _reproPartosEventos(partosF);
+  var paricionPct = _prenDue.length > 0 ? Math.min(100, Math.round((_evF.length / _prenDue.length) * 100)) : null; /* v1.8.251: eventos */
+  /* v1.8.252: terneros por vaca parida (nacidos, vivos + muertos) y % gemelaridad — informativos */
+  var ternerosPorVaca = _evF.length ? Math.round((partosF.length / _evF.length) * 100) / 100 : null;
+  var gemelaridadPct = _evF.length ? Math.round((_evF.filter(function(e){ return e.n > 1; }).length / _evF.length) * 1000) / 10 : null;
 
   // Por lote — v1.8.15: excluir cuarentena/marcado/fusionado/vendido/CUAR-xxx (igual que resto del módulo)
   var lots = (db && Array.isArray(db.lots)) ? db.lots : [];
@@ -42574,7 +42613,7 @@ function _reproIndicadoresCompute(periodoMonths) {
     };
   });
 
-  return { prenezPct: prenezPct, sc: sc, iep: iep, iepIntervalos: _iepG.n, iepLargos: _iepG.largos, paricionPct: paricionPct, perLot: perLot, periodoMonths: periodoMonths };
+  return { prenezPct: prenezPct, sc: sc, iep: iep, iepIntervalos: _iepG.n, iepLargos: _iepG.largos, paricionPct: paricionPct, ternerosPorVaca: ternerosPorVaca, gemelaridadPct: gemelaridadPct, partosEventos: _evF.length, crias: partosF.length, perLot: perLot, periodoMonths: periodoMonths };
 }
 
 function _reproIndScoreLote(row, obj) {
@@ -42642,6 +42681,7 @@ function renderReproIndicadores() {
   el('repro-kpi-paricion-bar').style.width = _reproSemaforoBar(ind.paricionPct, obj.paricion_pct, 'higher') + '%';
   el('repro-kpi-paricion-status').textContent = semPar.label;
   el('repro-kpi-paricion-status').style.color = semPar.color;
+  if (el('repro-kpi-paricion-extra')) el('repro-kpi-paricion-extra').textContent = ind.partosEventos ? (ind.crias + ' terneros en ' + ind.partosEventos + ' partos · ' + ind.ternerosPorVaca + ' por vaca parida' + (ind.gemelaridadPct ? ' · ' + ind.gemelaridadPct + '% gemelares' : '')) : '';
 
   // Tabla por lote
   var tbody = el('repro-ind-tbody');
@@ -42874,6 +42914,9 @@ function _reproHistRenderCria(criaId) {
   ];
   if (parto.lot_code) partoDetail.push('Nacido en lote: ' + escH(parto.lot_code));
   if (parto.paddock) partoDetail.push('Potrero: ' + escH(parto.paddock));
+  if (parto.n_crias > 1) partoDetail.push('<b style="color:var(--purple)">👯 Parto ' + (parto.tipo_parto || 'gemelar') + ' — cría ' + (parto.cria_num || '?') + ' de ' + parto.n_crias + '</b>'); /* v1.8.252 */
+  if (parto.freemartin_riesgo) partoDetail.push('<b style="color:var(--amber)">⚠ Gemela de macho: riesgo freemartin, confirmar antes de servir</b>');
+  else if (parto.freemartin_confirmada_fertil) partoDetail.push('✅ Confirmada fértil (' + String(parto.freemartin_confirmada_fertil).slice(0, 10) + ')');
   events.push({
     date: parto.date, type: 'parto', icon: '🐣',
     title: '🐣 Nacimiento de cría ' + escH(criaId),
@@ -44164,6 +44207,14 @@ window.reproDesteteInfo = function(){
   var htm='Cría <b>'+(p.cria_id||'—')+'</b> · madre '+(p.madre_id||'—')+' · nació '+rFecha(p.date)+(p.peso?(' con '+p.peso+' kg'):'');
   if(edad!=null) htm+='<br>Edad al destete: <b>'+edad+' días</b>'+(edad<150?' <span style="color:var(--amber2)">(temprano)</span>':edad>270?' <span style="color:var(--amber2)">(tardío)</span>':'');
   if(edad>0&&peso&&p.peso){ var p205=Number(p.peso)+(peso-Number(p.peso))/edad*205; htm+='<br>P205 ajustado: <b>'+(Math.round(p205*10)/10)+' kg</b>'; }
+  /* v1.8.252: destino sugerido por sexo (sólo sugerencia; el movimiento es el registro de siempre) */
+  try {
+    var sx = p.sexo === 'hembra' ? 'hembra' : 'macho';
+    var okCat = sx === 'hembra' ? /^(ternera|vaquillona|recria_hembra|recria_mixta)$/ : /^(ternero|novillo|recria_macho|recria_mixta)$/;
+    var dest = (db.lots||[]).filter(function(l){ var st=String(l.status||'').toLowerCase(); return l && l.code!==p.lot_code && !/sold|vendido|fusionado|merged|cuarentena|marcado|inactivo/.test(st) && !/^CUAR-\d+$/i.test(l.code||'') && okCat.test(e5mCatKey(l.category)); }).map(function(l){ return l.code+' ('+e5mCatKey(l.category).replace('_',' ')+')'; });
+    htm+='<br>Destino sugerido ('+(sx==='hembra'?'hembra → recría hembra / terneras / vaquillonas':'macho → recría macho / terneros / novillos')+'): '+(dest.length?'<b>'+dest.slice(0,4).join(', ')+'</b>':'<span style="color:var(--muted)">no hay lotes de esa categoría — se puede crear uno</span>');
+    if (p.freemartin_riesgo) htm+='<br><span style="color:var(--amber)">⚠ Gemela de macho (riesgo freemartin): mejor destino engorde, o confirmar fertilidad antes de recría para cría.</span>';
+  } catch(e){}
   info.innerHTML=htm; info.style.display='';
 };
 window.saveReproDestete = function(){
