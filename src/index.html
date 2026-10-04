@@ -775,7 +775,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.250';
+window.E5M_HTML_BUILD = '1.8.251';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -2653,6 +2653,14 @@ function orMarcajeGo(){
         </select>
       </div>
       <div style="display:flex;align-items:center;gap:6px">
+        <span style="font-size:11px;color:var(--muted)">Tipo:</span>
+        <select id="repro-partos-filter-tipo" onchange="renderReproPartos()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:11.5px">
+          <option value="">Todos</option>
+          <option value="simple">Simples</option>
+          <option value="gemelar">👯 Gemelares</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
         <span style="font-size:11px;color:var(--muted)">Estado cría:</span>
         <select id="repro-partos-filter-estado" onchange="renderReproPartos()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px">
           <option value="">Todos</option>
@@ -3146,6 +3154,17 @@ function orMarcajeGo(){
         </div>
       </div>
 
+      <!-- v1.8.251: partos gemelares — un registro por cría, agrupados por parto_grupo -->
+      <div id="repro-parto-ncrias-wrap" style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <label style="font-size:11px;color:var(--muted)">Nº de crías</label>
+        <select id="repro-parto-ncrias" onchange="_reproPartoPintarCrias()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:13px">
+          <option value="1">1 · simple</option>
+          <option value="2">2 · gemelar</option>
+          <option value="3">3 · triple</option>
+        </select>
+        <span id="repro-parto-ncrias-hint" style="font-size:10.5px;color:var(--muted)"></span>
+      </div>
+      <div id="repro-parto-cria1-title" style="display:none;font-size:11.5px;font-weight:600;color:var(--purple);margin:0 0 6px">Cría 1</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div>
           <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Sexo de la cría *</label>
@@ -3174,6 +3193,7 @@ function orMarcajeGo(){
           <input type="text" id="repro-parto-cria-id" placeholder="Ej: 0042" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;width:100%">
         </div>
       </div>
+      <div id="repro-parto-crias-extra"></div>
 
       <div>
         <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Notas (opcional)</label>
@@ -3181,6 +3201,7 @@ function orMarcajeGo(){
       </div>
 
       <div class="form-actions" style="margin-top:14px;display:flex;justify-content:flex-end;gap:8px">
+        <button class="btn btn-ghost" id="repro-parto-btn-agregar-cria" style="display:none;margin-right:auto" onclick="openReproAgregarCria(document.getElementById('repro-parto-id').value)" title="Registrar una cría más de este mismo parto (gemelar)">＋ Agregar cría a este parto</button>
         <button class="btn btn-ghost" onclick="closeModal('modal-repro-parto')">Cancelar</button>
         <button class="btn btn-primary" onclick="saveReproParto()">Guardar parto</button>
       </div>
@@ -32627,7 +32648,7 @@ function getAnimalesDB(){
 // - LOCAL: markers del cliente; NO se pushean, se arrastran del local.
 // Kill switch: window.__ANIMAL_FIELDS_OFF = true (vuelve al recorte viejo).
 // ════════════════════════════════════════════════════════════════
-window.E5M_ANIMAL_FIELDS_SYNC = ['sexo','parto_id','rfid','rgn','rgd','serie_sui','tatuaje','nombre_pedigri','color','or_pais']; /* v1.8.127 A2 */
+window.E5M_ANIMAL_FIELDS_SYNC = ['sexo','parto_id','rfid','rgn','rgd','serie_sui','tatuaje','nombre_pedigri','color','or_pais','freemartin_riesgo']; /* v1.8.127 A2 · v1.8.251 freemartin */
 window.E5M_ANIMAL_FIELDS_LOCAL = ['id_updated_at','_needs_id','_colision_de'];
 window.e5mAnimPushFields = function(src, out){
   if (window.__ANIMAL_FIELDS_OFF) return out;
@@ -36790,7 +36811,7 @@ function renderReportesGerenciales() {
     '<div style="margin-bottom:36px">'+
       '<div style="display:flex;align-items:baseline;gap:12px;border-bottom:1.5px solid '+ink+';padding-bottom:10px;margin-bottom:18px"><span style="font-family:DM Mono,monospace;font-size:9.5px;color:'+gold+';letter-spacing:.1em">05</span><span style="font-family:DM Serif Display,serif;font-size:20px">Operaciones <em style="color:'+gold+'">de Campo</em></span></div>'+
       '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:'+border+';border:1px solid '+border+';border-radius:6px;overflow:hidden;margin-bottom:16px">'+
-        kpiBox((db.partos||[]).filter(function(p){return p.estado!=='muerto';}).length+'','Partos registrados',(db.partos||[]).filter(function(p){return p.sexo==='macho'&&p.estado!=='muerto';}).length+'M / '+(db.partos||[]).filter(function(p){return p.sexo==='hembra'&&p.estado!=='muerto';}).length+'H','gold')+
+        kpiBox(((typeof _reproPartosEventos==='function')?_reproPartosEventos((db.partos||[]).filter(function(p){return p.estado!=='muerto';})).length:(db.partos||[]).filter(function(p){return p.estado!=='muerto';}).length)+'','Partos registrados',(db.partos||[]).filter(function(p){return p.sexo==='macho'&&p.estado!=='muerto';}).length+'M / '+(db.partos||[]).filter(function(p){return p.sexo==='hembra'&&p.estado!=='muerto';}).length+'H','gold')+
         kpiBox((db.partos||[]).filter(function(p){return p.estado==='muerto';}).length+'','Mortandad','bajas registradas','red')+
         kpiBox((db.maintenance||[]).length+'','Mantenimientos',km(totalMaint)+' costo total','gold')+
         kpiBox((db.employees||[]).filter(function(e){return e.active;}).length+'','Empleados activos',km(totalSalarios)+' salarios','')+
@@ -41275,6 +41296,84 @@ function exportReproServicios() {
 function _reproGetPartos() {
   return (db && Array.isArray(db.partos)) ? db.partos : [];
 }
+/* v1.8.251 — PARTOS GEMELARES. Un parto = un EVENTO con N crías; cada cría es un registro de `partos`
+   (así todo lo que lee sexo/peso/cria_id/destete por registro sigue igual). Los registros del mismo
+   evento comparten `parto_grupo`; los partos viejos sin grupo se agrupan por madre + fecha.
+   Esta función es el único lugar donde se decide qué es "un parto": la usan las stats, el IEP, el
+   % parición, el dashboard y la tabla. */
+function _reproPartoClaveEvento(p) {
+  if (!p) return '';
+  if (p.parto_grupo) return 'g:' + p.parto_grupo;
+  return 'mf:' + String(p.madre_id || '') + '|' + String(p.date || '') + (p.madre_id ? '' : '|' + String(p.id));
+}
+function _reproPartosEventos(records) {
+  var m = {}, orden = [];
+  (records || []).forEach(function(p) {
+    if (!p) return;
+    var k = _reproPartoClaveEvento(p);
+    if (!m[k]) { m[k] = { key: k, madre_id: p.madre_id || '', date: p.date || '', lot_code: p.lot_code || '', grupo: p.parto_grupo || null, crias: [] }; orden.push(k); }
+    m[k].crias.push(p);
+  });
+  return orden.map(function(k) { var e = m[k]; e.n = e.crias.length; e.gemelar = e.n > 1; e.crias.sort(function(a, b) { return (a.cria_num || 0) - (b.cria_num || 0); }); return e; });
+}
+function _reproPartoNuevoGrupoId() { return 'pg_' + Date.now().toString(36) + '_' + Math.floor(Math.random() * 1e6).toString(36); }
+function _reproPartoTipo(n) { return n >= 3 ? 'triple' : n === 2 ? 'gemelar' : 'simple'; }
+/* Badge 👯 2/2 para la tabla: cuántas crías tiene el evento de este registro */
+function _reproPartoBadgeGrupo(p, eventosPorClave) {
+  var e = eventosPorClave[_reproPartoClaveEvento(p)];
+  var n = e ? e.n : (p.n_crias || 1);
+  if (n < 2) return '';
+  var i = p.cria_num || ((e && e.crias.indexOf(p) + 1) || 1);
+  return ' <span title="Parto ' + (n >= 3 ? 'triple' : 'gemelar') + ': cría ' + i + ' de ' + n + '" style="background:rgba(127,119,221,.15);color:var(--purple);font-size:10px;padding:2px 6px;border-radius:8px;white-space:nowrap">👯 ' + i + '/' + n + '</span>';
+}
+/* Bloques "Cría 2" / "Cría 3" del modal: mismos campos que la cría 1 con sufijo -2 / -3 */
+function _reproPartoPintarCrias() {
+  var sel = document.getElementById('repro-parto-ncrias'); var cont = document.getElementById('repro-parto-crias-extra');
+  if (!sel || !cont) return;
+  var n = Math.max(1, Math.min(3, parseInt(sel.value, 10) || 1));
+  var t1 = document.getElementById('repro-parto-cria1-title'); if (t1) t1.style.display = n > 1 ? '' : 'none';
+  var hint = document.getElementById('repro-parto-ncrias-hint'); if (hint) hint.textContent = n > 1 ? 'Madre, fecha, padre y lote son del parto; sexo, peso, estado y arete van por cría.' : '';
+  var st = 'background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;width:100%';
+  var html = '';
+  for (var i = 2; i <= n; i++) {
+    var prev = {};
+    ['sexo', 'peso', 'estado', 'cria-id'].forEach(function(f) { var e = document.getElementById('repro-parto-' + f + '-' + i); if (e) prev[f] = e.value; });
+    html += '<div data-cria="' + i + '" style="border-top:1px dashed var(--border);padding-top:10px;margin-bottom:12px">' +
+      '<div style="font-size:11.5px;font-weight:600;color:var(--purple);margin-bottom:6px">Cría ' + i + '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">' +
+        '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Sexo de la cría *</label><select id="repro-parto-sexo-' + i + '" style="' + st + '"><option value="macho">🐂 Macho (Torillo)</option><option value="hembra">🐄 Hembra (Ternera)</option></select></div>' +
+        '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Peso al nacer (kg)</label><input type="number" id="repro-parto-peso-' + i + '" step="0.5" placeholder="Dejar vacío si no se pesó" style="' + st + '"></div>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+        '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Estado de la cría *</label><select id="repro-parto-estado-' + i + '" style="' + st + '"><option value="sano">✅ Sano</option><option value="debil">⚠ Débil — requiere atención</option><option value="muerto">❌ Mortinato</option></select></div>' +
+        '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">ID / Arete cría (opcional)</label><input type="text" id="repro-parto-cria-id-' + i + '" placeholder="Ej: 0043" style="' + st + '"></div>' +
+      '</div></div>';
+    (function(i, prev){ setTimeout(function(){ Object.keys(prev).forEach(function(f){ var e = document.getElementById('repro-parto-' + f + '-' + i); if (e && prev[f] != null) e.value = prev[f]; }); }, 0); })(i, prev);
+  }
+  cont.innerHTML = html;
+}
+/* "＋ Agregar cría a este parto": abre el modal en modo nuevo con madre/fecha/padre/lote fijados y el
+   grupo del parto de origen (si el origen era simple, pasa a gemelar con cria_num 1). */
+function openReproAgregarCria(partoId) {
+  var p = _reproGetPartos().find(function(x){ return String(x.id) === String(partoId); });
+  if (!p) return;
+  openReproNuevoParto();
+  document.getElementById('modal-repro-parto-title').textContent = '＋ Agregar cría al parto del ' + (p.date || '?');
+  document.getElementById('repro-parto-date').value = p.date || '';
+  document.getElementById('repro-parto-padre').value = p.padre_id || '';
+  document.getElementById('repro-parto-notes').value = p.obs || '';
+  var w = document.getElementById('repro-parto-ncrias-wrap'); if (w) w.style.display = 'none';
+  window.__reproPartoAgregarA = p.id;
+  setTimeout(function(){
+    var madreSel = document.getElementById('repro-parto-madre');
+    if (madreSel) {
+      var o = document.createElement('option'); o.value = p.servicio_id || ('__madre__' + p.madre_id); o.textContent = (p.madre_id || '?') + ' · parto del ' + (p.date || '?'); madreSel.appendChild(o); madreSel.value = o.value; madreSel.disabled = true;
+      document.getElementById('repro-parto-servicio-id').value = p.servicio_id || '';
+    }
+    var loteSel = document.getElementById('repro-parto-lote'); if (loteSel) loteSel.value = p.lot_code || '';
+    var ctx = document.getElementById('repro-parto-context'); if (ctx) ctx.innerHTML = 'Segunda cría del parto de <b>' + escH(p.madre_id || '?') + '</b> del <b>' + (p.date || '?') + '</b>. Se agrega al mismo parto (gemelar).';
+  }, 80);
+}
 
 function _reproPartosFilterPeriodo(records, months) {
   if (!months) return records;
@@ -41325,20 +41424,25 @@ function _reproPartosPopulateLoteFilter() {
 
 // ─── KPIs Partos ──────────────────────────────────────────────
 function _reproPartosComputeStats(records) {
-  var total = records.length;
+  /* v1.8.251: "partos" son EVENTOS (una vaca que parió); machos/hembras/mortalidad siguen por CRÍA */
+  var eventos = _reproPartosEventos(records);
+  var total = eventos.length, crias = records.length;
+  var gemelares = eventos.filter(function(e) { return e.n > 1; }).length;
   var machos = records.filter(function(r) { return r.sexo === 'macho'; }).length;
   var hembras = records.filter(function(r) { return r.sexo === 'hembra'; }).length;
   var muertos = records.filter(function(r) { return r.estado === 'muerto'; }).length;
-  var mortalidadPct = total > 0 ? Math.round((muertos / total) * 1000) / 10 : null;
+  var mortalidadPct = crias > 0 ? Math.round((muertos / crias) * 1000) / 10 : null;
+  var criasPorParto = total > 0 ? Math.round((crias / total) * 100) / 100 : null;
+  var gemelaridadPct = total > 0 ? Math.round((gemelares / total) * 1000) / 10 : null;
 
   // % parición = partos del año / vacas preñadas año anterior (servicios con result='preñada')
   var now = new Date();
   var thisYearStart = new Date(now.getFullYear(), 0, 1);
   var lastYearStart = new Date(now.getFullYear() - 1, 0, 1);
   var lastYearEnd = thisYearStart;
-  var partosThisYear = records.filter(function(r) {
-    if (!r.date) return false;
-    return new Date(r.date) >= thisYearStart;
+  var partosThisYear = eventos.filter(function(e) {
+    if (!e.date) return false;
+    return new Date(e.date) >= thisYearStart;
   }).length;
   var servicios = _reproGetServicios();
   var prenadasLastYear = servicios.filter(function(s) {
@@ -41351,7 +41455,7 @@ function _reproPartosComputeStats(records) {
 
   // IEP = promedio de días entre partos consecutivos por vaca (madre_id)
   var byMadre = {};
-  records.forEach(function(r) {
+  eventos.forEach(function(r) {   /* v1.8.251: por evento — dos crías el mismo día no son dos partos */
     if (!r.madre_id || !r.date) return;
     if (!byMadre[r.madre_id]) byMadre[r.madre_id] = [];
     byMadre[r.madre_id].push(new Date(r.date));
@@ -41369,7 +41473,8 @@ function _reproPartosComputeStats(records) {
     Math.round(intervalos.reduce(function(s, x) { return s + x; }, 0) / intervalos.length) : null;
 
   return {
-    total: total, machos: machos, hembras: hembras,
+    total: total, crias: crias, gemelares: gemelares, criasPorParto: criasPorParto, gemelaridadPct: gemelaridadPct,
+    machos: machos, hembras: hembras,
     muertos: muertos, mortalidadPct: mortalidadPct,
     paricionPct: paricionPct, partosThisYear: partosThisYear,
     iep: iep, intervalos: intervalos.length
@@ -41379,7 +41484,7 @@ function _reproPartosComputeStats(records) {
 function _reproPartosRenderStats(stats) {
   var el = function(id) { return document.getElementById(id); };
   if (el('repro-partos-stat-total')) el('repro-partos-stat-total').textContent = stats.total;
-  if (el('repro-partos-stat-total-sub')) el('repro-partos-stat-total-sub').textContent = stats.machos + ' machos · ' + stats.hembras + ' hembras';
+  if (el('repro-partos-stat-total-sub')) el('repro-partos-stat-total-sub').textContent = (stats.gemelares ? (stats.crias + ' crías · ' + stats.gemelares + ' gemelar' + (stats.gemelares > 1 ? 'es' : '') + ' · ') : '') + stats.machos + ' machos · ' + stats.hembras + ' hembras';
   if (el('repro-partos-stat-paricion')) {
     el('repro-partos-stat-paricion').textContent = stats.paricionPct != null ? (stats.paricionPct + '%') : '—';
   }
@@ -41461,12 +41566,17 @@ function renderReproPartos() {
   var loteF = (document.getElementById('repro-partos-filter-lote') || {}).value || '';
   var sexoF = (document.getElementById('repro-partos-filter-sexo') || {}).value || '';
   var estadoF = (document.getElementById('repro-partos-filter-estado') || {}).value || '';
+  var tipoF = (document.getElementById('repro-partos-filter-tipo') || {}).value || '';
+  /* v1.8.251 */
+  var _evs = _reproPartosEventos(all), _evPorClave = {};
+  _evs.forEach(function(e){ _evPorClave[e.key] = e; });
 
   var filtered = all.slice();
   if (periodoF) filtered = _reproPartosFilterPeriodo(filtered, periodoF);
   if (loteF) filtered = filtered.filter(function(r) { return r.lot_code === loteF; });
   if (sexoF) filtered = filtered.filter(function(r) { return r.sexo === sexoF; });
   if (estadoF) filtered = filtered.filter(function(r) { return r.estado === estadoF; });
+  if (tipoF) filtered = filtered.filter(function(r) { var e = _evPorClave[_reproPartoClaveEvento(r)]; var g = e ? e.n > 1 : false; return tipoF === 'gemelar' ? g : !g; });
 
   // Stats sobre lo filtrado (excepto sexo/estado para que sea coherente)
   var statsBase = all.slice();
@@ -41478,11 +41588,13 @@ function renderReproPartos() {
   _reproPartosRenderChart(statsBase);
 
   filtered.sort(function(a, b) {
-    return (b.date || '').localeCompare(a.date || '');
+    var d = (b.date || '').localeCompare(a.date || ''); if (d) return d;
+    var g = String(a.parto_grupo || '').localeCompare(String(b.parto_grupo || '')); if (g) return g;   /* v1.8.251: las crías del mismo parto, juntas */
+    return (a.cria_num || 0) - (b.cria_num || 0);
   });
 
   var badge = document.getElementById('repro-partos-count-badge');
-  if (badge) badge.textContent = filtered.length + ' / ' + all.length;
+  if (badge) badge.textContent = filtered.length + ' / ' + all.length + ' crías · ' + _evs.length + ' partos';
 
   var tbody = document.getElementById('repro-partos-tbody');
   if (!tbody) return;
@@ -41506,7 +41618,7 @@ function renderReproPartos() {
       '<td style="font-family:DM Mono,monospace;font-size:11.5px">' + _reproFmtDate(r.date) + '</td>' +
       '<td style="font-family:DM Mono,monospace;font-size:11.5px">' + (r.madre_id ? escH(r.madre_id) : '<span style="color:var(--muted)">—</span>') + '</td>' +
       '<td style="font-family:DM Mono,monospace;font-size:11.5px">' + (r.padre_id ? escH(r.padre_id) : '<span style="color:var(--muted)">—</span>') + '</td>' +
-      '<td style="font-size:11.5px">' + _reproPartoSexoLabel(r.sexo) + '</td>' +
+      '<td style="font-size:11.5px">' + _reproPartoSexoLabel(r.sexo) + _reproPartoBadgeGrupo(r, _evPorClave) + (r.freemartin_riesgo ? ' <span title="Gemela de macho: riesgo freemartin, confirmar antes de servir" style="color:var(--amber);font-size:11px">⚠</span>' : '') + '</td>' +
       '<td>' + _reproPartoPesoCell(r) + '</td>' +
       '<td style="font-family:DM Mono,monospace;font-size:11.5px">' + (r.cria_id ? escH(r.cria_id) : '<span style="color:var(--muted)">—</span>') + '</td>' +
       '<td style="font-family:DM Mono,monospace;font-size:11.5px">' + (r.lot_code ? escH(r.lot_code) : '<span style="color:var(--muted)">—</span>') + '</td>' +
@@ -41792,6 +41904,13 @@ function openReproEditarParto(partoId) {
   document.getElementById('repro-parto-estado').value = p.estado || 'sano';
   document.getElementById('repro-parto-cria-id').value = p.cria_id && p.cria_id !== 'N/A' ? p.cria_id : '';
   document.getElementById('repro-parto-notes').value = p.obs || '';
+  /* v1.8.251: en edición se edita UNA cría; el Nº de crías no se cambia acá */
+  window.__reproPartoAgregarA = null;
+  var _ms = document.getElementById('repro-parto-madre'); if (_ms) _ms.disabled = false;
+  var _nw = document.getElementById('repro-parto-ncrias-wrap'); if (_nw) _nw.style.display = 'none';
+  var _nc = document.getElementById('repro-parto-ncrias'); if (_nc) _nc.value = '1';
+  _reproPartoPintarCrias();
+  var _ba = document.getElementById('repro-parto-btn-agregar-cria'); if (_ba) _ba.style.display = '';
 
   // Poblar selectors y luego setear valores
   if (typeof _reproPartoPopulateMadres === 'function') _reproPartoPopulateMadres();
@@ -41814,7 +41933,9 @@ function openReproEditarParto(partoId) {
     var loteSel = document.getElementById('repro-parto-lote');
     if (loteSel) loteSel.value = p.lot_code || '';
     var contextEl = document.getElementById('repro-parto-context');
-    if (contextEl) contextEl.innerHTML = 'Editando parto del <b>' + (p.date || '?') + '</b> · madre <b>' + (p.madre_id || '?') + '</b>';
+    var _ev = _reproPartosEventos(_reproGetPartos()).find(function(e){ return e.crias.indexOf(p) >= 0; });
+    if (contextEl) contextEl.innerHTML = 'Editando parto del <b>' + (p.date || '?') + '</b> · madre <b>' + (p.madre_id || '?') + '</b>' +
+      (_ev && _ev.n > 1 ? ' · <span style="color:var(--purple)">👯 ' + (_ev.n >= 3 ? 'triple' : 'gemelar') + ', cría ' + (p.cria_num || (_ev.crias.indexOf(p) + 1)) + ' de ' + _ev.n + '</span>. Fecha, padre, lote y notas se aplican a las ' + _ev.n + ' crías.' : '');
   }, 60);
 
   openModal('modal-repro-parto');
@@ -41833,6 +41954,13 @@ function openReproNuevoParto() {
   document.getElementById('repro-parto-cria-id').value = '';
   document.getElementById('repro-parto-notes').value = '';
   document.getElementById('repro-parto-context').textContent = 'Seleccioná la madre. El sistema autocompleta padre + lote desde su último servicio.';
+  /* v1.8.251 */
+  window.__reproPartoAgregarA = null;
+  var _ms = document.getElementById('repro-parto-madre'); if (_ms) _ms.disabled = false;
+  var _nw = document.getElementById('repro-parto-ncrias-wrap'); if (_nw) _nw.style.display = '';
+  var _nc = document.getElementById('repro-parto-ncrias'); if (_nc) _nc.value = '1';
+  var _ba = document.getElementById('repro-parto-btn-agregar-cria'); if (_ba) _ba.style.display = 'none';
+  _reproPartoPintarCrias();
   _reproPartoPopulateMadres();
   _reproPartoPopulateLoteSelector();
   openModal('modal-repro-parto');
@@ -41954,8 +42082,21 @@ function saveReproParto() {
   var criaId = (document.getElementById('repro-parto-cria-id').value || '').trim();
   var notes = (document.getElementById('repro-parto-notes').value || '').trim();
 
+  /* v1.8.251: crías del evento (1..3). La cría 1 son los campos de siempre; 2 y 3 llevan sufijo. */
+  var _agregarA = (!isEditing && window.__reproPartoAgregarA) ? _reproGetPartos().find(function(x){ return String(x.id) === String(window.__reproPartoAgregarA); }) : null;
+  var nCrias = isEditing || _agregarA ? 1 : Math.max(1, Math.min(3, parseInt((document.getElementById('repro-parto-ncrias') || {}).value, 10) || 1));
+  var crias = [{ sexo: sexo, peso: peso, estado: estado, criaId: criaId }];
+  for (var _ci = 2; _ci <= nCrias; _ci++) {
+    var _g = function(f){ var e = document.getElementById('repro-parto-' + f + '-' + _ci); return e ? e.value : ''; };
+    var _pr = _g('peso'); var _pe = (_pr === '' || _pr === null) ? null : (parseFloat(_pr) || null);
+    if (_pe != null && !validatePositive(_pe, 'peso al nacer de la cría ' + _ci, { max: 80 })) return;
+    crias.push({ sexo: _g('sexo') || 'macho', peso: _pe, estado: _g('estado') || 'sano', criaId: String(_g('cria-id') || '').trim() });
+  }
+  var _ids = crias.map(function(c){ return c.criaId; }).filter(function(x){ return x && x !== 'N/A'; });
+  if (_ids.length !== new Set(_ids).size) { alert('Dos crías tienen el mismo arete'); return; }
+
   // En modo edición, si no hay servicio asociado (parto huérfano) no exigir
-  if (!isEditing && !srv) { alert('Falta elegir la madre'); return; }
+  if (!isEditing && !srv && !_agregarA) { alert('Falta elegir la madre'); return; }
   if (!date) { alert('Falta la fecha del parto'); return; }
   if (typeof validateNotFuture === 'function' && !validateNotFuture(date, 'fecha del parto')) return;
 
@@ -41986,6 +42127,23 @@ function saveReproParto() {
       obs: notes,
       updated_at: nowIso
     });
+    /* v1.8.251: los campos del EVENTO (fecha, padre, lote, notas) se propagan al resto del grupo. Cada
+       registro tocado lleva su updated_at nuevo: partos es tabla append con merge por id. */
+    try {
+      if (db.partos[idx].parto_grupo) {
+        var _grp = db.partos[idx].parto_grupo, _prop = 0;
+        db.partos.forEach(function(q, qi){
+          if (qi === idx || !q || q.parto_grupo !== _grp) return;
+          var ch = {};
+          if (q.date !== date) ch.date = date;
+          if (padre && q.padre_id !== padre) ch.padre_id = padre;
+          if (lote && q.lot_code !== lote) ch.lot_code = lote;
+          if ((q.obs || '') !== notes) ch.obs = notes;
+          if (Object.keys(ch).length) { ch.updated_at = nowIso; db.partos[qi] = Object.assign({}, q, ch); _prop++; try { _reproPushParto(db.partos[qi]); } catch(e) {} }
+        });
+        if (_prop) console.log('[Repro] parto gemelar: ' + _prop + ' cría(s) del grupo actualizadas');
+      }
+    } catch(e) { console.warn('[Repro] propagar grupo', e); }
     // v1.8.74: propagar el cría_id (y peso) editados al ANIMAL ya creado por este parto.
     // Antes, editar el parto no tocaba el animal → quedaba con el ID placeholder (CRIA-######)
     // y no coincidía con el cría_id mostrado en Partos.
@@ -42038,8 +42196,9 @@ function saveReproParto() {
     return;
   }
 
-  var madre = srv.animal_id;
-  if (!lote) lote = srv.lot_code || '';
+  var madre = _agregarA ? _agregarA.madre_id : srv.animal_id;
+  if (!lote) lote = _agregarA ? (_agregarA.lot_code || '') : (srv.lot_code || '');
+  if (_agregarA) { srvId = _agregarA.servicio_id || ''; if (!padre) padre = _agregarA.padre_id || ''; }
 
   // Inferir paddock desde lote
   var paddock = '';
@@ -42048,9 +42207,10 @@ function saveReproParto() {
     if (lt) paddock = lt.paddock || lt.potrero || '';
   }
 
-  // Verificar capacidad del potrero si la cría sobrevivió
-  if (estado !== 'muerto' && typeof checkPotreroCapacity === 'function' && lote) {
-    var cap = checkPotreroCapacity(lote, 1);
+  // Verificar capacidad del potrero por las crías que sobreviven (v1.8.251: ×N)
+  var _vivas = crias.filter(function(c){ return c.estado !== 'muerto'; }).length;
+  if (_vivas > 0 && typeof checkPotreroCapacity === 'function' && lote) {
+    var cap = checkPotreroCapacity(lote, _vivas);
     if (cap && !cap.ok) {
       if (typeof toast === 'function') toast(cap.msg, 'error');
       else alert(cap.msg);
@@ -42059,82 +42219,99 @@ function saveReproParto() {
   }
 
   var nowIso = new Date().toISOString();
-  var newPartoId = (db.next_ids && db.next_ids.partos) ? db.next_ids.partos++ : ('parto_' + Date.now());
-
-  var record = {
-    id: newPartoId,
-    lot_code: lote,
-    paddock: paddock,
-    date: date,
-    sexo: sexo,
-    peso: peso,
-    peso_pendiente: (peso === null || peso === undefined),
-    estado: estado,
-    cria_id: criaId || 'N/A',
-    madre_id: madre,
-    padre_id: padre,
-    servicio_id: srvId,
-    obs: notes,
-    by: '',
-    created_at: nowIso
-  };
-
   if (!Array.isArray(db.partos)) db.partos = [];
-  db.partos.push(record);
 
-  // Crear cría en e5m_animals + sumar animal_count del lote
-  if (estado !== 'muerto' && lote) {
-    try {
-      var animDB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : null;
-      if (animDB) {
+  /* v1.8.251: grupo del evento. Una cría agregada a un parto simple lo convierte en gemelar. */
+  var grupo = null, nTotal = crias.length, criaNum0 = 0;
+  if (_agregarA) {
+    var _idxA = db.partos.findIndex(function(q){ return String(q.id) === String(_agregarA.id); });
+    var _hermanos = _agregarA.parto_grupo ? db.partos.filter(function(q){ return q && q.parto_grupo === _agregarA.parto_grupo; }) : [db.partos[_idxA]];
+    if (_hermanos.length >= 3) { alert('Este parto ya tiene 3 crías (máximo).'); return; }
+    grupo = _agregarA.parto_grupo || _reproPartoNuevoGrupoId();
+    nTotal = _hermanos.length + 1; criaNum0 = _hermanos.length;
+    _hermanos.forEach(function(h){ var hi = db.partos.indexOf(h); if (hi < 0) return; db.partos[hi] = Object.assign({}, h, { parto_grupo: grupo, n_crias: nTotal, cria_num: h.cria_num || (_hermanos.indexOf(h) + 1), tipo_parto: _reproPartoTipo(nTotal), updated_at: nowIso }); try { _reproPushParto(db.partos[hi]); } catch(e) {} });
+  } else if (nTotal > 1) {
+    grupo = _reproPartoNuevoGrupoId();
+  }
+  /* freemartin: la hembra de un par macho+hembra (ver diseño 2.5) — la marca se guarda ya; las pills
+     y el aviso al servir llegan en la fase 4 */
+  var _hayMacho = crias.some(function(c){ return c.sexo === 'macho'; }), _hayHembra = crias.some(function(c){ return c.sexo === 'hembra'; });
+  if (_agregarA && !_hayMacho) _hayMacho = db.partos.some(function(q){ return q && q.parto_grupo === grupo && q.sexo === 'macho'; });
+  if (_agregarA && !_hayHembra) _hayHembra = db.partos.some(function(q){ return q && q.parto_grupo === grupo && q.sexo === 'hembra'; });
+  var _freemartin = (nTotal > 1) && _hayMacho && _hayHembra;
+  if (_freemartin && _agregarA) {
+    db.partos.forEach(function(q, qi){ if (q && q.parto_grupo === grupo && q.sexo === 'hembra' && !q.freemartin_riesgo) { db.partos[qi] = Object.assign({}, q, { freemartin_riesgo: true, updated_at: nowIso }); try { _reproPushParto(db.partos[qi]); } catch(e) {} } });
+  }
+
+  var records = [], animDB = null, criaIds = [];
+  try { animDB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : null; } catch(e) { animDB = null; }
+  var _v206Lot = (db.lots || []).find(function (l) { return l && l.code === lote; }) || {};
+  var _v206Madre = ((animDB && animDB[lote]) || []).find(function (x) { return String(x.animal_id || x.id || '') === String(madre); }) || {};
+  var _v206Raza = (_v206Madre.breed && !/^(torillo|ternera|ternero|toro|vaca|vaquillona|novillo|f1)$/i.test(_v206Madre.breed) ? _v206Madre.breed : '') || _v206Lot.breed || '';
+
+  crias.forEach(function(c, i) {
+    var newPartoId = (db.next_ids && db.next_ids.partos) ? db.next_ids.partos++ : ('parto_' + Date.now() + (i ? '_' + i : ''));
+    var record = {
+      id: newPartoId,
+      lot_code: lote,
+      paddock: paddock,
+      date: date,
+      sexo: c.sexo,
+      peso: c.peso,
+      peso_pendiente: (c.peso === null || c.peso === undefined),
+      estado: c.estado,
+      cria_id: c.criaId || 'N/A',
+      madre_id: madre,
+      padre_id: padre,
+      servicio_id: srvId,
+      obs: notes,
+      by: '',
+      created_at: nowIso
+    };
+    if (grupo) { record.parto_grupo = grupo; record.n_crias = nTotal; record.cria_num = criaNum0 + i + 1; record.tipo_parto = _reproPartoTipo(nTotal); }
+    if (_freemartin && c.sexo === 'hembra') record.freemartin_riesgo = true;
+    db.partos.push(record);
+    records.push(record);
+
+    // Crear cría en e5m_animals
+    if (c.estado !== 'muerto' && lote && animDB) {
+      try {
         if (!animDB[lote]) animDB[lote] = [];
-        // v1.8.19: usar animal_id (no id) para consistencia con el resto del sistema.
-        // Si no hay cría_id aún, generar uno temporal legible (CRIA-xxxx) en vez de "N/A".
-        var criaAnimalId = (record.cria_id && record.cria_id !== 'N/A')
-          ? record.cria_id
-          : ('CRIA-' + String(Date.now()).slice(-6));
-        // Reflejar el ID generado de vuelta en el parto para que coincidan
-        if (!record.cria_id || record.cria_id === 'N/A') {
-          record.cria_id = criaAnimalId;
-          var pIdx = db.partos.findIndex(function(p){ return String(p.id) === String(record.id); });
-          if (pIdx !== -1) db.partos[pIdx].cria_id = criaAnimalId;
-        }
-        /* v1.8.206: la RAZA del ternero es la del lote/madre; "Torillo"/"Ternera" es CATEGORÍA, no raza
-           (antes se guardaba como breed y contaminaba la dona de razas del BI y los filtros). */
-        var _v206Lot = (db.lots || []).find(function (l) { return l && l.code === lote; }) || {};
-        var _v206Madre = (animDB[lote] || []).find(function (x) { return String(x.animal_id || x.id || '') === String(madre); }) || {};
-        var _v206Raza = (_v206Madre.breed && !/^(torillo|ternera|ternero|toro|vaca|vaquillona|novillo|f1)$/i.test(_v206Madre.breed) ? _v206Madre.breed : '') || _v206Lot.breed || '';
-        animDB[lote].push({
+        // v1.8.251: id temporal único contra toda la tabla (antes 'CRIA-'+Date.now(): dos crías chocaban)
+        var criaAnimalId = (record.cria_id && record.cria_id !== 'N/A') ? record.cria_id : ((typeof e5mCriaTempId === 'function') ? e5mCriaTempId(animDB) : ('CRIA-' + String(Date.now()).slice(-6) + '-' + i));
+        if (!record.cria_id || record.cria_id === 'N/A') record.cria_id = criaAnimalId;
+        var _anim = {
           animal_id: criaAnimalId,
           breed: _v206Raza,
           raza: _v206Raza,
-          categoria: sexo === 'macho' ? 'torillo' : 'ternera',
-          sexo: sexo,
+          categoria: c.sexo === 'macho' ? 'torillo' : 'ternera',
+          sexo: c.sexo,
           madre_id: madre,
           padre_id: padre,
           entry_date: date,
           origin: 'parto',
           parto_id: record.id,
-          pesajes: (peso !== null && peso !== undefined && peso > 0) ? [{ fecha: date, peso: peso }] : []
-        });
-        if (typeof saveAnimalesDB === 'function') saveAnimalesDB(animDB);
-      }
-      // Sumar animal_count
-      var lt2 = db.lots.find(function(l) { return l.code === lote; });
-      if (lt2) {
-        lt2.animal_count = (lt2.animal_count || 0) + 1;
-        lt2.id_updated_at = nowIso; // marca para sync
-      }
-    } catch(e) { console.error('[Repro] error agregando cría', e); }
+          pesajes: (c.peso !== null && c.peso !== undefined && c.peso > 0) ? [{ fecha: date, peso: c.peso }] : []
+        };
+        if (record.freemartin_riesgo) _anim.freemartin_riesgo = true;
+        animDB[lote].push(_anim);
+        criaIds.push(criaAnimalId);
+      } catch(e) { console.error('[Repro] error agregando cría', e); }
+    }
+  });
+  if (animDB && criaIds.length) { try { if (typeof saveAnimalesDB === 'function') saveAnimalesDB(animDB); } catch(e) { console.error('[Repro] saveAnimalesDB', e); } }
+  // Sumar animal_count (×N vivas)
+  if (criaIds.length) {
+    var lt2 = db.lots.find(function(l) { return l.code === lote; });
+    if (lt2) { lt2.animal_count = (lt2.animal_count || 0) + criaIds.length; lt2.id_updated_at = nowIso; }
   }
 
-  // Registrar actividad (igual que saveSubmodule original)
+  // Registrar actividad: UNA por evento
   try {
     if (typeof addActivity === 'function') {
-      var msg = estado === 'muerto' ?
-        ('❌ Mortinato: ' + (sexo === 'macho' ? 'Macho' : 'Hembra') + (peso ? ' — ' + peso + ' kg' : '')) :
-        ('🐣 Parto: ' + (sexo === 'macho' ? 'Torillo' : 'Ternera') + ' #' + record.cria_id +
-         (peso ? ' — ' + peso + ' kg' : '') + ' — ' + estado);
+      var _tip = nTotal > 1 ? (nTotal >= 3 ? 'Parto triple' : 'Parto gemelar') : 'Parto';
+      var _desc = records.map(function(r){ return (r.estado === 'muerto' ? '❌ mortinato ' : '') + (r.sexo === 'macho' ? 'Torillo' : 'Ternera') + (r.estado !== 'muerto' ? ' #' + r.cria_id : '') + (r.peso ? ' ' + r.peso + ' kg' : ''); }).join(' + ');
+      var msg = (records.every(function(r){ return r.estado === 'muerto'; }) ? '❌ Mortinato' : '🐣 ' + _tip) + ': ' + _desc + (_agregarA ? ' (cría agregada al parto)' : '') + (_freemartin ? ' · ⚠ gemela de macho: riesgo freemartin' : '');
       addActivity('', 'parto', lote, msg, date);
     }
   } catch(e) { console.warn('[Repro] addActivity fail', e); }
@@ -42142,8 +42319,10 @@ function saveReproParto() {
   // Persistir todo
   try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch(e) { console.error('[Repro] save localStorage', e); }
 
-  // Push del parto al server
-  _reproPushParto(record);
+  // Push de cada cría al server
+  records.forEach(function(r){ try { _reproPushParto(r); } catch(e) { console.warn('[Repro] push parto', e); } });
+  if (typeof toast === 'function') toast(nTotal > 1 ? ('Parto ' + (nTotal >= 3 ? 'triple' : 'gemelar') + ' registrado' + (_freemartin ? ' · ⚠ la ternera queda marcada: gemela de macho (riesgo freemartin)' : '')) : 'Parto registrado', 'success');
+  window.__reproPartoAgregarA = null;
 
   closeModal('modal-repro-parto');
   renderReproPartos();
@@ -42334,6 +42513,7 @@ function _reproIndicadoresCompute(periodoMonths) {
   var _cutoff = periodoMonths ? new Date(_now.getFullYear(), _now.getMonth() - parseInt(periodoMonths, 10), _now.getDate()) : null;
   function _iepDe(lista) {
     var porMadre = {}, ints = [], largos = 0;
+    lista = _reproPartosEventos(lista);   /* v1.8.251: por evento (gemelos = un parto) */
     lista.forEach(function(p) {
       if (!p.madre_id || !p.date) return;
       var d = new Date(p.date); if (isNaN(d.getTime())) return;
@@ -42362,7 +42542,7 @@ function _reproIndicadoresCompute(periodoMonths) {
     if (!e || isNaN(e.getTime()) || e > _now) return false;
     return !_cutoff || e >= _cutoff;
   });
-  var paricionPct = _prenDue.length > 0 ? Math.min(100, Math.round((partosF.length / _prenDue.length) * 100)) : null;
+  var paricionPct = _prenDue.length > 0 ? Math.min(100, Math.round((_reproPartosEventos(partosF).length / _prenDue.length) * 100)) : null; /* v1.8.251: eventos */
 
   // Por lote — v1.8.15: excluir cuarentena/marcado/fusionado/vendido/CUAR-xxx (igual que resto del módulo)
   var lots = (db && Array.isArray(db.lots)) ? db.lots : [];
@@ -42374,7 +42554,7 @@ function _reproIndicadoresCompute(periodoMonths) {
     return true;
   }).map(function(l) {
     var srvLot = servicios.filter(function(s) { return s.lot_code === l.code; });
-    var partLot = partosF.filter(function(p) { return p.lot_code === l.code; });
+    var partLot = _reproPartosEventos(partosF.filter(function(p) { return p.lot_code === l.code; })); /* v1.8.251 */
     var efL = srvLot.filter(function(s) { return s.result === 'preñada' || s.result === 'vacia'; });
     var prL = srvLot.filter(function(s) { return s.result === 'preñada'; });
     var prenezLot = efL.length > 0 ? Math.round((prL.length / efL.length) * 100) : null;
