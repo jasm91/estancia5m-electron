@@ -285,9 +285,7 @@ ipcMain.handle('db:query', (_, { table, action, data, where }) => {
   return db.query(table, action, data, where);
 });
 
-ipcMain.handle('db:raw', (_, sql) => {
-  return db.raw(sql);
-});
+// v1.8.245: 'db:raw' se retiró del puente — ejecutaba SQL arbitrario pedido por el renderer y nadie lo usaba.
 
 // SYNC
 ipcMain.handle('sync:trigger', async () => {
@@ -399,7 +397,11 @@ ipcMain.handle('app:set-gh-token', (_, token) => {
   }
   return true;
 });
-ipcMain.handle('app:openExternal', (_, url) => shell.openExternal(url));
+ipcMain.handle('app:openExternal', (_, url) => {
+  // v1.8.245: sólo enlaces https — shell.openExternal abre cualquier esquema (file:, smb:, apps registradas)
+  if (typeof url !== 'string' || !/^https:\/\//i.test(url)) return false;
+  return shell.openExternal(url);
+});
 
 // EXPORT
 ipcMain.handle('export:csv', async (_, { filename, data }) => {

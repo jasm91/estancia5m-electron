@@ -10,7 +10,6 @@ contextBridge.exposeInMainWorld('estancia', {
   db: {
     query: (table, action, data, where) =>
       ipcRenderer.invoke('db:query', { table, action, data, where }),
-    raw: (sql) => ipcRenderer.invoke('db:raw', sql),
   },
 
   // ── Sync ─────────────────────────────────────────────────

@@ -588,6 +588,31 @@ function validateNotFuture(dateStr, fieldLabel){
   } catch(e){}
   return true;
 }
+// v1.8.245: valida que un número sea positivo. `!valor` dejaba pasar los negativos (un pesaje de
+// -80 kg, una compra de -30 que BAJABA el stock). El signo bloquea; el rango (opts.max) sólo pregunta.
+// Uso: if (!validatePositive(avg, 'peso promedio', { max: 1500 })) return;
+function validatePositive(valor, etiqueta, opts){
+  var o = opts || {}, n = Number(valor);
+  if (!isFinite(n) || n < 0 || (n === 0 && !o.permiteCero)) {
+    var msg = (o.permiteCero ? 'No puede ser negativo' : 'Ingresá un valor mayor a cero') + (etiqueta ? ' (' + etiqueta + ')' : '') + '.';
+    if (typeof toast === 'function') toast(msg, 'error'); else alert(msg);
+    return false;
+  }
+  if (o.max != null && n > o.max) return confirm((etiqueta || 'El valor') + ' de ' + n + ' parece demasiado alto. ¿Guardar igual?');
+  return true;
+}
+// v1.8.245: id temporal para crías sin identificar, único contra toda la tabla. El esquema anterior
+// (reloj + azar entre 0 y 99) repetía ids dentro del mismo milisegundo y el dedupe borraba la cría.
+function e5mCriaTempId(animDB){
+  var usados = {};
+  try { Object.keys(animDB || {}).forEach(function(lc){ (Array.isArray(animDB[lc]) ? animDB[lc] : []).forEach(function(x){ var k = String((x && (x.animal_id || x.id)) || ''); if (k) usados[k] = 1; }); }); } catch(e){}
+  var base = 'CRIA-' + String(Date.now()).slice(-6) + '-', n = 0;
+  while (usados[base + n]) n++;
+  return base + n;
+}
+// v1.8.245: un campo numérico que no entiende lo tipeado (coma decimal en algunos equipos) queda vacío
+// y el guardado pedía "completar" un campo que el usuario ve lleno. Se avisa al salir del campo.
+try { document.addEventListener('change', function(ev){ var el = ev.target; if (el && el.type === 'number' && el.validity && el.validity.badInput && typeof toast === 'function') toast('Ese número no se pudo leer. Usá punto para los decimales (ej. 14.50).', 'error'); }, true); } catch(eBI){}
 // fmtDT está definida más abajo (línea ~9769)
 
 // v1.4.73: tabs en página Personal (Adelantos / Historial de Sueldos)
@@ -724,7 +749,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.244';
+window.E5M_HTML_BUILD = '1.8.245';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -7127,11 +7152,11 @@ const DB_KEY = 'estancia5m_v1';
 // -- Configuracion del servidor (Railway) ----------------------
 const SERVER_CONFIG = {
   url: 'https://estancia5m-api-production.up.railway.app/api',
-  token: 'estancia5m-2026-secreto'
+  token: '' /* v1.8.245: el token de un tenant no viaja en el instalador; cada instalación pega el suyo en Configuración */
 };
 // Pre-cargar config en localStorage al iniciar
 localStorage.setItem('apiUrl', SERVER_CONFIG.url);
-localStorage.setItem('apiToken', SERVER_CONFIG.token);
+if (SERVER_CONFIG.token) localStorage.setItem('apiToken', SERVER_CONFIG.token);
 
 
 function loadDB() {
@@ -9704,7 +9729,7 @@ function repararAnimalesLotes(silencioso) {
       // Reemplazar IDs "N/A" o vacíos por un placeholder único
       var aid = String(a.animal_id || '');
       if (!aid || aid === 'N/A' || aid.toLowerCase() === 'n/a') {
-        a.animal_id = 'CRIA-' + String(Date.now()).slice(-6) + '-' + Math.floor(Math.random()*100);
+        a.animal_id = e5mCriaTempId(rawAnim); /* v1.8.245: sin colisiones */
         a._needs_id = true; // marca para que César le asigne un ID real después
         cambios = true;
         reporte.push('ID temporal asignado a cría sin ID en ' + lotCode + ' → ' + a.animal_id);
@@ -10221,6 +10246,7 @@ function saveTreatment() {
   const notes = '';
 
   if(!product_id||!dose||!date){toast('Completa producto, dosis y fecha','error');return;}
+  if(!validatePositive(dose, 'dosis') || !validatePositive(count, 'cantidad de animales')) return;
   // FIX v1.4.34: no permitir fechas futuras (tr-next sí puede ser futuro)
   if(!validateNotFuture(date, 'fecha aplicación')) return;
   // v1.4.61: detectar si es carga retroactiva (lote vendido)
@@ -11025,7 +11051,20 @@ function addStock() {
 
 function deleteProduct(id) {
   var _depT = (db.treatments||[]).filter(function(t){ return String(t.product_id||'')===String(id); }).length;   // v1.8.75: avisar dependientes
-  if(!confirm('¿Eliminar este producto del stock veterinario?' + (_depT ? '\n\nOjo: ' + _depT + ' curación(es) usan este producto y quedarán sin referencia (no se borran).' : ''))) return;
+  /* v1.8.245: con historial se DESACTIVA. Eliminarlo dejaba curaciones y compras apuntando a nada. */
+  var _depC = (db.purchases||[]).filter(function(c){ return String(c.product_id||'')===String(id); }).length;
+  if (_depT || _depC) {
+    if(!confirm('Este producto tiene historial (' + _depT + ' curación(es), ' + _depC + ' compra(s)).\n\nSe va a DESACTIVAR en lugar de eliminarse, para que ese historial conserve su referencia. ¿Continuar?')) return;
+    var _pDes = (db.products||[]).find(function(p){ return String(p.id)===String(id); });
+    if (_pDes) { _pDes.active = false; _pDes.updated_at = new Date().toISOString(); }
+    try { auditLog('update', 'products', id, 'Producto desactivado (tiene historial)'); } catch(e){}
+    saveDB();
+    replaceTableInRailway('vet_products', db.products || []);
+    renderStock();
+    toast('Producto desactivado: conserva su historial', 'success');
+    return;
+  }
+  if(!confirm('¿Eliminar este producto del stock veterinario?')) return;
   
   // FIX v1.4.35: audit log para deleteProduct
   var _delRec_deleteProduct = (db.products || []).find(function(r){ return String(r.id) === String(id); });
@@ -11087,6 +11126,8 @@ function openEditProduct(id) {
 function saveProduct() {
   const name = document.getElementById('prod-name').value.trim();
   if(!name){ toast('Ingresa el nombre del producto','error'); return; }
+  var _pvNum = function(i){ return parseFloat((document.getElementById(i)||{}).value) || 0; };
+  if (!validatePositive(_pvNum('prod-stock'), 'stock', { permiteCero: true }) || !validatePositive(_pvNum('prod-min'), 'stock mínimo', { permiteCero: true }) || !validatePositive(_pvNum('prod-cost'), 'costo', { permiteCero: true }) || !validatePositive(_pvNum('prod-dose'), 'dosis', { permiteCero: true })) return;
   
   const productData = {
     name: name,
@@ -11504,15 +11545,16 @@ function renderSaleAnimalList(lotCode, filter, pesoMin, pesoMax) {
     var pesoActual=_salePesoMap[aid]||lastP||0;
     var bgSel=sel?'background:rgba(201,168,76,.08)':'';
     var lotBadge = showLotCol ? '<span style="font-family:DM Mono,monospace;font-size:10px;background:rgba(88,166,255,.1);color:var(--blue);padding:2px 6px;border-radius:4px;margin-right:4px;flex-shrink:0">'+escH(a._lotCode||'-')+'</span>' : '';
-    return '<div id="sale-row-'+aid+'" style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid rgba(48,54,61,.35);'+bgSel+'">' +
-      '<input type="checkbox" id="chk-'+aid+'" '+(sel?'checked':'')+' style="accent-color:var(--amber);flex-shrink:0" onchange="toggleSaleAnimalChk(this)" data-aid="'+aid+'" data-peso="'+pesoActual+'" data-lot="'+escH(a._lotCode||'')+'">' +
+    var aidH=escH(aid); /* v1.8.245: la caravana y la raza entraban como HTML */
+    return '<div id="sale-row-'+aidH+'" style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid rgba(48,54,61,.35);'+bgSel+'">' +
+      '<input type="checkbox" id="chk-'+aidH+'" '+(sel?'checked':'')+' style="accent-color:var(--amber);flex-shrink:0" onchange="toggleSaleAnimalChk(this)" data-aid="'+aidH+'" data-peso="'+pesoActual+'" data-lot="'+escH(a._lotCode||'')+'">' +
       lotBadge +
-      '<span style="font-family:DM Mono,monospace;font-size:12px;font-weight:600;color:var(--amber2);min-width:70px;cursor:pointer" onclick="document.getElementById(\'chk-'+aid+'\').click()">'+aid+'</span>' +
-      '<span style="font-size:11px;color:var(--muted);cursor:pointer" onclick="document.getElementById(\'chk-'+aid+'\').click()">'+raza+'</span>' +
+      '<span style="font-family:DM Mono,monospace;font-size:12px;font-weight:600;color:var(--amber2);min-width:70px;cursor:pointer" onclick="document.getElementById(\'chk-'+aidH+'\').click()">'+aidH+'</span>' +
+      '<span style="font-size:11px;color:var(--muted);cursor:pointer" onclick="document.getElementById(\'chk-'+aidH+'\').click()">'+escH(raza)+'</span>' +
       '<span style="font-size:11px;color:var(--muted);margin-left:4px">'+(lastP?'('+lastP+' kg)':'')+'</span>' +
       '<div style="display:flex;align-items:center;gap:4px;flex-shrink:0;margin-left:auto">' +
         '<span style="font-size:10px;color:var(--muted)">kg venta:</span>' +
-        '<input type="number" id="peso-'+aid+'" placeholder="'+(lastP||'')+'" value="'+(pesoActual||'')+'" step="0.5" min="0" style="width:72px;padding:3px 6px;font-size:11px;background:var(--sur);border:1px solid var(--bor);border-radius:6px;color:var(--text)" oninput="onPesoInputChange(\''+aid+'\',this.value)">' +
+        '<input type="number" id="peso-'+aidH+'" placeholder="'+(lastP||'')+'" value="'+(pesoActual||'')+'" step="0.5" min="0" style="width:72px;padding:3px 6px;font-size:11px;background:var(--sur);border:1px solid var(--bor);border-radius:6px;color:var(--text)" oninput="onPesoInputChange(\''+aidH+'\',this.value)">' +
       '</div>' +
     '</div>';
   }).join('');
@@ -11875,6 +11917,7 @@ function saveSale() {
   if (discountPct < 0) discountPct = 0;
   if (discountPct > 50) discountPct = 50;
   if(!lot_code||!buyer||!price||!date){toast('Completa todos los campos requeridos','error');return;}
+  if(!validatePositive(price, 'precio por kg')) return;
   // FIX v1.4.34: no permitir fechas futuras
   if(!validateNotFuture(date, 'fecha de venta')) return;
 
@@ -12075,6 +12118,7 @@ function saveSale() {
     var kg=parseFloat((document.getElementById('sale-kg')||{}).value)||0;
     var pesoPorAnimal=parseFloat((document.getElementById('sale-peso-momento')||{}).value)||0;
     if(!animals_count||!kg){toast('Completa animales y peso','error');return;}
+    if(!validatePositive(animals_count, 'cantidad de animales') || !validatePositive(kg, 'kg')) return;
     if(saleLot&&animals_count>saleLot.animal_count){toast('No puedes vender mas animales que los del lote','error');return;}
     // FIX v1.4.35 BUG-LOT-4: si el lote tiene animales con historial (pesajes individuales,
     // tratamientos), el modo 'lot' sacará los PRIMEROS N animales del cache sin importar cuáles
@@ -12223,7 +12267,7 @@ function renderCompras() {
       if ((p.by||'')==='Desktop'||!p.by) srcLbl='🖥️';
       var _aiTag = p._ai_assigned ? ' <span style="font-size:8px;color:#A371F7">🤖</span>' : '';
       var _subBdg = p.subcuenta ? escH(p.subcuenta)+_aiTag : '<span style="color:var(--red)">Sin asignar</span>';
-      tr.innerHTML = '<td>'+escH(p.desc)+'</td><td><span class="bdg bdg-blue" style="font-size:9px">'+(p.cuenta||'-')+'</span></td><td class="pur-sub-cell" data-pur-id="'+p.id+'" style="font-size:11px;cursor:pointer;text-decoration:underline dotted" title="Click para editar subcuenta">'+_subBdg+'</td><td style="font-size:11px">'+(p.tipo_gasto||'-')+'</td><td>'+p.qty+'</td><td>Bs '+p.unit_price+'</td><td style="color:var(--amber2)">Bs. '+p.total.toLocaleString()+'</td><td>'+escH(p.supplier||'-')+'</td><td>'+fmtDT(p.created_at||p.date)+'</td><td><span class="bdg '+(p.status==='paid'?'bdg-green':'bdg-amber')+'">'+(p.status==='paid'?'Pagado':'Pendiente')+'</span></td><td>'+srcLbl+'</td>';
+      tr.innerHTML = '<td>'+escH(p.desc)+'</td><td><span class="bdg bdg-blue" style="font-size:9px">'+(p.cuenta||'-')+'</span></td><td class="pur-sub-cell" data-pur-id="'+p.id+'" style="font-size:11px;cursor:pointer;text-decoration:underline dotted" title="Click para editar subcuenta">'+_subBdg+'</td><td style="font-size:11px">'+(p.tipo_gasto||'-')+'</td><td>'+p.qty+'</td><td>Bs '+p.unit_price+'</td><td style="color:var(--amber2)">Bs. '+(p.total||0).toLocaleString()+'</td><td>'+escH(p.supplier||'-')+'</td><td>'+fmtDT(p.created_at||p.date)+'</td><td><span class="bdg '+(p.status==='paid'?'bdg-green':'bdg-amber')+'">'+(p.status==='paid'?'Pagado':'Pendiente')+'</span></td><td>'+srcLbl+'</td>';
       // Boton cambiar estado
       var statusCell = tr.lastElementChild;
       // Botón ver detalle (incluye items[] de multi-item)
@@ -12371,7 +12415,7 @@ function editPurchase(id) {
     renderCompras();
     replaceTableInRailway('purchases', db.purchases || []);
     addActivity('Sistema','otro','','Compra editada: '+(prev.desc||'')+' → '+desc+' · Bs '+prev.total+' → Bs '+p.total);
-    toast('Compra actualizada · Bs '+p.total.toLocaleString(),'success');
+    toast('Compra actualizada · Bs '+(p.total||0).toLocaleString(),'success');
   }
 
   document.getElementById('_ep_save').onclick = doSave;
@@ -12427,6 +12471,7 @@ function savePurchase() {
   var date = (document.getElementById('pur-date')||{}).value||'';
   if(!productLinkId){toast('Selecciona un producto o Otros','error');return;}
   if(!qty||!price||!date){toast('Completa cantidad, precio y fecha','error');return;}
+  if(!validatePositive(qty, 'cantidad') || !validatePositive(price, 'precio')) return;
   // FIX v1.4.34: no permitir fechas futuras
   if(!validateNotFuture(date, 'fecha de compra')) return;
   var isOtro = productLinkId === 'otro';
@@ -13243,6 +13288,7 @@ function saveBono(){
   var date=(document.getElementById('bono-date')||{}).value||'';
   var nota=(document.getElementById('bono-nota')||{}).value||'';
   if(!empObj||!amount||!date){ toast('Elegí empleado, monto y fecha','error'); return; }
+  if(!validatePositive(amount, 'monto')) return;
   if(typeof validateNotFuture==='function' && !validateNotFuture(date,'fecha del bono')) return;
   if(!Array.isArray(db.bonos)) db.bonos=[];
   var emp=empObj.name;
@@ -13270,6 +13316,7 @@ function saveBajaPersonal(){
   var monto=parseFloat((document.getElementById('bajap-monto')||{}).value)||0;
   var nota=(document.getElementById('bajap-nota')||{}).value||'';
   if(!empObj||!date){ toast('Elegí empleado y fecha','error'); return; }
+  if(!validatePositive(monto, 'monto', { permiteCero: true })) return;
   if(empObj.active===false){ toast(empObj.name+' ya está dado de baja','error'); return; }
   if(typeof validateNotFuture==='function' && !validateNotFuture(date,'fecha de baja')) return;
   if(!Array.isArray(db.bajas_personal)) db.bajas_personal=[];
@@ -13366,6 +13413,7 @@ function saveAdvance() {
     var status = document.getElementById('adv-status').value;
     var reason = document.getElementById('adv-reason').value.trim();
     if (!emp || !amount || !date) { toast('Completa empleado, monto y fecha', 'error'); _release(); return; }
+    if (!validatePositive(amount, 'monto')) { _release(); return; }
     // FIX v1.4.34: no permitir fechas futuras
     if (!validateNotFuture(date, 'fecha del adelanto')) { _release(); return; }
     // v1.8.59: bloquear adelantos solo si a ESTE empleado ya se le pagó el sueldo de ese mes
@@ -13528,6 +13576,8 @@ function editEmployee(emp) {
 function saveEmployee() {
   const name=document.getElementById('emp-name').value.trim();
   if(!name){toast('Ingresa el nombre','error');return;}
+  if(!validatePositive(parseFloat((document.getElementById('emp-salary')||{}).value)||0, 'sueldo', { permiteCero: true })) return;
+  if(!validateNotFuture((document.getElementById('emp-hire')||{}).value||'', 'fecha de ingreso')) return;
   var auditAction = 'create';   // FIX v1.4.35: track action for audit
   var savedEmpId = null;
   var oldSnap = null;
@@ -15124,6 +15174,7 @@ function saveCompraGanado() {
   // FIX v1.4.34: no permitir fechas futuras
   if (!validateNotFuture(fecha, 'fecha de compra')) { _releaseCG(); return; }
   if (!precioKg) { toast('Ingresa el precio por kg', 'error'); _releaseCG(); return; }
+  if (!validatePositive(precioKg, 'precio por kg')) { _releaseCG(); return; }
 
   // ────── MODO CUARENTENA (animales sin ID, lote temporal) ──────
   if (!marcarAhora) {
@@ -15131,6 +15182,7 @@ function saveCompraGanado() {
     var pesoPromCuar = parseFloat((document.getElementById('cg-cuarentena-peso-prom')||{}).value) || 0;
     if (!cantCuar) { toast('Ingresa la cantidad de cabezas', 'error'); _releaseCG(); return; }
     if (!pesoPromCuar) { toast('Ingresa el peso promedio estimado', 'error'); _releaseCG(); return; }
+    if (!validatePositive(cantCuar, 'cantidad de cabezas') || !validatePositive(pesoPromCuar, 'peso promedio', { max: 1500 })) { _releaseCG(); return; }
 
     // Detectar duplicado reciente: misma compra (proveedor+fecha+cant+precio) en últimos 60s
     var nowMsCG = Date.now();
@@ -24733,7 +24785,7 @@ function renderPsEmpleados() {
     var balance = salarioProrr - deudaPrevia - totalAdv;
     var neto = Math.max(0, balance);
     var deudaResultante = balance < 0 ? Math.abs(balance) : 0;  // lo que sigue debiendo → se arrastra
-    var rowId='ps-row-'+emp.name.replace(/[^a-zA-Z0-9]/g,'_');
+    var rowId='ps-row-'+String(emp.name||'').replace(/[^a-zA-Z0-9]/g,'_');
     var tr=document.createElement('tr');
     tr.id=rowId;
     tr.style.cssText='border-bottom:1px solid rgba(48,54,61,.3)' + (yaPagado?';opacity:.55':'');
@@ -26480,6 +26532,7 @@ function saveDiesel() {
   var litros=parseFloat((document.getElementById('diesel-litros')||{}).value)||0;
   var obs=((document.getElementById('diesel-obs')||{}).value||'').trim();
   if(!fecha||!litros){toast('Completa fecha y litros','error');return;}
+  if(!validatePositive(litros, 'litros') || !validatePositive(parseFloat((document.getElementById('diesel-precio')||{}).value)||0, 'precio', { permiteCero: true })) return;
   if(!obs){toast('Ingresa observaciones','error');return;}
   var tankId=(document.getElementById('diesel-tank-sel')||{}).value;
   var tanks=getDieselTanks();
@@ -26678,6 +26731,7 @@ function saveAceite() {
   // Insumo del stock (opcional)
   var stockPid = parseInt((document.getElementById('aceite-stock-product')||{}).value)||0;
   var stockQty = parseFloat((document.getElementById('aceite-stock-qty')||{}).value)||0;
+  if (!validatePositive(costo, 'costo', { permiteCero: true }) || !validatePositive(stockQty, 'cantidad', { permiteCero: true })) return;
   var stockInfo = null;
   if (stockPid && stockQty > 0) {
     var prod = (db.products||[]).find(function(p){ return p.id == stockPid; });
@@ -27850,7 +27904,7 @@ function _mostrarSesionesActivas() {
           if (!a || typeof a !== 'object') return;
           var aid = String(a.animal_id || '');
           if (!aid || aid.toLowerCase() === 'n/a') {
-            a.animal_id = 'CRIA-' + String(Date.now()).slice(-6) + '-' + Math.floor(Math.random()*1000);
+            a.animal_id = e5mCriaTempId(animDB); /* v1.8.245: sin colisiones */
             a._needs_id = true; cambios = true;
           }
         });
@@ -28850,6 +28904,7 @@ function openModalMaint() {
 function saveMaint() {
   var desc = (document.getElementById('mnt-desc')||{}).value||'';
   if (!desc.trim()) { toast('Ingresa una descripcion', 'error'); return; }
+  if (!validatePositive(parseFloat((document.getElementById('mnt-cost')||{}).value)||0, 'costo', { permiteCero: true })) return;
   if (!db.maintenance) db.maintenance = [];
 
   var editId = (document.getElementById('mnt-edit-id')||{}).value;
@@ -31685,6 +31740,8 @@ function savePesaje() {
   var notes   = (document.getElementById('pesaje-notes')||{}).value||'';
 
   if (!lotCode || !avg) { toast('Selecciona lote e ingresa peso promedio', 'error'); return; }
+  if (!validatePositive(avg, 'peso promedio', { max: 1500 })) return;
+  if (!validatePositive(count, 'cantidad de animales', { permiteCero: true }) || !validatePositive(min, 'peso mínimo', { permiteCero: true }) || !validatePositive(max, 'peso máximo', { permiteCero: true })) return;
   if (min && max && min > max) { toast('El peso minimo no puede ser mayor al maximo', 'error'); return; }
   var pesajeLot = db.lots.find(function(l){ return l.code===lotCode; });
   if (pesajeLot && count && count > pesajeLot.animal_count) {
@@ -32064,6 +32121,7 @@ function saveSubmodule(type) {
     record.estado = (document.getElementById('agua-estado')||{}).value||'';
   } else if (type==='sal') {
     var salQty = parseFloat((document.getElementById('sal-qty')||{}).value)||0;
+    if (!validatePositive(salQty, 'cantidad de sal', { permiteCero: true })) return;
     var salTipo = (document.getElementById('sal-tipo')||{}).value||'sal mineral';
     record.qty  = salQty;
     record.tipo = salTipo;
@@ -32093,6 +32151,7 @@ function saveSubmodule(type) {
     record.ref     = ref;
     record.diff    = counted - ref;
     if (!counted) { toast('Ingresa la cantidad contada','error'); return; }
+    if (!validatePositive(counted, 'cantidad contada')) return;
     // Alerta si faltan animales
     if (record.diff < 0) {
       if (!db.alerts) db.alerts = [];
@@ -32126,6 +32185,7 @@ function saveSubmodule(type) {
   } else if (type==='partos') {
     record.sexo   = (document.getElementById('parto-sexo')||{}).value||'';
     record.peso   = parseFloat((document.getElementById('parto-peso')||{}).value)||0;
+    if (!validatePositive(record.peso, 'peso al nacer', { permiteCero: true, max: 80 })) return;
     record.estado = (document.getElementById('parto-estado')||{}).value||'sano';
     record.cria_id= (document.getElementById('parto-id')||{}).value||'';
     // Auto increment lot animal count + add animal to registry
@@ -32154,6 +32214,7 @@ function saveSubmodule(type) {
   } else if (type==='alimento') {
     var aliTipo = (document.getElementById('alimento-tipo')||{}).value||'';
     var aliQty  = parseFloat((document.getElementById('alimento-qty')||{}).value)||0;
+    if (!validatePositive(aliQty, 'cantidad de alimento', { permiteCero: true })) return;
     record.tipo = aliTipo;
     record.qty  = aliQty;
     // Descontar del stock si el usuario selecciono producto
@@ -32484,14 +32545,83 @@ window.e5mRfidValidarBatch = function(rows){
 };
 
 function saveAnimalesDB(d){
-  /* v1.8.240 — FRENO: nadie guarda una tabla de animales con MENOS lotes que la actual. Si llega un
-     objeto parcial (un módulo que trabaja con una vista filtrada), se completa con los lotes que faltan
-     en vez de pisar la tabla. Kill switch: window.__V240_OFF = true */
+  /* v1.8.240 — FRENO: nadie guarda una tabla de animales con MENOS animales que la actual. Si llega
+     un objeto parcial (un módulo que trabaja con una vista filtrada), se completa lo que falta en vez
+     de pisar la tabla. Kill switch: window.__V240_OFF = true
+     v1.8.245 — el freno ahora mira DENTRO de cada lote. Antes sólo reponía los lotes AUSENTES, así que
+     un lote presente pero recortado pasaba derecho: la misma falla del incidente 01-10 un nivel más
+     abajo, y encima viajaba al server por el replaceTableInRailway de acá abajo. Un animal cuenta como
+     perdido sólo si no aparece en NINGÚN lote de la tabla entrante, para que mover animales de lote y
+     fusionar lotes sigan funcionando sin duplicar a nadie. */
   try {
     if (window.__V240_OFF !== true && d && typeof d === 'object' && !Array.isArray(d)) {
-      var _cur = JSON.parse(localStorage.getItem("e5m_animals") || "{}"), _falt = [];
-      Object.keys(_cur).forEach(function(k){ if (!(k in d) && Array.isArray(_cur[k]) && _cur[k].length) { d[k] = _cur[k]; _falt.push(k + ' (' + _cur[k].length + ')'); } });
+      var _cur = JSON.parse(localStorage.getItem("e5m_animals") || "{}"), _falt = [], _perd = [];
+      var _aid = function(a){ return String((a && (a.animal_id || a.id)) || '').trim(); };
+
+      /* Intención de la operación en curso — mismo canal que R0 (venta, lote eliminado, compra de
+         ganado eliminada, baja con causa). Se LEE sin consumirla: la limpia el wrapper de R0. */
+      var _int = null;
+      try {
+        _int = window.__r0Intencion || null;
+        if (_int && _int._ts && (Date.now() - _int._ts) > 8000) _int = null;   /* igual que INTENCION_TTL */
+      } catch (eI) {}
+      var _declarada = !!(_int && (_int.masiva || _int.causa || _int.salida));
+
+      /* Cuántas veces viene cada id en la tabla entrante, sin importar en qué lote. Se CUENTA (no sólo
+         se marca) porque hay ids repetidos — las crías "N/A" — y animales sin id. */
+      var _disp = {}, _totD = 0, _totC = 0;
+      var _contar = function(){
+        _disp = {}; _totD = 0;
+        Object.keys(d).forEach(function(k){
+          if (Array.isArray(d[k])) d[k].forEach(function(a){ var id = _aid(a); _disp[id] = (_disp[id] || 0) + 1; _totD++; });
+        });
+      };
+      _contar();
+
+      /* Lote entero ausente (vista filtrada): se repone, salvo los que ya llegaron en otro lote.
+         Si la operación declaró intención (lote eliminado, venta), el lote se va de verdad. */
+      if (!_declarada) {
+        Object.keys(_cur).forEach(function(k){
+          if (!Array.isArray(_cur[k]) || !_cur[k].length) return;
+          if ((k in d) && Array.isArray(d[k])) return;
+          var _resto = _cur[k].filter(function(a){ var id = _aid(a); return !id || !_disp[id]; });
+          if (_resto.length) { d[k] = _resto; _falt.push(k + ' (' + _resto.length + ')'); }
+        });
+        if (_falt.length) _contar();
+      }
+
+      /* Cada animal guardado "consume" una aparición de su id en la tabla entrante; el que no
+         encuentra la suya está desapareciendo… o cambió de id. */
+      Object.keys(_cur).forEach(function(k){
+        if (!Array.isArray(_cur[k])) return;
+        _cur[k].forEach(function(a){
+          _totC++;
+          var id = _aid(a);
+          if (_disp[id] > 0) _disp[id]--; else _perd.push({ lote: k, animal: a });
+        });
+      });
+      /* v1.8.245 — baja NETA de cabezas. Re-identificar animales (repararAnimalesLotes con crías "N/A",
+         la migración crías↔partos) cambia ids sin sacar a nadie: los ids viejos "faltan" pero el total
+         no baja. Reponerlos duplicaba animales. Sólo se frena si además se achica la tabla. */
+      var _neto = _totC - _totD;
+
       if (_falt.length) console.warn('[v1.8.240] saveAnimalesDB recibió una tabla PARCIAL — se preservaron los lotes que faltaban: ' + _falt.join(', '));
+
+      if (_perd.length) {
+        var _porLote = {};
+        _perd.forEach(function(p){ _porLote[p.lote] = (_porLote[p.lote] || 0) + 1; });
+        var _det = Object.keys(_porLote).map(function(k){ return k + ' (' + _porLote[k] + ')'; }).join(', ');
+        /* Mismo tope que el comparador R0: hasta 10 salidas son del usuario (una muerte, una venta
+           suelta, una corrección). Más que eso sin intención declarada es una tabla recortada. */
+        if (_perd.length > 10 && _neto > 10 && !_declarada) {
+          console.error('[v1.8.245] saveAnimalesDB iba a borrar ' + _perd.length + ' animales sin intención declarada — NO se aplica (incidente 01-10). Lotes: ' + _det);
+          _perd.forEach(function(p){ if (!Array.isArray(d[p.lote])) d[p.lote] = []; d[p.lote].push(p.animal); });
+          try { if (typeof toast === 'function') toast('Se frenó un borrado de ' + _perd.length + ' animales que nadie pidió (' + _det + '). Los datos quedaron intactos.', 'error'); } catch (eT) {}
+          try { if (typeof auditLog === 'function') auditLog('guard', 'animals', '', 'Freno v1.8.245: se repusieron ' + _perd.length + ' animales de ' + _det, null); } catch (eA) {}
+        } else {
+          console.warn('[v1.8.245] saveAnimalesDB: ' + _perd.length + ' animal(es) ya no figuran con su id en ' + _det + ' (baja neta: ' + _neto + ')' + (_declarada ? ' — intención declarada: ' + (_int.causa || _int.salida || 'masiva') : (_neto > 10 ? '' : ' — bajo el tope de 10')));
+        }
+      }
     }
   } catch(eG){}
   localStorage.setItem("e5m_animals",JSON.stringify(d));
@@ -33800,6 +33930,7 @@ function saveVentaCarne() {
   var precio = parseFloat((document.getElementById('vc-precio')||{}).value) || 0;
   var obs = ((document.getElementById('vc-obs')||{}).value || '').trim();
   if (!fecha || !kg || !precio) { toast('Completa fecha, kg y precio','error'); return; }
+  if (!validatePositive(kg, 'kg') || !validatePositive(precio, 'precio')) return;
   var baja = (db.bajas||[]).find(function(b){ return String(b.id) === String(bajaId); });
   if (!baja) { toast('Baja no encontrada (ID: '+bajaId+')','error'); return; }
   var total = Math.round(kg * precio * 100) / 100;
@@ -34569,6 +34700,7 @@ function savePesajeAnimal(){
   var peso=parseFloat((document.getElementById("pa-peso")||{}).value||"0");
   var fecha=((document.getElementById("pa-fecha")||{}).value||"");
   if(!animalId||!peso||!fecha){toast("Completa animal, peso y fecha","error");return;}
+  if(!validatePositive(peso, 'peso', { max: 1500 })) return;
   // FIX v1.4.34: no permitir fechas futuras
   if(!validateNotFuture(fecha, 'fecha del pesaje')) return;
   var all=getAnimalesDB();
@@ -36327,7 +36459,7 @@ function renderReportesGerenciales() {
   var lotsRows2=activeLots.map(function(lot,i){
     var animals=animalesDB[lot.code]||[];
     var lotGmd=calcLotGmd(lot,animalesDB);
-    var entW=animals.length&&animals[0].pesajes&&animals[0].pesajes.length?Math.round(animals.reduce(function(s,a){return s+(a.pesajes[0].peso||0);},0)/animals.length*10)/10:0;
+    var entW=animals.length&&animals[0].pesajes&&animals[0].pesajes.length?Math.round(animals.reduce(function(s,a){return s+((a.pesajes&&a.pesajes[0]&&a.pesajes[0].peso)||0);},0)/animals.length*10)/10:0;
     var ganancia=Math.round((lot.avg_weight-entW)*10)/10;
     var cats=rp.categorias||[];
     var catObj=cats.find(function(c){return c.name===lot.category;})||{peso_objetivo:520,gmd_objetivo:0.8};
@@ -36798,7 +36930,7 @@ async function runAutoBackupIfDue() {
 
 function triggerCloudBackup() {
   var apiUrl=localStorage.getItem('e5m_api_url')||'https://estancia5m-api-production.up.railway.app/api';
-  var token=localStorage.getItem('e5m_api_token')||'estancia5m-2026-secreto';
+  var token=localStorage.getItem('e5m_api_token')||'';
   var btn=event&&event.target;if(btn)btn.textContent='Guardando...';
   fetch(apiUrl+'/cloud-backup',{
     method:'POST',
@@ -36823,7 +36955,7 @@ function triggerCloudBackup() {
 
 function listCloudBackups() {
   var apiUrl=localStorage.getItem('e5m_api_url')||'https://estancia5m-api-production.up.railway.app/api';
-  var token=localStorage.getItem('e5m_api_token')||'estancia5m-2026-secreto';
+  var token=localStorage.getItem('e5m_api_token')||'';
   var listEl=document.getElementById('cloud-backup-list');
   if(listEl)listEl.innerHTML='<span style="color:var(--muted)">Cargando...</span>';
   fetch(apiUrl+'/cloud-backup/list',{headers:{'Authorization':'Bearer '+token}})
@@ -36942,7 +37074,7 @@ function checkCloudBackupStatus() {
     localStorage.setItem('e5m_last_cloud_backup_day',today);
     setTimeout(function(){
       var apiUrl=localStorage.getItem('e5m_api_url')||'https://estancia5m-api-production.up.railway.app/api';
-      var token=localStorage.getItem('e5m_api_token')||'estancia5m-2026-secreto';
+      var token=localStorage.getItem('e5m_api_token')||'';
       fetch(apiUrl+'/cloud-backup',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({triggered_by:'auto-desktop'})})
       .then(function(r){return r.json();})
       .then(function(d){if(d.ok){localStorage.setItem('e5m_last_cloud_backup',new Date().toLocaleString('es-BO'));console.log('[CloudBackup] Auto snapshot OK:',d.size_kb,'KB');}})
@@ -38098,7 +38230,7 @@ function renderHistorialAnimales() {
     return (
       '<div style="border-bottom:2px solid var(--bor);padding:14px 18px">'+
         '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">'+
-          '<span style="font-family:DM Mono,monospace;font-size:14px;font-weight:700;color:var(--amber2)">'+(a.animal_id||a.id||'?')+'</span>'+
+          '<span style="font-family:DM Mono,monospace;font-size:14px;font-weight:700;color:var(--amber2)">'+escH(a.animal_id||a.id||'?')+'</span>'+
           statusBadge+
           '<span style="font-size:12px;color:var(--muted)">'+escH(a.breed||a.raza||'')+'</span>'+
           '<span style="margin-left:auto;font-size:11px;font-family:DM Mono,monospace;color:var(--muted)">'+escH(lotC)+'</span>'+
@@ -39360,6 +39492,7 @@ function savePrecio() {
   if(!validateNotFuture(fecha, 'fecha del precio')) return;
   var valor = parseFloat((document.getElementById('precio-valor')||{}).value) || 0;
   if (!valor) { toast('Ingresa el precio','error'); return; }
+  if (!validatePositive(valor, 'precio')) return;
   var precios = JSON.parse(localStorage.getItem('e5m_market_prices') || '[]');
   precios.push({
     id: 'p_'+Date.now(), fecha: fecha, precio: valor,
@@ -40580,9 +40713,9 @@ function renderReproServicios() {
   tbody.innerHTML = filtered.map(function(r) {
     var toroSemen = '';
     if (r.tipo_servicio === 'IA') {
-      toroSemen = r.semen_lote ? r.semen_lote : '<span style="color:var(--muted)">—</span>';
+      toroSemen = r.semen_lote ? escH(r.semen_lote) : '<span style="color:var(--muted)">—</span>';
     } else {
-      toroSemen = r.toro_id ? r.toro_id : '<span style="color:var(--muted)">Toro suelto</span>';
+      toroSemen = r.toro_id ? escH(r.toro_id) : '<span style="color:var(--muted)">Toro suelto</span>';
     }
     var diagText = '';
     if (r.diagnosis_method) {
@@ -40590,7 +40723,7 @@ function renderReproServicios() {
     } else {
       diagText = '<span style="color:var(--muted)">—</span>';
     }
-    var techText = r.tipo_servicio === 'IA' ? (r.technician || '<span style="color:var(--muted)">—</span>')
+    var techText = r.tipo_servicio === 'IA' ? (r.technician ? escH(r.technician) : '<span style="color:var(--muted)">—</span>')
                                             : '<span style="color:var(--muted)">—</span>';
     // v1.8.0: columna "Esperado parto" — usa _reproExpectedPartoPill si está disponible
     var expectedPartoCell = (typeof _reproExpectedPartoPill === 'function')
@@ -40598,10 +40731,10 @@ function renderReproServicios() {
       : '<span style="color:var(--muted)">—</span>';
     return '<tr>' +
       '<td style="font-family:DM Mono,monospace;font-size:11.5px">' + _reproFmtDate(r.date) + '</td>' +
-      '<td style="font-family:DM Mono,monospace;font-size:11.5px">' + (r.animal_id || '<span style="color:var(--muted)">—</span>') + '</td>' +
+      '<td style="font-family:DM Mono,monospace;font-size:11.5px">' + (r.animal_id ? escH(r.animal_id) : '<span style="color:var(--muted)">—</span>') + '</td>' +
       '<td>' + _reproTipoPill(r.tipo_servicio) + '</td>' +
       '<td style="font-size:11.5px">' + toroSemen + '</td>' +
-      '<td style="font-family:DM Mono,monospace;font-size:11.5px">' + (r.lot_code || '<span style="color:var(--muted)">—</span>') + '</td>' +
+      '<td style="font-family:DM Mono,monospace;font-size:11.5px">' + (r.lot_code ? escH(r.lot_code) : '<span style="color:var(--muted)">—</span>') + '</td>' +
       '<td style="font-size:11.5px">' + techText + '</td>' +
       '<td style="font-size:11.5px">' + diagText + '</td>' +
       '<td>' + _reproResultPill(r.result, r.id) + '</td>' +
@@ -40616,7 +40749,7 @@ function openReproNuevoServicio() {
   document.getElementById('modal-repro-servicio-title').textContent = '+ Nuevo servicio reproductivo';
   document.getElementById('repro-srv-id').value = '';
   document.getElementById('repro-srv-tipo').value = 'IA';
-  document.getElementById('repro-srv-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('repro-srv-date').value = today(); /* v1.8.245: hora local — en UTC, de noche proponía la fecha de mañana */
   document.getElementById('repro-srv-animal').value = '';
   var _hEl = document.getElementById('repro-srv-hasta'); if (_hEl) _hEl.value = ''; /* v1.8.125 */
   document.getElementById('repro-srv-lote').value = '';
@@ -40672,6 +40805,7 @@ function saveReproServicio() {
 
   // Validación
   if (!date) { alert('Falta la fecha del servicio'); return; }
+  if (!validateNotFuture(date, 'fecha del servicio')) return;
   if (!loteCode) { alert('Falta elegir el lote'); return; }
   if (!animalId) { alert('Falta identificar la vaca (caravana o ID)'); return; }
   if (tipo === 'IA') {
@@ -40688,8 +40822,13 @@ function saveReproServicio() {
 
   var nowIso = new Date().toISOString();
   var existing = id ? _reproGetServicios().find(function(r) { return r.id === id; }) : null;
+  if (!existing && (db.reproductive_services || []).some(function(r){ return String(r.animal_id || '') === animalId && r.date === date && (r.tipo_servicio || '') === tipo; })) {
+    if (!confirm('Ya hay un servicio de ' + animalId + ' el ' + date + '. ¿Registrar otro igual?')) return;
+  }
 
-  var record = {
+  /* v1.8.245: se parte del registro existente. Armarlo de cero perdía todo campo que no estuviera en
+     esta lista — edad_fetal_meses del tacto (corría la fecha esperada de parto) y la autoría (by). */
+  var record = Object.assign({}, existing || {}, {
     id: id || _reproUuid(),
     tipo_servicio: tipo,
     animal_id: animalId,
@@ -40697,18 +40836,18 @@ function saveReproServicio() {
     paddock: paddock,
     date: date,
     notes: notes,
-    by: '',
+    by: existing ? (existing.by || '') : '',
     created_at: existing ? existing.created_at : nowIso,
     updated_at: nowIso,
-    // Preservar diagnóstico existente al editar
     diagnosis_method: existing ? existing.diagnosis_method : null,
     diagnosis_date: existing ? existing.diagnosis_date : null,
     result: existing ? existing.result : 'pendiente'
-  };
+  });
   if (tipo === 'IA') {
     record.semen_lote = semen;
     record.technician = technician;
     record.toro_id = null;
+    record.date_hasta = null; record.monta_tipo = null; /* v1.8.245: no arrastrar campos de monta si se pasó a IA */
   } else {
     record.toro_id = toro || null;
     record.semen_lote = null;
@@ -40813,7 +40952,7 @@ function openReproDiagnostico() {
     }).join('');
   document.getElementById('repro-diag-srv-id').value = '';
   document.getElementById('repro-diag-method').value = 'tacto';
-  document.getElementById('repro-diag-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('repro-diag-date').value = today();
 
   // v1.6.1 FIX: restaurar value de los radios (closeModal genérico los borra con value='')
   // y forzar default "preñada" checked
@@ -40844,6 +40983,7 @@ function saveReproDiagnostico() {
   var method = document.getElementById('repro-diag-method').value;
   var date = document.getElementById('repro-diag-date').value;
   if (!date) { alert('Falta la fecha del diagnóstico'); return; }
+  if (!validateNotFuture(date, 'fecha del diagnóstico')) return;
   // v1.6.1 FIX: leer con querySelector(:checked) + fallback al atributo HTML original
   // (necesario porque el closeModal genérico borra value='' en todos los inputs)
   var checkedRadio = document.querySelector('input[name="repro-diag-result"]:checked');
@@ -40856,6 +40996,8 @@ function saveReproDiagnostico() {
   if (!Array.isArray(db.reproductive_services)) return;
   var idx = db.reproductive_services.findIndex(function(r) { return r.id === id; });
   if (idx === -1) { alert('Servicio no encontrado'); return; }
+  var _srvDiag = db.reproductive_services[idx];
+  if (_srvDiag && _srvDiag.date && date < String(_srvDiag.date).slice(0, 10)) { alert('El diagnóstico no puede ser anterior al servicio (' + String(_srvDiag.date).slice(0, 10) + ')'); return; }
 
   var _edadFetal = parseFloat((document.getElementById('repro-diag-edad-fetal')||{}).value); if (isNaN(_edadFetal) || _edadFetal <= 0) _edadFetal = null; // v1.8.99
 
@@ -41156,12 +41298,12 @@ function renderReproPartos() {
 
     return '<tr>' +
       '<td style="font-family:DM Mono,monospace;font-size:11.5px">' + _reproFmtDate(r.date) + '</td>' +
-      '<td style="font-family:DM Mono,monospace;font-size:11.5px">' + (r.madre_id || '<span style="color:var(--muted)">—</span>') + '</td>' +
-      '<td style="font-family:DM Mono,monospace;font-size:11.5px">' + (r.padre_id || '<span style="color:var(--muted)">—</span>') + '</td>' +
+      '<td style="font-family:DM Mono,monospace;font-size:11.5px">' + (r.madre_id ? escH(r.madre_id) : '<span style="color:var(--muted)">—</span>') + '</td>' +
+      '<td style="font-family:DM Mono,monospace;font-size:11.5px">' + (r.padre_id ? escH(r.padre_id) : '<span style="color:var(--muted)">—</span>') + '</td>' +
       '<td style="font-size:11.5px">' + _reproPartoSexoLabel(r.sexo) + '</td>' +
       '<td>' + _reproPartoPesoCell(r) + '</td>' +
-      '<td style="font-family:DM Mono,monospace;font-size:11.5px">' + (r.cria_id || '<span style="color:var(--muted)">—</span>') + '</td>' +
-      '<td style="font-family:DM Mono,monospace;font-size:11.5px">' + (r.lot_code || '<span style="color:var(--muted)">—</span>') + '</td>' +
+      '<td style="font-family:DM Mono,monospace;font-size:11.5px">' + (r.cria_id ? escH(r.cria_id) : '<span style="color:var(--muted)">—</span>') + '</td>' +
+      '<td style="font-family:DM Mono,monospace;font-size:11.5px">' + (r.lot_code ? escH(r.lot_code) : '<span style="color:var(--muted)">—</span>') + '</td>' +
       '<td>' + _reproPartoEstadoPill(r.estado) + '</td>' +
       '<td>' + origin + '</td>' +
       '<td><button class="btn btn-ghost" style="padding:3px 8px;font-size:11px" onclick="openReproEditarParto(\'' + r.id + '\')" title="Editar parto">✎</button></td>' +
@@ -41477,7 +41619,7 @@ function openReproNuevoParto() {
   document.getElementById('modal-repro-parto-title').textContent = '+ Registrar parto';
   document.getElementById('repro-parto-id').value = '';
   document.getElementById('repro-parto-servicio-id').value = '';
-  document.getElementById('repro-parto-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('repro-parto-date').value = today();
   document.getElementById('repro-parto-padre').value = '';
   document.getElementById('repro-parto-sexo').value = 'macho';
   document.getElementById('repro-parto-peso').value = '';
@@ -41601,6 +41743,7 @@ function saveReproParto() {
   // v1.8.14: peso opcional — null si vacío, no 0 (para distinguir "no pesado" de "pesa cero")
   var pesoRaw = document.getElementById('repro-parto-peso').value;
   var peso = (pesoRaw === '' || pesoRaw === null) ? null : (parseFloat(pesoRaw) || null);
+  if (peso != null && !validatePositive(peso, 'peso al nacer', { max: 80 })) return;
   var estado = document.getElementById('repro-parto-estado').value;
   var criaId = (document.getElementById('repro-parto-cria-id').value || '').trim();
   var notes = (document.getElementById('repro-parto-notes').value || '').trim();
@@ -41975,28 +42118,45 @@ function _reproIndicadoresCompute(periodoMonths) {
   var uniqCount = Object.keys(uniqPrenadas).length;
   var sc = uniqCount > 0 ? (servicios.length / uniqCount) : null;
 
-  // KPI IEP global
-  var byMadre = {};
-  partosF.forEach(function(p) {
-    if (!p.madre_id || !p.date) return;
-    if (!byMadre[p.madre_id]) byMadre[p.madre_id] = [];
-    byMadre[p.madre_id].push(new Date(p.date));
-  });
-  var intervalos = [];
-  Object.keys(byMadre).forEach(function(m) {
-    var dates = byMadre[m].sort(function(a, b) { return a - b; });
-    for (var i = 1; i < dates.length; i++) {
-      var diff = Math.round((dates[i] - dates[i-1]) / 86400000);
-      if (diff > 200 && diff < 600) intervalos.push(diff);
-    }
-  });
-  var iep = intervalos.length > 0 ?
-    Math.round(intervalos.reduce(function(s, x) { return s + x; }, 0) / intervalos.length) : null;
+  /* v1.8.245 — IEP: el período elige qué INTERVALOS se informan, no qué partos se leen. Antes se
+     filtraban los partos primero, y como dos partos de la misma vaca distan ~400 días nunca entraban
+     juntos en una ventana de 12 meses: el IEP salía vacío con el período por omisión. Ahora se arman
+     los intervalos con todos los partos de cada madre y se informan los que CIERRAN dentro del período.
+     El techo sube de 600 a 1000 días: los intervalos largos son vacas reales y eran justo las que
+     el promedio escondía; se cuentan aparte en `largos`. */
+  var _now = new Date();
+  var _cutoff = periodoMonths ? new Date(_now.getFullYear(), _now.getMonth() - parseInt(periodoMonths, 10), _now.getDate()) : null;
+  function _iepDe(lista) {
+    var porMadre = {}, ints = [], largos = 0;
+    lista.forEach(function(p) {
+      if (!p.madre_id || !p.date) return;
+      var d = new Date(p.date); if (isNaN(d.getTime())) return;
+      (porMadre[p.madre_id] = porMadre[p.madre_id] || []).push(d);
+    });
+    Object.keys(porMadre).forEach(function(m) {
+      var dates = porMadre[m].sort(function(a, b) { return a - b; });
+      for (var i = 1; i < dates.length; i++) {
+        if (_cutoff && dates[i] < _cutoff) continue;
+        var diff = Math.round((dates[i] - dates[i-1]) / 86400000);
+        if (diff > 200 && diff < 1000) { ints.push(diff); if (diff >= 600) largos++; }
+      }
+    });
+    return { iep: ints.length ? Math.round(ints.reduce(function(s, x) { return s + x; }, 0) / ints.length) : null, n: ints.length, largos: largos };
+  }
+  var _iepG = _iepDe(partos);
+  var iep = _iepG.iep;
 
-  // KPI % parición: partos del período / preñadas confirmadas del período anterior equivalente
-  // Aproximación práctica: partos del período / preñadas confirmadas en el mismo período
-  // (más estable para períodos chicos)
-  var paricionPct = prenadas.length > 0 ? Math.round((partosF.length / prenadas.length) * 100) : null;
+  /* v1.8.245 — % parición: partos del período sobre las preñeces cuyo parto ESPERADO cae en el mismo
+     período. Antes el denominador eran las preñeces confirmadas en el período, que paren nueve meses
+     después: numerador y denominador eran camadas distintas y el indicador daba 200 % o 0 %.
+     Tope de 100: un valor mayor siempre es un parto sin su servicio registrado, no un dato del campo. */
+  var _prenDue = todos.filter(function(s) {
+    if (s.result !== 'preñada') return false;
+    var e = (typeof _reproExpectedPartoDate === 'function') ? _reproExpectedPartoDate(s) : null;
+    if (!e || isNaN(e.getTime()) || e > _now) return false;
+    return !_cutoff || e >= _cutoff;
+  });
+  var paricionPct = _prenDue.length > 0 ? Math.min(100, Math.round((partosF.length / _prenDue.length) * 100)) : null;
 
   // Por lote — v1.8.15: excluir cuarentena/marcado/fusionado/vendido/CUAR-xxx (igual que resto del módulo)
   var lots = (db && Array.isArray(db.lots)) ? db.lots : [];
@@ -42016,22 +42176,7 @@ function _reproIndicadoresCompute(periodoMonths) {
     srvLot.forEach(function(s) { if (s.result === 'preñada' && s.animal_id) uniqL[s.animal_id] = true; });
     var uCount = Object.keys(uniqL).length;
     var scLot = uCount > 0 ? Math.round((srvLot.length / uCount) * 100) / 100 : null;
-    var byMadreLot = {};
-    partLot.forEach(function(p) {
-      if (!p.madre_id || !p.date) return;
-      if (!byMadreLot[p.madre_id]) byMadreLot[p.madre_id] = [];
-      byMadreLot[p.madre_id].push(new Date(p.date));
-    });
-    var intLot = [];
-    Object.keys(byMadreLot).forEach(function(m) {
-      var dates = byMadreLot[m].sort(function(a, b) { return a - b; });
-      for (var i = 1; i < dates.length; i++) {
-        var diff = Math.round((dates[i] - dates[i-1]) / 86400000);
-        if (diff > 200 && diff < 600) intLot.push(diff);
-      }
-    });
-    var iepLot = intLot.length > 0 ?
-      Math.round(intLot.reduce(function(s, x) { return s + x; }, 0) / intLot.length) : null;
+    var iepLot = _iepDe(partos.filter(function(p) { return p.lot_code === l.code; })).iep; /* v1.8.245: misma regla que el global */
     return {
       code: l.code,
       animal_count: l.animal_count || 0,
@@ -42043,7 +42188,7 @@ function _reproIndicadoresCompute(periodoMonths) {
     };
   });
 
-  return { prenezPct: prenezPct, sc: sc, iep: iep, paricionPct: paricionPct, perLot: perLot, periodoMonths: periodoMonths };
+  return { prenezPct: prenezPct, sc: sc, iep: iep, iepIntervalos: _iepG.n, iepLargos: _iepG.largos, paricionPct: paricionPct, perLot: perLot, periodoMonths: periodoMonths };
 }
 
 function _reproIndScoreLote(row, obj) {
@@ -42603,14 +42748,14 @@ function _reproExpectedPartoDate(servicio) {
     if (_ef > 0 && servicio.diagnosis_date) {
       var _p2 = String(servicio.diagnosis_date).slice(0,10).split('-'); var d2 = new Date(Number(_p2[0]), Number(_p2[1])-1, Number(_p2[2])); /* v1.8.110b: parse LOCAL */
       d2.setDate(d2.getDate() + Math.round(_reproGestDias() - _ef * 30.4));
-      return d2;
+      return isNaN(d2.getTime()) ? null : d2;
     }
     if (!servicio.date) return null;
     // v1.8.110b: parse LOCAL — new Date('YYYY-MM-DD') es UTC y en Bolivia (UTC-4) corría la fecha un día
     var _p = String(servicio.date).slice(0,10).split('-');
     var d = new Date(Number(_p[0]), Number(_p[1])-1, Number(_p[2]));
     d.setDate(d.getDate() + _reproGestDias());
-    return d;
+    return isNaN(d.getTime()) ? null : d; /* v1.8.245: una fecha corrupta mostraba NaN-NaN-NaN */
   } catch(e) { return null; }
 }
 
@@ -42626,7 +42771,7 @@ function _reproDaysUntil(targetDate) {
 }
 
 function _reproFmtDateObj(d) {
-  if (!d) return '—';
+  if (!d || (d.getTime && isNaN(d.getTime()))) return '—';
   try {
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   } catch(e) { return '—'; }
@@ -43619,7 +43764,7 @@ window.openReproDestete = function(){
     sel.appendChild(o);
   });
   if(!vivos.length){ rToast('No hay crías pendientes de destete','info'); return; }
-  rEl('rd-fecha').value=new Date().toISOString().slice(0,10);
+  rEl('rd-fecha').value=today();
   rEl('rd-peso').value=''; rEl('rd-obs').value=''; rEl('rd-info').style.display='none';
   if (typeof openModal==='function') openModal('modal-repro-destete');
 };
@@ -43644,7 +43789,9 @@ window.saveReproDestete = function(){
   if(idx<0){ rToast('Parto no encontrado','error'); return; }
   var p=db.partos[idx];
   if(p.date && f<p.date){ rToast('El destete no puede ser antes del nacimiento','error'); return; }
+  if(typeof validateNotFuture==='function' && !validateNotFuture(f, 'fecha de destete')) return;
   var peso=parseFloat(rEl('rd-peso').value)||null;
+  if(peso!=null && !validatePositive(peso, 'peso al destete', { max: 500 })) return;
   var edad=p.date?rDias(p.date,f):null;
   var p205=null;
   if(edad>0&&peso&&p.peso) p205=Math.round((Number(p.peso)+(peso-Number(p.peso))/edad*205)*10)/10;
@@ -43719,16 +43866,18 @@ window.saveReproCabana = function(){
   /* v1.8.240 (incidente 01-10, 5M: 843 bajas fantasma): `all` viene de rcAll() y SOLO trae los lotes
      cabaña — guardarlo entero pisaba la tabla con 11 animales y el comparador R0 daba de baja al resto.
      Se edita el animal DENTRO de la tabla completa y se guarda ésa. */
+  var _okCab = false; /* v1.8.245: el aviso de éxito salía aunque el guardado fallara */
   try {
     var _full = (typeof getAnimalesDB==='function') ? (getAnimalesDB()||{}) : null;
     if (_full && Array.isArray(_full[lot])) {
       var _i = _full[lot].findIndex(function(x){ return String(x.animal_id||x.id||'')===String(id); });
       if (_i >= 0) { var _b = _full[lot][_i]; ['rgn','nombre_pedigri','color','or_pais','rgd','serie_sui','tatuaje','updated_at'].forEach(function(k){ if (a[k] !== undefined) _b[k] = a[k]; }); }
       else _full[lot].push(a);
-      if (typeof saveAnimalesDB==='function') saveAnimalesDB(_full);
+      if (typeof saveAnimalesDB==='function') { saveAnimalesDB(_full); _okCab = true; }
     }
   } catch(e){}
   try { if (typeof saveDB==='function') saveDB(); } catch(e2){}
+  if (!_okCab) { rToast('No se pudo guardar el registro de cabaña. Volvé a intentar; si se repite, revisá el espacio disponible.','error'); return; }
   rToast('Registro cabaña guardado: '+id+(a.rgn?(' · RGN '+a.rgn):''),'success');
 };
 
@@ -48490,7 +48639,7 @@ setInterval(swSelectorRender, 5000); // auto-sanado si algo re-renderiza la topb
     ['mc-nombre','mc-modelo','mc-anio','mc-horometro','mc-precio','mc-proveedor','mc-notas'].forEach(function(i){ var e=E(i); if(e) e.value=''; });
     var t=E('mc-tipo'); if(t) t.value='tractor';
     var s=E('mc-status'); if(s) s.value='paid';
-    var f=E('mc-fecha'); if(f) f.value = new Date().toISOString().slice(0,10);
+    var f=E('mc-fecha'); if(f) f.value = today();
     openModal('modal-maq-compra');
   };
 
@@ -48561,7 +48710,7 @@ setInterval(swSelectorRender, 5000); // auto-sanado si algo re-renderiza la topb
     if (!n) { toast('No hay máquinas activas para vender','error'); return; }
     ['mv-precio','mv-comprador','mv-notas'].forEach(function(i){ var e=E(i); if(e) e.value=''; });
     var p=E('mv-pago'); if(p) p.value='transferencia';
-    var f=E('mv-fecha'); if(f) f.value = new Date().toISOString().slice(0,10);
+    var f=E('mv-fecha'); if(f) f.value = today();
     var r=E('mv-resultado'); if(r) r.innerHTML='';
     openModal('modal-maq-venta');
   };
@@ -48620,7 +48769,7 @@ setInterval(swSelectorRender, 5000); // auto-sanado si algo re-renderiza la topb
     if (!n) { toast('No hay máquinas activas para dar de baja','error'); return; }
     var mo=E('mb-motivo'); if(mo) mo.value='desuso';
     var no=E('mb-notas'); if(no) no.value='';
-    var f=E('mb-fecha'); if(f) f.value = new Date().toISOString().slice(0,10);
+    var f=E('mb-fecha'); if(f) f.value = today();
     openModal('modal-maq-baja');
   };
 

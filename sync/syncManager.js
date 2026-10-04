@@ -20,9 +20,9 @@ const TABLE_ENDPOINTS = {
 async function syncAll() {
   const fetch = (await import('node-fetch')).default;
   const apiUrl = store.get('apiUrl', '') || 'https://estancia5m-api-production.up.railway.app/api';
-  const apiToken = store.get('apiToken', '') || 'estancia5m-2026-secreto';
+  const apiToken = store.get('apiToken', '') || ''; // v1.8.245: sin token de respaldo embebido
 
-  if (!apiUrl) return { pushed: 0, pulled: 0, errors: [] };
+  if (!apiUrl || !apiToken) return { pushed: 0, pulled: 0, errors: [] };
 
   const headers = {
     'Content-Type': 'application/json',
