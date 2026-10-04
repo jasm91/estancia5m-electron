@@ -749,7 +749,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.247';
+window.E5M_HTML_BUILD = '1.8.248';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -7810,6 +7810,16 @@ function manualSync() {
   pullFromRailwayDesktop(false);
 }
 
+/* v1.8.248 (A-05) — Escritura CONFIABLE de e5m_animals: pull, restaurar respaldo, importar, forzar pull,
+   onboarding y limpieza de lotes huérfanos traen la verdad del server o una reparación pedida por el
+   usuario. No pasan por el freno del envoltorio ni por el comparador R0, y re-basan la sombra al
+   instante (antes dependían de una suspensión de 5 s que un pull lento podía superar). */
+function e5mAnimalsSetConfiable(obj, motivo) {
+  var txt = JSON.stringify(obj || {});
+  if (typeof window.__r0EscribirConfiable === 'function') return window.__r0EscribirConfiable(txt, motivo);
+  localStorage.setItem('e5m_animals', txt);
+}
+
 function pullFromRailwayDesktop(thenPush) {
   window._pullFromRailway_real = pullFromRailwayDesktop;
   if (!navigator.onLine) return;
@@ -8011,7 +8021,7 @@ function pullFromRailwayDesktop(thenPush) {
             console.log('[Sync] Server marcó como borrado el lote: ' + l.code + ' (id ' + l.id + ')');
             try {
               var _anim = JSON.parse(localStorage.getItem('e5m_animals') || '{}');
-              if (_anim[l.code]) { delete _anim[l.code]; localStorage.setItem('e5m_animals', JSON.stringify(_anim)); }
+              if (_anim[l.code]) { delete _anim[l.code]; e5mAnimalsSetConfiable(_anim, 'pull: lote vendido'); }
             } catch(e) {}
             _report.removed++;
             return false;
@@ -8300,7 +8310,7 @@ function pullFromRailwayDesktop(thenPush) {
           }
         } catch(eRC) { console.warn('[Sync] freno de recorte:', eRC.message); }
         if (_aplicarMerge) {
-          localStorage.setItem('e5m_animals', JSON.stringify(merged));
+          e5mAnimalsSetConfiable(merged, 'pull');   /* v1.8.248: escritura confiable (el freno A-01 ya corrió arriba) */
           var totalMerged = Object.values(merged).reduce(function(s, a){ return s + (a ? a.length : 0); }, 0);
           console.log('[Sync] Animals OK: ' + Object.keys(merged).length + ' lots, ' + totalMerged + ' animals (server-wins)');
         } else {
@@ -16980,7 +16990,7 @@ function startRestoreWithData(data) {
         next_ids: { lot:1000, product:1000, treatment:1000, alert:1000, sale:1000, purchase:1000, employee:1000, activity:1000, trace:1000, pesaje:1000, maint:1000 }
       };
       localStorage.setItem('estancia5m_v1', JSON.stringify(newDb));
-      if (data.animals) localStorage.setItem('e5m_animals', JSON.stringify(data.animals));
+      if (data.animals) e5mAnimalsSetConfiable(data.animals, 'restaurar respaldo');
       if (data.tasks)   localStorage.setItem('e5m_tasks', JSON.stringify(data.tasks));
       if (data.report_params && typeof data.report_params === 'object' && Object.keys(data.report_params).length) {
         localStorage.setItem('e5m_report_params', JSON.stringify(data.report_params));
@@ -17287,7 +17297,7 @@ function forcePullFromToken() {
         bajas:d.bajas||[], rotation_history:d.rotation_history||[], pasture_evals:d.pasture_evals||[], next_ids:{lot:100,product:100,treatment:100,sale:100,purchase:100,employee:100,activity:100,diesel:100,pesaje:100,bajas:100}
       };
       localStorage.setItem('estancia5m_v1', JSON.stringify(newDb));
-      if(d.animals) localStorage.setItem('e5m_animals', JSON.stringify(d.animals));
+      if(d.animals) e5mAnimalsSetConfiable(d.animals, 'forzar pull');
       if(d.tasks) localStorage.setItem('e5m_tasks', JSON.stringify(d.tasks));
       if(d.report_params && typeof d.report_params==='object' && !Array.isArray(d.report_params)) localStorage.setItem('e5m_report_params', JSON.stringify(d.report_params));
       if(d.diesel_tank && ((Array.isArray(d.diesel_tank) && d.diesel_tank.length) || (d.diesel_tank.capacity))) localStorage.setItem('e5m_diesel_tank', JSON.stringify(d.diesel_tank));
@@ -17976,7 +17986,7 @@ async function confirmOnboardingImport() {
       if (_oRf) _oAnim.rfid = _oRf; // v1.8.101: se guarda aunque el gate esté off (dato del cliente, no se pierde)
       animDB[a.lot_code].push(_oAnim);
     });
-    localStorage.setItem('e5m_animals', JSON.stringify(animDB));
+    e5mAnimalsSetConfiable(animDB, 'importación onboarding');
 
     // v1.8.73: el conteo del lote SIEMPRE sale de los animales individuales (la hoja Animales manda).
     // Solo para los lotes creados en este import, para no tocar lotes existentes parcialmente trackeados.
@@ -36929,7 +36939,7 @@ async function cleanupOrphanLots() {
   });
 
   // Persistir
-  localStorage.setItem('e5m_animals', JSON.stringify(rawAnim));
+  e5mAnimalsSetConfiable(rawAnim, 'limpiar lotes huérfanos');   /* v1.8.248 */
   saveDB(true);
 
   // Push al server — animals primero, después lots (orden crítico para reconciliación)
@@ -38204,7 +38214,7 @@ function importBackup(input) {
       }
       // Restaurar datos
       if(backup.db) localStorage.setItem('estancia5m_v1', JSON.stringify(backup.db));
-      if(backup.animals) localStorage.setItem('e5m_animals', JSON.stringify(backup.animals));
+      if(backup.animals) e5mAnimalsSetConfiable(backup.animals, 'importar backup');
       if(backup.tasks) localStorage.setItem('e5m_tasks', JSON.stringify(backup.tasks));
       if(backup.report_params) localStorage.setItem('e5m_report_params', JSON.stringify(backup.report_params));
       if(backup.api_url) localStorage.setItem('e5m_api_url', backup.api_url);
@@ -50987,6 +50997,69 @@ try {
   var suspendido = 0;
   function suspender(fn) { suspendido++; try { return fn(); } finally { suspendido--; } }
 
+  /* ── v1.8.248 (A-05) FRENO EN EL ENVOLTORIO ────────────────────────────
+     Hay más de 20 escrituras a e5m_animals y sólo saveAnimalesDB frenaba. Acá se frena en el
+     único lugar por el que pasan todas. Reglas:
+       · se compara la tabla guardada con la entrante; un animal "falta" si su id no aparece en
+         NINGÚN lote de la entrante (mover de lote y fusionar lotes no cuentan) y no tiene lápida
+         local (e5m_deleted_ids) — una baja registrada es intencional;
+       · se frena sólo si faltan más de E5M_ANIMALS_FRENO_MAX (10) Y la tabla se achica en más
+         de ese tope (re-identificar crías cambia ids sin sacar a nadie);
+       · una intención vigente (venta, lote eliminado, compra de ganado eliminada, baja con causa)
+         deja pasar; dura toda la operación vía __r0IntencionUlt;
+       · las escrituras confiables (pull, restore, import, forzar pull, onboarding, lotes huérfanos)
+         ni siquiera llegan acá: usan __r0EscribirConfiable.
+     Al frenar, los que faltan vuelven a su lote y la tabla reparada es la que se guarda.
+     KILL SWITCH: __FRENO_SETITEM_OFF = true · TOPE: window.E5M_ANIMALS_FRENO_MAX */
+  function intencionVigente() {
+    var i = (typeof window !== 'undefined') ? (window.__r0Intencion || window.__r0IntencionUlt || null) : null;
+    if (i && i._ts && (Date.now() - i._ts) > INTENCION_TTL) i = null;
+    return i;
+  }
+  function frenoRecorte(v) {
+    if (typeof window === 'undefined' || window.__FRENO_SETITEM_OFF === true || suspendido) return v;
+    var cur = leerJSON(LS_ANIMALS, null);
+    if (!cur || typeof cur !== 'object' || Array.isArray(cur)) return v;
+    var nuevo = JSON.parse(v || '{}');
+    if (!nuevo || typeof nuevo !== 'object' || Array.isArray(nuevo)) return v;
+    var max = parseInt(window.E5M_ANIMALS_FRENO_MAX, 10); if (!(max >= 0)) max = 10;
+
+    var disp = {}, totN = 0, totC = 0;
+    Object.keys(nuevo).forEach(function (l) {
+      if (!Array.isArray(nuevo[l])) return;
+      nuevo[l].forEach(function (a) { var id = idDe(a); disp[id] = (disp[id] || 0) + 1; totN++; });
+    });
+    var lapidas = leerJSON('e5m_deleted_ids', {}) || {};
+    var perd = [];
+    Object.keys(cur).forEach(function (l) {
+      if (!Array.isArray(cur[l])) return;
+      cur[l].forEach(function (a) {
+        totC++;
+        var id = idDe(a);
+        if (disp[id] > 0) { disp[id]--; return; }
+        if (!id) return;                                           /* sin id no se puede reponer con certeza */
+        if (lapidas['animal:' + id] || lapidas['animals:' + id]) return;   /* baja registrada: intencional */
+        perd.push({ lote: l, a: a });
+      });
+    });
+    var neto = totC - totN;
+    if (perd.length <= max || neto <= max) return v;
+
+    var i = intencionVigente();
+    var porLote = {};
+    perd.forEach(function (p) { porLote[p.lote] = (porLote[p.lote] || 0) + 1; });
+    var det = Object.keys(porLote).map(function (k) { return k + ' (' + porLote[k] + ')'; }).join(', ');
+    if (i && (i.masiva || i.causa || i.salida)) {
+      console.warn('[R0] freno A-05: salen ' + perd.length + ' animales (' + det + ') con intención declarada: ' + (i.causa || i.salida || 'masiva'));
+      return v;
+    }
+    perd.forEach(function (p) { if (!Array.isArray(nuevo[p.lote])) nuevo[p.lote] = []; nuevo[p.lote].push(p.a); });
+    console.error('[R0] freno A-05: se iban a borrar ' + perd.length + ' animales sin intención declarada (neto ' + neto + ') — repuestos. Lotes: ' + det);
+    try { if (typeof toast === 'function') toast('Se frenó un borrado de ' + perd.length + ' animales que nadie pidió (' + det + '). Los datos quedaron intactos.', 'error'); } catch (eT) {}
+    try { if (typeof auditLog === 'function') auditLog('guard', 'animals', '', 'Freno A-05 (v1.8.248): se repusieron ' + perd.length + ' animales de ' + det, null); } catch (eA) {}
+    return JSON.stringify(nuevo);
+  }
+
   if (!localStorage.setItem.__r0) {
     var envuelto = function (k, v) {
       if (k !== LS_ANIMALS) return _set(k, v);
@@ -50995,12 +51068,20 @@ try {
         emitir = !(typeof window !== 'undefined' && window.__R0_OFF) && !suspendido;
         if (emitir) antes = leerJSON(LS_SHADOW, null);
       } catch (e) {}
+      /* v1.8.248 (A-05): el freno vive en el único cuello de botella. Si la tabla entrante pierde
+         más de E5M_ANIMALS_FRENO_MAX animales sin intención declarada, se repone lo que falta. */
+      try { v = frenoRecorte(v); } catch (eF) { console.error('[R0] freno A-05 falló (se guarda tal cual):', eF.message); }
       var r = _set(k, v);
       try {
         if (emitir) {
           var despues = JSON.parse(v || '{}');
           var i = (typeof window !== 'undefined' && window.__r0Intencion) || null;
-          if (typeof window !== 'undefined') window.__r0Intencion = null;
+          if (typeof window !== 'undefined') {
+            /* v1.8.248: la intención se consume acá, pero queda en __r0IntencionUlt (con su _ts) para que
+               dure TODA la operación: una venta de varios lotes escribe la tabla tres veces. */
+            if (i) window.__r0IntencionUlt = i;
+            window.__r0Intencion = null;
+          }
           if (i && i._ts && (Date.now() - i._ts) > INTENCION_TTL) i = null;   /* pista vieja: se ignora */
           if (antes) {
             var evs = r0Derivar(antes, despues, i || {});
@@ -51091,6 +51172,12 @@ try {
 
   window.__r0Suspender = suspender;
   window.__r0Rebasar = function () { rebasar('tope de bajas v1.8.240'); };
+  /* v1.8.248: escritura confiable — sin diff, sin freno, y la sombra queda re-basada al instante */
+  window.__r0EscribirConfiable = function (txt, motivo) {
+    var r = suspender(function () { return _set(LS_ANIMALS, txt); });
+    rebasar(motivo || 'escritura confiable');
+    return r;
+  };
 
   /* ── arranque ─────────────────────────────────────────────────────────── */
   try {
