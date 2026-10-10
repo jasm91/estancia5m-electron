@@ -775,7 +775,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.253';
+window.E5M_HTML_BUILD = '1.8.254';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -27077,7 +27077,7 @@ function renderEvalPasto() {
       summary = m ? m[1].trim() : r.replace(/\*\*[^*]+\*\*/g,'').replace(/\n+/g,' ').slice(0,90);
       if (r.length > 90) summary += '…';
     }
-    var hasPhoto = !!(ev.photo_base64 || ev.photo || ev.has_photo);
+    var hasPhoto = !!(ev.photo_url || ev.photo_base64 || ev.photo || ev.has_photo); /* v1.8.254: server 4.85 guarda la foto como URL */
     return '<div onclick="openEvalPastoDetailDesktop(\''+String(ev.id).replace(/\'/g,"\\'")+'\')" style="background:var(--sur);border:1px solid var(--bor);border-radius:10px;padding:14px;cursor:pointer;transition:border-color .15s,background .15s" onmouseover="this.style.borderColor=\'var(--green)\';this.style.background=\'var(--sur2)\'" onmouseout="this.style.borderColor=\'var(--bor)\';this.style.background=\'var(--sur)\'">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">' +
         '<div style="flex:1;min-width:0">' +
@@ -27115,10 +27115,11 @@ function openEvalPastoDetailDesktop(evalId) {
   // Foto si está disponible
   // FIX v1.4.38: validar que el base64 sea real (mínimo 100 chars y caracteres válidos)
   // Bug observado: a veces photo_base64 contiene el id de la evaluación (data corrupto)
-  var photoSrc = ev.photo_base64 || ev.photo || '';
-  var isValidBase64 = photoSrc && photoSrc.length > 100 && /^[A-Za-z0-9+/=,:;A-Za-z]+$/.test(photoSrc.substring(0, 200));
+  /* v1.8.254: desde el server 4.85 la foto viene como URL en photo_url (las fotos ya no viajan en base64) */
+  var photoSrc = ev.photo_url || ev.photo_base64 || ev.photo || '';
+  var isValidBase64 = photoSrc && (/^https?:\/\//.test(photoSrc) || (photoSrc.length > 100 && /^[A-Za-z0-9+/=,:;A-Za-z]+$/.test(photoSrc.substring(0, 200))));
   if (isValidBase64) {
-    if (photoSrc.indexOf('data:') !== 0) photoSrc = 'data:image/jpeg;base64,' + photoSrc;
+    if (photoSrc.indexOf('data:') !== 0 && !/^https?:\/\//.test(photoSrc)) photoSrc = 'data:image/jpeg;base64,' + photoSrc;
     html += '<div style="margin-bottom:12px;text-align:center"><img src="'+photoSrc+'" style="max-width:100%;max-height:300px;border-radius:8px;border:1px solid var(--bor)"></div>';
   } else if (ev.has_photo) {
     html += '<div style="background:var(--sur2);border:1px dashed var(--bor);border-radius:8px;padding:14px;text-align:center;color:var(--muted);font-size:11px;margin-bottom:12px">📷 Foto no disponible (no descargada o data corrupta)</div>';
