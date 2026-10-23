@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.259';
+window.E5M_HTML_BUILD = '1.8.260';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -36174,10 +36174,21 @@ function renderReporteCREA() {
   var gastosOperativos = gastDirectos + gastoAdmin + gastoEstructura;  // sin inversionCompras
   var costoOperativoKg = produccionCREA > 0 ? Math.round(gastosOperativos / produccionCREA * 100) / 100 : 0;
   var costoKg = produccionCREA > 0 ? Math.round(gastTotales / produccionCREA * 100) / 100 : 0;  // total (con inversión)
-  var margenBruto = ha > 0 ? Math.round((ingresoVentas - gastDirectos) / ha * 100) / 100 : 0;
-  var resultOp = ha > 0 ? Math.round((ingresoVentas - gastTotales) / ha * 100) / 100 : 0;
+  /* v1.8.260 (OK de José 23-10): margen bruto, resultado operativo y ROI se calculan sobre la PRODUCCIÓN
+     VALORIZADA (criterio AACREA), no solo sobre lo cobrado. Antes una estancia que engorda sin vender daba
+     ROI negativo aunque hubiera producido 25 ton. Valor de producción = ventas reales + diferencia de stock
+     (kg) × precio de referencia. Precio de referencia: precio medio de las ventas del período; si no hubo
+     ventas, el precio de carne de Parámetros; si tampoco, la última venta registrada. */
+  var difStockKgCREA = stockFinalKg - stockInicialKg;
+  var precioRefCREA = (kgVendidos > 0 && ingresoVentasGanado > 0) ? ingresoVentasGanado / kgVendidos : 0;
+  if (!precioRefCREA) precioRefCREA = parseFloat(rp.precio_kg_carne) || 0;
+  if (!precioRefCREA) { var _uv = (db.sales || []).filter(function(v){ return v.type !== 'carne_baja' && (v.kg || v.total_kg) > 0 && v.total > 0; }).sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); })[0]; if (_uv) precioRefCREA = _uv.total / (_uv.kg || _uv.total_kg); }
+  var valorDifStock = Math.round(difStockKgCREA * precioRefCREA);
+  var valorProduccion = ingresoVentas + valorDifStock;
+  var margenBruto = ha > 0 ? Math.round((valorProduccion - gastDirectos) / ha * 100) / 100 : 0;
+  var resultOp = ha > 0 ? Math.round((valorProduccion - gastTotales) / ha * 100) / 100 : 0;
   var gastoCabMes = existMedia > 0 && meses > 0 ? Math.round(gastDirectos / existMedia / meses * 100) / 100 : 0;
-  var roi = gastTotales > 0 ? Math.round((ingresoVentas - gastTotales) / gastTotales * 1000) / 10 : 0;
+  var roi = gastTotales > 0 ? Math.round((valorProduccion - gastTotales) / gastTotales * 1000) / 10 : 0;
   var ingresoHa = ha > 0 ? Math.round(ingresoVentas / ha * 100) / 100 : 0;
   var costoSanCab = existMedia > 0 ? Math.round(gastSanidad / existMedia * 100) / 100 : 0;
 
@@ -36244,10 +36255,11 @@ function renderReporteCREA() {
       '</div>' +
     '</div>' +
   '</div>';
-  html += kpi('Margen Bruto', 'Bs. ' + margenBruto.toLocaleString(), 'Bs / ha / año', 'ingreso neto − gastos directos', 'var(--green)');
+  var _fProd = 'ventas + dif. stock × Bs ' + (Math.round(precioRefCREA * 100) / 100) + '/kg';
+  html += kpi('Margen Bruto', 'Bs. ' + margenBruto.toLocaleString(), 'Bs / ha / año', 'producción valorizada − gastos directos · ' + _fProd, 'var(--green)');
   html += kpi('Resultado Operativo', 'Bs. ' + resultOp.toLocaleString(), 'Bs / ha / año', 'margen bruto − admin − estructura', resultOp >= 0 ? 'var(--green)' : 'var(--red)');
   html += kpi('Gasto por Cab/Mes', 'Bs. ' + gastoCabMes, 'Bs / cab / mes', 'gastos directos ÷ exist. media ÷ meses', 'var(--amber)');
-  html += kpi('ROI Ganadero', roi + '%', '', '(ingresos − gastos) ÷ gastos × 100', roi >= 0 ? 'var(--green)' : 'var(--red)');
+  html += kpi('ROI Ganadero', roi + '%', 'de los cuales cobrados: Bs ' + Math.round(ingresoVentas).toLocaleString(), '(producción valorizada − gastos) ÷ gastos × 100', roi >= 0 ? 'var(--green)' : 'var(--red)');
   html += kpi('Ingreso por Ha', 'Bs. ' + ingresoHa.toLocaleString(), 'Bs / ha / año', 'ingresos ventas ÷ hectáreas', 'var(--blue)');
   html += kpi('Costo Sanidad / Cab', 'Bs. ' + costoSanCab, 'Bs / cab / año', 'gastos sanidad ÷ exist. media', 'var(--amber)');
   html += '</div>';
@@ -36287,8 +36299,11 @@ function renderReporteCREA() {
   html += '<div class="card" style="padding:14px"><div style="font-size:12px;font-weight:700;color:var(--green);margin-bottom:8px">INGRESOS — Bs. ' + Math.round(ingresoVentas).toLocaleString() + '</div>';
   if (ingresoVentasGanado > 0) html += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid rgba(48,54,61,.15)"><span style="color:var(--muted)">Venta ganado (' + ventasGanado.length + ' ops)</span><span style="font-weight:600;color:var(--green)">Bs. ' + Math.round(ingresoVentasGanado).toLocaleString() + '</span></div>';
   if (ingresoVentasCarne > 0) html += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid rgba(48,54,61,.15)"><span style="color:var(--muted)">Venta carne (bajas) (' + ventasCarne.length + ' ops)</span><span style="font-weight:600;color:var(--green)">Bs. ' + Math.round(ingresoVentasCarne).toLocaleString() + '</span></div>';
-  var balance = ingresoVentas - gastTotales;
-  html += '<div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 0;margin-top:6px;border-top:2px solid var(--bor)"><span style="font-weight:700">BALANCE</span><span style="font-weight:800;color:' + (balance >= 0 ? 'var(--green)' : 'var(--red)') + '">Bs. ' + Math.round(balance).toLocaleString() + '</span></div>';
+  if (valorDifStock !== 0) html += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid rgba(48,54,61,.15)"><span style="color:var(--muted)">Diferencia de stock valorizada (' + Math.round(difStockKgCREA).toLocaleString() + ' kg × Bs ' + (Math.round(precioRefCREA*100)/100) + ', no cobrado)</span><span style="font-weight:600;color:' + (valorDifStock >= 0 ? 'var(--green)' : 'var(--red)') + '">Bs. ' + Math.round(valorDifStock).toLocaleString() + '</span></div>';
+  var balanceCaja = ingresoVentas - gastTotales;
+  var balance = valorProduccion - gastTotales;
+  html += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0"><span style="color:var(--muted)">Balance de caja (solo cobrado − gastos)</span><span style="font-weight:600;color:' + (balanceCaja >= 0 ? 'var(--green)' : 'var(--red)') + '">Bs. ' + Math.round(balanceCaja).toLocaleString() + '</span></div>';
+  html += '<div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 0;margin-top:6px;border-top:2px solid var(--bor)"><span style="font-weight:700">RESULTADO (producción valorizada)</span><span style="font-weight:800;color:' + (balance >= 0 ? 'var(--green)' : 'var(--red)') + '">Bs. ' + Math.round(balance).toLocaleString() + '</span></div>';
   html += '</div></div>';
 
   html += '<div style="font-size:14px;font-weight:700;color:var(--amber2);margin:16px 0 10px;border-bottom:1px solid var(--bor);padding-bottom:6px">📋 Detalle por Lote <span style="font-size:11px;font-weight:400;color:var(--muted)">(incluye lotes vendidos durante el período)</span></div>';
