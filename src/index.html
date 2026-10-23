@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.256';
+window.E5M_HTML_BUILD = '1.8.257';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -10873,16 +10873,14 @@ function _stockToggleActivity(prodId) {
   // Si ya está abierto, cerrarlo
   var isOpen = panel.style.display !== 'none' && panel.innerHTML !== '';
   if (isOpen) {
-    panel.style.display = 'none';
-    panel.innerHTML = '';
+    epSlide(panel, false, function(){ panel.innerHTML = ''; }); /* v1.8.257 suave */
     return;
   }
 
   // Cerrar TODOS los otros paneles abiertos (uno a la vez para no saturar)
   document.querySelectorAll('[id^="_stock-activity-"]').forEach(function(el){
-    if (el.id !== ('_stock-activity-' + prodId)) {
-      el.style.display = 'none';
-      el.innerHTML = '';
+    if (el.id !== ('_stock-activity-' + prodId) && el.style.display !== 'none') {
+      epSlide(el, false, function(){ el.innerHTML = ''; });
     }
   });
 
@@ -10994,7 +10992,7 @@ function _stockToggleActivity(prodId) {
       '<span style="margin-left:auto;color:var(--muted);font-size:10px">'+entries.length+' movimiento'+(entries.length!==1?'s':'')+'</span>' +
     '</div>' +
     rowsHtml;
-  panel.style.display = 'block';
+  epSlide(panel, true); /* v1.8.257 suave */
 }
 
 // Stub para compatibilidad con cualquier código viejo que llame al modal
@@ -11110,8 +11108,7 @@ function toggleTreatmentHistory(treatId, prodId, lote) {
   var inner = document.getElementById('tr-hist-inner-' + treatId);
   if (!row || !inner) return;
   var isOpen = row.style.display !== 'none';
-  row.style.display = isOpen ? 'none' : 'table-row';
-  if (isOpen) return;
+  if (isOpen) { epSlide(row, false); return; } /* v1.8.257 suave */
   // Historial de todos los tratamientos del mismo producto en el mismo lote
   var prod = db.products.find(function(p){ return p.id == prodId; });
   var related = (db.treatments||[]).filter(function(t){
@@ -11120,7 +11117,7 @@ function toggleTreatmentHistory(treatId, prodId, lote) {
   var label = (prod?prod.name:'Producto') + (lote?' - Lote '+lote:'');
   if (!related.length) {
     inner.innerHTML = '<div style="color:var(--muted);font-size:12px">Sin historial</div>';
-    return;
+    epSlide(row, true); return;
   }
   inner.innerHTML = '<div style="font-size:11px;color:var(--muted);margin-bottom:8px;font-weight:600">HISTORIAL: ' + label.toUpperCase() + '</div>' +
     related.map(function(t){
@@ -11130,6 +11127,7 @@ function toggleTreatmentHistory(treatId, prodId, lote) {
         '<span style="color:var(--muted);width:100px;text-align:right">' + (t.by||'') + '</span>' +
       '</div>';
     }).join('');
+  epSlide(row, true); /* v1.8.257 suave */
 }
 
 function quickAddStock(id) {
@@ -11444,7 +11442,7 @@ function renderVentas() {
 
 function toggleSaleIds(id) {
   var row = document.getElementById('sale-ids-row-'+id);
-  if(row) row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+  if(row) epSlide(row); /* v1.8.257 suave */
 }
 
 function deleteSale(id) {
@@ -23479,15 +23477,15 @@ function contJerarToggle(id) {
   if (!body) return;
   var arrow = document.querySelector('.cont-jerar-arrow[data-target="'+id+'"]');
   var isOpen = body.style.display !== 'none';
-  body.style.display = isOpen ? 'none' : 'block';
-  if (arrow) arrow.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)';
+  epSlide(body, !isOpen); /* v1.8.257 suave */
+  if (arrow) { arrow.style.transition = 'transform .2s'; arrow.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)'; }
 }
 
 function contJerarToggleAll(open) {
   var bodies = document.querySelectorAll('#cont-jerarquia .cont-jerar-body');
-  bodies.forEach(function(b){ b.style.display = open ? 'block' : 'none'; });
+  bodies.forEach(function(b){ epSlide(b, open); }); /* v1.8.257 suave */
   var arrows = document.querySelectorAll('#cont-jerarquia .cont-jerar-arrow');
-  arrows.forEach(function(a){ a.style.transform = open ? 'rotate(90deg)' : 'rotate(0deg)'; });
+  arrows.forEach(function(a){ a.style.transition = 'transform .2s'; a.style.transform = open ? 'rotate(90deg)' : 'rotate(0deg)'; });
 }
 
 function contScrollToCard(cardId) {
@@ -38219,7 +38217,7 @@ function toggleConteoHistory() {
   var toggle = document.getElementById('conteo-history-toggle');
   if (!body) return;
   var open = body.style.display !== 'none';
-  body.style.display = open ? 'none' : 'block';
+  epSlide(body, !open); /* v1.8.257 suave */
   if (toggle) toggle.textContent = open ? '▼ Mostrar' : '▲ Ocultar';
 }
 
@@ -40506,7 +40504,7 @@ function renderRotacion() {
 // FIX v1.4.37: helper para toggle del historial colapsable
 function toggleHistorialRotacion() {
   var el = document.getElementById('historial-rotacion-table');
-  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  if (el) epSlide(el); /* v1.8.257 suave */
 }
 
 // FIX v1.4.37: helper para abrir el modal de mover lote desde botones de rotación
@@ -45128,7 +45126,7 @@ function agwCrearCampanaInline(){ /* v1.8.112 R1: crear campaña sin salir del w
   var oN=sel.querySelector('option[value="__nueva"]'); if(oN) sel.insertBefore(o,oN); else sel.appendChild(o);
   sel.value=data.id; agwCampanaInfo(); agToast('Campaña creada: '+campLabel(d,data),'success');
 }
-function agwToggleNuevoInsumo(force){ var f=agEl('agw-ni-form'); if(!f) return; f.style.display=(force===true||f.style.display==='none')?'block':'none'; } /* v1.8.112 R2 */
+function agwToggleNuevoInsumo(force){ var f=agEl('agw-ni-form'); if(!f) return; epSlide(f,(force===true||f.style.display==='none')); } /* v1.8.112 R2 · v1.8.257 suave */
 function agwCrearInsumoInline(){ /* v1.8.112 R2: alta de insumo sin salir del wizard */
   var d=agGetDB(); var nombre=(agEl('agw-ni-nombre').value||'').trim(), unidad=agEl('agw-ni-unidad').value;
   var costo=parseFloat(agEl('agw-ni-costo').value), stock=parseFloat(agEl('agw-ni-stock').value)||0;
@@ -60046,6 +60044,122 @@ SGSoporte.instalar({
   window.v237IngresoDe = ingresoDe;
   try { if (typeof v168InvalidarCache === 'function') v168InvalidarCache(); } catch (e) {}
   console.log('[v1.8.237] curaciones de lote solo desde el ingreso del animal — activo');
+})();
+</script>
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   v1.8.257 — DESPLIEGUE SUAVE GLOBAL
+   Regla de UI: ninguna lista/panel aparece "de golpe". epSlide(el, open) anima
+   alto + opacidad (WAAPI) para cualquier bloque; para filas de tabla (<tr>)
+   envuelve el contenido de cada celda y anima eso. Todos los <details> del
+   programa (estáticos y renderizados por innerHTML) se suavizan solos.
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  var DUR = 260, EASE = 'cubic-bezier(.4,0,.2,1)';
+  var reduce = false; try { reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+  function visible(el) { return el.style.display !== 'none' && getComputedStyle(el).display !== 'none'; }
+  function animBlock(el, open, disp, cb) {
+    if (open) {
+      el.style.display = disp || el.getAttribute('data-ep-disp') || 'block';
+      if (reduce || !el.animate) { if (cb) cb(); return; }
+      var h = el.scrollHeight; if (!h) { if (cb) cb(); return; }
+      el.style.overflow = 'hidden';
+      var a = el.animate([{ height: '0px', opacity: 0 }, { height: h + 'px', opacity: 1 }], { duration: DUR, easing: EASE });
+      a.onfinish = a.oncancel = function () { el.style.overflow = ''; el.style.height = ''; if (cb) cb(); };
+    } else {
+      if (reduce || !el.animate || !visible(el)) { el.style.display = 'none'; if (cb) cb(); return; }
+      var h0 = el.offsetHeight; el.style.overflow = 'hidden';
+      var b = el.animate([{ height: h0 + 'px', opacity: 1 }, { height: '0px', opacity: 0 }], { duration: DUR, easing: EASE });
+      b.onfinish = b.oncancel = function () { el.style.display = 'none'; el.style.overflow = ''; el.style.height = ''; if (cb) cb(); };
+    }
+  }
+  function wrapCells(tr) {
+    var ws = [];
+    for (var i = 0; i < tr.children.length; i++) {
+      var td = tr.children[i]; var w = td.querySelector(':scope > .ep-trw');
+      if (!w) { w = document.createElement('div'); w.className = 'ep-trw'; while (td.firstChild) w.appendChild(td.firstChild); td.appendChild(w); }
+      ws.push(w);
+    }
+    return ws;
+  }
+  function animRow(tr, open, cb) {
+    var ws = wrapCells(tr);
+    if (open) {
+      tr.style.display = 'table-row';
+      if (reduce || !tr.animate) { if (cb) cb(); return; }
+      var done = 0; ws.forEach(function (w) {
+        var h = w.scrollHeight; w.style.overflow = 'hidden';
+        var a = w.animate([{ height: '0px', opacity: 0 }, { height: h + 'px', opacity: 1 }], { duration: DUR, easing: EASE });
+        a.onfinish = a.oncancel = function () { w.style.overflow = ''; if (++done === ws.length && cb) cb(); };
+      });
+      if (!ws.length && cb) cb();
+    } else {
+      if (reduce || !tr.animate || !visible(tr)) { tr.style.display = 'none'; if (cb) cb(); return; }
+      var d2 = 0; ws.forEach(function (w) {
+        var h = w.offsetHeight; w.style.overflow = 'hidden';
+        var b = w.animate([{ height: h + 'px', opacity: 1 }, { height: '0px', opacity: 0 }], { duration: DUR, easing: EASE });
+        b.onfinish = b.oncancel = function () { if (++d2 === ws.length) { tr.style.display = 'none'; ws.forEach(function (x) { x.style.overflow = ''; }); if (cb) cb(); } };
+      });
+      if (!ws.length) { tr.style.display = 'none'; if (cb) cb(); }
+    }
+  }
+  /* epSlide(el, open?, disp?, cb?) — open omitido = toggle. Devuelve el estado final. */
+  window.epSlide = function (el, open, disp, cb) {
+    if (typeof el === 'string') el = document.getElementById(el);
+    if (!el) return false;
+    if (typeof disp === 'function') { cb = disp; disp = null; }
+    if (open === undefined || open === null) open = !visible(el);
+    if (el.tagName === 'TR') animRow(el, open, cb); else animBlock(el, open, disp, cb);
+    return open;
+  };
+  window.epSlideOpen = function (el, disp, cb) { return window.epSlide(el, true, disp, cb); };
+  window.epSlideClose = function (el, cb) { return window.epSlide(el, false, null, cb); };
+
+  /* <details> globales: se envuelve el contenido (menos <summary>) y se anima con grid-rows. */
+  var css = document.createElement('style');
+  css.textContent = 'details > .e5m-det-inner{display:grid;grid-template-rows:0fr;opacity:0;transition:grid-template-rows .26s cubic-bezier(.4,0,.2,1),opacity .22s ease}' +
+    'details.e5m-abierto > .e5m-det-inner{grid-template-rows:1fr;opacity:1}' +
+    'details > .e5m-det-inner > .e5m-det-inner2{min-height:0;overflow:hidden}' +
+    '@media (prefers-reduced-motion: reduce){details > .e5m-det-inner{transition:none !important}}';
+  (document.head || document.documentElement).appendChild(css);
+  function detInit(root) {
+    var list = (root && root.querySelectorAll) ? root.querySelectorAll('details') : [];
+    if (root && root.tagName === 'DETAILS') list = [root].concat(Array.prototype.slice.call(list));
+    Array.prototype.forEach.call(list, function (d) {
+      if (d.classList.contains('e5m-det-ready')) return;
+      var sm = d.querySelector(':scope > summary'); if (!sm) return;
+      d.classList.add('e5m-det-ready');
+      try {
+        var inner = document.createElement('div'); inner.className = 'e5m-det-inner';
+        var inner2 = document.createElement('div'); inner2.className = 'e5m-det-inner2';
+        inner.appendChild(inner2);
+        var kids = []; for (var i = 0; i < d.childNodes.length; i++) { var n = d.childNodes[i]; if (n !== sm) kids.push(n); }
+        kids.forEach(function (n) { inner2.appendChild(n); });
+        d.appendChild(inner);
+        if (d.open) d.classList.add('e5m-abierto');
+        sm.addEventListener('click', function (ev) {
+          if (ev.target && ev.target.closest && ev.target.closest('button,a,input,select,label')) return; /* controles dentro del summary */
+          ev.preventDefault();
+          if (!d.open) { d.open = true; requestAnimationFrame(function () { requestAnimationFrame(function () { d.classList.add('e5m-abierto'); }); }); }
+          else { d.classList.remove('e5m-abierto'); setTimeout(function () { if (!d.classList.contains('e5m-abierto')) d.open = false; }, 270); }
+        });
+        /* si otro código cambia d.open por programa, sincronizar la clase */
+        d.addEventListener('toggle', function () { if (d.open) d.classList.add('e5m-abierto'); else d.classList.remove('e5m-abierto'); });
+      } catch (e) {}
+    });
+  }
+  window.epDetailsInit = detInit;
+  function boot() {
+    detInit(document);
+    try {
+      var mo = new MutationObserver(function (ms) {
+        for (var i = 0; i < ms.length; i++) { var ad = ms[i].addedNodes; for (var j = 0; j < ad.length; j++) { var n = ad[j]; if (n.nodeType === 1 && (n.tagName === 'DETAILS' || (n.querySelector && n.querySelector('details')))) detInit(n); } }
+      });
+      mo.observe(document.body, { childList: true, subtree: true });
+    } catch (e) {}
+  }
+  if (document.readyState !== 'loading') boot(); else document.addEventListener('DOMContentLoaded', boot);
+  console.log('%c[v1.8.257] despliegue suave global (epSlide + details) — activo', 'color:#3fb950;font-weight:bold');
 })();
 </script>
 </body>
