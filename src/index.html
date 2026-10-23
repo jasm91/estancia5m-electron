@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.257';
+window.E5M_HTML_BUILD = '1.8.258';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -36024,7 +36024,11 @@ function renderReporteCREA() {
     'sal':'alimento','sal mineral':'alimento','alimento':'alimento','alimentacion':'alimento',
     // admin/estructura
     'servicios':'admin','impuestos':'admin','seguro':'admin','institucion':'admin',
-    'donacion':'admin','exportacion':'admin'
+    'donacion':'admin','exportacion':'admin',
+    /* v1.8.257: subcuentas del catálogo que antes caían en 'otros' (o se perdían) */
+    'contabilidad':'admin','honorarios':'admin','bancarios':'admin','movilidad':'admin','imprevistos':'admin','donaciones':'admin',
+    'viveres':'personal','víveres':'personal','comida personal':'personal','aguinaldo':'personal','beneficios sociales':'personal',
+    'infraestructura':'mantenimiento','mantenimiento alambrado':'mantenimiento'
   };
   // Distribuir db.purchases del periodo por categoría según subcuenta
   var purchByCat = { sanidad:0, combustible:0, personal:0, mantenimiento:0, alimento:0, admin:0, otros:0 };
@@ -36044,6 +36048,10 @@ function renderReporteCREA() {
     var cat = sub2cat[_sub] || 'otros';
     purchByCat[cat] += (parseFloat(p.total) || 0);
   });
+  /* v1.8.257: las compras con subcuenta administrativa (luz, impuestos, seguro, contador) se sumaban en
+     purchByCat.admin pero nadie las leía → desaparecían del desglose y del costo/kg. Ahora se suman al
+     rubro Administración junto con el gasto mensual estimado de parámetros. */
+  gastoAdmin += purchByCat.admin;
 
   // Sanidad = costo de tratamientos + compras con subcuenta 'Sanidad'
   var gastSanidad = (db.treatments || []).filter(function(t) { return (t.applied_at || '') >= desdeStr && (t.applied_at || '') <= hastaStr; }).reduce(function(s, t) { return s + (t.cost || 0); }, 0)
