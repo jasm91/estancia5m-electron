@@ -324,6 +324,19 @@ body{background:var(--bg);color:var(--text);font-family:Inter,'Segoe UI Emoji','
   .stats{grid-template-columns:repeat(2,1fr)}
   .g2,.g3-1{grid-template-columns:1fr}
 }
+
+/* v1.8.256: overlay de carga con marca (procesos que tardan: IA, exports) */
+#ep-cargando{position:fixed;inset:0;z-index:99990;background:rgba(10,12,16,.72);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;opacity:0;transition:opacity .22s ease}
+#ep-cargando.on{display:flex;opacity:1}
+#ep-cargando .epc-box{display:flex;flex-direction:column;align-items:center;gap:14px;padding:28px 36px;border-radius:18px;background:var(--sur,#161B22);border:1px solid var(--bor,#30363D);box-shadow:0 18px 50px rgba(0,0,0,.45);min-width:260px;text-align:center}
+#ep-cargando .epc-ring{position:relative;width:84px;height:84px;display:flex;align-items:center;justify-content:center}
+#ep-cargando .epc-ring::before{content:"";position:absolute;inset:0;border-radius:50%;border:3px solid rgba(240,180,41,.18);border-top-color:#F0B429;animation:epc-spin 1s linear infinite}
+#ep-cargando .epc-ring::after{content:"";position:absolute;inset:10px;border-radius:50%;border:2px solid rgba(63,185,80,.16);border-bottom-color:#3FB950;animation:epc-spin 1.6s linear infinite reverse}
+#ep-cargando .epc-cow{font-size:34px;animation:epc-pulse 1.2s ease-in-out infinite}
+#ep-cargando .epc-brand{font-weight:800;letter-spacing:3px;font-size:13px;color:var(--text,#E6EDF3)}#ep-cargando .epc-brand span{color:#F0B429}
+#ep-cargando .epc-msg{font-size:13px;color:var(--muted,#8B949E);max-width:320px;line-height:1.4}
+@keyframes epc-spin{to{transform:rotate(360deg)}}
+@keyframes epc-pulse{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.12);opacity:1}}
 </style>
 
 <style>
@@ -358,6 +371,8 @@ body{background:var(--bg);color:var(--text);font-family:Inter,'Segoe UI Emoji','
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
 <body>
+<div id="ep-cargando" role="status" aria-live="polite"><div class="epc-box"><div class="epc-ring"><div class="epc-cow">🐄</div></div><div class="epc-brand">ESTANCIA <span>PRO</span></div><div class="epc-msg" id="ep-cargando-msg">Procesando…</div></div></div>
+
 <script>
 // v1.8.72: aplicar el tema guardado lo antes posible (evita parpadeo oscuro→claro al abrir).
 try { if (localStorage.getItem('e5m_theme') === 'light') document.documentElement.setAttribute('data-theme','light'); } catch(e){}
@@ -775,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.255';
+window.E5M_HTML_BUILD = '1.8.256';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -2365,6 +2380,7 @@ function orMarcajeGo(){
   <!-- Tabs Servicios / Partos / Indicadores / Historial / Inteligencia -->
   <div class="tabs">
     <button class="tab-btn" id="repro-tab-cabana-btn" style="display:none" onclick="switchTab('repro',this,'repro-tab-cabana');try{cab2Render()}catch(e){}">🏆 Cabaña</button>
+    <button class="tab-btn" id="repro-tab-asocebu-btn" style="display:none" onclick="switchTab('repro',this,'repro-tab-asocebu');try{cab2Render()}catch(e){}">📤 ASOCEBU</button>
     <button class="tab-btn active" onclick="switchTab('repro',this,'repro-tab-servicios')">🐂 Servicios</button>
     <button class="tab-btn" onclick="switchTab('repro',this,'repro-tab-partos')">🍼 Partos</button>
     <button class="tab-btn" onclick="switchTab('repro',this,'repro-tab-indicadores')">📊 Indicadores</button>
@@ -2448,6 +2464,10 @@ function orMarcajeGo(){
     </div>
   </div></div>
 
+</div>
+
+<!-- v1.8.256 (José): Export ASOCEBU pasa a su propia sub-pestaña (antes era la última card de 🏆 Cabaña) -->
+<div id="repro-tab-asocebu" class="tab-pane">
   <div class="card"><div class="card-body">
     <div class="card-title" style="margin-bottom:8px">📤 Export ASOCEBU (planillas RGNRC)</div>
 
@@ -12857,9 +12877,20 @@ function editPurchaseSubcuenta(purchaseId) {
   o.addEventListener('click', function(e){ if(e.target===o) o.remove(); });
 }
 
+
+/* v1.8.256 (José): indicador de carga con marca para procesos que tardan (IA, exports). epCargando(true,'msg') / epCargando(false) */
+function epCargando(on, msg) {
+  var el = document.getElementById('ep-cargando'); if (!el) return;
+  if (on) { var m = document.getElementById('ep-cargando-msg'); if (m) m.textContent = msg || 'Procesando…'; el.style.display = 'flex'; requestAnimationFrame(function(){ el.classList.add('on'); }); }
+  else { el.classList.remove('on'); setTimeout(function(){ if (!el.classList.contains('on')) el.style.display = 'none'; }, 240); }
+}
 function suggestSubcuentasAI() {
   var need = (db.purchases||[]).filter(function(p){ return !p.subcuenta && p.desc; });
-  if (!need.length) return;
+  if (!need.length) { toast('No hay compras sin subcuenta', 'info'); return; }
+  var _btnIA = document.querySelector('button[onclick="suggestSubcuentasAI()"]'); var _btnTxt = _btnIA ? _btnIA.innerHTML : '';
+  if (_btnIA) { if (_btnIA.disabled) return; _btnIA.disabled = true; _btnIA.style.opacity = '.6'; _btnIA.innerHTML = '⏳ Analizando…'; }
+  epCargando(true, 'La IA está leyendo ' + Math.min(need.length, 10) + ' compra' + (Math.min(need.length, 10) === 1 ? '' : 's') + ' y eligiendo la subcuenta de cada una…');
+  var _finIA = function(){ epCargando(false); if (_btnIA) { _btnIA.disabled = false; _btnIA.style.opacity = ''; _btnIA.innerHTML = _btnTxt; } };
   // v1.4.27: ya no se valida geminiKey local; el server maneja la disponibilidad
   var params = getParams();
   var subcuentas = params.subcuentas || [];
@@ -12895,9 +12926,11 @@ function suggestSubcuentasAI() {
           }
         });
         if (assigned) { saveDB(); renderCompras(); toast('🤖 IA asignó subcuentas a '+assigned+' compras','success'); }
+        else toast('La IA no encontró subcuentas que coincidan', 'error');
       }
-    } catch(e){ console.warn('[AI] Parse error:', text); }
-  }).catch(function(e){ console.warn('[AI] Error:', e.message); });
+    } catch(e){ console.warn('[AI] Parse error:', text); toast('La IA respondió algo que no pude interpretar — probá de nuevo', 'error'); }
+    _finIA();
+  }).catch(function(e){ console.warn('[AI] Error:', e.message); _finIA(); toast('No se pudo consultar a la IA: ' + (e && e.message || 'error'), 'error'); });
 }
 
 function showPurchaseDetail(p) {
@@ -23730,6 +23763,7 @@ function _keBuildMovimientos() {
   (db.partos || []).forEach(function(p) {
     var fecha = String(p.date || p.fecha || '').slice(0, 10);
     if (!fecha) return;
+    if (/muert|nacido muerto|aborto/i.test(String(p.estado || ''))) return; /* v1.8.256: un parto con cría muerta no es una entrada de hacienda */
     var cabs = parseInt(p.cabezas || p.count || 1) || 1;
     movs.push({
       fecha: fecha,
@@ -47613,6 +47647,7 @@ function gateOn(){
 }
 function cab2Gate(){
   var b=E('repro-tab-cabana-btn'); if(b) b.style.display=gateOn()?'':'none';
+  var b2=E('repro-tab-asocebu-btn'); if(b2) b2.style.display=gateOn()?'':'none'; /* v1.8.256 */
   var n=document.getElementById('nav-repro-cabana'); if(n) n.style.display=gateOn()?'':'none'; // v1.8.121 item del sidebar
 }
 function fD(iso){ if(!iso)return '—'; var p=String(iso).split('-'); return p.length>=3?(p[2]+'/'+p[1]+'/'+p[0].slice(2)):iso; }
@@ -48635,7 +48670,7 @@ setInterval(swSelectorRender, 5000); // auto-sanado si algo re-renderiza la topb
          'activo' y el resto del índice ya acepta los dos (19 lugares) — esta línea era la
          única que exigía 'active', y por eso la card decía "-585 cab" tras armar T1/T2. */
       var _st166 = String(l.status || 'activo').toLowerCase();
-      if (_st166 === 'active' || _st166 === 'activo') activos += parseInt(l.animal_count || 0) || 0;
+      if (_st166 === 'active' || _st166 === 'activo' || _st166 === 'cuarentena') activos += parseInt(l.animal_count || 0) || 0; /* v1.8.256: la cuarentena también es hacienda en la estancia (su compra ya cuenta como entrada) */
     });
     /* lotes que SÍ tuvieron alguna entrada registrada (compra directa, marcaje o parto) */
     var conEntrada = {};
