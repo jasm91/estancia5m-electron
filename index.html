@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.262';
+window.E5M_HTML_BUILD = '1.8.263';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -14289,10 +14289,7 @@ function viewTrace(id) {
 
     '</body></html>';
 
-  // Abrir en ventana nueva para imprimir
-  var win = window.open('', '_blank', 'width=900,height=700');
-  win.document.write(html);
-  win.document.close();
+  e5mImprimirHtml(html); /* v1.8.263: sin ventana emergente */
 }
 
 // ══════════════════════════════════════════════════
@@ -15145,6 +15142,23 @@ function switchTab(prefix,btnOrId,targetId) {
 // UTILS
 // ══════════════════════════════════════════════════
 function esc(s){return escH(s);}
+/* v1.8.263 — IMPRIMIR / PDF SIN VENTANAS EMERGENTES. Desde v1.8.249 el Desktop bloquea window.open (seguridad),
+   y las exportaciones que abrían una ventana para imprimir mostraban "Permití las ventanas emergentes" o no
+   hacían nada. Ahora el HTML se carga en un iframe oculto dentro de la app y se abre el diálogo de impresión
+   del sistema (ahí se elige "Guardar como PDF"). Si el HTML ya trae su propio window.print(), no se duplica. */
+function e5mImprimirHtml(html) {
+  try {
+    var old = document.getElementById('e5m-print-frame'); if (old) old.remove();
+    var f = document.createElement('iframe'); f.id = 'e5m-print-frame';
+    f.setAttribute('aria-hidden', 'true');
+    f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+    document.body.appendChild(f);
+    var d = f.contentWindow.document; d.open(); d.write(String(html || '')); d.close();
+    var propio = /window\.print\s*\(/.test(String(html || ''));
+    if (!propio) setTimeout(function () { try { f.contentWindow.focus(); f.contentWindow.print(); } catch (e) { toast('No se pudo abrir la impresión: ' + e.message, 'error'); } }, 450);
+    return true;
+  } catch (e) { toast('No se pudo generar el PDF: ' + e.message, 'error'); return false; }
+}
 function escH(str) { return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 /* v1.8.195: id como argumento string dentro de onclick="..." — JSON.stringify metia comillas
    dobles LITERALES que cerraban el atributo antes de tiempo (handler cortado -> SyntaxError
@@ -21882,14 +21896,7 @@ function exportAnalisisHistoricoPDF() {
     + '<scr'+'ipt>window.addEventListener("load", function(){ setTimeout(function(){ window.print(); }, 300); });</scr'+'ipt>'
     + '</body></html>';
 
-  var w = window.open('', '_blank', 'width=900,height=1100');
-  if (!w) {
-    toast('Bloqueado por el navegador. Permitir ventanas emergentes.', 'error');
-    return;
-  }
-  w.document.open();
-  w.document.write(pdfHtml);
-  w.document.close();
+  e5mImprimirHtml(pdfHtml); /* v1.8.263: sin ventana emergente */
   toast('Generando PDF — usá "Guardar como PDF" en el diálogo', 'success');
 }
 
@@ -22859,14 +22866,7 @@ function exportContabilidadPDF() {
     + '<scr'+'ipt>window.addEventListener("load", function(){ setTimeout(function(){ window.print(); }, 400); });</scr'+'ipt>'
     + '</body></html>';
 
-  var w = window.open('', '_blank', 'width=900,height=1100');
-  if (!w) {
-    toast('Bloqueado por el navegador. Permitir ventanas emergentes.', 'error');
-    return;
-  }
-  w.document.open();
-  w.document.write(pdfHtml);
-  w.document.close();
+  e5mImprimirHtml(pdfHtml); /* v1.8.263: sin ventana emergente */
   toast('Generando PDF — usa "Guardar como PDF" en el diálogo', 'success');
 }
 
@@ -36712,14 +36712,7 @@ function exportCREAPDF() {
     + '</body></html>';
 
   // Abrir en ventana nueva
-  var w = window.open('', '_blank', 'width=900,height=1100');
-  if (!w) {
-    toast('Bloqueado por el navegador. Permitir ventanas emergentes.', 'error');
-    return;
-  }
-  w.document.open();
-  w.document.write(pdfHtml);
-  w.document.close();
+  e5mImprimirHtml(pdfHtml); /* v1.8.263: sin ventana emergente */
   toast('Generando PDF — usa "Guardar como PDF" en el diálogo', 'success');
 }
 
@@ -51084,10 +51077,7 @@ try {
         '<p class="big">Costo/kg '+(esReal?'':'esperado')+' = '+mon+' '+ckg+' / kg</p>'+
         '<div class="note">Este desglose es auditable: si algún costo está mal clasificado (ej. una compra que debería ser inversión, o un gasto de otro lote), corregilo en Contabilidad → Cuentas/Subcuentas y volvé a generar. Indirectos prorrateados por cabezas-días. Costo/kg esperado usa engorde estimado (GMD) cuando el lote no tiene 2+ pesajes.</div>'+
         '</body></html>';
-      var win = window.open('', '_blank', 'width=920,height=760');
-      if(!win){ if(typeof toast==='function') toast('Permití las ventanas emergentes para exportar el PDF','error'); return; }
-      win.document.write(html); win.document.close(); win.focus();
-      setTimeout(function(){ try{ win.print(); }catch(e){} }, 400);
+      e5mImprimirHtml(html); /* v1.8.263: sin ventana emergente */
     }catch(e){ try{ if(typeof toast==='function') toast('No se pudo generar el PDF: '+e.message,'error'); }catch(e2){} }
   };
 
