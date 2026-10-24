@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.264';
+window.E5M_HTML_BUILD = '1.8.265';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -50940,6 +50940,9 @@ try {
     /* v1.8.262: la sal/alimento despachada a ESTE lote (v1.8.158) sale del pool indirecto como alimentoDirecto,
        pero nadie la sumaba a los directos → desaparecía del costo/kg. Ahora va a directos. */
     dir = { sanidad: dir.sanidad||0, mantenimiento: dir.mantenimiento||0, alimento: alimDir, total: (dir.total||0) + alimDir };
+    /* v1.8.265: en lotes vendidos o sin animales individuales el total indirecto YA traía la sal del lote
+       (v163) y se volvía a sumar acá → doble conteo. Se descuenta lo que ya venía incluido. */
+    if (ind && ind._alimDirEnTotal) indT = Math.max(0, indT - (parseFloat(ind._alimDirEnTotal) || 0));
     var costoOperativo=dir.total+indT;
     var eng=_ckEngorde(lot);
     var engorde=eng.kg;
@@ -51957,6 +51960,7 @@ try {
 
           /* el directo ENTRA al total del motor → costo operativo y Bs/kg lo ven */
           r.total = _n163(r.total) - prevAsignado + r.alimento + v.bs;
+          r._alimDirEnTotal = v.bs; /* v1.8.265: avisar que el total ya trae la sal del lote (para no sumarla dos veces en costo/kg) */
         } catch (e) { console.warn('[v163 sal directo]', e); }
         return r;
       }
@@ -56395,6 +56399,7 @@ try {
           r.fechaEntradaReal = minEnt; r.linaje = true;
           ['sueldos', 'diesel', 'alimento', 'mantGeneral', 'compras', 'aceite', 'sanidadInd', 'cuentasMan'].forEach(function (k) { if (typeof r[k + '_total'] === 'number') r[k] = r[k + '_total'] * frac; });
           r.total = ['sueldos', 'diesel', 'alimento', 'mantGeneral', 'compras', 'aceite', 'sanidadInd', 'cuentasMan'].reduce(function (s, k) { return s + (r[k] || 0); }, 0);
+          r._alimDirEnTotal = 0; /* v1.8.265: este total no trae la sal directa */
         } catch (e) { console.warn('[v207] indirectos', e); }
         return r;
       }
