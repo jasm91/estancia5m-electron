@@ -278,10 +278,19 @@ function checkForUpdates() {
   // hacía que GitHub respondiera 401 y el auto-update fallara (la app cerraba sin actualizar y no
   // se reabría). Además era un riesgo de seguridad (P-04). Si algún día el repo pasa a privado,
   // se carga un token desde Configuración → Actualizaciones (se guarda en 'gh_token').
+  /* v1.8.264: las actualizaciones se bajan del API de EstanciaPro (proveedor "generic"), que lee los releases
+     de GitHub con un token de solo lectura guardado en el SERVIDOR y redirige al enlace firmado. Así el repo
+     del Desktop puede ser PRIVADO sin poner ningún token en las computadoras de los clientes.
+     Interruptor de emergencia: store 'update_feed' = 'github' vuelve al proveedor GitHub directo. */
   try {
-    var _ghTok = store.get('gh_token', '');
-    autoUpdater.requestHeaders = _ghTok ? { 'Authorization': 'token ' + _ghTok } : null;
-  } catch (e) { autoUpdater.requestHeaders = null; }
+    if (store.get('update_feed', '') !== 'github') {
+      autoUpdater.setFeedURL({ provider: 'generic', url: 'https://api.estancia-pro.com/desktop/updates', useMultipleRangeRequest: false });
+      autoUpdater.requestHeaders = null;
+    } else {
+      var _ghTok = store.get('gh_token', '');
+      autoUpdater.requestHeaders = _ghTok ? { 'Authorization': 'token ' + _ghTok } : null;
+    }
+  } catch (e) { console.error('[Updater] feed:', e.message); autoUpdater.requestHeaders = null; }
   autoUpdater.autoDownload = true;
   autoUpdater.logger = require('electron-log');
   autoUpdater.logger.transports.file.level = 'info';

@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.263';
+window.E5M_HTML_BUILD = '1.8.264';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -22031,7 +22031,7 @@ function checkForAppUpdate() {
     getGhToken().then(function(ghToken){
       var headers = {};
       if (ghToken) headers['Authorization'] = 'token ' + ghToken;
-      fetch('https://api.github.com/repos/jasm91/estancia5m-electron/releases/latest', { headers: headers })
+      fetch('https://api.estancia-pro.com/desktop/latest') /* v1.8.264: vía API (repo privado) */
       .then(function(r) { return r.json(); })
       .then(function(data) {
         if (btn) btn.disabled = false;
@@ -22131,7 +22131,7 @@ function forceAppUpdate() {
     });
   } else {
     clearInterval(window._updateTimer);
-    var url = 'https://github.com/jasm91/estancia5m-electron/releases/latest';
+    var url = 'https://estancia-pro.com/descargas';
     if (window.estancia && window.estancia.app) {
       window.estancia.app.openExternal(url);
     } else {
@@ -29555,7 +29555,7 @@ function checkLatestVersionFromGithub() {
   getGhToken().then(function(ghToken){
     var headers = {};
     if (ghToken) headers['Authorization'] = 'token ' + ghToken;
-    fetch('https://api.github.com/repos/jasm91/estancia5m-electron/releases/latest', { headers: headers })
+    fetch('https://api.estancia-pro.com/desktop/latest') /* v1.8.264: vía API (repo privado) */
       .then(function(r){ if (!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
       .then(function(data){
         if (!data || !data.tag_name) return;
@@ -29689,7 +29689,7 @@ function triggerMinVersionUpdate() {
     if (typeof window.estancia.app.onUpdateError === 'function') {
       try {
         window.estancia.app.onUpdateError(function(msg){
-          if (statusEl) statusEl.innerHTML = '❌ Error: ' + (msg || 'no se pudo descargar') + '. <a href="#" onclick="window.estancia.app.openExternal(\'https://github.com/jasm91/estancia5m-electron/releases/latest\');return false;" style="color:var(--green)">Descargar manual</a>';
+          if (statusEl) statusEl.innerHTML = '❌ Error: ' + (msg || 'no se pudo descargar') + '. <a href="#" onclick="window.estancia.app.openExternal(\'https://estancia-pro.com/descargas\');return false;" style="color:var(--green)">Descargar manual</a>';
           if (btn) btn.disabled = false;
         });
       } catch(e){}
@@ -29699,7 +29699,7 @@ function triggerMinVersionUpdate() {
     if (typeof window.estancia.app.forceUpdate === 'function') {
       window.estancia.app.forceUpdate().catch(function(e){
         console.error('[MinVersion] Update error:', e);
-        if (statusEl) statusEl.innerHTML = '❌ Error al iniciar descarga. <a href="#" onclick="window.estancia.app.openExternal(\'https://github.com/jasm91/estancia5m-electron/releases/latest\');return false;" style="color:var(--green)">Descargar manual</a>';
+        if (statusEl) statusEl.innerHTML = '❌ Error al iniciar descarga. <a href="#" onclick="window.estancia.app.openExternal(\'https://estancia-pro.com/descargas\');return false;" style="color:var(--green)">Descargar manual</a>';
         if (btn) btn.disabled = false;
       });
     } else if (typeof window.estancia.app.checkUpdate === 'function') {
@@ -29712,14 +29712,14 @@ function triggerMinVersionUpdate() {
       // Fallback final: abrir página
       if (statusEl) statusEl.innerHTML = '↗ Abriendo página de descarga...';
       if (window.estancia.app.openExternal) {
-        window.estancia.app.openExternal('https://github.com/jasm91/estancia5m-electron/releases/latest');
+        window.estancia.app.openExternal('https://estancia-pro.com/descargas');
       }
       if (btn) btn.disabled = false;
     }
   } else {
     // Sin electron API: abrir página
     if (statusEl) statusEl.innerHTML = '↗ Abriendo página de descarga...';
-    window.open('https://github.com/jasm91/estancia5m-electron/releases/latest', '_blank');
+    window.open('https://estancia-pro.com/descargas', '_blank');
     if (btn) btn.disabled = false;
   }
 }
