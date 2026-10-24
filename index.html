@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.260';
+window.E5M_HTML_BUILD = '1.8.261';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -5326,6 +5326,20 @@ function orMarcajeGo(){
   <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="cfg-soporte-remoto" onchange="cfgSoporteRemotoToggle(this)"> Permitir que Soporte EstanciaPro aplique ajustes en este equipo sin tener que tomar la pantalla</label>
   <div style="font-size:11.5px;color:var(--muted);margin-top:6px">Sólo el equipo de soporte puede enviarlos, sólo mientras este equipo está en línea, y cada ajuste queda registrado acá abajo (y en la consola). Si lo apagás, soporte tendrá que pedirte Ver pantalla para ayudarte.</div>
   <div id="cfg-soporte-log" style="font-size:11.5px;color:var(--muted);margin-top:8px;max-height:120px;overflow:auto"></div>
+  </div></div>
+
+  <!-- v1.8.261: CONECTOR MCP PARA CLAUDE -->
+  <div class="card" style="margin-bottom:16px" id="cfg-claude-card">
+  <div class="card-hd"><div class="card-title">🤖 Conectar con Claude</div></div>
+  <div class="card-body">
+  <div style="font-size:13px;line-height:1.55;margin-bottom:10px">Si usás <b>Claude</b> (claude.ai, Claude Desktop o Claude Code), podés conectarlo a esta estancia y pedirle en tus palabras que cargue potreros, hacienda, productos, maquinaria, tanques y personal — por ejemplo pasándole tu planilla de Excel. Claude solo agrega: lo que ya existe no se modifica ni se borra.</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <input class="form-input" id="cfg-claude-nombre" placeholder="Tu nombre (ej. Carlos)" style="max-width:220px">
+    <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)"><input type="checkbox" id="cfg-claude-lectura"> Solo consultar (sin cargar datos)</label>
+    <button class="btn btn-primary btn-sm" id="cfg-claude-btn" onclick="cfgClaudeConectar()">Generar conexión</button>
+  </div>
+  <div id="cfg-claude-out" style="display:none;margin-top:12px"></div>
+  <div style="font-size:11.5px;color:var(--muted);margin-top:10px">La conexión aparece en <b>Dispositivos</b> como “Claude · nombre” y se desactiva desde ahí con <b>Revocar</b>. Tratá la dirección como una contraseña.</div>
   </div></div>
 
   <!-- Onboarding inicial -->
@@ -29886,6 +29900,35 @@ function cambiarRolDispositivo(id, sel) {
       else { toast((res.j && res.j.error) || 'No se pudo cambiar el rol', 'error'); renderDispositivos(); }
     })
     .catch(function() { sel.disabled = false; toast('Error de conexión', 'error'); renderDispositivos(); });
+}
+
+/* v1.8.261 — CONECTAR CON CLAUDE: genera una conexión MCP (token dtk_ app_type=claude) y muestra los pasos. */
+function cfgClaudeConectar() {
+  var btn = document.getElementById('cfg-claude-btn'), out = document.getElementById('cfg-claude-out');
+  var nombre = ((document.getElementById('cfg-claude-nombre') || {}).value || '').trim();
+  var lectura = !!((document.getElementById('cfg-claude-lectura') || {}).checked);
+  if (!navigator.onLine) { toast('Necesitás internet para conectar Claude', 'error'); return; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Generando…'; }
+  _devApi('/mcp/token', { method: 'POST', body: JSON.stringify({ nombre: nombre, solo_lectura: lectura }) }).then(function (res) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Generar conexión'; }
+    if (res.status !== 200 || !res.j || !res.j.url) { toast((res.j && res.j.error) || 'No se pudo generar la conexión', 'error'); return; }
+    var url = res.j.url;
+    out.innerHTML = '<div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Dirección del conector</div>'
+      + '<div style="display:flex;gap:6px"><input class="form-input" id="cfg-claude-url" readonly value="' + escH(url) + '" style="font-family:DM Mono,monospace;font-size:11.5px"><button class="btn btn-ghost btn-sm" onclick="cfgClaudeCopiar()">📋 Copiar</button></div>'
+      + '<ol style="font-size:12.5px;line-height:1.7;margin:10px 0 0 18px;color:var(--text)">'
+      + '<li>En <b>claude.ai</b> (o Claude Desktop): <b>Configuración → Conectores → Agregar conector personalizado</b>.</li>'
+      + '<li>Nombre: <b>EstanciaPro</b>. URL: pegá la dirección de arriba. Guardá.</li>'
+      + '<li>En un chat nuevo, activá el conector y pedile, por ejemplo: <i>“Cargá estos potreros en EstanciaPro”</i> y adjuntá tu planilla.</li></ol>'
+      + '<div style="font-size:11.5px;color:var(--muted);margin-top:8px">Claude Code: <code style="font-size:11px">claude mcp add --transport http estanciapro ' + escH(url) + '</code></div>'
+      + (lectura ? '<div style="font-size:12px;color:var(--amber2);margin-top:8px">Esta conexión es de solo consulta.</div>' : '');
+    if (out.style.display === 'none') { epSlide(out, true); } 
+    toast('Conexión creada — copiala en Claude', 'success');
+    try { if (typeof renderDispositivos === 'function') renderDispositivos(); } catch (e) {}
+  }).catch(function () { if (btn) { btn.disabled = false; btn.textContent = 'Generar conexión'; } toast('Sin conexión con el servidor', 'error'); });
+}
+function cfgClaudeCopiar() {
+  var el = document.getElementById('cfg-claude-url'); if (!el) return;
+  try { navigator.clipboard.writeText(el.value).then(function () { toast('Copiado', 'success'); }); } catch (e) { el.select(); document.execCommand('copy'); toast('Copiado', 'success'); }
 }
 
 function _devApi(path, opts) {
