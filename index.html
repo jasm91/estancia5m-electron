@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.261';
+window.E5M_HTML_BUILD = '1.8.262';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -18833,7 +18833,7 @@ function _alProyRenderKPIs(animales, conGmd, pesoProm, gmdProm, targetWeight) {
   var summaryEl = document.getElementById('al-proy-summary');
   if (!summaryEl) return;
 
-  var precioKg = (typeof rp !== 'undefined' && rp && rp.precio_kg_carne) ? parseFloat(rp.precio_kg_carne) : 18;
+  var precioKg = (function(){ try { var _r = (typeof getRp === 'function') ? (getRp() || {}) : {}; return parseFloat(_r.precio_kg_carne) || parseFloat(_r.precio_frigorifico) || parseFloat(_r.precio_objetivo) || 18; } catch (e) { return 18; } })(); /* v1.8.262: antes leía un `rp` que acá no existe → siempre 18 */
   var moneda = (typeof rp !== 'undefined' && rp && rp.moneda) || 'Bs';
 
   var diasA = pesoProm < targetWeight ? Math.round((targetWeight - pesoProm) / gmdProm) : 0;
@@ -18955,7 +18955,7 @@ function _alRenderInsights(lot, animales) {
   }
 
   // Valor estimado
-  var precioKg = (typeof rp !== 'undefined' && rp && rp.precio_kg_carne) ? parseFloat(rp.precio_kg_carne) : 18;
+  var precioKg = (function(){ try { var _r = (typeof getRp === 'function') ? (getRp() || {}) : {}; return parseFloat(_r.precio_kg_carne) || parseFloat(_r.precio_frigorifico) || parseFloat(_r.precio_objetivo) || 18; } catch (e) { return 18; } })(); /* v1.8.262: antes leía un `rp` que acá no existe → siempre 18 */
   var pesoTotal = pesoActuales.reduce(function(s, x) { return s + x; }, 0);
   if (pesoTotal > 0) {
     var moneda = (typeof rp !== 'undefined' && rp && rp.moneda) || 'Bs';
@@ -50565,7 +50565,7 @@ try {
     var costoTotal = costoCompra + costoOp;
     var margen = ingresoProy - costoTotal;
     var roiPct = (costoTotal>0) ? Math.round(margen/costoTotal*1000)/10 : null;
-    var costoKgGanado = (kgGanados>0) ? Math.round(costoTotal/kgGanados*100)/100 : null;
+    var costoKgGanado = (kgGanados>0) ? Math.round(costoOp/kgGanados*100)/100 : null; /* v1.8.262: solo costo operativo (la compra/valor de entrada no es costo de producir el kilo nuevo) */
     var margenPorCab = (cab>0) ? Math.round(margen/cab) : null;
     return {
       cab:cab, pesoProm:Math.round(pesoProm), target:Math.round(target), gmd:gmd,
@@ -50648,7 +50648,15 @@ try {
       var diasIng=lot.entry_date?Math.max(0,Math.round((Date.now()-new Date(lot.entry_date).getTime())/86400000)):0;
       var pesosIni=animales.filter(function(a){return a.pesoInicial||a.pesoPrimero;}).map(function(a){return a.pesoInicial||a.pesoPrimero;});
       var pesoIngreso=pesosIni.length?(pesosIni.reduce(function(s,x){return s+x;},0)/pesosIni.length):null;
-      var costoCompra=_peCostoCompra(lot, cab);
+      /* v1.8.262: peso de INGRESO AL LOTE (no el primer pesaje de la vida: en crías es el de nacimiento) */
+      try{ var _eg=(typeof window._ckEngorde==='function')?window._ckEngorde(lot):null; if(_eg&&_eg.nBase>0) pesoIngreso=_eg.baseProm; }catch(e){}
+      var costoCompra=_peCostoCompra(lot, cab), _compraImp=null;
+      /* v1.8.262: lote sin compra (cría propia, destete) → valor de entrada a precio de mercado, como hace
+         AACREA con la transferencia interna. Sin esto el costo era Bs 0 y el ROI daba 1.000 %+. */
+      if(!costoCompra && pesoIngreso>0 && cab>0){
+        var _pref=parseFloat(rp.precio_feria)||precio||0;
+        if(_pref>0){ costoCompra=Math.round(cab*pesoIngreso*_pref); _compraImp={ kg:Math.round(pesoIngreso), precio:_pref, fuente:(parseFloat(rp.precio_feria)?'precio de feria':'precio de arriba') }; }
+      }
       var r=window._loteProyEcon({ cab:cab, pesoProm:pesoProm, target:target, gmd:gmd, precioKg:precio,
         costoOpCabDia:costoOp, costoCompra:costoCompra, diasDesdeIngreso:diasIng, pesoIngreso:pesoIngreso });
       if(!r.suficiente){ resEl.innerHTML='<div style="color:var(--muted);font-size:12px;padding:8px 0">Faltan datos para proyectar (cabezas, peso promedio, peso objetivo y precio). Cargá pesajes y el precio de referencia.</div>'; return; }
@@ -50664,12 +50672,12 @@ try {
         '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px">'+
           kpi('Margen estimado', mon+' '+_peFmt(r.margen), (r.margenPorCab!=null?(mon+' '+_peFmt(r.margenPorCab)+'/cab'):''), margenColor)+
           kpi('ROI estimado', (r.roiPct!=null?(r.roiPct+'%'):'—'), 'sobre costo total', roiColor)+
-          kpi('Costo/kg ganado', (r.costoKgGanado!=null?(mon+' '+r.costoKgGanado):'—'), (r.kgGanados?(_peFmt(r.kgGanados)+' kg a ganar'):''), 'var(--text)')+
+          kpi('Costo op./kg ganado', (r.costoKgGanado!=null?(mon+' '+r.costoKgGanado):'—'), (r.kgGanados?(_peFmt(r.kgGanados)+' kg del ingreso al objetivo'):''), 'var(--text)')+
           kpi('Cierre estimado', (r.diasAlObjetivo!=null?('~'+r.diasAlObjetivo+' días'):'—'), (r.fechaCierre||''), 'var(--amber)')+
         '</div>'+
         '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:12px">'+
           '<div style="padding:8px 10px;background:rgba(63,185,80,.06);border-radius:8px"><span style="color:var(--muted)">Ingreso proyectado</span><br><b>'+mon+' '+_peFmt(r.ingresoProy)+'</b><br><span style="font-size:10px;color:var(--muted)">'+_peFmt(r.kgObjetivo)+' kg × '+precio+'</span></div>'+
-          '<div style="padding:8px 10px;background:rgba(248,81,73,.05);border-radius:8px"><span style="color:var(--muted)">Costo compra vigente</span><br><b>'+mon+' '+_peFmt(r.costoCompra)+'</b></div>'+
+          '<div style="padding:8px 10px;background:rgba(248,81,73,.05);border-radius:8px"><span style="color:var(--muted)">'+(_compraImp?'Valor de entrada (cría propia)':'Costo compra vigente')+'</span><br><b>'+mon+' '+_peFmt(r.costoCompra)+'</b>'+(_compraImp?'<br><span style="font-size:11px;color:var(--muted)">'+cab+' cab × '+_compraImp.kg+' kg × '+mon+' '+_compraImp.precio+' ('+_compraImp.fuente+')</span>':'')+'</div>'+
           '<div style="padding:8px 10px;background:rgba(248,81,73,.05);border-radius:8px"><span style="color:var(--muted)">Costo operativo proy.</span><br><b>'+mon+' '+_peFmt(r.costoOperativo)+'</b><br><span style="font-size:10px;color:var(--muted)">'+costoOp+'/cab/día × '+r.diasTotales+' días</span></div>'+
         '</div>'+
         '<div style="font-size:10px;color:var(--muted);margin-top:10px;line-height:1.4">ℹ Estimación al peso objetivo con la GMD y el precio de arriba. El costo operativo es un prorrateo editable (no incluye prorrateo automático de estructura/admin del CREA); la compra vigente sale de la compra de origen del lote. Ajustá precio y costo op. para simular escenarios.</div>';
@@ -50867,8 +50875,27 @@ try {
     return { sanidad:costoSan, mantenimiento:costoMant, total:costoSan+costoMant };
   }
 
-  // Engorde del lote = Σ (peso_actual − peso_ingreso) de animales con ≥2 pesajes.
-  // REGLA: solo cuentan animales con ≥2 pesajes (sin 2do pesaje no hay engorde medible).
+  // Engorde del lote = Σ (peso_actual − peso al entrar AL LOTE) de cada animal.
+  // v1.8.262: antes se restaba el PRIMER pesaje de la vida del animal (en una cría destetada, el peso de
+  // nacimiento) mientras los costos se cuentan solo desde que el lote existe → el engorde salía 2-3 veces
+  // más grande y el costo/kg bajísimo (T1H de la demo: Bs 1,84). Ahora la base es el último pesaje en o antes
+  // de la entrada del animal al lote (o el primero después, si no hubo pesaje al entrar), igual período
+  // que los costos. Entrada al lote = la más tardía entre la fecha del lote y su último movimiento a este lote.
+  function _ckIngresoAlLote(a, lot){
+    var aid=String((a&&(a.animal_id||a.id))||'');
+    var f=String(lot.entry_date||'').slice(0,10);
+    try{
+      ((typeof db!=='undefined'&&db.animal_movements)||[]).forEach(function(m){
+        if(!m||String(m.to_lot||'')!==String(lot.code)) return;
+        var ids=Array.isArray(m.animal_ids)?m.animal_ids.map(String):[];
+        if(ids.indexOf(aid)<0) return;
+        var fm=String(m.date||m.fecha||m.created_at||'').slice(0,10);
+        if(fm && fm>f) f=fm;
+      });
+    }catch(e){}
+    return f;
+  }
+  window._ckEngorde = function(lot){ return _ckEngorde(lot); };
   function _ckEngorde(lot){
     try{
       var animDB=(typeof getAnimalesDB==='function')?(getAnimalesDB()||{}):{};
@@ -50876,14 +50903,27 @@ try {
       var kg=0, nMedibles=0, nTotal=0;
       anims.forEach(function(a){
         nTotal++;
-        var st=(typeof _alCalcAnimalStats==='function')?_alCalcAnimalStats(a, lot.entry_date):null;
-        if(st && st.nPesajes>=2){
-          nMedibles++;
-          var d=(st.deltaTotal!=null)?st.deltaTotal:((st.pesoActual!=null&&st.pesoIngreso!=null)?(st.pesoActual-st.pesoIngreso):0);
-          kg+=Math.max(0,d);
-        }
+        var ps=(Array.isArray(a&&a.pesajes)?a.pesajes:[]).filter(function(p){ return p&&parseFloat(p.peso)>0&&p.fecha; })
+          .map(function(p){ return { f:String(p.fecha).slice(0,10), w:parseFloat(p.peso) }; })
+          .sort(function(x,y){ return x.f<y.f?-1:x.f>y.f?1:0; });
+        if(ps.length<2) return;
+        var ing=_ckIngresoAlLote(a, lot);
+        var base=null;
+        if(ing){ ps.forEach(function(p){ if(p.f<=ing) base=p; }); if(!base) base=ps.find(function(p){ return p.f>=ing; })||null; }
+        else base=ps[0];
+        var ult=ps[ps.length-1];
+        if(!base || !(ult.f>base.f)) return; // sin pesaje posterior a la entrada al lote: todavía no es medible
+        nMedibles++;
+        kg+=Math.max(0, ult.w-base.w);
       });
-      return { kg:Math.round(kg), nMedibles:nMedibles, nTotal:nTotal };
+      var bs=0, bn=0;
+      anims.forEach(function(a){
+        var ps=(Array.isArray(a&&a.pesajes)?a.pesajes:[]).filter(function(p){ return p&&parseFloat(p.peso)>0&&p.fecha; }).map(function(p){ return { f:String(p.fecha).slice(0,10), w:parseFloat(p.peso) }; }).sort(function(x,y){ return x.f<y.f?-1:x.f>y.f?1:0; });
+        if(!ps.length) return; var ing=_ckIngresoAlLote(a, lot), b=null;
+        if(ing){ ps.forEach(function(p){ if(p.f<=ing) b=p; }); if(!b) b=ps.find(function(p){ return p.f>=ing; })||null; } else b=ps[0];
+        if(b){ bs+=b.w; bn++; }
+      });
+      return { kg:Math.round(kg), nMedibles:nMedibles, nTotal:nTotal, nBase:bn, baseProm:bn?Math.round(bs/bn*10)/10:null };
     }catch(e){ return { kg:0, nMedibles:0, nTotal:0 }; }
   }
 
@@ -50902,8 +50942,11 @@ try {
   window._lotCostoKgProducido = function(lot){
     if(!lot) return null;
     var dir=_ckDirectos(lot.code);
-    var indT=0;
-    try{ if(typeof _ahCalcularIndirectos==='function'){ var ind=_ahCalcularIndirectos(lot, _ckVentasLote(lot.code), _ckComprasLote(lot.code)); indT=(ind&&ind.total)||0; } }catch(e){}
+    var indT=0, alimDir=0;
+    try{ if(typeof _ahCalcularIndirectos==='function'){ var ind=_ahCalcularIndirectos(lot, _ckVentasLote(lot.code), _ckComprasLote(lot.code)); indT=(ind&&ind.total)||0; alimDir=(ind&&parseFloat(ind.alimentoDirecto))||0; } }catch(e){}
+    /* v1.8.262: la sal/alimento despachada a ESTE lote (v1.8.158) sale del pool indirecto como alimentoDirecto,
+       pero nadie la sumaba a los directos → desaparecía del costo/kg. Ahora va a directos. */
+    dir = { sanidad: dir.sanidad||0, mantenimiento: dir.mantenimiento||0, alimento: alimDir, total: (dir.total||0) + alimDir };
     var costoOperativo=dir.total+indT;
     var eng=_ckEngorde(lot);
     var engorde=eng.kg;
@@ -50917,7 +50960,7 @@ try {
     var dias=lot.entry_date? Math.max(0, Math.round((Date.now()-new Date(lot.entry_date).getTime())/86400000)) : 0;
     var engordeEsp=Math.round(cab*gmd*dias);
     var costoKgEsp=(engordeEsp>0)? Math.round(costoOperativo/engordeEsp*100)/100 : null;
-    return { directos:Math.round(dir.total), indirectos:Math.round(indT), costoOperativo:Math.round(costoOperativo),
+    return { directos:Math.round(dir.total), dirSanidad:Math.round(dir.sanidad||0), dirAlimento:Math.round(dir.alimento||0), dirMant:Math.round(dir.mantenimiento||0), indirectos:Math.round(indT), costoOperativo:Math.round(costoOperativo),
       engorde:engorde, costoKg:costoKg, nMedibles:eng.nMedibles, nTotal:eng.nTotal,
       gmdEsperada:gmd, gmdFuente:ge.fuente, diasDesdeIngreso:dias, engordeEsperado:engordeEsp, costoKgEsperado:costoKgEsp };
   };
@@ -50962,7 +51005,7 @@ try {
             '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">'+
               _cell('Costo/kg esperado', mon+' '+r.costoKgEsperado, 'GMD '+r.gmdEsperada+' kg/d ('+r.gmdFuente+')', 'var(--amber)')+
               _cell('Engorde esperado', f(r.engordeEsperado)+' kg', r.diasDesdeIngreso+' días × GMD × cab', 'var(--text)')+
-              _cell('Costo directo', mon+' '+f(r.directos), 'sanidad + mant.', 'var(--text)')+
+              _cell('Costo directo', mon+' '+f(r.directos), 'sanidad + sal/alim. + mant.', 'var(--text)')+
               _cell('Costo indirecto', mon+' '+f(r.indirectos), 'prorrateado', 'var(--text)')+
             '</div>'+
             '<div style="font-size:10px;color:var(--muted);margin-top:10px;line-height:1.4">ℹ '+regla+' Este número es una <b>estimación</b>: usa engorde proyectado (cabezas × GMD × días), no medido. Cargá un 2º pesaje para el costo/kg real.</div>'+
@@ -50978,10 +51021,10 @@ try {
         '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">'+
           '<div style="background:var(--sur2,#161b22);border:1px solid var(--bor);border-radius:8px;padding:10px 12px"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Costo/kg producido</div><div style="font-size:20px;font-weight:700;color:var(--amber);margin-top:3px">'+mon+' '+r.costoKg+'</div></div>'+
           '<div style="background:var(--sur2,#161b22);border:1px solid var(--bor);border-radius:8px;padding:10px 12px"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Engorde acumulado</div><div style="font-size:20px;font-weight:600;margin-top:3px">'+f(r.engorde)+' kg</div></div>'+
-          '<div style="background:var(--sur2,#161b22);border:1px solid var(--bor);border-radius:8px;padding:10px 12px"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Costo directo</div><div style="font-size:16px;font-weight:600;margin-top:3px">'+mon+' '+f(r.directos)+'</div><div style="font-size:10px;color:var(--muted)">sanidad + mantenimiento</div></div>'+
+          '<div style="background:var(--sur2,#161b22);border:1px solid var(--bor);border-radius:8px;padding:10px 12px"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Costo directo</div><div style="font-size:16px;font-weight:600;margin-top:3px">'+mon+' '+f(r.directos)+'</div><div style="font-size:10px;color:var(--muted)">sanidad '+f(r.dirSanidad||0)+' · sal/alim. '+f(r.dirAlimento||0)+' · mant. '+f(r.dirMant||0)+'</div></div>'+
           '<div style="background:var(--sur2,#161b22);border:1px solid var(--bor);border-radius:8px;padding:10px 12px"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Costo indirecto</div><div style="font-size:16px;font-weight:600;margin-top:3px">'+mon+' '+f(r.indirectos)+'</div><div style="font-size:10px;color:var(--muted)">prorrateado por cab-días</div></div>'+
         '</div>'+
-        '<div style="font-size:10px;color:var(--muted);margin-top:10px;line-height:1.4">ℹ Mismo motor que el Análisis Histórico: directos (sanidad + mantenimiento del lote) + indirectos (sueldos, diesel, alimento, mant. general, compras, maquinaria) prorrateados por cabezas-días. Excluye la compra de ganado. Dividido por el engorde real (peso actual − peso de ingreso).</div>'+
+        '<div style="font-size:10px;color:var(--muted);margin-top:10px;line-height:1.4">ℹ Mismo motor que el Análisis Histórico: directos (sanidad, sal/alimento despachado al lote y mantenimiento del lote) + indirectos (sueldos, diesel, alimento, mant. general, compras, maquinaria) prorrateados por cabezas-días. Excluye la compra de ganado. Dividido por el engorde real (peso actual − peso de ingreso).</div>'+
       '</div></div>';
   };
 
