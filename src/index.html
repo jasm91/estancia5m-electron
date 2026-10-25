@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.265';
+window.E5M_HTML_BUILD = '1.8.266';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -9378,7 +9378,7 @@ function renderLotes() {
     var rowBg = isCuarentena ? 'background:rgba(168,85,247,.04)' : (isMarcado ? 'background:rgba(107,114,128,.04);opacity:.75' : '');
     return '<tr'+(rowBg?' style="'+rowBg+'"':'')+'>'+
       '<td><span style="font-family:DM Mono,monospace;background:var(--sur2);padding:3px 8px;border-radius:5px;color:'+(isCuarentena?'#A855F7':(isMarcado?'#9CA3AF':'var(--amber2)'))+';border:1px solid var(--bor)">'+escH(lot.code)+'</span></td>'+
-      '<td>'+capFirst(lot.category)+'</td>'+
+      '<td>'+capFirst(lot.category)+(typeof _lotActPill==='function'?_lotActPill(lot):'')+'</td>'+
       '<td style="color:var(--muted);font-size:12px">'+escH(lot.breed||'-')+'</td>'+
       '<td>'+escH(lot.paddock||'-')+'</td>'+
       '<td style="font-weight:500">'+lot.animal_count+'</td>'+
@@ -9387,6 +9387,7 @@ function renderLotes() {
       '<td style="font-size:12px;color:'+(proveedorTxt==='-'?'var(--muted)':'var(--text)')+'">'+escH(proveedorTxt)+'</td>'+
       '<td style="font-size:11px;color:var(--muted);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escH(detalleTxt)+'">'+escH(detalleTxt)+'</td>'+
       '<td style="display:flex;gap:4px;flex-wrap:wrap;max-width:230px" class="lote-acciones">'+ /* v1.8.199: compacto, envuelve */
+        ((lot.animal_count || 0) > 0 && !isMarcado ? '<button class="btn btn-ghost btn-sm" onclick="abrirAnalisisLote(\''+(lot.code||'').replace(/'/g,"\\'")+'\')" title="Costos, ganancia diaria, consumos, sanidad e historial — el mismo análisis que EP Campo y el asistente de WhatsApp">📊 Análisis</button>' : '') +
         btnMover +
         btnFusionar +
         /* v1.8.161: el boton X de borrar lote se saca de la UI (riesgo innecesario).
@@ -60269,6 +60270,246 @@ SGSoporte.instalar({
   if (document.readyState !== 'loading') boot(); else document.addEventListener('DOMContentLoaded', boot);
   console.log('%c[v1.8.257] despliegue suave global (epSlide + details) — activo', 'color:#3fb950;font-weight:bold');
 })();
+</script>
+<!-- v1.8.266: ANÁLISIS DEL LOTE (mismo panel que EP Campo 9.9.82 y mismo cálculo que el PDF del asistente de WhatsApp) -->
+<style>
+.lan{padding:12px 14px 12px}
+.lan-msg{font-size:12px;color:var(--muted);text-align:center;padding:16px 6px;display:flex;gap:8px;align-items:center;justify-content:center}
+.lan-spin{width:12px;height:12px;border:2px solid var(--bor);border-top-color:var(--amber);border-radius:50%;animation:lanspin .8s linear infinite}
+@keyframes lanspin{to{transform:rotate(360deg)}}
+.lan-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.lan-kpis-s{margin-top:10px}
+.lan-k{background:var(--sur2);border-radius:10px;padding:9px 10px;min-width:0}
+.lan-kl{font-size:10.5px;color:var(--muted);font-family:system-ui,-apple-system,Arial,sans-serif}
+.lan-kv{font-size:17px;font-weight:600;color:var(--text);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lan-kv small{font-size:11px;color:var(--muted);font-weight:400}
+.lan-ks{font-size:10px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lan-al{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--text);margin-top:9px}
+.lan-bar{width:3px;height:16px;flex:none;border-radius:0}
+.lan-bg{background:var(--green)}.lan-bw{background:var(--amber)}.lan-br{background:var(--red)}
+.lan-secs{margin-top:12px;border:1px solid var(--bor);border-radius:10px;overflow:hidden}
+.lan-sec:nth-child(even){background:rgba(127,127,127,.05)}
+.lan-sec+.lan-sec{border-top:1px solid var(--bor)}
+.lan-sec-hd{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:11px 12px;cursor:pointer;font-size:12.5px;color:var(--text);font-family:system-ui,-apple-system,Arial,sans-serif;font-weight:600}
+.lan-sec-r{display:flex;align-items:center;gap:8px;min-width:0}
+.lan-chev{color:var(--muted);font-size:13px;transition:transform .28s ease;display:inline-block}
+.lan-sec.open .lan-chev{transform:rotate(180deg)}
+.lan-sec-b{display:grid;grid-template-rows:0fr;opacity:0;transition:grid-template-rows .32s cubic-bezier(.4,0,.2,1),opacity .28s ease}
+.lan-sec.open .lan-sec-b{grid-template-rows:1fr;opacity:1}
+.lan-sec-in{min-height:0;overflow:hidden;padding:0 12px}
+.lan-sec.open .lan-sec-in{padding-bottom:12px}
+.lan-pill{font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap;font-family:system-ui,-apple-system,Arial,sans-serif}
+.lan-g{background:rgba(63,185,80,.14);color:var(--green)}.lan-w{background:rgba(212,160,23,.15);color:var(--amber2)}
+.lan-b{background:rgba(88,166,255,.15);color:var(--blue)}.lan-n{background:rgba(139,148,158,.14);color:var(--muted)}
+.lan-stk{display:flex;height:6px;border-radius:3px;overflow:hidden;margin:2px 0 10px;background:var(--sur2)}
+.lan-stk i{display:block;height:100%}
+.lan-rows{font-size:12px}
+.lan-row{display:flex;justify-content:space-between;gap:10px;padding:6px 6px;border-radius:5px}
+.lan-row:nth-child(even){background:rgba(127,127,127,.07)}
+.lan-row b{font-weight:600;white-space:nowrap}
+.lan-dot{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:7px}
+.lan-sub{font-size:10.5px;color:var(--muted);margin-top:8px;line-height:1.5}
+.lan-gmd{display:flex;gap:6px;align-items:flex-end;padding-top:4px}
+.lan-gc{flex:1;min-width:0;text-align:center}
+.lan-gv{font-size:10.5px;font-weight:600;color:var(--text)}
+.lan-gt{height:64px;display:flex;align-items:flex-end;justify-content:center;margin:3px 0}
+.lan-gt i{display:block;width:60%;max-width:26px;border-radius:3px 3px 0 0}
+.lan-gf{font-size:10px;color:var(--muted)}.lan-gp{font-size:9.5px;color:var(--muted);opacity:.8}
+.lan-list{max-height:170px;overflow-y:auto;font-size:11.5px;-webkit-overflow-scrolling:touch}
+.lan-ev{display:flex;gap:8px;padding:6px 6px;border-radius:5px;align-items:baseline}
+.lan-ev:nth-child(even){background:rgba(127,127,127,.07)}
+.lan-evf{color:var(--muted);flex:none;width:38px}.lan-evd{flex:1;min-width:0;color:var(--text)}.lan-evd b{color:var(--amber2);font-weight:600}
+.lan-evb{flex:none;color:var(--muted);white-space:nowrap}
+.lan-ft{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px;font-size:10px;color:var(--muted)}
+.lan-rf{flex:none;background:none;border:1px solid var(--bor);color:var(--text);border-radius:20px;padding:4px 10px;font-size:10.5px;cursor:pointer}
+.lan-rf i{font-style:normal;display:inline-block;background:var(--sur2);border-radius:20px;padding:0 5px;margin-left:3px}
+@media (prefers-reduced-motion:reduce){.lan-sec-b,.lan-chev{transition:none}}
+#lan-modal{position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s ease}
+#lan-modal.on{opacity:1;pointer-events:auto}
+#lan-modal .lan-box{background:var(--sur);border:1px solid var(--bor);border-radius:14px;width:min(720px,94vw);max-height:90vh;display:flex;flex-direction:column;transform:translateY(8px);transition:transform .2s ease;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+#lan-modal.on .lan-box{transform:none}
+#lan-modal .lan-hd{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--bor)}
+#lan-modal .lan-hd b{font-family:DM Mono,monospace;font-size:16px;color:var(--amber2,var(--amber))}
+#lan-modal .lan-hd .s{color:var(--muted);font-size:12px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#lan-modal .lan-bd{overflow:auto;flex:1}
+#lan-modal .lan-bd .lan{padding:14px 18px 16px}
+</style>
+<script>
+/* Panel de análisis del lote en el escritorio: mismo código que EP Campo, datos del servidor
+   (GET /api/lote-analisis/:code) para que coincida con EP Campo y con el PDF de WhatsApp. */
+function _LAN_API(){ try { return (typeof getApiUrl === 'function') ? getApiUrl() : ''; } catch (e) { return ''; } }
+function _LAN_H(){ var t = localStorage.getItem('e5m_api_token') || ''; return t ? { 'Authorization': 'Bearer ' + t, 'Content-Type': 'application/json', 'x-app-type': 'desktop' } : { 'Content-Type': 'application/json' }; }
+/* ═══ v9.9.80 ANÁLISIS DEL LOTE — mismo cálculo que el PDF del asistente de WhatsApp ═══════════════════
+   Ficha ejecutiva (4 KPIs + alerta) y secciones en acordeón (una abierta a la vez, plegadas al inicio).
+   Costos solo para admin / encargado (o sin rol). Sin conexión: muestra el último análisis guardado. */
+var _LAN_TTL = 5 * 60 * 1000, _lanMem = {};
+function _lanVeCostos(){ var r = (typeof e5mRole === 'function') ? e5mRole() : ''; return !r || r === 'admin' || r === 'encargado'; }
+function _lanN(v, d){ return (Number(v) || 0).toLocaleString('es-BO', { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 }); }
+function _lanBs(v){ return 'Bs ' + _lanN(Math.round(v || 0)); }
+function _lanF(f){ return f ? f.slice(8, 10) + '/' + f.slice(5, 7) : '—'; }
+function _lanHace(ms){ var m = Math.round((Date.now() - ms) / 60000); return m < 1 ? 'recién' : m < 60 ? 'hace ' + m + ' min' : m < 1440 ? 'hace ' + Math.round(m / 60) + ' h' : 'hace ' + Math.round(m / 1440) + ' d'; }
+function _lanPill(txt, tono){ return '<span class="lan-pill lan-' + (tono || 'n') + '">' + txt + '</span>'; }
+function cargarAnalisisLote(code, forzar){
+  var box = document.getElementById('lan-' + code); if (!box) return;
+  var c = _lanMem[code];
+  if (!c) { try { c = JSON.parse(localStorage.getItem('e5m_lan_' + code) || 'null'); } catch (e) { c = null; } }
+  if (c && c.d) _lanRender(code, c.d, c.t, false);
+  else box.innerHTML = '<div class="lan-msg"><span class="lan-spin"></span>Calculando análisis del lote…</div>';
+  if (!forzar && c && Date.now() - c.t < _LAN_TTL && _lanMem[code]) return;
+  if (!_LAN_API() || !navigator.onLine) { if (!(c && c.d)) box.innerHTML = '<div class="lan-msg">Sin conexión. El análisis se calcula en el servidor; abrí el lote con señal.</div>'; else _lanRender(code, c.d, c.t, true); return; }
+  fetch(_LAN_API() + '/lote-analisis/' + encodeURIComponent(code), { headers: _LAN_H() })
+    .then(function(r){ return r.json().then(function(j){ return { st: r.status, j: j }; }); })
+    .then(function(x){
+      if (!x.j || !x.j.ok) { if (!(c && c.d)) box.innerHTML = '<div class="lan-msg">' + (x.st === 404 ? 'Este lote todavía no tiene análisis.' : 'No se pudo calcular el análisis.') + '</div>'; return; }
+      var reg = { t: Date.now(), d: x.j }; _lanMem[code] = reg;
+      try { localStorage.setItem('e5m_lan_' + code, JSON.stringify(reg)); } catch (e) {}
+      _lanRender(code, x.j, reg.t, false);
+    })
+    .catch(function(){ if (c && c.d) _lanRender(code, c.d, c.t, true); else box.innerHTML = '<div class="lan-msg">Sin conexión con el servidor. Probá de nuevo con señal.</div>'; });
+}
+function _lanSec(id, titulo, pill, cuerpo){
+  return '<div class="lan-sec" id="' + id + '"><div class="lan-sec-hd" onclick="event.stopPropagation();_lanToggle(this)"><span>' + titulo + '</span><span class="lan-sec-r">' + pill + '<span class="lan-chev">▾</span></span></div>' +
+    '<div class="lan-sec-b"><div class="lan-sec-in">' + cuerpo + '</div></div></div>';
+}
+window._lanToggle = function(hd){
+  var sec = hd.parentNode, abrir = !sec.classList.contains('open');
+  sec.parentNode.querySelectorAll('.lan-sec.open').forEach(function(x){ x.classList.remove('open'); });
+  if (abrir) sec.classList.add('open');
+};
+function _lanRender(code, d, t, offline){
+  var box = document.getElementById('lan-' + code); if (!box) return;
+  var costos = _lanVeCostos(), cab = Math.max(1, d.cabezas || 0), serie = d.serie || [], conG = serie.filter(function(x){ return x.gmd != null; });
+  var ult = serie.length ? serie[serie.length - 1] : null, diasPes = ult ? Math.round((new Date(today() + 'T12:00:00') - new Date(ult.f + 'T12:00:00')) / 86400000) : null;
+  /* KPIs */
+  var k = [
+    ['Peso prom.', d.peso_actual ? _lanN(d.peso_actual) + ' kg' : '—', ult ? 'pesaje ' + _lanF(ult.f) : 'sin pesajes'],
+    ['GMD', d.gmd != null ? _lanN(d.gmd, 2) + ' <small>kg/d</small>' : '—', d.n_gmd ? d.n_gmd + ' animales medidos' : (conG.length ? 'entre pesajes del lote' : 'faltan 2 pesajes')],
+    ['Kg producidos', _lanN(d.kg && d.kg.producidos) + (d.kg && d.kg.esperado ? '*' : ''), d.kg && d.kg.esperado ? 'estimado con GMD objetivo' : (d.periodo ? d.periodo.dias + ' días en lote' : '')],
+    costos ? ['Costo por kg', d.costo_kg != null ? 'Bs ' + _lanN(d.costo_kg, 2) : '—', 'operativo ' + _lanBs(d.costo_op)] : ['Días en lote', d.periodo ? _lanN(d.periodo.dias) : '—', d.periodo ? 'desde ' + _lanF(d.periodo.desde) : '']
+  ];
+  /* v9.9.82: lotes de cría → lo que producen son terneros (costo por ternero y por kg destetado) */
+  var C = d.cria;
+  if (C && C.partos) k = [
+    ['Terneros vivos', _lanN(C.vivos) + ' <small>de ' + _lanN(C.partos) + '</small>', C.partos_por_vaca != null ? _lanN(C.partos_por_vaca, 2) + ' partos por vaca' : ''],
+    ['Destetados', _lanN(C.destetados) + (C.peso_destete ? ' <small>· ' + _lanN(C.peso_destete) + ' kg</small>' : ''), (C.edad_destete ? 'a ' + C.edad_destete + ' días' : '') + (C.al_pie ? (C.edad_destete ? ' · ' : '') + C.al_pie + ' al pie' : '')],
+    ['Peso prom. vacas', d.peso_actual ? _lanN(d.peso_actual) + ' kg' : '—', ult ? 'pesaje ' + _lanF(ult.f) : 'sin pesajes'],
+    costos ? ['Costo por ternero', C.costo_ternero != null ? _lanBs(C.costo_ternero) : '—', C.costo_kg_ternero != null ? 'Bs ' + _lanN(C.costo_kg_ternero, 2) + '/kg destetado' : 'sin destetes pesados'] : ['Días en lote', d.periodo ? _lanN(d.periodo.dias) : '—', d.periodo ? 'desde ' + _lanF(d.periodo.desde) : '']
+  ];
+  else if (C) k = [k[0], ['Días en lote', d.periodo ? _lanN(d.periodo.dias) : '—', d.periodo ? 'desde ' + _lanF(d.periodo.desde) : ''], ['Partos', '0', 'sin partos propios en el período'],
+    costos ? ['Costo por cab/día', C.costo_cab_dia != null ? 'Bs ' + _lanN(C.costo_cab_dia, 2) : '—', 'operativo ' + _lanBs(d.costo_op)] : ['Cabezas', _lanN(d.cabezas), '']];
+  var h = '<div class="lan-kpis">' + k.map(function(x){ return '<div class="lan-k"><div class="lan-kl">' + x[0] + '</div><div class="lan-kv">' + x[1] + '</div><div class="lan-ks">' + esc(x[2]) + '</div></div>'; }).join('') + '</div>';
+  /* alertas (barra fina + texto) */
+  var al = [];
+  if (C && C.al_pie) al.push(['g', C.al_pie + ' ternero' + (C.al_pie === 1 ? '' : 's') + ' todavía al pie de la madre']);
+  if (!C && conG.length >= 2) { var g1 = conG[conG.length - 1].gmd, g0 = conG[conG.length - 2].gmd; if (g1 < g0 - 0.1) al.push(['w', 'La ganancia bajó de ' + _lanN(g0, 2) + ' a ' + _lanN(g1, 2) + ' kg/día en el último pesaje']); else if (g1 > g0 + 0.1) al.push(['g', 'La ganancia subió a ' + _lanN(g1, 2) + ' kg/día en el último pesaje']); }
+  if (!C && d.gmd != null && d.gmd < 0) al.push(['r', 'El lote está perdiendo peso']);
+  if (diasPes != null && diasPes > 45) al.push(['w', 'Último pesaje hace ' + diasPes + ' días']);
+  if (!serie.length && !C) al.push(['w', 'Sin pesajes: cargá uno para medir ganancia y costo por kg']);
+  if (!al.length && d.gmd != null && !C) al.push(['g', 'Ganancia estable entre pesajes']);
+  h += al.slice(0, 2).map(function(a){ return '<div class="lan-al"><i class="lan-bar lan-b' + a[0] + '"></i>' + esc(a[1]) + '</div>'; }).join('');
+  /* secciones */
+  var S = '';
+  if (costos) {
+    var I = d.indirectos || {}, D = d.directos || {}, op = d.costo_op || 0;
+    var filas = [['Sanidad / curaciones', D.sanidad, '#58a6ff'], ['Sal y alimento' + (D.sal_kg ? ' · ' + _lanN(D.sal_kg) + ' kg' : ''), D.sal, '#3fb950'], ['Mantenimiento del lote', D.mant, '#a371f7'],
+      ['Costos de la estancia (' + _lanN((I.frac || 0) * 100, 1) + '%)', I.total, '#8b949e']].filter(function(f){ return f[1] > 0.5; });
+    var barra = op > 0 ? '<div class="lan-stk">' + filas.map(function(f){ return '<i style="width:' + (f[1] / op * 100).toFixed(1) + '%;background:' + f[2] + '"></i>'; }).join('') + '</div>' : '';
+    var det = [['Mano de obra', I.sueldos], ['Combustible', I.diesel], ['Alimento general', I.alimento], ['Mant. general', I.mantGeneral], ['Otras compras', I.compras], ['Aceite', I.aceite], ['Sanidad general', I.sanidadInd], ['Otros costos', I.cuentasMan]].filter(function(x){ return x[1] > 0.5; });
+    var cb = barra + '<div class="lan-rows">' + filas.map(function(f){ return '<div class="lan-row"><span><i class="lan-dot" style="background:' + f[2] + '"></i>' + esc(f[0]) + '</span><b>' + _lanBs(f[1]) + '</b></div>'; }).join('') + '</div>' +
+      (det.length ? '<div class="lan-sub">Estancia: ' + det.map(function(x){ return esc(x[0]) + ' ' + _lanBs(x[1]); }).join(' · ') + '</div>' : '') +
+      '<div class="lan-kpis lan-kpis-s">' +
+        '<div class="lan-k"><div class="lan-kl">Costo operativo</div><div class="lan-kv">' + _lanBs(op) + '</div><div class="lan-ks">' + _lanBs(op / cab) + ' por cabeza</div></div>' +
+        '<div class="lan-k"><div class="lan-kl">' + (d.inversion && d.inversion.estimada ? 'Valor de ingreso*' : 'Inversión en hacienda') + '</div><div class="lan-kv">' + (d.inversion && d.inversion.bs ? _lanBs(d.inversion.bs) : '—') + '</div><div class="lan-ks">total ' + _lanBs(d.total_invertido) + '</div></div>' +
+      '</div>';
+    S += _lanSec('lans-' + code + '-c', 'Costos atribuidos', _lanPill(_lanBs(op / cab) + '/cab', 'b'), cb);
+  }
+  /* ganancia diaria por pesaje */
+  var gb;
+  if (conG.length) {
+    var mx = Math.max.apply(null, conG.map(function(x){ return Math.abs(x.gmd); }).concat([0.5]));
+    gb = '<div class="lan-gmd">' + conG.slice(-6).map(function(x){ var ok = d.gmd == null || x.gmd >= d.gmd; return '<div class="lan-gc"><div class="lan-gv">' + _lanN(x.gmd, 2) + '</div><div class="lan-gt"><i style="height:' + Math.max(4, Math.abs(x.gmd) / mx * 100).toFixed(0) + '%;background:' + (x.gmd < 0 ? 'var(--red)' : ok ? 'var(--green)' : 'var(--amber)') + '"></i></div><div class="lan-gf">' + _lanF(x.f) + '</div><div class="lan-gp">' + _lanN(x.prom) + ' kg</div></div>'; }).join('') + '</div>' +
+      '<div class="lan-sub">Ganancia diaria promedio entre un pesaje y el anterior. Verde: igual o por encima del promedio del lote.</div>';
+  } else gb = '<div class="lan-sub">' + (serie.length ? 'Hay un solo pesaje (' + _lanF(serie[0].f) + ', ' + _lanN(serie[0].prom) + ' kg). Con el próximo se calcula la ganancia.' : 'Todavía no hay pesajes del lote.') + '</div>';
+  S += _lanSec('lans-' + code + '-g', 'Ganancia diaria', _lanPill(serie.length + ' pesaje' + (serie.length === 1 ? '' : 's') + (ult ? ' · ' + _lanF(ult.f) : ''), serie.length >= 2 ? 'g' : 'w'), gb);
+  /* consumos */
+  var D2 = d.directos || {}, ev = d.eventos || [], salEv = ev.filter(function(e){ return e.tipo === 'Sal / alimento'; });
+  var dl = d.periodo ? Math.max(1, d.periodo.dias) : 1, gcd = D2.sal_kg ? D2.sal_kg * 1000 / cab / dl : 0;
+  var cons = '<div class="lan-rows">' +
+    '<div class="lan-row"><span>Entregas de sal / alimento</span><b>' + _lanN(D2.sal_entregas) + '</b></div>' +
+    '<div class="lan-row"><span>Kilos entregados</span><b>' + _lanN(D2.sal_kg) + ' kg</b></div>' +
+    '<div class="lan-row"><span>Promedio por cabeza</span><b>' + _lanN(gcd) + ' g/día</b></div>' +
+    (costos ? '<div class="lan-row"><span>Valorizado a costo de stock</span><b>' + _lanBs(D2.sal) + '</b></div>' : '') + '</div>' +
+    (salEv.length ? '<div class="lan-sub">Por mes: ' + salEv.slice(-4).map(function(e){ return _lanF(e.f).slice(3) + '/' + e.f.slice(2, 4) + ' ' + esc(e.det.replace(/ en el mes$/, '')); }).join(' · ') + '</div>' : '');
+  S += _lanSec('lans-' + code + '-s', 'Consumos', _lanPill(D2.sal_kg ? _lanN(gcd) + ' g/cab/d' : 'sin entregas', D2.sal_kg ? 'n' : 'w'), cons);
+  /* sanidad */
+  var san = ev.filter(function(e){ return e.tipo === 'Sanidad'; });
+  S += _lanSec('lans-' + code + '-h', 'Sanidad', _lanPill(san.length ? san.length + ' · ' + _lanF(san[san.length - 1].f) : 'sin registros', san.length ? 'g' : 'n'),
+    san.length ? '<div class="lan-list">' + san.slice().reverse().map(function(e){ return '<div class="lan-ev"><span class="lan-evf">' + _lanF(e.f) + '</span><span class="lan-evd">' + esc(e.det) + '</span>' + (costos && e.bs ? '<span class="lan-evb">' + _lanBs(e.bs) + '</span>' : '') + '</div>'; }).join('') + '</div>' : '<div class="lan-sub">Sin curaciones ni vacunas registradas en el período.</div>');
+  /* historial */
+  S += _lanSec('lans-' + code + '-e', 'Historial del lote', _lanPill((d.n_eventos || ev.length) + ' registros', 'n'),
+    ev.length ? '<div class="lan-list">' + ev.slice().reverse().map(function(e){ return '<div class="lan-ev"><span class="lan-evf">' + _lanF(e.f) + '</span><span class="lan-evd"><b>' + esc(e.tipo) + '</b> · ' + esc(e.det) + '</span>' + (costos && e.bs ? '<span class="lan-evb">' + _lanBs(e.bs) + '</span>' : '') + '</div>'; }).join('') + '</div>' : '<div class="lan-sub">Sin registros.</div>');
+  h += '<div class="lan-secs">' + S + '</div>';
+  h += '<div class="lan-ft"><span>' + (offline ? 'Sin conexión · guardado ' : 'Actualizado ') + _lanHace(t) + ' · mismo análisis que el asistente de WhatsApp</span><button class="lan-rf" onclick="event.stopPropagation();cargarAnalisisLote(\'' + esc(code).replace(/'/g, '&#39;') + '\',true)">Actualizar <i>↻</i></button></div>';
+  /* conservar la sección abierta al refrescar */
+  var abierta = box.querySelector('.lan-sec.open'); var idA = abierta && abierta.id;
+  box.innerHTML = h;
+  if (idA) { var x = document.getElementById(idA); if (x) x.classList.add('open'); }
+}
+
+/* v9.9.79: actividad del lote como pastilla suave (Cría / Recría / Engorde / Cuarentena).
+   Usa lot.actividad; si no está cargada, la deduce de la categoría. */
+function _lotActividad(l) {
+  if (/cuarentena/i.test(String(l.status || ''))) return 'cuarentena';
+  var a = String(l.actividad || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (/^cria|^recria|^engorde/.test(a)) return a.replace(/[^a-z]/g, '');
+  var c = String(l.category || '').toLowerCase();
+  if (/vaca|toro\b|^toros?$/.test(c)) return 'cria';
+  if (/vaquill|ternera/.test(c)) return 'recria';
+  if (/novill|ternero|torito/.test(c)) return 'engorde';
+  return '';
+}
+function _lotActPill(l) {
+  var a = _lotActividad(l); if (!a) return '';
+  var m = { cria: ['Cría', 'rgba(188,140,255,.16)', '#c9a7ff'], recria: ['Recría', 'rgba(88,166,255,.15)', '#79b8ff'], engorde: ['Engorde', 'rgba(212,160,23,.16)', '#e3b341'], cuarentena: ['Cuarentena', 'rgba(255,123,114,.14)', '#ff9b94'] }[a];
+  if (!m) return '';
+  return '<span style="display:inline-block;vertical-align:1px;margin-left:8px;font-size:10.5px;font-weight:600;letter-spacing:.2px;padding:2px 8px;border-radius:20px;background:' + m[1] + ';color:' + m[2] + ';font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif">' + m[0] + '</span>';
+}
+
+function abrirAnalisisLote(code) {
+  var lot = (db.lots || []).find(function (l) { return l.code === code; }) || { code: code };
+  var m = document.getElementById('lan-modal');
+  if (!m) {
+    m = document.createElement('div'); m.id = 'lan-modal';
+    m.innerHTML = '<div class="lan-box" onclick="event.stopPropagation()"><div class="lan-hd"><b></b><span class="s"></span>' +
+      '<button class="btn btn-ghost btn-sm" id="lan-pdf" title="El mismo PDF que manda el asistente de WhatsApp">⬇ PDF</button>' +
+      '<button class="btn btn-ghost btn-sm" onclick="cerrarAnalisisLote()" aria-label="Cerrar">✕</button></div><div class="lan-bd"></div></div>';
+    m.onclick = cerrarAnalisisLote; document.body.appendChild(m);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && m.classList.contains('on')) cerrarAnalisisLote(); });
+  }
+  m.querySelector('.lan-hd b').textContent = code;
+  var cat = lot.category || ''; cat = cat ? cat.charAt(0).toUpperCase() + cat.slice(1) : '';
+  m.querySelector('.lan-hd .s').innerHTML = esc([cat, lot.breed, lot.paddock ? 'potrero ' + lot.paddock : '', (lot.animal_count || 0) + ' cab.'].filter(Boolean).join(' · ')) + _lotActPill(lot);
+  m.querySelector('.lan-bd').innerHTML = '<div class="lan" id="lan-' + esc(code) + '"></div>';
+  m.querySelector('#lan-pdf').onclick = function () { descargarPdfLote(code, this); };
+  requestAnimationFrame(function () { m.classList.add('on'); });
+  cargarAnalisisLote(code, true);
+}
+function cerrarAnalisisLote() { var m = document.getElementById('lan-modal'); if (m) m.classList.remove('on'); }
+function descargarPdfLote(code, btn) {
+  if (!_LAN_API()) { toast('Sin conexión con el servidor', 'error'); return; }
+  var t0 = btn ? btn.textContent : ''; if (btn) { btn.disabled = true; btn.textContent = 'Generando…'; }
+  fetch(_LAN_API() + '/generate-pdf', { method: 'POST', headers: _LAN_H(), body: JSON.stringify({ type: 'analisis_lote', data: { lot_code: code } }) })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      if (!j || !j.base64) throw new Error((j && j.error) || 'sin PDF');
+      var bin = atob(j.base64), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+      var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([u], { type: 'application/pdf' }));
+      a.download = 'analisis-lote-' + code + '-' + today() + '.pdf'; document.body.appendChild(a); a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+    })
+    .catch(function (e) { toast('No se pudo generar el PDF: ' + (e.message || e), 'error'); })
+    .finally(function () { if (btn) { btn.disabled = false; btn.textContent = t0; } });
+}
 </script>
 </body>
 </html>
