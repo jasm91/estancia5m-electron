@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.267';
+window.E5M_HTML_BUILD = '1.8.268';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -10405,6 +10405,18 @@ function saveTreatment() {
   const prod = db.products.find(p=>p.id===product_id);
   const totalUsed = dose*count;
 
+  /* v1.8.268: aviso de posible repetido (caso RicoFarm 14-05: el protocolo de TROPA 2 se cargó dos veces) */
+  try {
+    var _rTot = Math.round(totalUsed*100)/100, _rLot = scope==='lot'?String(lot_code||'').trim().toLowerCase():'', _rAni = scope==='individual'?String(animal_id||'').trim().toLowerCase():'';
+    var _rep = (db.treatments||[]).filter(function(r){
+      if (!r || String(r.applied_at||r.date||'').slice(0,10) !== date) return false;
+      var mismo = (r.product_id!=null && String(r.product_id)===String(product_id)) || String(r.product_name||'').trim().toLowerCase()===String(prod.name||'').trim().toLowerCase();
+      var tot = parseFloat(r.total!=null?r.total:((parseFloat(r.dose)||0)*(parseFloat(r.count)||1)))||0;
+      return mismo && String(r.lot_code||'').trim().toLowerCase()===_rLot && String(r.animal_id||'').trim().toLowerCase()===_rAni && Math.abs(tot-_rTot)<1e-6;
+    })[0];
+    if (_rep && !confirm('Ya hay una aplicación igual registrada para esta fecha' + (_rep.by?' (por '+_rep.by+')':'') + ':\n' + prod.name + ' · ' + (_rLot?('lote '+lot_code):('animal '+animal_id)) + ' · ' + _rTot + ' ' + (prod.unit||'') + '\n\n¿Es OTRA aplicación? Aceptar = registrar igual · Cancelar = era la misma')) { toast('No se registró: ya estaba cargada','info'); return; }
+  } catch(eRep){ console.warn('[repetido]', eRep); }
+
   if(prod.stock_qty<totalUsed){toast('Stock insuficiente. Disponible: '+prod.stock_qty+' '+prod.unit+'. Necesario: '+totalUsed+' '+prod.unit,'error');return;}
 
   // Descontar stock
@@ -10420,7 +10432,8 @@ function saveTreatment() {
     diagnosis:diag,notes,
     by:(document.getElementById('tr-by')||{value:'Cesar Moreno'}).value||'Cesar Moreno',
     cost:Math.round(totalUsed*(prod.unit_cost||0)*100)/100,
-    retroactive: isRetroactive  // v1.4.61: marca para auditoría
+    retroactive: isRetroactive,  // v1.4.61: marca para auditoría
+    created_at: new Date().toISOString() /* v1.8.268: el aviso de repetidos usa la hora de carga */
   };
   /* v1.8.168: guardar A QUE ANIMALES se les aplico. Con esto el costo sigue al
      animal cuando se lo mueve de lote, y su historial muestra que recibio y
@@ -38128,6 +38141,10 @@ function openConteoInventario() {
   var headers = document.createElement('div');
   headers.style.cssText = 'display:flex;gap:10px;padding:8px 4px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--bor)';
   headers.innerHTML = '<span style="flex:1">Producto</span><span style="width:50px">Unidad</span><span style="width:80px;text-align:right">Teórico</span><span style="width:100px;text-align:center;color:var(--blue)">Físico</span><span style="width:80px;text-align:right">Diferencia</span><span style="width:130px">Motivo</span>';
+  var _icNota = document.createElement('div'); /* v1.8.268 */
+  _icNota.style.cssText = 'font-size:11.5px;color:var(--muted);background:var(--sur2);border-radius:8px;padding:8px 10px;margin:4px 0 6px';
+  _icNota.textContent = 'Escribí lo que contaste a mano. Los productos que dejes vacíos no se guardan como contados (el número gris es lo que dice el sistema).';
+  modal.appendChild(_icNota);
   modal.appendChild(headers);
 
   // Product rows
@@ -38140,16 +38157,20 @@ function openConteoInventario() {
     var diffSpan = document.createElement('span');
     diffSpan.id = 'ic-diff-dyn-' + p.id;
     diffSpan.style.cssText = 'width:80px;text-align:right;font-family:DM Mono,monospace;color:var(--muted)';
-    diffSpan.textContent = '0';
+    diffSpan.textContent = '—';
 
     var inp = document.createElement('input');
     inp.type = 'number';
     inp.className = 'ic-fisico-dyn';
     inp.setAttribute('data-pid', String(p.id));
-    inp.value = p.stock_qty;
+    /* v1.8.268: SIN precarga (caso RicoFarm 18-07): con el valor del sistema precargado, todo lo que nadie
+       tocaba quedaba guardado como "contado" y el server lo toma como verdad. Vacío = no contado. */
+    inp.value = '';
+    inp.placeholder = String(p.stock_qty);
     inp.style.cssText = 'width:90px;text-align:center;font-family:DM Mono,monospace;font-weight:700;font-size:13px;background:var(--sur2);border:1px solid var(--bor);color:var(--text);border-radius:6px;padding:6px';
     (function(prod, diffEl) {
       inp.oninput = function() {
+        if (String(this.value).trim() === '') { diffEl.textContent = '—'; diffEl.style.color = 'var(--muted)'; diffEl.style.fontWeight = '400'; recalcTotalMerma(); return; }
         var fisico = parseFloat(this.value) || 0;
         var diff = Math.round((fisico - prod.stock_qty) * 100) / 100;
         diffEl.textContent = (diff > 0 ? '+' : '') + diff;
@@ -38214,7 +38235,7 @@ function recalcTotalMerma() {
   document.querySelectorAll('.ic-fisico-dyn').forEach(function(inp) {
     var pid = parseInt(inp.getAttribute('data-pid'));
     var prod = db.products.find(function(p) { return p.id === pid; });
-    if (!prod) return;
+    if (!prod || String(inp.value).trim() === '') return; /* v1.8.268: vacío = no contado */
     var diff = (parseFloat(inp.value) || 0) - prod.stock_qty;
     if (diff < 0) totalMerma += Math.abs(diff) * (prod.unit_cost || 0);
   });
@@ -38234,6 +38255,7 @@ function saveConteoInventario(overlay) {
     var pid = parseInt(inp.getAttribute('data-pid'));
     var prod = db.products.find(function(p) { return p.id === pid; });
     if (!prod) return;
+    if (String(inp.value).trim() === '') return; /* v1.8.268: producto no contado → no se guarda (no fija la base del stock) */
     var fisico = parseFloat(inp.value) || 0;
     var diff = Math.round((fisico - prod.stock_qty) * 100) / 100;
     var motivo = '';
@@ -38248,7 +38270,7 @@ function saveConteoInventario(overlay) {
     });
     if (diff < 0) totalMerma += Math.abs(diff) * (prod.unit_cost || 0);
   });
-  if (!items.length) { toast('No hay productos para contar', 'error'); return; }
+  if (!items.length) { toast('Cargá la cantidad contada de al menos un producto (los que dejes vacíos no se guardan)', 'error'); return; }
   var conDiff = items.filter(function(i) { return i.diferencia !== 0; });
   if (conDiff.length === 0 && !confirm('Todos los conteos coinciden. ¿Guardar?')) return;
   if (conDiff.length > 0 && !confirm(conDiff.length + ' diferencias encontradas.Merma: Bs. ' + Math.round(totalMerma) + '\n' + (ajustar ? 'Stock se AJUSTARÁ.' : 'Stock NO se ajustará.') + '\n\n¿Guardar?')) return;
