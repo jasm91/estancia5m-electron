@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.271';
+window.E5M_HTML_BUILD = '1.8.272';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -5083,6 +5083,9 @@ function orMarcajeGo(){
 
 <div id="page-config" class="page">
   <div class="ph"><div><div class="pt">⚙️ Configuracion</div><div class="ps">Identidad · Sincronizacion · API · Estado</div></div></div>
+
+  <!-- v1.8.272: Términos y condiciones (server v4.123.0) -->
+  <div class="card" id="tc-cfg" style="margin-bottom:20px;display:none"><div class="card-hd"><div class="card-title">📜 Términos y condiciones</div></div><div class="card-body"><div class="tc-cfg-line" style="font-size:12.5px;line-height:1.6;margin-bottom:10px">—</div><button class="btn btn-ghost" onclick="e5mTerminosAbrir()">Ver términos / cambiar consentimiento</button></div></div>
 
   <!-- v1.8.82: Pagar Soporte (cobro self-serve por QR BANECO) -->
   <div class="card" id="eps-card" style="margin-bottom:20px;border-left:3px solid var(--green)">
@@ -60756,6 +60759,143 @@ function descargarPdfLote(code, btn) {
     .catch(function (e) { toast('No se pudo generar el PDF: ' + (e.message || e), 'error'); })
     .finally(function () { if (btn) { btn.disabled = false; btn.textContent = t0; } });
 }
+</script>
+<script id="terminos-v18272">
+window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl === "function") ? getApiUrl() : (localStorage.getItem("e5m_api_url") || "https://estancia5m-api-production.up.railway.app/api"); }, tok: function () { return localStorage.getItem("e5m_api_token") || ""; } };
+/* ═══ TÉRMINOS Y CONDICIONES — aceptación con el token de la estancia (server v4.123.0) ═══
+   Mismo componente en Desktop y EP Campo. Config: window.__TC_CFG = { app:'desktop'|'campo', api:fn→url, tok:fn→token }.
+   · Si el server dice requiere=true: modal. Desktop: «Ahora no» solo dentro de la gracia (vuelve a preguntar a las 24 h);
+     vencida la gracia, no se puede cerrar sin aceptar. EP Campo: siempre se puede posponer (el campo nunca se bloquea).
+   · El token se escribe a mano: el del dispositivo NO sirve (prueba de que es el dueño). No se guarda en ningún lado.
+   · window.e5mTerminosAbrir() abre la vista (aceptar o, si ya aceptó, ver texto y cambiar el consentimiento opcional).
+   Kill: window.__TC_OFF = true */
+(function () {
+  'use strict';
+  var C = window.__TC_CFG || {}; var APP = C.app || 'desktop';
+  function api() { try { return String(C.api()).replace(/\/+$/, ''); } catch (e) { return ''; } }
+  function tok() { try { return C.tok() || ''; } catch (e) { return ''; } }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
+  function ls(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } }
+  function md(t) {
+    var out = [], lista = false;
+    String(t || '').split('\n').forEach(function (l) {
+      var x = l.trim();
+      if (/^- /.test(x)) { if (!lista) { out.push('<ul style="margin:4px 0 8px 18px;padding:0">'); lista = true; } out.push('<li style="margin:2px 0">' + esc(x.slice(2)) + '</li>'); return; }
+      if (lista) { out.push('</ul>'); lista = false; }
+      if (!x) return;
+      if (/^# /.test(x)) out.push('<div style="font-size:15px;font-weight:800;margin:0 0 2px">' + esc(x.slice(2)) + '</div>');
+      else if (/^## /.test(x)) out.push('<div style="font-size:12.5px;font-weight:700;margin:12px 0 4px;color:var(--amber2,#f0b429)">' + esc(x.slice(3)) + '</div>');
+      else if (/^Versión /.test(x)) out.push('<div style="font-size:10.5px;color:var(--muted,#8b949e);margin-bottom:6px">' + esc(x) + '</div>');
+      else out.push('<p style="margin:0 0 7px">' + esc(x) + '</p>');
+    });
+    if (lista) out.push('</ul>');
+    return out.join('');
+  }
+  var estado = null;
+  function get() {
+    var u = api(), t = tok(); if (!u || !t) return Promise.resolve(null);
+    return fetch(u + '/terminos', { headers: { Authorization: 'Bearer ' + t, 'x-app-type': APP === 'campo' ? 'pwa' : 'desktop' } })
+      .then(function (r) { return r.ok ? r.json() : null; }).then(function (d) { estado = d; return d; }).catch(function () { return null; });
+  }
+  function post(path, body) {
+    return fetch(api() + path, { method: 'POST', headers: { Authorization: 'Bearer ' + tok(), 'Content-Type': 'application/json', 'x-app-type': APP === 'campo' ? 'pwa' : 'desktop' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { j.__status = r.status; return j; }); });
+  }
+  var CSS = 'position:fixed;inset:0;z-index:10060;background:rgba(0,0,0,.72);display:flex;align-items:' + (APP === 'campo' ? 'flex-end' : 'center') + ';justify-content:center;opacity:0;transition:opacity .22s ease';
+  var BOX = 'background:var(--sur,#161b22);color:var(--text,#e6edf3);border:1px solid var(--bor,#30363d);width:100%;max-width:640px;max-height:' + (APP === 'campo' ? '94vh' : '92vh') + ';display:flex;flex-direction:column;border-radius:' + (APP === 'campo' ? '18px 18px 0 0' : '16px') + ';transform:translateY(14px);transition:transform .25s ease;font-family:Inter,system-ui,sans-serif';
+  var INP = 'width:100%;box-sizing:border-box;padding:9px 10px;border-radius:8px;border:1px solid var(--bor,#30363d);background:var(--sur2,#0d1117);color:inherit;font-size:13px';
+  function campo(id, label, extra, tipo) { return '<label style="display:block;font-size:11px;color:var(--muted,#8b949e);margin-bottom:8px">' + label + '<input id="' + id + '" type="' + (tipo || 'text') + '" style="' + INP + ';margin-top:3px" ' + (extra || '') + '></label>'; }
+  function cerrar(m) { m.style.opacity = '0'; setTimeout(function () { m.remove(); }, 220); }
+
+  function abrir(d, opts) {
+    opts = opts || {};
+    if (!d || !d.activo) return;
+    var old = document.getElementById('tc-modal'); if (old) old.remove();
+    var yaOk = !!d.aceptado, puedeCerrar = yaOk || APP === 'campo' || d.en_gracia || opts.manual;
+    var m = document.createElement('div'); m.id = 'tc-modal'; m.style.cssText = CSS;
+    var aliadosTxt = d.aliados ? esc(d.aliados) : 'las entidades financieras aliadas';
+    var cuerpo;
+    if (yaOk) {
+      cuerpo = '<div style="font-size:12.5px;line-height:1.6;margin-bottom:10px;padding:9px 11px;border-radius:10px;background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.25)">✅ Aceptados por <b>' + esc(d.aceptado.nombre) + '</b>' + (d.aceptado.cargo ? ' (' + esc(d.aceptado.cargo) + ')' : '') + ' el ' + esc(String(d.aceptado.fecha || '').slice(0, 10)) + '.<br>Datos identificables con ' + aliadosTxt + ': <b>' + (d.aceptado.aliados ? 'autorizado' : 'no autorizado') + '</b>.</div>' +
+        '<label style="display:flex;gap:9px;align-items:flex-start;font-size:12.5px;line-height:1.5;margin:4px 0 10px;cursor:pointer"><input type="checkbox" id="tc-ali" ' + (d.aceptado.aliados ? 'checked' : '') + ' style="margin-top:3px;width:16px;height:16px;flex:none"><span>Autorizo compartir los datos identificables de mi estancia con ' + aliadosTxt + ' para evaluar y ofrecerme créditos, seguros u otros productos (punto 7). Puedo revocarlo cuando quiera.</span></label>' +
+        campo('tc-tok', 'Token de la estancia (para confirmar el cambio)', 'autocomplete="off" spellcheck="false"', 'password');
+    } else {
+      cuerpo = '<label style="display:flex;gap:9px;align-items:flex-start;font-size:12.5px;line-height:1.5;margin:2px 0 8px;cursor:pointer"><input type="checkbox" id="tc-ok" style="margin-top:3px;width:16px;height:16px;flex:none"><span><b>Leí y acepto los Términos y Condiciones</b>, incluido el uso anonimizado y agregado de los datos con fines educativos, de investigación y estadísticos (punto 6).</span></label>' +
+        '<label style="display:flex;gap:9px;align-items:flex-start;font-size:12.5px;line-height:1.5;margin:0 0 12px;cursor:pointer"><input type="checkbox" id="tc-ali" style="margin-top:3px;width:16px;height:16px;flex:none"><span><span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:999px;background:rgba(88,166,255,.14);color:#58a6ff;margin-right:4px">OPCIONAL</span>Autorizo compartir los datos identificables de mi estancia con ' + aliadosTxt + ' para evaluar y ofrecerme créditos, seguros u otros productos (punto 7). Puedo revocarlo cuando quiera.</span></label>' +
+        '<div style="display:grid;grid-template-columns:' + (APP === 'campo' ? '1fr' : '1fr 1fr') + ';gap:0 12px">' +
+          campo('tc-nom', 'Nombre y apellido de quien acepta', 'autocomplete="name"') + campo('tc-doc', 'Carnet de identidad o NIT', 'autocomplete="off"') +
+          '<label style="display:block;font-size:11px;color:var(--muted,#8b949e);margin-bottom:8px">Cargo<select id="tc-car" style="' + INP + ';margin-top:3px"><option>Propietario</option><option>Representante legal</option><option>Administrador autorizado</option></select></label>' +
+          campo('tc-cel', 'Celular', 'inputmode="tel" autocomplete="tel"') + campo('tc-mail', 'Correo electrónico', 'inputmode="email" autocomplete="email"', 'email') +
+          campo('tc-tok', 'Token de la estancia', 'autocomplete="off" spellcheck="false"', 'password') +
+        '</div>' +
+        '<div style="font-size:10.5px;color:var(--muted,#8b949e);margin:-2px 0 4px">🔑 Es el token maestro que te entregamos al activar la cuenta (no el código de vinculación del celular). No se guarda: solo confirma que quien acepta es el titular.</div>';
+    }
+    m.innerHTML = '<div style="' + BOX + '">' +
+      '<div style="padding:16px 18px 10px;border-bottom:1px solid var(--bor,#30363d);display:flex;justify-content:space-between;align-items:center;gap:10px"><div><div style="font-size:16px;font-weight:800">📜 Términos y Condiciones</div><div style="font-size:11px;color:var(--muted,#8b949e)">Versión ' + esc(d.version) + (yaOk ? '' : (d.en_gracia ? ' · aceptá antes del ' + esc(String(d.gracia_hasta).slice(0, 10)) : (APP === 'desktop' && !opts.manual ? ' · necesarios para seguir usando EstanciaPro' : ''))) + '</div></div>' +
+        (puedeCerrar ? '<button id="tc-x" style="background:none;border:1px solid var(--bor,#30363d);color:inherit;border-radius:8px;width:30px;height:30px;cursor:pointer">✕</button>' : '') + '</div>' +
+      '<div style="overflow:auto;padding:12px 18px;flex:1 1 auto"><div id="tc-txt" style="font-size:12px;line-height:1.55;max-height:' + (yaOk ? '40vh' : '30vh') + ';overflow:auto;padding:10px 12px;border:1px solid var(--bor,#30363d);border-radius:10px;background:var(--sur2,#0d1117);margin-bottom:12px">' + md(d.texto) + '</div>' + cuerpo +
+        '<div id="tc-err" style="display:none;font-size:12px;color:#f85149;margin-top:8px"></div></div>' +
+      '<div style="padding:12px 18px 16px;border-top:1px solid var(--bor,#30363d);display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">' +
+        (!yaOk && puedeCerrar && !opts.manual ? '<button id="tc-later" style="padding:10px 14px;border-radius:9px;border:1px solid var(--bor,#30363d);background:none;color:var(--muted,#8b949e);cursor:pointer;font-size:12.5px">' + (APP === 'campo' ? 'Ahora no (no soy el titular)' : 'Ahora no') + '</button>' : '') +
+        '<button id="tc-go" style="padding:10px 18px;border-radius:9px;border:none;background:var(--amber2,#f0b429);color:#111;font-weight:800;cursor:pointer;font-size:13px">' + (yaOk ? 'Guardar cambio' : 'Acepto') + '</button></div></div>';
+    document.body.appendChild(m);
+    requestAnimationFrame(function () { m.style.opacity = '1'; m.firstChild.style.transform = 'none'; });
+    function $(id) { return m.querySelector('#' + id); }
+    function err(t) { var e = $('tc-err'); e.textContent = t || ''; e.style.display = t ? 'block' : 'none'; }
+    if ($('tc-x')) $('tc-x').onclick = function () { cerrar(m); };
+    if ($('tc-later')) $('tc-later').onclick = function () { ls('e5m_tc_pospuesto', String(Date.now())); cerrar(m); };
+    $('tc-go').onclick = function () {
+      err('');
+      var b = $('tc-go'); var t0 = b.textContent;
+      var body = { token_estancia: ($('tc-tok').value || '').trim(), consent_aliados: !!($('tc-ali') && $('tc-ali').checked), via: APP };
+      if (!body.token_estancia) return err('Escribí el token de la estancia.');
+      var path = '/terminos/consentimiento';
+      if (!yaOk) {
+        if (!$('tc-ok').checked) return err('Para continuar tenés que marcar la aceptación de los Términos.');
+        body.acepto_terminos = true; body.nombre = $('tc-nom').value.trim(); body.documento = $('tc-doc').value.trim(); body.cargo = $('tc-car').value;
+        body.celular = $('tc-cel').value.trim(); body.email = $('tc-mail').value.trim(); body.texto_sha256 = d.texto_sha256;
+        if (body.nombre.split(/\s+/).filter(Boolean).length < 2) return err('Escribí nombre y apellido.');
+        if (body.documento.length < 5) return err('Escribí el carnet de identidad o NIT.');
+        path = '/terminos/aceptar';
+      }
+      b.disabled = true; b.textContent = 'Validando…';
+      post(path, body).then(function (j) {
+        b.disabled = false; b.textContent = t0;
+        if (!j || !j.ok) { if ($('tc-tok')) $('tc-tok').value = ''; return err((j && j.error) || 'No se pudo registrar. Revisá la conexión.'); }
+        ls('e5m_tc_ok', (estado && estado.version) || '1'); ls('e5m_tc_pospuesto', null);
+        cerrar(m);
+        var msg = yaOk ? 'Consentimiento actualizado' : '✅ Términos aceptados. Gracias.';
+        try { if (typeof toast === 'function') toast(msg, 'success'); } catch (e) {}
+        get().then(function () { try { pintarCfg(); } catch (e) {} });
+      }).catch(function () { b.disabled = false; b.textContent = t0; err('Sin conexión. Probá de nuevo con señal.'); });
+    };
+  }
+  /* chequeo automático */
+  function chequear() {
+    if (window.__TC_OFF) return;
+    get().then(function (d) {
+      try { pintarCfg(); } catch (e) {}
+      if (!d || !d.activo || !d.requiere) return;
+      var pos = parseInt(ls('e5m_tc_pospuesto') || '0', 10) || 0;
+      var recien = Date.now() - pos < 24 * 3600e3;
+      if (recien && (APP === 'campo' || d.en_gracia)) return;
+      abrir(d);
+    });
+  }
+  window.e5mTerminosAbrir = function () { (estado ? Promise.resolve(estado) : get()).then(function (d) { if (d && d.activo) abrir(d, { manual: true }); else { try { if (typeof toast === 'function') toast('Los términos todavía no están publicados', 'info'); } catch (e) {} } }); };
+  window.e5mTerminosChequear = chequear;
+  /* tarjeta en Configuración (Desktop) */
+  function pintarCfg() {
+    var host = document.getElementById('tc-cfg'); if (!host || !estado) return;
+    if (!estado.activo) { host.style.display = 'none'; return; }
+    host.style.display = '';
+    var a = estado.aceptado;
+    host.querySelector('.tc-cfg-line').innerHTML = a ? '✅ Aceptados por <b>' + esc(a.nombre) + '</b> el ' + esc(String(a.fecha || '').slice(0, 10)) + ' · datos con ' + esc(estado.aliados || 'aliados') + ': <b>' + (a.aliados ? 'autorizado' : 'no autorizado') + '</b>' : '⚠ Pendientes de aceptación' + (estado.en_gracia ? ' (antes del ' + esc(String(estado.gracia_hasta).slice(0, 10)) + ')' : '');
+  }
+  window.e5mTerminosPintarCfg = pintarCfg;
+  setTimeout(chequear, APP === 'campo' ? 9000 : 7000);
+  setInterval(chequear, 6 * 3600e3);
+})();
 </script>
 </body>
 </html>
