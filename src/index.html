@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.269';
+window.E5M_HTML_BUILD = '1.8.270';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -7928,6 +7928,7 @@ function pullFromRailwayDesktop(thenPush) {
       try { if (window.e5mMapasDesdePull) window.e5mMapasDesdePull(remote); } catch (eMp) {} /* v1.8.216: mapas del servidor */
       try { if (remote && remote.tc_bcb && remote.tc_bcb.valor) { localStorage.setItem('e5m_tc_bcb', JSON.stringify(remote.tc_bcb)); if (typeof window.tcBcbRender === 'function') window.tcBcbRender(); } } catch(eTc){} /* v1.8.151: TC oficial BCB servido por server v4.42 */
       try { if (remote && remote.animal_costos && typeof remote.animal_costos === 'object') { localStorage.setItem('e5m_animal_costos', JSON.stringify(remote.animal_costos)); } } catch(eAC){} /* v1.8.197: costo por cabeza (server v4.58.1) */
+      try { if (remote && remote.animal_ficha && typeof remote.animal_ficha === 'object') { localStorage.setItem('e5m_animal_ficha', JSON.stringify(remote.animal_ficha)); } } catch(eAF){} /* v1.8.270: ficha por animal (server v4.120.0) */
       if (!remote || remote.error) {
         if (thenPush) pushToRailway();
         return;
@@ -51291,7 +51292,9 @@ try {
     /* ── movimientos ─────────────────────────────────────────────────────── */
     idsD.forEach(function (id) {
       if (A[id] && A[id].lote !== D[id].lote) {
-        evs.push({ tipo: 'mover', animal_id: id, to: D[id].lote, fecha: fecha });
+        var _evM = { tipo: 'mover', animal_id: id, to: D[id].lote, fecha: fecha };
+        try { var _fd = (typeof window !== 'undefined' && window.__r0Ficha) || null; if (_fd && _fd[id] && _fd[id].to === D[id].lote) { _evM.ficha = _fd[id].decision; delete _fd[id]; } } catch (eFd) {} /* v1.8.270 */
+        evs.push(_evM);
       }
     });
 
@@ -56041,6 +56044,142 @@ try {
     }, 300);
   };
   console.log('[v1.8.198] 🤝 al partido: entrada en el wizard · badge en lotes · liquidación');
+})();
+</script>
+<script id="ficha-animal-v18270">
+/* ════════════════════════════════════════════════════════════════════════
+   v1.8.270 — FICHA POR ANIMAL (pedido José 29-10-2026; server v4.120.0)
+   Sexo, categoría y actividad viajan con cada animal (localStorage e5m_animal_ficha, la escribe el
+   server en el pull). Al mover a un lote de otra categoría/actividad se PREGUNTA: «Cambiar categoría»
+   (queda en el historial del animal) o «Mantener como está» (el lote queda mezclado y se ve el chip).
+   Enganches: confirmarMoverAnimal (uno) · confirmarBulkMover (varios) → la decisión viaja en el
+   papelito 'mover' (ev.ficha). Kill: __FICHA_OFF
+   ════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+  var LCAT = { torillo: 'torillo', novillo: 'novillo', ternero: 'ternero', ternera: 'ternera', vaquillona: 'vaquillona', recria_mixta: 'recría mixta', recria_hembra: 'recría hembra', recria_macho: 'recría macho', toro: 'toro', vaca: 'vaca' };
+  var LACT = { cria: 'cría', recria: 'recría', engorde: 'engorde', cabana: 'cabaña' };
+  var SIN = { novillos: 'novillo', terneros: 'ternero', terneras: 'ternera', vaquillonas: 'vaquillona', toros: 'toro', vacas: 'vaca', torillos: 'torillo', vaquillas: 'vaquillona', vaquilla: 'vaquillona' };
+  function low(x) { return String(x == null ? '' : x).trim().toLowerCase().replace('ñ', 'n').replace('í', 'i'); }
+  function nCat(c) { var x = low(c).replace(/\s+/g, ' '); return SIN[x] || x || null; }
+  function nAct(l) { var a = low(l && l.actividad); return (a === 'cria' || a === 'recria' || a === 'engorde' || a === 'cabana') ? a : 'engorde'; }
+  function lCat(c) { return LCAT[c] || c || '—'; }
+  function lAct(a) { return LACT[a] || a || '—'; }
+  function fichas() { try { return JSON.parse(localStorage.getItem('e5m_animal_ficha') || 'null') || {}; } catch (e) { return {}; } }
+  function lote(code) { return (db.lots || []).find(function (l) { return l && l.code === code; }) || null; }
+  function fichaLote(l) { return { categoria: nCat(l && l.category), actividad: nAct(l) }; }
+  function idDe(a) { return String((a && (a.animal_id != null ? a.animal_id : a.id)) || ''); }
+  window.e5mFichaDe = function (id) { var F = fichas(); return F[String(id)] || null; };
+  window.e5mFichaLabel = { cat: lCat, act: lAct };
+
+  /* ¿qué cambiaría? (local, sin server: el pull ya trajo la ficha) */
+  function diferencias(ids, toLot) {
+    var F = fichas(), fl = fichaLote(lote(toLot)); var cab = {}, act = {}, n = 0;
+    var A = (typeof getAnimalesDB === 'function') ? (getAnimalesDB() || {}) : {};
+    var lcDe = {}; Object.keys(A).forEach(function (lc) { (A[lc] || []).forEach(function (a) { lcDe[idDe(a)] = lc; }); });
+    ids.forEach(function (id) {
+      var f = F[String(id)] || fichaLote(lote(lcDe[String(id)]));
+      var dc = fl.categoria && f.categoria && f.categoria !== fl.categoria, da = f.actividad && f.actividad !== fl.actividad;
+      if (dc || da) { n++; if (dc) cab[f.categoria] = (cab[f.categoria] || 0) + 1; if (da) act[f.actividad] = (act[f.actividad] || 0) + 1; }
+    });
+    return { n: n, cab: cab, act: act, destino: fl };
+  }
+  function pl(c) { var l = lCat(c); return /s$/.test(l) ? l : l + 's'; }
+
+  /* pregunta con tres salidas: 'cambiar' | 'mantener' | null (cancelar) */
+  window.e5mFichaPreguntar = function (ids, toLot) {
+    return new Promise(function (resolve) {
+      try {
+        if (window.__FICHA_OFF || !ids || !ids.length || !toLot) return resolve('mantener');
+        var d = diferencias(ids.map(String), toLot); if (!d.n) return resolve('mantener');
+        var partes = [];
+        var cats = Object.keys(d.cab); if (cats.length) partes.push(cats.map(function (c) { return d.cab[c] === 1 ? '1 ' + lCat(c) : d.cab[c] + ' ' + pl(c); }).join(' y ') + (d.destino.categoria ? ' → <b>' + esc(toLot) + '</b> es un lote de ' + pl(d.destino.categoria) : ''));
+        var acts = Object.keys(d.act); if (acts.length) partes.push(acts.map(function (a) { return d.act[a] + ' en ' + lAct(a); }).join(' y ') + ' → el lote está en <b>' + lAct(d.destino.actividad) + '</b>');
+        var old = document.getElementById('ficha-modal'); if (old) old.remove();
+        var m = document.createElement('div'); m.id = 'ficha-modal'; m.className = 'modal-overlay open'; m.style.zIndex = '10050';
+        m.innerHTML = '<div class="modal" style="max-width:520px;text-align:left">' +
+          '<h2>🏷️ ' + (d.n === ids.length ? (d.n === 1 ? 'Este animal no coincide' : 'Estos ' + d.n + ' animales no coinciden') : d.n + ' de ' + ids.length + ' animales no coinciden') + ' con el lote destino</h2>' +
+          '<div style="font-size:13px;color:var(--text);line-height:1.6;margin:10px 0 6px">' + partes.map(function (p) { return '<div>• ' + p + '</div>'; }).join('') + '</div>' +
+          '<div style="font-size:12px;color:var(--muted);margin-bottom:14px">La categoría y la actividad viajan con cada animal. Si cambiaron de verdad (destete, pase a engorde…), registralo; si es solo manejo del potrero, mantenelas y el lote queda marcado como mezclado.</div>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">' +
+          '<button class="btn btn-ghost" id="ficha-cancel">Cancelar</button>' +
+          '<button class="btn" id="ficha-keep">Mantener como está</button>' +
+          '<button class="btn btn-primary" id="ficha-change">Cambiar a ' + (d.destino.categoria ? lCat(d.destino.categoria) : '') + (d.destino.categoria && d.destino.actividad ? ' · ' : '') + (d.destino.actividad ? lAct(d.destino.actividad) : '') + '</button></div></div>';
+        document.body.appendChild(m);
+        function fin(v) { m.remove(); resolve(v); }
+        m.querySelector('#ficha-cancel').onclick = function () { fin(null); };
+        m.querySelector('#ficha-keep').onclick = function () { fin('mantener'); };
+        m.querySelector('#ficha-change').onclick = function () { fin('cambiar'); };
+      } catch (e) { console.warn('[ficha] preguntar', e); resolve('mantener'); }
+    });
+  };
+  /* deja la decisión para el papelito 'mover' y, si cambia, actualiza la copia local al toque */
+  window.e5mFichaDecidir = function (ids, toLot, decision) {
+    window.__r0Ficha = window.__r0Ficha || {};
+    ids.forEach(function (id) { window.__r0Ficha[String(id)] = { to: toLot, decision: decision }; });
+    if (decision === 'cambiar') {
+      try {
+        var F = fichas(), fl = fichaLote(lote(toLot)), hoy = (typeof localDate === 'function') ? localDate() : new Date().toISOString().slice(0, 10);
+        ids.forEach(function (id) { var f = F[String(id)] || { historial: [] }; if (!Array.isArray(f.historial)) f.historial = [];
+          if (fl.categoria && f.categoria !== fl.categoria) { f.historial.push({ fecha: hoy, campo: 'categoria', de: f.categoria || null, a: fl.categoria, motivo: 'Pasó al lote ' + toLot, via: 'desktop' }); f.categoria = fl.categoria; }
+          if (fl.actividad && f.actividad !== fl.actividad) { f.historial.push({ fecha: hoy, campo: 'actividad', de: f.actividad || null, a: fl.actividad, motivo: 'Pasó al lote ' + toLot, via: 'desktop' }); f.actividad = fl.actividad; }
+          F[String(id)] = f; });
+        localStorage.setItem('e5m_animal_ficha', JSON.stringify(F));
+      } catch (e) {}
+    }
+  };
+
+  /* ── enganches ── */
+  if (typeof confirmarMoverAnimal === 'function' && !confirmarMoverAnimal.__ficha) {
+    confirmarMoverAnimal = (function (base) {
+      function w() { var args = arguments, self = this;
+        var toLot = (document.getElementById('mover-to-lot') || {}).value || ''; var id = (typeof _moverAnimalId !== 'undefined') ? _moverAnimalId : null;
+        if (!toLot || id == null) return base.apply(self, args);
+        window.e5mFichaPreguntar([String(id)], toLot).then(function (dec) { if (dec === null) return; window.e5mFichaDecidir([String(id)], toLot, dec); base.apply(self, args); });
+      } w.__ficha = true; return w; })(confirmarMoverAnimal);
+    window.confirmarMoverAnimal = confirmarMoverAnimal;
+  }
+  if (typeof confirmarBulkMover === 'function' && !confirmarBulkMover.__ficha) {
+    confirmarBulkMover = (function (base) {
+      function w() { var args = arguments, self = this;
+        var mode = (document.getElementById('modal-bulk-mover') || { getAttribute: function () { return 'existing'; } }).getAttribute('data-mode') || 'existing';
+        var toLot = mode === 'existing' ? ((document.getElementById('bulk-to-lot') || {}).value || '') : '';
+        var ids = Object.keys(window._bulkSelected || {});
+        if (!toLot || !ids.length) return base.apply(self, args); /* lote nuevo: hereda la categoría que se elige en el formulario */
+        window.e5mFichaPreguntar(ids, toLot).then(function (dec) { if (dec === null) return; window.e5mFichaDecidir(ids, toLot, dec); base.apply(self, args); });
+      } w.__ficha = true; return w; })(confirmarBulkMover);
+    window.confirmarBulkMover = confirmarBulkMover;
+  }
+
+  /* ── chip «mezclado» en la lista de lotes ── */
+  function resumenLote(code) {
+    var F = fichas(); var A = (typeof getAnimalesDB === 'function') ? (getAnimalesDB() || {}) : {}; var l = lote(code); var fl = fichaLote(l);
+    var cab = {}, act = {}, n = 0;
+    (A[code] || []).forEach(function (a) { var f = F[idDe(a)] || fl; n++; var c = f.categoria || fl.categoria || '?', x = f.actividad || fl.actividad || '?'; cab[c] = (cab[c] || 0) + 1; act[x] = (act[x] || 0) + 1; });
+    var mez = Object.keys(cab).length > 1 || Object.keys(act).length > 1;
+    return { n: n, cab: cab, act: act, mezclado: mez };
+  }
+  window.e5mFichaResumenLote = resumenLote;
+  function chips() {
+    if (window.__FICHA_OFF) return;
+    var filas = document.querySelectorAll('#page-lotes tbody tr');
+    Array.prototype.forEach.call(filas, function (tr) {
+      var cell = tr.querySelector('td span'); if (!cell || tr.__ficha) return;
+      var code = cell.textContent.trim(); var r = resumenLote(code); if (!r.n || !r.mezclado) return;
+      tr.__ficha = true;
+      var b = document.createElement('div'); b.style.cssText = 'margin-top:4px;font-size:10px;color:#f0b429;font-weight:700;cursor:help';
+      var txt = Object.keys(r.cab).map(function (c) { return r.cab[c] + ' ' + (r.cab[c] === 1 ? lCat(c) : pl(c)); }).join(' · ');
+      var txa = Object.keys(r.act).length > 1 ? ' — ' + Object.keys(r.act).map(function (a) { return r.act[a] + ' en ' + lAct(a); }).join(' · ') : '';
+      b.textContent = '🏷️ mezclado: ' + txt + txa;
+      b.title = 'Las categorías viajan con cada animal. Este lote tiene animales de más de una categoría o actividad.';
+      cell.parentNode.appendChild(b);
+    });
+  }
+  if (typeof renderLotes === 'function' && !renderLotes.__ficha) {
+    renderLotes = (function (base) { function w() { var r = base.apply(this, arguments); try { chips(); } catch (e) {} return r; } w.__ficha = true; return w; })(renderLotes);
+    window.renderLotes = renderLotes;
+  }
+  console.log('[v1.8.270] 🏷️ ficha por animal: pregunta al mover · chip «mezclado» en lotes · kill __FICHA_OFF');
 })();
 </script>
 <script id="actividad-v18206">
