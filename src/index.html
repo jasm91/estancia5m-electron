@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.272';
+window.E5M_HTML_BUILD = '1.8.273';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -2335,10 +2335,23 @@ function orMarcajeGo(){
     .gbi-cv{position:relative;height:260px}
     .gbi-cv.alto{height:300px}
     .gbi-vacio{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px}
+    .pc-seg{display:inline-flex;border:1px solid var(--bor);border-radius:20px;overflow:hidden}
+    .pc-seg button{background:none;border:none;color:var(--muted);font:600 11.5px Inter,sans-serif;padding:5px 13px;cursor:pointer;transition:background .2s,color .2s}
+    .pc-seg button.on{background:var(--green2,#1A4D24);color:var(--green,#3fb950)}
+    .pc-tb{margin-top:10px;border:1px solid var(--bor);border-radius:10px;overflow:hidden;font-size:12px}
+    .pc-row{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:8px;padding:7px 12px;align-items:center;font-family:'DM Mono',monospace}
+    .pc-row span:not(:first-child){text-align:right}
+    .pc-row small{color:var(--muted);font-size:10.5px;margin-left:4px}
+    .pc-h{background:var(--sur2,rgba(255,255,255,.04));color:var(--muted);font:700 10.5px Inter,sans-serif;letter-spacing:.04em;text-transform:uppercase}
+    .pc-vp{max-height:170px;overflow:auto}
+    .pc-vp .pc-row:nth-child(even){background:rgba(255,255,255,.025)}
+    .pc-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:middle}
+    .pc-pill{font:700 10.5px Inter,sans-serif;padding:2px 8px;border-radius:999px}
+    .pc-pill.ok{background:rgba(63,185,80,.14);color:#3fb950}.pc-pill.warn{background:rgba(240,192,64,.14);color:#f0c040}.pc-pill.bad{background:rgba(248,81,73,.14);color:#f85149}
     .gbi-12{grid-column:span 12}.gbi-6{grid-column:span 6}.gbi-4{grid-column:span 4}
     @media (max-width:1200px){.gbi-6,.gbi-4{grid-column:span 12}}
   </style>
-  <div class="gbi-head"><h1>📈 Gráficos BI</h1><span style="font-size:12px;color:var(--muted)">ganadería · ventas, compras, sueldos, diésel y mantenimiento</span><button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="gbiRender()">🔄 Actualizar</button></div>
+  <div class="gbi-head"><h1>📈 Gráficos BI</h1><span style="font-size:12px;color:var(--muted)">ganadería · producción de carne, ventas, compras, sueldos, diésel y mantenimiento</span><button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="gbiRender()">🔄 Actualizar</button></div>
   <div class="gbi-filtros">
     Del <input type="date" id="gbi-desde" onchange="gbiFechas()"> al <input type="date" id="gbi-hasta" onchange="gbiFechas()">
     <button class="gbi-chip" onclick="gbiChip('semana',this)">Semana</button>
@@ -2351,7 +2364,9 @@ function orMarcajeGo(){
   <div id="gbi-kpis"></div>
   <div id="gbi-aviso" style="display:none;background:#fff3cd;border:1px solid #f0c040;border-radius:10px;padding:12px;color:#7a5b00;margin-bottom:12px">No se pudo cargar la librería de gráficos.</div>
   <div class="gbi-grid">
-    <div class="gbi-card gbi-12"><h3>Tendencia mensual — ingresos (barras) vs # ventas (línea)</h3><div class="gbi-sub"></div><div class="gbi-cv"><canvas id="gb-c1"></canvas></div></div>
+    <!-- v1.8.273: Producción de carne (reemplaza «Tendencia mensual ingresos vs # ventas») -->
+    <div class="gbi-card gbi-12"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h3>🥩 Producción de carne, mes a mes — real vs objetivo</h3><div class="pc-seg"><button class="on" onclick="pcVista('total',this)">Total</button><button onclick="pcVista('lote',this)">Por lote</button></div></div><div class="gbi-sub" id="pc-sub-1"></div><div class="gbi-cv alto"><canvas id="gb-prod"></canvas></div><div id="pc-tabla-1"></div></div>
+    <div class="gbi-card gbi-12"><h3>🥩 Producción de carne por raza, mes a mes</h3><div class="gbi-sub">real + estimado de cada raza, apilado · la línea punteada es el objetivo · cumplimiento = (real + estimado) / objetivo · la raza sale del animal (o de su lote)</div><div class="gbi-cv alto"><canvas id="gb-prod-raza"></canvas></div><div id="pc-tabla-2"></div></div>
     <div class="gbi-card gbi-12"><h3>Ingresos vs Gastos, mes a mes</h3><div class="gbi-sub">gastos apilados por categoría · la línea es el resultado (ingresos − gastos) · la compra de ganado es inversión y va aparte</div><div class="gbi-cv alto"><canvas id="gb-c2"></canvas></div></div>
     <div class="gbi-card gbi-12"><h3>Gastos operativos, mes a mes</h3><div class="gbi-sub">compras e insumos + sueldos + diésel + mantenimiento, con escala propia (sin las ventas aplastando la altura) · la línea es el total del mes</div><div class="gbi-cv alto"><canvas id="gb-c2b"></canvas></div></div>
     <div class="gbi-card gbi-6"><h3>Compras de ganado, mes a mes</h3><div class="gbi-sub">inversión Bs (barras) y cabezas compradas (línea)</div><div class="gbi-cv"><canvas id="gb-c3"></canvas></div></div>
@@ -55559,6 +55574,191 @@ try {
   console.log('%c[v1.8.191] 📈 Gráficos BI (Reportes) — 10 gráficos ganadería · kill: __GBI_OFF', 'color:#3fb950;font-weight:bold');
 })();
 
+</script>
+<script id="prod-carne-v18273">
+/* ═══ v1.8.273 — 🥩 PRODUCCIÓN DE CARNE en Gráficos BI (pedido José 29-10) ═══
+   Reemplaza «Tendencia mensual — ingresos vs # ventas». Dos tarjetas: total y por lote · por raza.
+   Por animal, a partir de sus pesajes:
+     · REAL      = lo que ganó entre dos pesajes, repartido día a día (GMD del tramo constante) en los meses
+                   que cubre el tramo, y cargado al lote donde estaba el animal ese día (animal_movements).
+     · ESTIMADO  = desde el último pesaje hasta hoy, con la GMD medida del animal (o la del lote si tiene un
+                   solo pesaje). Es lo que todavía no se pesó.
+     · OBJETIVO  = cabezas presentes cada día × GMD objetivo de su categoría (Parámetros de reporte),
+                   desde que el animal entró (primer pesaje). La línea contra la que se compara.
+   Tramos con GMD fuera de −1…3 kg/día se descartan (pesaje mal cargado). Solo animales presentes hoy:
+   los vendidos se llevan su historia de pesajes. Kill: __PRODCARNE_OFF */
+(function () {
+  'use strict';
+  if (window.__PRODCARNE_OFF) return;
+  var VERDE = '#3fb950', AMBAR = '#f0c040', PAL = ['#3fb950', '#58a6ff', '#f0c040', '#f78166', '#a3be3c', '#bc8cff', '#7d8590', '#d29922', '#39c5cf', '#ff7b72'];
+  var GRID = 'rgba(255,255,255,.07)', TICK = '#8b949e';
+  var MES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+  var VISTA = { lote: 'total' }, CH = {};
+  function n(v) { var x = parseFloat(v); return isFinite(x) ? x : 0; }
+  function f10(x) { return String(x || '').slice(0, 10); }
+  function dnum(f) { return Math.floor(Date.parse(f + 'T12:00:00Z') / 864e5); }
+  function fdeD(d) { return new Date(d * 864e5).toISOString().slice(0, 10); }
+  function low(s) { return String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+  function hoy() { return (typeof localDate === 'function') ? localDate() : new Date().toISOString().slice(0, 10); }
+  function mesLabel(m) { return MES[(+m.slice(5, 7)) - 1] + ' ' + m.slice(2, 4); }
+  function kg(x) { return Math.round(x || 0).toLocaleString('es-BO') + ' kg'; }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function rango() { return { d: (document.getElementById('gbi-desde') || {}).value || '', h: (document.getElementById('gbi-hasta') || {}).value || '' }; }
+
+  function params() { try { return JSON.parse(localStorage.getItem('e5m_report_params') || '{}') || {}; } catch (e) { return {}; } }
+  function fichas() { try { return JSON.parse(localStorage.getItem('e5m_animal_ficha') || 'null') || {}; } catch (e) { return {}; } }
+
+  function calcular() {
+    var A = (typeof getAnimalesDB === 'function') ? (getAnimalesDB() || {}) : {};
+    var L = (typeof db !== 'undefined' && db && db.lots) || [];
+    var lotDe = {}; L.forEach(function (l) { if (l && l.code) lotDe[l.code] = l; });
+    var rp = params(), cats = Array.isArray(rp.categorias) ? rp.categorias : [], F = fichas();
+    var gDef = n(rp.gmd_default) || 0.7;
+    function gmdObj(cat) { var k = low(cat).replace(/s$/, ''); var c = cats.find(function (x) { return low(x.name).replace(/s$/, '') === k; }); return c && n(c.gmd_objetivo) > 0 ? n(c.gmd_objetivo) : gDef; }
+    /* movimientos por animal */
+    var MV = {};
+    ((typeof db !== 'undefined' && db && db.animal_movements) || []).forEach(function (m) {
+      if (!m) return; var ids = []; if (m.animal_id != null && m.animal_id !== '') ids.push(String(m.animal_id).trim()); (m.animal_ids || []).forEach(function (x) { ids.push(String(x).trim()); });
+      var d = f10(m.date || m.fecha || m.created_at); if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
+      ids.forEach(function (id) { (MV[id] = MV[id] || []).push({ d: dnum(d), from: m.from_lot, to: m.to_lot }); });
+    });
+    Object.keys(MV).forEach(function (k) { MV[k].sort(function (a, b) { return a.d - b.d; }); });
+    function loteEn(id, actual, d) { var ms = MV[id]; if (!ms || !ms.length) return actual; if (d < ms[0].d) return ms[0].from || actual; for (var i = ms.length - 1; i >= 0; i--) if (ms[i].d <= d) return ms[i].to || actual; return actual; }
+
+    var R = rango(), dHoy = dnum(hoy());
+    var dIni = R.d ? dnum(R.d) : null, dFin = R.h ? Math.min(dnum(R.h), dHoy) : dHoy;
+    /* acumuladores: [grupo][mes] */
+    var real = { total: {}, lote: {}, raza: {} }, est = { total: {}, lote: {}, raza: {} }, obj = { total: {}, lote: {}, raza: {} };
+    var resumen = { lote: {}, raza: {} }, minMes = null, anim = 0, conPes = 0;
+    function acc(T, g, m, v) { var o = T[g] = T[g] || {}; o[m] = (o[m] || 0) + v; }
+    function sumar(tipo, raza, lote, d0, d1, porDia) { /* reparte porDia en los días [d0, d1) */
+      if (!(d1 > d0) || !porDia) return;
+      var a = Math.max(d0, dIni == null ? d0 : dIni), b = Math.min(d1, dFin + 1); if (!(b > a)) return;
+      var d = a; while (d < b) {
+        var f = fdeD(d), m = f.slice(0, 7); var y = +m.slice(0, 4), mm = +m.slice(5, 7); var finMes = dnum((mm === 12 ? (y + 1) + '-01' : y + '-' + String(mm + 1).padStart(2, '0')) + '-01');
+        var e = Math.min(b, finMes), dias = e - d;
+        /* lote: el del día medio del tramo dentro del mes */
+        var lt = typeof lote === 'function' ? lote(d + Math.floor(dias / 2)) : lote;
+        var v = porDia * dias, T = tipo === 'real' ? real : tipo === 'est' ? est : obj;
+        T.total[m] = (T.total[m] || 0) + v;
+        acc(T.lote, lt || '(sin lote)', m, v); acc(T.raza, raza, m, v);
+        var rl = resumen.lote[lt || '(sin lote)'] = resumen.lote[lt || '(sin lote)'] || { real: 0, est: 0, obj: 0 }; rl[tipo] += v;
+        var rr = resumen.raza[raza] = resumen.raza[raza] || { real: 0, est: 0, obj: 0, cab: {} }; rr[tipo] += v;
+        if (!minMes || m < minMes) minMes = m;
+        d = e;
+      }
+    }
+    Object.keys(A).forEach(function (lc) {
+      var lot = lotDe[lc] || {};
+      (A[lc] || []).forEach(function (a) {
+        if (!a) return; anim++;
+        var id = String(a.animal_id != null ? a.animal_id : a.id || '').trim(); if (!id) return;
+        var raza = String(a.breed || a.raza || lot.breed || '').trim() || 'Sin raza';
+        var fi = F[id], cat = (fi && fi.categoria) || lot.category || '';
+        var porFecha = {};
+        (a.pesajes || []).forEach(function (p) { var f = f10(p && (p.fecha || p.date)); var w = n(p && p.peso); if (/^\d{4}-\d{2}-\d{2}$/.test(f) && w > 0 && String(p.tipo || '') !== 'venta') porFecha[f] = w; });
+        var ps = Object.keys(porFecha).sort().map(function (f) { return { d: dnum(f), w: porFecha[f] }; });
+        if (!ps.length) return; conPes++;
+        var rr = resumen.raza[raza] = resumen.raza[raza] || { real: 0, est: 0, obj: 0, cab: {} }; rr.cab[id] = 1;
+        var lfun = function (d) { return loteEn(id, lc, d); };
+        var ultG = null;
+        for (var i = 1; i < ps.length; i++) {
+          var dd = ps[i].d - ps[i - 1].d; if (dd <= 0) continue;
+          var g = (ps[i].w - ps[i - 1].w) / dd; if (g < -1 || g > 3) continue;
+          sumar('real', raza, lfun, ps[i - 1].d, ps[i].d, g); ultG = g;
+        }
+        var ult = ps[ps.length - 1];
+        sumar('est', raza, lfun, ult.d, dHoy + 1, ultG != null ? Math.max(0, ultG) : gmdObj(cat)); /* un solo pesaje: sin GMD propia → objetivo de la categoría */
+        sumar('obj', raza, lfun, ps[0].d, dHoy + 1, gmdObj(cat));
+      });
+    });
+    var meses = [];
+    if (minMes) { var m = minMes, top = fdeD(dFin).slice(0, 7), g = 0; while (m <= top && g < 60) { meses.push(m); var y = +m.slice(0, 4), mm = +m.slice(5, 7) + 1; if (mm > 12) { mm = 1; y++; } m = y + '-' + String(mm).padStart(2, '0'); g++; } }
+    if (meses.length > 24) meses = meses.slice(-24);
+    /* sin meses casi vacíos al principio (un par de pesajes viejos estiraban el eje): arranca en el primer mes
+       con al menos 3% del mes más alto */
+    var tot = function (m) { return (real.total[m] || 0) + (est.total[m] || 0) + (obj.total[m] || 0); };
+    var mx = Math.max.apply(null, meses.map(tot).concat([0]));
+    while (meses.length > 1 && tot(meses[0]) < mx * 0.03) meses.shift();
+    return { meses: meses, real: real, est: est, obj: obj, resumen: resumen, anim: anim, conPes: conPes };
+  }
+
+  function grafico(id, cfg) {
+    var cv = document.getElementById(id); if (!cv || typeof Chart === 'undefined') return;
+    if (CH[id]) { try { CH[id].destroy(); } catch (e) {} }
+    cfg.options = Object.assign({ responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false } }, cfg.options || {});
+    CH[id] = new Chart(cv.getContext('2d'), cfg);
+  }
+  function ejes(stacked) {
+    return { x: { stacked: stacked, grid: { display: false }, ticks: { color: TICK, font: { size: 10 }, maxRotation: 45, minRotation: 45 } },
+      y: { stacked: stacked, beginAtZero: true, grid: { color: GRID }, ticks: { color: TICK, font: { size: 10 }, callback: function (v) { return Math.round(v).toLocaleString('es-BO'); } }, title: { display: true, text: 'kg de carne producidos', color: TICK, font: { size: 10 } } } };
+  }
+  var LEG = { display: true, labels: { color: TICK, boxWidth: 18, boxHeight: 10, font: { size: 11 } } };
+  var TIP = { callbacks: { label: function (c) { return ' ' + c.dataset.label + ': ' + kg(c.parsed.y); } } };
+  function alpha(hex, a) { var h = hex.replace('#', ''); return 'rgba(' + parseInt(h.slice(0, 2), 16) + ',' + parseInt(h.slice(2, 4), 16) + ',' + parseInt(h.slice(4, 6), 16) + ',' + a + ')'; }
+
+  function tabla(id, filas, col) {
+    var el = document.getElementById(id); if (!el) return;
+    if (!filas.length) { el.innerHTML = ''; return; }
+    el.innerHTML = '<div class="pc-tb"><div class="pc-row pc-h"><span>' + col + '</span><span>Real</span><span>Estimado</span><span>Objetivo</span><span>Cumplimiento</span></div><div class="pc-vp">' +
+      filas.map(function (f) {
+        var tot = f.real + f.est, pct = f.obj > 0 ? tot / f.obj * 100 : null;
+        var tono = pct == null ? '' : pct >= 95 ? 'ok' : pct >= 80 ? 'warn' : 'bad';
+        return '<div class="pc-row"><span><i class="pc-dot" style="background:' + f.c + '"></i>' + esc(f.k) + (f.cab ? ' <small>' + f.cab + ' cab</small>' : '') + '</span><span>' + kg(f.real) + '</span><span>' + kg(f.est) + '</span><span>' + kg(f.obj) + '</span><span>' + (pct == null ? '—' : '<b class="pc-pill ' + tono + '">' + Math.round(pct) + '%</b>') + '</span></div>';
+      }).join('') + '</div></div>';
+  }
+
+  function render() {
+    if (typeof Chart === 'undefined') return;
+    var r = calcular(), M = r.meses;
+    var sub = document.getElementById('pc-sub-1');
+    if (sub) sub.textContent = r.conPes + ' de ' + r.anim + ' animales con pesajes · real = ganancia entre pesajes, repartida día a día en el lote donde estaba · estimado = desde el último pesaje hasta hoy con su GMD · objetivo = GMD de la categoría (Parámetros)';
+    function vac(id, hay) { var cv = document.getElementById(id); if (!cv) return; var ov = cv.parentElement.querySelector('.gbi-vacio'); if (hay) { if (ov) ov.remove(); cv.style.opacity = 1; return; } cv.style.opacity = .12; if (!ov) { ov = document.createElement('div'); ov.className = 'gbi-vacio'; cv.parentElement.appendChild(ov); } ov.textContent = 'Faltan pesajes: con dos pesajes por animal se calcula la producción'; }
+    vac('gb-prod', M.length > 0); vac('gb-prod-raza', M.length > 0);
+    var lineaObj = { type: 'line', label: 'Objetivo (GMD de la categoría)', data: M.map(function (m) { return r.obj.total[m] || 0; }), borderColor: AMBAR, backgroundColor: AMBAR, borderWidth: 2, borderDash: [6, 4], pointRadius: 2, tension: .25, order: 0 };
+    /* ── tarjeta 1: total o por lote ── */
+    var ds;
+    if (VISTA.lote === 'total') {
+      ds = [{ label: 'Real (entre pesajes)', data: M.map(function (m) { return r.real.total[m] || 0; }), backgroundColor: VERDE, borderRadius: 3, stack: 'p', order: 1 },
+            { label: 'Estimado (desde el último pesaje)', data: M.map(function (m) { return r.est.total[m] || 0; }), backgroundColor: alpha(VERDE, .35), borderColor: VERDE, borderWidth: { top: 1 }, borderRadius: 3, stack: 'p', order: 1 }, lineaObj];
+    } else {
+      var lotes = Object.keys(r.resumen.lote).sort(function (a, b) { return (r.resumen.lote[b].real + r.resumen.lote[b].est) - (r.resumen.lote[a].real + r.resumen.lote[a].est); });
+      ds = lotes.map(function (lt, i) { var c = PAL[i % PAL.length]; return { label: lt, data: M.map(function (m) { return ((r.real.lote[lt] || {})[m] || 0) + ((r.est.lote[lt] || {})[m] || 0); }), backgroundColor: c, borderRadius: 2, stack: 'p', order: 1 }; }).concat([lineaObj]);
+    }
+    grafico('gb-prod', { type: 'bar', data: { labels: M.map(mesLabel), datasets: ds }, options: { plugins: { legend: LEG, tooltip: TIP }, scales: ejes(true) } });
+    var filasL = Object.keys(r.resumen.lote).map(function (k, i) { var o = r.resumen.lote[k]; return { k: k, real: o.real, est: o.est, obj: o.obj }; }).sort(function (a, b) { return (b.real + b.est) - (a.real + a.est); });
+    filasL.forEach(function (f, i) { f.c = PAL[i % PAL.length]; });
+    tabla('pc-tabla-1', filasL, 'Lote');
+    /* ── tarjeta 2: por raza ── */
+    var RZ = r.resumen.raza, totRz = function (k) { return RZ[k].real + RZ[k].est; };
+    var razas = Object.keys(RZ).filter(function (k) { return RZ[k].real + RZ[k].est + RZ[k].obj > 0; }).sort(function (a, b) { return totRz(b) - totRz(a); });
+    var granTot = razas.reduce(function (s, k) { return s + totRz(k); }, 0);
+    /* en el gráfico, las razas con menos del 3% de la producción van juntas en «Otras» (la tabla las muestra todas) */
+    var grandes = razas.filter(function (k, i) { return i < 6 && totRz(k) >= granTot * 0.03; }), chicas = razas.filter(function (k) { return grandes.indexOf(k) < 0; });
+    function serieRaza(lista) { return M.map(function (m) { return lista.reduce(function (s, k) { return s + ((r.real.raza[k] || {})[m] || 0) + ((r.est.raza[k] || {})[m] || 0); }, 0); }); }
+    var dsR = grandes.map(function (rz, i) { return { label: rz, data: serieRaza([rz]), backgroundColor: PAL[i % PAL.length], borderRadius: 2, stack: 'p', order: 1 }; });
+    if (chicas.length) dsR.push({ label: 'Otras (' + chicas.length + ')', data: serieRaza(chicas), backgroundColor: '#7d8590', borderRadius: 2, stack: 'p', order: 1 });
+    dsR.push(Object.assign({}, lineaObj));
+    grafico('gb-prod-raza', { type: 'bar', data: { labels: M.map(mesLabel), datasets: dsR }, options: { plugins: { legend: LEG, tooltip: TIP }, scales: ejes(true) } });
+    tabla('pc-tabla-2', razas.map(function (k) { var o = RZ[k], gi = grandes.indexOf(k); return { k: k, real: o.real, est: o.est, obj: o.obj, cab: Object.keys(o.cab).length, c: gi >= 0 ? PAL[gi % PAL.length] : '#7d8590' }; }), 'Raza');
+  }
+  window.pcVista = function (v, btn) {
+    VISTA.lote = v;
+    document.querySelectorAll('.pc-seg button').forEach(function (b) { b.classList.toggle('on', b === btn); });
+    try { render(); } catch (e) { console.warn('[prod-carne]', e); }
+  };
+  /* enganches: mismo ciclo que el resto de Gráficos BI */
+  ['gbiRender', 'gbiChip', 'gbiFechas'].forEach(function (k) {
+    var base = window[k]; if (typeof base !== 'function' || base.__pc) return;
+    var w = function () { var r = base.apply(this, arguments); try { render(); } catch (e) { console.warn('[prod-carne]', e); } return r; }; w.__pc = true; window[k] = w;
+  });
+  var _sp = window.showPage;
+  if (typeof _sp === 'function' && !_sp.__pc) {
+    window.showPage = (function (base) { var w = function (name) { var r = base.apply(this, arguments); if (name === 'graficosbi') setTimeout(function () { try { render(); } catch (e) { console.warn('[prod-carne]', e); } }, 90); return r; }; w.__pc = true; w.__gbi = base.__gbi; return w; })(_sp);
+  }
+  window.pcRender = render;
+  console.log('[v1.8.273] 🥩 producción de carne (real · estimado · objetivo, por lote y por raza) en Gráficos BI · kill __PRODCARNE_OFF');
+})();
 </script>
 
 <script id="casas-comerciales-v18193">
