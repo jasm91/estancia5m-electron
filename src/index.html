@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.270';
+window.E5M_HTML_BUILD = '1.8.271';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -7929,6 +7929,7 @@ function pullFromRailwayDesktop(thenPush) {
       try { if (remote && remote.tc_bcb && remote.tc_bcb.valor) { localStorage.setItem('e5m_tc_bcb', JSON.stringify(remote.tc_bcb)); if (typeof window.tcBcbRender === 'function') window.tcBcbRender(); } } catch(eTc){} /* v1.8.151: TC oficial BCB servido por server v4.42 */
       try { if (remote && remote.animal_costos && typeof remote.animal_costos === 'object') { localStorage.setItem('e5m_animal_costos', JSON.stringify(remote.animal_costos)); } } catch(eAC){} /* v1.8.197: costo por cabeza (server v4.58.1) */
       try { if (remote && remote.animal_ficha && typeof remote.animal_ficha === 'object') { localStorage.setItem('e5m_animal_ficha', JSON.stringify(remote.animal_ficha)); } } catch(eAF){} /* v1.8.270: ficha por animal (server v4.120.0) */
+      try { if (remote && remote.animal_consumos && typeof remote.animal_consumos === 'object') { localStorage.setItem('e5m_animal_consumos', JSON.stringify(remote.animal_consumos)); } } catch(eACo){} /* v1.8.271: sal/alimento/sanidad por animal y producto (server v4.121.0) */
       if (!remote || remote.error) {
         if (thenPush) pushToRailway();
         return;
@@ -55919,9 +55920,12 @@ try {
           c.notes = ((c.notes || '') + ' · 🤝 Al partido de ' + socio).trim();
           (db.kardex || []).forEach(function (k) { if (k && k.auto && k.lote === c.lot_code && k.tipo === 'compra' && Math.abs(_n(k.total)) < 1e6 && !k._v198) { k._v198 = true; k.total = 0; k.precio = 0; k.desc = '🤝 Entrada al partido de ' + socio + ' — ' + c.animal_count + ' cab.'; } });
           var l = (db.lots || []).find(function (x) { return x && x.code === c.lot_code; });
-          if (l) l.partido = { socio: socio, compra_id: c.id };
+          /* v1.8.271 (fase 3 ficha por animal): el lote YA NO se marca `partido`. La condición viaja con cada
+             cabeza en animal_costos (el server la sella desde la compra con modalidad partido); la marca del
+             lote fue la causa del «11 al partido» de LECHERÍA (César 28-10). Se deja `l` para no tocar el flujo. */
+          if (l && l.partido && !l.partido.estado) delete l.partido;
           localStorage.setItem(DB_KEY, JSON.stringify(db));
-          if (typeof replaceTableInRailway === 'function') { replaceTableInRailway('compras_ganado', db.compras_ganado); replaceTableInRailway('lots', db.lots); }
+          if (typeof replaceTableInRailway === 'function') { replaceTableInRailway('compras_ganado', db.compras_ganado); }
           if (typeof toast === 'function') toast('🤝 Entrada al partido registrada — ' + c.animal_count + ' cab de ' + socio + ' (sin inversión)', 'success');
           try { renderLotes(); } catch (e) {}
         } catch (e) { console.warn('[v198] post-save', e); }
@@ -56046,7 +56050,7 @@ try {
   console.log('[v1.8.198] 🤝 al partido: entrada en el wizard · badge en lotes · liquidación');
 })();
 </script>
-<script id="ficha-animal-v18270">
+<script id="ficha-animal-v18271">
 /* ════════════════════════════════════════════════════════════════════════
    v1.8.270 — FICHA POR ANIMAL (pedido José 29-10-2026; server v4.120.0)
    Sexo, categoría y actividad viajan con cada animal (localStorage e5m_animal_ficha, la escribe el
@@ -56180,6 +56184,79 @@ try {
     window.renderLotes = renderLotes;
   }
   console.log('[v1.8.270] 🏷️ ficha por animal: pregunta al mover · chip «mezclado» en lotes · kill __FICHA_OFF');
+
+  /* ═══ v1.8.271 — CONSUMOS POR ANIMAL (fase 4) + COSTO POR LOTE DERIVADO (fase 5) ═══
+     El server (v4.121.0) atribuye sal, alimento y sanidad a cada animal, por producto, en partes iguales
+     entre los animales del lote ese día, y lo sirve en el pull como `animal_consumos`
+     (id → {t: total Bs, n, d, h, p: Bs parciales, s: {producto:[qty,bs,unidad,n,...]}, a: {...}, c: {...}}).
+     Acá se muestra: en el historial del animal (tarjeta «lo que lleva gastado») y en Lotes (Bs/cab derivado =
+     inversión por cabeza + consumos de los animales que hoy están ahí). Kill: __CONSUMOS_OFF. */
+  function consumos() { try { return JSON.parse(localStorage.getItem('e5m_animal_consumos') || 'null') || {}; } catch (e) { return {}; } }
+  function costosT() { try { return JSON.parse(localStorage.getItem('e5m_animal_costos') || 'null') || {}; } catch (e) { return {}; } }
+  function bs(x) { x = Math.round(x || 0); return 'Bs ' + x.toLocaleString('es-BO'); }
+  function q(x, u) { x = Math.round((x || 0) * 100) / 100; return x.toLocaleString('es-BO') + (u ? ' ' + u : ''); }
+  window.e5mConsumosDe = function (id) { return consumos()[String(id)] || null; };
+  function tarjetaConsumos(id) {
+    var C = consumos()[String(id)], K = costosT()[String(id)], F = fichas()[String(id)];
+    if (!C && !K && !F) return '';
+    var inv = K ? (K.partido ? null : (K.nacido ? 0 : (parseFloat(K.costo_bs) || 0))) : null;
+    var filas = [];
+    if (F && (F.categoria || F.actividad)) filas.push('<div><span style="color:var(--muted)">🏷️ Ficha</span> ' + lCat(F.categoria) + ' · ' + lAct(F.actividad) + (F.desde ? ' <span style="color:var(--muted)">desde ' + F.desde + (F.via ? ' (' + F.via + ')' : '') + '</span>' : '') + '</div>');
+    if (K) filas.push('<div><span style="color:var(--muted)">🐂 Inversión</span> ' + (K.partido ? '🤝 al partido' + (K.partido.socio ? ' de ' + escH(K.partido.socio) : '') + ' (no es inversión)' : (K.nacido ? 'nacido acá (Bs 0)' : bs(inv) + (K.estimado ? ' <span style="color:var(--muted)">(estimado)</span>' : ''))) + '</div>');
+    function grupo(k, icono, nombre) {
+      var g = C && C[k]; if (!g) return;
+      var ps = Object.keys(g); var tot = 0; ps.forEach(function (p) { tot += g[p][1] || 0; });
+      filas.push('<div><span style="color:var(--muted)">' + icono + ' ' + nombre + '</span> ' + bs(tot) + ' <span style="color:var(--muted)">— ' +
+        ps.map(function (p) { var e = g[p]; return escH(p) + ' ' + q(e[0], e[2]) + (e.indexOf('sin_precio') >= 0 ? ' (sin precio)' : '') + (e.indexOf('parcial') >= 0 ? ' (parcial)' : ''); }).join(' · ') + '</span></div>');
+    }
+    grupo('s', '🧂', 'Sal'); grupo('a', '🌾', 'Alimento'); grupo('c', '💉', 'Sanidad');
+    var total = (inv || 0) + (C ? (C.t || 0) : 0);
+    var cab = '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap"><b>💰 Lo que lleva este animal</b><span style="font-family:DM Mono,monospace;font-weight:700;color:var(--amber2)">' + bs(total) + '</span></div>' +
+      (C && C.d ? '<div style="font-size:10px;color:var(--muted)">consumos desde ' + C.d + ' hasta ' + C.h + ' · ' + C.n + ' registro(s) repartidos en partes iguales entre los animales del lote de cada día' + (C.p ? ' · ' + bs(C.p) + ' de aplicaciones parciales (no se sabe a cuáles exactamente)' : '') + '</div>' : '');
+    return '<div class="e5m-consumos" style="margin:0 0 10px;padding:9px 11px;border:1px solid var(--bor,#30363d);border-radius:10px;background:rgba(240,180,41,.05);font-size:11.5px;line-height:1.7">' + cab + filas.join('') + '</div>';
+  }
+  if (typeof verHistorialAnimal === 'function' && !verHistorialAnimal.__consumos) {
+    verHistorialAnimal = (function (base) {
+      function w(animalId, lotCode) {
+        var r = base.apply(this, arguments);
+        try {
+          if (window.__CONSUMOS_OFF) return r;
+          var inner = document.getElementById('hist-inner-' + animalId), row = document.getElementById('hist-row-' + animalId);
+          if (!inner || !row || row.style.display === 'none' || inner.querySelector('.e5m-consumos')) return r;
+          var t = tarjetaConsumos(animalId); if (t) inner.insertAdjacentHTML('afterbegin', t);
+        } catch (e) { console.warn('[consumos] historial', e); }
+        return r;
+      }
+      w.__consumos = true; return w;
+    })(verHistorialAnimal);
+    window.verHistorialAnimal = verHistorialAnimal;
+  }
+  /* costo derivado por lote: inversión (animal_costos) + consumos de los animales que están hoy ahí */
+  window.e5mCostoLoteDerivado = function (code) {
+    var A = (typeof getAnimalesDB === 'function') ? (getAnimalesDB() || {}) : {}, C = consumos(), K = costosT();
+    var r = { cab: 0, inversion: 0, consumos: 0, sal: 0, alimento: 0, sanidad: 0, partido: 0, sin_costo: 0 };
+    (A[code] || []).forEach(function (a) { var id = idDe(a); r.cab++; var k = K[id]; if (!k) r.sin_costo++; else if (k.partido) r.partido++; else r.inversion += parseFloat(k.costo_bs) || 0;
+      var c = C[id]; if (c) { r.consumos += c.t || 0; [['s', 'sal'], ['a', 'alimento'], ['c', 'sanidad']].forEach(function (x) { var g = c[x[0]]; if (g) Object.keys(g).forEach(function (p) { r[x[1]] += g[p][1] || 0; }); }); } });
+    r.total = r.inversion + r.consumos; r.bs_cab = r.cab ? r.total / r.cab : 0; return r;
+  };
+  function chipsCostos() {
+    if (window.__CONSUMOS_OFF) return;
+    var filas = document.querySelectorAll('#page-lotes tbody tr');
+    Array.prototype.forEach.call(filas, function (tr) {
+      var cell = tr.querySelector('td span'); if (!cell || tr.__consumos) return;
+      var code = cell.textContent.trim(); var r = window.e5mCostoLoteDerivado(code); if (!r.cab || !(r.total > 0)) return;
+      tr.__consumos = true;
+      var b = document.createElement('div'); b.style.cssText = 'margin-top:3px;font-size:10px;color:var(--muted);white-space:nowrap;letter-spacing:0';
+      b.title = 'Costo derivado de los animales que están hoy en el lote: inversión ' + bs(r.inversion) + ' + sal ' + bs(r.sal) + ' + alimento ' + bs(r.alimento) + ' + sanidad ' + bs(r.sanidad) + (r.partido ? ' · ' + r.partido + ' al partido sin inversión' : '') + (r.sin_costo ? ' · ' + r.sin_costo + ' sin costo de origen' : '');
+      b.textContent = '💰 ' + bs(r.bs_cab) + '/cab'; b.title = (r.consumos > 0 ? 'Consumos de estos animales: ' + bs(r.consumos) + ' · ' : '') + b.title;
+      cell.parentNode.appendChild(b);
+    });
+  }
+  if (typeof renderLotes === 'function' && !renderLotes.__consumos) {
+    renderLotes = (function (base) { function w() { var r = base.apply(this, arguments); try { chipsCostos(); } catch (e) {} return r; } w.__consumos = true; return w; })(renderLotes);
+    window.renderLotes = renderLotes;
+  }
+  console.log('[v1.8.271] 💰 consumos por animal (sal/alimento/sanidad por producto) + costo por lote derivado · kill __CONSUMOS_OFF');
 })();
 </script>
 <script id="actividad-v18206">
