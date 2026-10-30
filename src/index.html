@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.279';
+window.E5M_HTML_BUILD = '1.8.280';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -859,15 +859,28 @@ window.v175Diag = function () {
    Si acá dice 1.8.175 el HTML es el nuevo; la Version sale de package.json
    y puede decir otra cosa si el copiado quedó a medias. */
 (function v175Sello() {
+  /* v1.8.280: este observador escaneaba TODO el documento (cada div/td y su textContent) en cada
+     cambio del DOM — con datos reales (Las Palmas) eso congelaba ~1 s después de cada clic.
+     Ahora: sale enseguida si el sello ya está puesto, se agrupa (debounce) y solo lee hojas. */
+  var _selloEl = null, _selloT = null;
   function poner() {
+    if (_selloEl && _selloEl.isConnected) return;
+    if (_selloT) return;
+    _selloT = setTimeout(function () { _selloT = null; _ponerYa(); }, 250);
+  }
+  function _ponerYa() {
     try {
       var el = null;
-      var nodos = document.querySelectorAll('#info-version, [id*="version"], .info-row, td, div');
+      var pc = document.getElementById('page-config') || document;
+      var nodos = pc.querySelectorAll('#info-version, [id*="version"], .info-row, td, div');
       for (var i = 0; i < nodos.length && !el; i++) {
+        if (nodos[i].children.length !== 0) continue;
         var t = (nodos[i].textContent || '').trim();
-        if (/^1\.8\.\d+$/.test(t) && nodos[i].children.length === 0) el = nodos[i];
+        if (/^1\.8\.\d+$/.test(t)) el = nodos[i];
       }
-      if (!el || el.__v175) return;
+      if (!el) return;
+      _selloEl = el;
+      if (el.__v175) return;
       el.__v175 = true;
       var b = document.createElement('span');
       b.textContent = ' · html ' + window.E5M_HTML_BUILD;
@@ -36795,15 +36808,18 @@ function creaTrazaAbrir(label) {
     h += '<div class="crea-tr-sec">Registros usados</div>';
     K.d.forEach(function(dk) {
       var ds = TR.det[dk]; if (!ds) return; var rows = ds.r() || [];
-      h += '<details class="crea-tr-acc"><summary><span>' + _crTrEsc(ds.t) + '</span><span style="color:var(--muted);font-weight:400">' + rows.length + ' registro' + (rows.length === 1 ? '' : 's') + ' ▾</span></summary>';
+      h += '<details class="crea-tr-acc" data-dk="' + dk + '"><summary><span>' + _crTrEsc(ds.t) + '</span><span style="color:var(--muted);font-weight:400">' + rows.length + ' registro' + (rows.length === 1 ? '' : 's') + ' ▾</span></summary><div class="crea-tr-lazy"></div></details>';
+    });
+  }
+  function _tabla(dk) {
+      var ds = TR.det[dk], rows = ds.r() || [], h = '';
       if (!rows.length) h += '<div style="padding:10px 12px;font-size:12px;color:var(--muted)">Sin registros en el período.</div>';
       else {
         h += '<div class="sc"><table class="crea-tr-t"><thead><tr>' + ds.c.map(function(c) { return '<th>' + _crTrEsc(c) + '</th>'; }).join('') + '</tr></thead><tbody>';
         rows.slice(0, 300).forEach(function(r) { h += '<tr>' + r.map(_crTrNum).join('') + '</tr>'; });
         h += '</tbody></table></div>' + (rows.length > 300 ? '<div style="padding:6px 12px;font-size:11px;color:var(--muted)">Se muestran 300 de ' + rows.length + '. El Excel trae todos.</div>' : '');
       }
-      h += '</details>';
-    });
+      return h;
   }
   var ov = document.getElementById('crea-tr-ov'); if (ov) ov.remove();
   ov = document.createElement('div'); ov.id = 'crea-tr-ov';
@@ -36812,6 +36828,16 @@ function creaTrazaAbrir(label) {
     '<button class="btn btn-ghost btn-sm" onclick="creaTrazaCerrar()" aria-label="Cerrar">✕</button></div>' +
     '<div class="trb">' + h + '</div><div class="trf"><button class="btn btn-ghost btn-sm" onclick="creaTrazaExcel()">⬇ Excel de todos los KPI</button><button class="btn btn-primary btn-sm" onclick="creaTrazaExcel(\'' + label.replace(/'/g, "\\'") + '\')">⬇ Exportar este KPI a Excel</button></div></div>';
   ov.addEventListener('click', function(e) { if (e.target === ov) creaTrazaCerrar(); });
+  /* v1.8.280: las tablas de registros se arman recién al abrir su sección (antes: todas al abrir el modal)
+     y se abre una sección a la vez */
+  Array.prototype.forEach.call(ov.querySelectorAll('details.crea-tr-acc'), function(d) {
+    d.addEventListener('toggle', function() {
+      if (!d.open) return;
+      var lz = d.querySelector('.crea-tr-lazy');
+      if (lz && !lz.__ok) { lz.__ok = true; lz.innerHTML = _tabla(d.getAttribute('data-dk')); }
+      Array.prototype.forEach.call(ov.querySelectorAll('details.crea-tr-acc[open]'), function(o) { if (o !== d) { o.classList.remove('e5m-abierto'); setTimeout(function() { o.open = false; }, 270); } });
+    });
+  });
   document.body.appendChild(ov);
   requestAnimationFrame(function() { ov.classList.add('on'); });
   document.addEventListener('keydown', _creaTrazaEsc);
@@ -48732,7 +48758,7 @@ function swCardRender(){
   var lista = swLista(), actual = swTokenActual();
   var box = el('sw-lista'); if (!box) return;
   if (!lista.length) { box.innerHTML = '<span style="font-size:12px;color:var(--muted)">Sin estancias guardadas todavía. Poné un nombre y 💾 (token vacío = guarda la estancia ACTUAL), o pegá el token de otra estancia.</span>'; return; }
-  box.innerHTML = '<table class="tbl" style="font-size:12px"><thead><tr><th>Estancia</th><th>Token</th><th></th></tr></thead><tbody>'+
+  var _swH = '<table class="tbl" style="font-size:12px"><thead><tr><th>Estancia</th><th>Token</th><th></th></tr></thead><tbody>'+
     lista.map(function(x, i){
       var es = x.token===actual;
       return '<tr'+(es?' style="background:rgba(63,185,80,.06)"':'')+'>'+
@@ -48742,6 +48768,7 @@ function swCardRender(){
         (es?'':'<button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="swCambiar('+i+')">→ Usar</button>')+
         '<button class="btn btn-ghost btn-sm" style="font-size:11px;color:var(--red)" onclick="swQuitar('+i+')">✕</button></div></td></tr>';
     }).join('')+'</tbody></table>';
+  if (box.__h !== _swH) { box.innerHTML = _swH; box.__h = _swH; } /* v1.8.280: no reescribir el DOM en cada clic */
 }
 function swSelector(){
   var s = el('sw-selector');
@@ -48765,10 +48792,11 @@ function swSelectorRender(){
   var lista = swLista();
   if (window.__SWITCHER_OFF || lista.length < 2) { s.style.display='none'; return; }
   var actual = swTokenActual();
-  s.innerHTML = lista.map(function(x, i){
+  var _h = lista.map(function(x, i){
     return '<option value="'+i+'"'+(x.token===actual?' selected':'')+'>🏡 '+esc(x.nombre)+'</option>';
   }).join('');
-  s.style.display='';
+  if (s.__h !== _h) { s.innerHTML = _h; s.__h = _h; } /* v1.8.280: sin cambios no se toca el DOM (evita disparar observadores en cada clic) */
+  if (s.style.display) s.style.display='';
 }
 window.swGuardar = function(){
   var nombre = String((el('sw-nombre')||{}).value||'').trim();
