@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.290';
+window.E5M_HTML_BUILD = '1.8.291';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -7990,6 +7990,7 @@ function pullFromRailwayDesktop(thenPush) {
       try { _sinCambios = !!(remote && remote.last_modified && remote.last_modified === localStorage.getItem('e5m_last_sync_at') && remote._versions && JSON.stringify(remote._versions) === localStorage.getItem('e5m_table_versions')); } catch(eSC){}
       try { if (remote && remote._versions) localStorage.setItem('e5m_table_versions', JSON.stringify(remote._versions)); } catch(eV){} // v1.8.115 SYNC V2
       try { if (window.e5mMapasDesdePull) window.e5mMapasDesdePull(remote); } catch (eMp) {} /* v1.8.216: mapas del servidor */
+      try { if (remote && Array.isArray(remote.menu_hidden) && window.e5mMenuDesdePull) window.e5mMenuDesdePull(remote.menu_hidden); } catch (eMn) {} /* v1.8.291: menú del Escritorio por cliente (superadmin) */
       try { if (remote && remote.tc_bcb && remote.tc_bcb.valor) { localStorage.setItem('e5m_tc_bcb', JSON.stringify(remote.tc_bcb)); if (typeof window.tcBcbRender === 'function') window.tcBcbRender(); } } catch(eTc){} /* v1.8.151: TC oficial BCB servido por server v4.42 */
       try { if (remote && remote.animal_costos && typeof remote.animal_costos === 'object') { localStorage.setItem('e5m_animal_costos', JSON.stringify(remote.animal_costos)); } } catch(eAC){} /* v1.8.197: costo por cabeza (server v4.58.1) */
       try { if (remote && remote.animal_ficha && typeof remote.animal_ficha === 'object') { localStorage.setItem('e5m_animal_ficha', JSON.stringify(remote.animal_ficha)); } } catch(eAF){} /* v1.8.270: ficha por animal (server v4.120.0) */
@@ -63054,6 +63055,53 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
   var oRP = window.renderPage;
   if (typeof oRP === 'function' && !oRP.__crea2) { var w = function (name) { var r = oRP.apply(this, arguments); if (name === 'crea') { try { render(); } catch (e) { console.error('[CREA2]', e); } } return r; }; w.__crea2 = true; window.renderPage = w; }
   try { console.log('%c[EP Desktop v1.8.289] Reportes → CREA (cascada, indicadores ★, plan de cuentas) · kill: __CREA2_OFF', 'color:#3fb950'); } catch (e) {}
+})();
+</script>
+
+
+<script id="menu-tenant-v18291">
+/* ═══ v1.8.291 — MENÚ DEL ESCRITORIO POR CLIENTE (server 4.128.0 · panel v52)
+   El superadmin oculta secciones/pestañas del sidebar para un cliente; llega en sync-pull como
+   menu_hidden (claves 'sec:<data-sec>' y 'btn:<data-sec>/<data-label>'). Solo visibilidad: las
+   páginas y sus datos no cambian. Caché en localStorage para arrancar igual sin conexión.
+   Configuración nunca se oculta. Kill: window.__MENU_TENANT_OFF ═══ */
+(function () {
+  'use strict';
+  if (window.__MENU_TENANT_OFF) return;
+  var KEY = 'e5m_menu_hidden';
+  var css = document.createElement('style');
+  css.textContent = '.e5m-menu-oculto{display:none !important}';
+  document.head.appendChild(css);
+  function leer() { try { var v = JSON.parse(localStorage.getItem(KEY) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
+  function aplicar(lista) {
+    lista = lista || leer();
+    var H = {}; lista.forEach(function (k) { if (typeof k === 'string' && k !== 'sec:sistema' && k !== 'btn:sistema/Configuración') H[k] = 1; });
+    var activoOculto = false;
+    document.querySelectorAll('.nav-sec[data-sec]').forEach(function (sec) {
+      var sk = sec.getAttribute('data-sec'), secOff = !!H['sec:' + sk];
+      sec.classList.toggle('e5m-menu-oculto', secOff);
+      sec.querySelectorAll('.nav-btn[data-label]').forEach(function (b) {
+        var off = secOff || !!H['btn:' + sk + '/' + b.getAttribute('data-label')];
+        b.classList.toggle('e5m-menu-oculto', off);
+        if (off && b.classList.contains('active')) activoOculto = true;
+      });
+    });
+    if (activoOculto) {
+      /* la vista abierta ya no está en el menú: ir a la primera visible */
+      var primero = Array.prototype.filter.call(document.querySelectorAll('.nav-sec[data-sec]:not(.e5m-menu-oculto) .nav-btn[data-label]:not(.e5m-menu-oculto)'), function (b) { return b.style.display !== 'none'; })[0];
+      if (primero) { try { primero.click(); } catch (e) {} }
+    }
+  }
+  window.e5mMenuDesdePull = function (lista) {
+    var nueva = JSON.stringify(Array.isArray(lista) ? lista : []);
+    var cambio = nueva !== JSON.stringify(leer());
+    try { localStorage.setItem(KEY, nueva); } catch (e) {}
+    if (cambio) aplicar(JSON.parse(nueva));
+  };
+  window.e5mMenuAplicar = aplicar;
+  function boot() { if (!document.querySelector('.nav-sec[data-sec]')) return setTimeout(boot, 500); aplicar(); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+  try { console.log('%c[EP Desktop v1.8.291] Menú por cliente desde el superadmin · kill: __MENU_TENANT_OFF', 'color:#3fb950'); } catch (e) {}
 })();
 </script>
 
