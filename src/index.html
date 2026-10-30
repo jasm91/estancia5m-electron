@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.274';
+window.E5M_HTML_BUILD = '1.8.275';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -1027,7 +1027,7 @@ function publishTasksToPWA() {
     </div>
     <div style="background:#111318;border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:28px">
       <div style="font-size:15px;font-weight:700;color:#E4E6F0;margin-bottom:6px">Activar sistema</div>
-      <div style="font-size:12px;color:#545870;margin-bottom:20px">Ingresa el token de activación que te proporcionó SG Bolivia</div>
+      <div style="font-size:12px;color:#545870;margin-bottom:20px">Ingresa el token de activación de tu cuenta EstanciaPro</div>
       <div style="margin-bottom:14px">
         <label style="font-size:10px;font-weight:700;color:#545870;letter-spacing:1px;display:block;margin-bottom:6px">TOKEN DE ACCESO</label>
         <input type="password" id="act-token" placeholder="jisunu-xxxxxxxxxxxxxxxx"
@@ -5568,7 +5568,7 @@ function orMarcajeGo(){
         </div>
         <div style="font-size:10px;color:var(--muted);margin-top:6px">Si el auto-updater no funciona, usa "Actualizar ahora" para forzar la descarga desde GitHub</div>
       </div>
-      <div style="display:flex;justify-content:space-between;padding:10px 18px;font-size:13px"><span style="color:var(--muted)">SG Bolivia</span><span style="font-family:DM Mono,monospace;color:var(--muted)">sgbolivia.com</span></div>
+      <div style="display:flex;justify-content:space-between;padding:10px 18px;font-size:13px"><span style="color:var(--muted)">EstanciaPro</span><span style="font-family:DM Mono,monospace;color:var(--muted)">estancia-pro.com</span></div>
     </div>
   </div>
 </div>
@@ -14318,7 +14318,7 @@ function viewTrace(id) {
     '</div>'+
 
     '<p style="text-align:center;font-size:9px;color:#999;margin-top:20px">'+
-      'Documento generado por EstanciaPro · SG Bolivia · '+escH(t.cert_number)+' · '+escH(t.date)+
+      'Documento generado por EstanciaPro · '+escH(t.cert_number)+' · '+escH(t.date)+
     '</p>'+
 
     '</body></html>';
@@ -38653,9 +38653,9 @@ function getGeminiKey() {
   return '';
 }
 function guardarGeminiKey() {
-  // v1.4.27: la gestión de Gemini key se centraliza en SG Bolivia.
+  // v1.4.27: la gestión de Gemini key se centraliza en el server de EstanciaPro.
   // El input de la UI no es funcional, lo dejamos por compatibilidad.
-  toast('La gestión de IA ahora está centralizada en SG Bolivia. No es necesario configurar API key.','info');
+  toast('La gestión de IA ahora está centralizada en EstanciaPro. No es necesario configurar API key.','info');
 }
 
 function toggleAiChat() {

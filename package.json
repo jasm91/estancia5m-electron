@@ -1,6 +1,6 @@
 {
   "name": "estancia5m",
-  "version": "1.8.274",
+  "version": "1.8.275",
   "description": "Sistema de Gestión Ganadera — Estancia 5M",
   "main": "main.js",
   "scripts": {
@@ -25,7 +25,7 @@
   "build": {
     "appId": "com.sgbolivia.estancia5m",
     "productName": "Estancia Pro",
-    "copyright": "SG Bolivia",
+    "copyright": "EstanciaPro",
     "mac": {
       "target": [
         {
@@ -124,6 +124,6 @@
     "electron": "22.3.27",
     "electron-builder": "26.16.1"
   },
-  "author": "SG Bolivia",
+  "author": "EstanciaPro",
   "license": "MIT"
 }
