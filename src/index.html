@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.282';
+window.E5M_HTML_BUILD = '1.8.283';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -61615,7 +61615,7 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
 
   function pg() { return document.getElementById('page-config'); }
   function tituloDe(c) {
-    var t = c.querySelector('.card-hd .card-title') || c.querySelector('h3');
+    var t = c.querySelector('.card-hd .card-title') || c.querySelector(':scope > .card-title') || c.querySelector('h3, .card-title'); /* v1.8.283: tarjetas sin .card-hd (Siembra RFID) */
     return t ? (t.textContent || '').replace(/\s+/g, ' ').trim() : '';
   }
   function pillDe(c) {
@@ -61626,15 +61626,17 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
   }
   function secciones() {
     var p = pg(); if (!p) return [];
-    var out = [];
+    var out = [], ult = null;
     Array.prototype.forEach.call(p.querySelectorAll('.card, .panel'), function (c) {
       if (c.id === 'cfg2-nav') return;
       var par = c.parentElement && c.parentElement.closest('.card, .panel');
       if (par && p.contains(par)) return;               /* tarjeta anidada: va con su madre */
       if (c.style.display === 'none') return;           /* oculta por su propio módulo (ej. Términos sin pendiente) */
-      var t = tituloDe(c); if (!t) return;
+      var t = tituloDe(c);
+      if (!t) { if (ult) ult.extra.push(c); return; }   /* v1.8.283: sin título → viaja con la sección anterior (no queda suelta) */
       if (!c.dataset.cfg2) c.dataset.cfg2 = 's' + Math.random().toString(36).slice(2, 8);
-      out.push({ el: c, t: t, id: c.dataset.cfg2 });
+      ult = { el: c, t: t, id: c.dataset.cfg2, extra: [] };
+      out.push(ult);
     });
     return out;
   }
@@ -61672,6 +61674,7 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
       if (on && !x.el.classList.contains('cfg2-sel')) { x.el.classList.add('cfg2-sel'); }
       if (!on) x.el.classList.remove('cfg2-sel');
       if (on) x.el.classList.remove('e5m-clps');
+      x.extra.forEach(function (e) { e.classList.toggle('cfg2-off', !on); });
     });
   }
   function elegir(t) {
