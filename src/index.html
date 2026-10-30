@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.285';
+window.E5M_HTML_BUILD = '1.8.286';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -25628,7 +25628,7 @@ function _salTipoLabel(normalized) {
 }
 
 // Paleta consistente para tipos. Hash determinista por nombre normalizado.
-var _SAL_TIPO_COLORS = ['#7F77DD','#1D9E75','#D85A30','#378ADD','#BA7517','#993556','#5DCAA5','#F0997B','#97C459','#EF9F27'];
+var _SAL_TIPO_COLORS = ['#F0B429','#3FB984','#4C9AFF','#E5534B','#C9A227','#2F8F66','#3B7DD8','#B8433C','#F6CF6B','#7FD6A4']; /* v1.8.286: paleta de la app */
 function _salTipoColor(normalized) {
   if (!normalized || normalized === 'sin clasificar') return '#888780';
   var h = 0;
@@ -25889,7 +25889,7 @@ function _salRenderChartPaddocks(byPaddock, period) {
   // Top 3 + Otros agregado
   var topNames = sortedPotreros.slice(0, 3);
   var hasOtros = sortedPotreros.length > 3;
-  var COLORS = ['#7F77DD', '#1D9E75', '#D85A30', '#BA7517'];
+  var COLORS = ['#F0B429', '#3FB984', '#4C9AFF', '#8B949E']; /* v1.8.286: ámbar, verde, azul; «Otros» en gris */
 
   var datasets = topNames.map(function(name, idx){
     return {
@@ -25962,7 +25962,7 @@ function _salRenderChartLots(byLot) {
   canvas.style.display = 'block';
   emptyEl.style.display = 'none';
 
-  var COLORS = ['#7F77DD','#1D9E75','#D85A30','#378ADD','#BA7517','#993556','#5DCAA5','#F0997B','#97C459','#F09595'];
+  var COLORS = ['#F0B429','#3FB984','#4C9AFF','#E5534B','#C9A227','#2F8F66','#3B7DD8','#B8433C','#F6CF6B','#7FD6A4']; /* v1.8.286 */
 
   if (window._salCharts.lotes) {
     window._salCharts.lotes.destroy();
@@ -61931,6 +61931,256 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
     wv.__adj = true; window.viewTransactionImage = wv;
   }
   try { console.log('%c[EP Desktop v1.8.285] compra y venta de ganado: respaldos adjuntos (imagen/PDF) · kill: __CGADJ_OFF', 'color:#3fb950'); } catch (e) {}
+})();
+</script>
+
+
+<script id="params-2col-v18286">
+/* ═══ v1.8.286 — LOTES → PARÁMETROS EN DOS COLUMNAS (pedido José 30-10: "esa pestaña se ve desagradable")
+   Columna lateral con las 8 secciones agrupadas (Estancia / Ganado / Contabilidad) y a la derecha solo
+   la sección elegida, abierta. Las tarjetas no se mueven del DOM (renderParams y el módulo de tipos de
+   stock las buscan por id): solo se ocultan las demás. Filas más livianas (bitono, acciones al pasar el
+   mouse) y el "agregar" arriba de la lista. Kill: window.__PRM2_OFF ═══ */
+(function () {
+  'use strict';
+  if (window.__PRM2_OFF) return;
+  var KEY = 'e5m_prm2_sel';
+  var GRUPOS = [['Estancia', /potreros|tipos de stock/i], ['Ganado', /categor|razas|actividad/i], ['Contabilidad', /gasto|cuentas|subcuentas/i]];
+  var css = document.createElement('style');
+  css.textContent =
+    '#lotes-tab-params.prm2.prm2-on{display:grid !important;grid-template-columns:240px minmax(0,1fr);column-gap:20px;align-items:start}' +
+    '#lotes-tab-params.prm2 > *:not(#prm2-nav):not(.prm2-off){grid-column:2;display:block !important}' +
+    '#lotes-tab-params.prm2 .prm2-off{display:none !important}' +
+    '#lotes-tab-params.prm2 .prm2-sel{animation:prm2In .2s ease both;grid-column:auto !important}' +
+    '#lotes-tab-params.prm2 .prm-clps{grid-template-rows:1fr !important}' +
+    '#lotes-tab-params.prm2 .prm-chev{display:none}' +
+    '#lotes-tab-params.prm2 .card-hd{cursor:default !important}' +
+    '#lotes-tab-params.prm2 .card-body{display:flex;flex-direction:column}' +
+    '#lotes-tab-params.prm2 .card-body > div:last-child{order:-1;border-top:0 !important;border-bottom:1px solid var(--bor);background:rgba(127,127,127,.04)}' +
+    '#lotes-tab-params.prm2 .card-body > div[id$="-list"]{max-height:62vh;overflow:auto;overscroll-behavior:contain}' +
+    '#lotes-tab-params.prm2 .card-body > div[id$="-list"] > div{border-bottom:1px solid rgba(127,127,127,.08) !important;transition:background .15s ease}' +
+    '#lotes-tab-params.prm2 .card-body > div[id$="-list"] > div:nth-child(even){background:rgba(127,127,127,.04)}' +
+    '#lotes-tab-params.prm2 .card-body > div[id$="-list"] > div:hover{background:rgba(240,160,48,.06)}' +
+    '#lotes-tab-params.prm2 .card-body > div[id$="-list"] > div > div:last-child button{opacity:.3;transition:opacity .15s ease}' +
+    '#lotes-tab-params.prm2 .card-body > div[id$="-list"] > div:hover > div:last-child button,#lotes-tab-params.prm2 .card-body > div[id$="-list"] > div:focus-within > div:last-child button{opacity:1}' +
+    '#prm2-nav{grid-column:1;grid-row:1 / span 20;position:sticky;top:12px;border:1px solid var(--bor);border-radius:12px;background:var(--sur,var(--bg2));padding:8px}' +
+    '#prm2-nav .g{font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);padding:12px 10px 4px}' +
+    '#prm2-nav .g:first-child{padding-top:4px}' +
+    '#prm2-nav button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;border-radius:8px;padding:8px 10px;color:inherit;font:inherit;font-size:13px;cursor:pointer;position:relative;transition:background .15s ease,color .15s ease}' +
+    '#prm2-nav button:hover{background:rgba(127,127,127,.08)}' +
+    '#prm2-nav button.on{background:rgba(240,160,48,.12);color:var(--amber2,var(--amber));font-weight:600}' +
+    '#prm2-nav button.on::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:3px;background:var(--amber)}' +
+    '#prm2-nav .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+    '#prm2-nav .n{font-size:10.5px;padding:1px 7px;border-radius:999px;background:rgba(127,127,127,.12);color:var(--muted);font-family:DM Mono,monospace}' +
+    '@keyframes prm2In{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}' +
+    '@media (max-width:980px){#lotes-tab-params.prm2{grid-template-columns:1fr}#prm2-nav{position:static;grid-row:auto}#lotes-tab-params.prm2 > *:not(#prm2-nav){grid-column:1}}' +
+    '@media (prefers-reduced-motion:reduce){#lotes-tab-params.prm2 .prm2-sel{animation:none}#prm2-nav button{transition:none}}';
+  (document.head || document.documentElement).appendChild(css);
+
+  function pane() { return document.getElementById('lotes-tab-params'); }
+  function tit(c) { var t = c.querySelector('.card-hd .card-title'); return t ? (t.textContent || '').replace(/\s+/g, ' ').trim() : ''; }
+  function cnt(c) { var l = c.querySelector('.card-body > div[id$="-list"]'); if (!l) return ''; var n = l.children.length; if (n === 1 && /Sin elementos/.test(l.textContent || '')) return 0; return n; }
+  function esc(x) { return String(x).replace(/[&<>"]/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]; }); }
+  var _firma = '';
+  function aplicar() {
+    var p = pane(); if (!p) return;
+    p.classList.toggle('prm2-on', p.style.display !== 'none');
+    var cards = Array.prototype.filter.call(p.querySelectorAll('.card'), function (c) { return tit(c); });
+    if (!cards.length) return;
+    p.classList.add('prm2');
+    /* el título "Estructura de Costos y Cuentas" sobra con la columna */
+    Array.prototype.forEach.call(p.querySelectorAll('div'), function (ch) { if (!ch.querySelector('.card') && !ch.closest('.card') && /Estructura de Costos/i.test(ch.textContent || '')) ch.classList.add('prm2-off'); });
+    var nav = document.getElementById('prm2-nav');
+    if (!nav) { nav = document.createElement('nav'); nav.id = 'prm2-nav'; nav.setAttribute('aria-label', 'Secciones de parámetros'); p.insertBefore(nav, p.firstChild); }
+    var sel = null; try { sel = localStorage.getItem(KEY); } catch (e) {}
+    var actual = cards.filter(function (c) { return tit(c) === sel; })[0] || cards.filter(function (c) { return /potreros/i.test(tit(c)); })[0] || cards[0];
+    var firma = cards.map(function (c) { return tit(c) + '|' + cnt(c); }).join('¦') + '#' + tit(actual);
+    if (firma !== _firma) {
+      _firma = firma;
+      var porG = {}, orden = [];
+      cards.forEach(function (c) { var t = tit(c), g = 'Otros'; for (var i = 0; i < GRUPOS.length; i++) if (GRUPOS[i][1].test(t)) { g = GRUPOS[i][0]; break; } (porG[g] = porG[g] || []).push(c); });
+      GRUPOS.map(function (g) { return g[0]; }).concat(['Otros']).forEach(function (g) { if (porG[g]) orden.push(g); });
+      nav.innerHTML = orden.map(function (g) {
+        return '<div class="g">' + esc(g) + '</div>' + porG[g].map(function (c) { var t = tit(c), n = cnt(c); return '<button type="button" data-t="' + esc(t) + '" class="' + (c === actual ? 'on' : '') + '"><span class="t">' + esc(t) + '</span>' + (n !== '' ? '<span class="n">' + n + '</span>' : '') + '</button>'; }).join('');
+      }).join('');
+    }
+    cards.forEach(function (c) {
+      var on = c === actual;
+      c.classList.toggle('prm2-off', !on);
+      if (on && !c.classList.contains('prm2-sel')) c.classList.add('prm2-sel');
+      if (!on) c.classList.remove('prm2-sel');
+    });
+  }
+  function elegir(t) {
+    try { localStorage.setItem(KEY, t); } catch (e) {}
+    var p = pane(); if (p) Array.prototype.forEach.call(p.querySelectorAll('.prm2-sel'), function (x) { x.classList.remove('prm2-sel'); });
+    aplicar();
+  }
+  window.prm2Aplicar = aplicar; window.prm2Elegir = elegir;
+  document.addEventListener('click', function (ev) {
+    var b = ev.target.closest && ev.target.closest('#prm2-nav button[data-t]'); if (b) { elegir(b.getAttribute('data-t')); return; }
+    var tb = ev.target.closest && ev.target.closest('.tab-btn[id^="lotes-tab"]'); if (tb) setTimeout(aplicar, 120); /* entra o sale de Parámetros */
+  });
+  /* después de cada renderParams (agregar/quitar) se actualizan los contadores */
+  var oSLT = window.showLotesTab;
+  if (typeof oSLT === 'function' && !oSLT.__prm2) { var ws = function () { var r = oSLT.apply(this, arguments); try { aplicar(); } catch (e) {} return r; }; ws.__prm2 = true; window.showLotesTab = ws; }
+  var oRP = window.renderParams;
+  if (typeof oRP === 'function' && !oRP.__prm2) { var w = function () { var r = oRP.apply(this, arguments); try { aplicar(); } catch (e) {} return r; }; w.__prm2 = true; window.renderParams = w; }
+  function boot() { if (!pane()) return setTimeout(boot, 800); aplicar(); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { setTimeout(boot, 700); }); else setTimeout(boot, 700);
+  try { console.log('%c[EP Desktop v1.8.286] Parámetros en dos columnas · prm2Aplicar() · kill: __PRM2_OFF', 'color:#3fb950'); } catch (e) {}
+})();
+</script>
+
+
+<script id="conteo-alimento-v18286">
+/* ═══ v1.8.286 — CONTEO y ALIMENTO con formato de análisis (pedido José 30-10: "listas planas que no ayudan")
+   Mismo lenguaje que Sal: KPIs arriba, gráfico, y los registros agrupados (acordeones, uno abierto a la vez)
+   en vez de la tabla plana. La tabla original queda oculta pero se sigue llenando (Excel y borrar usan lo mismo).
+   Kill: window.__SUBM2_OFF ═══ */
+(function () {
+  'use strict';
+  if (window.__SUBM2_OFF) return;
+  var PAL = ['#F0B429', '#3FB984', '#4C9AFF', '#E5534B', '#C9A227', '#2F8F66', '#3B7DD8', '#B8433C'];
+  var CH = {};
+  var css = document.createElement('style');
+  css.textContent =
+    '.sm2-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px}' +
+    '.sm2-kpi{background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:12px 14px;position:relative;overflow:hidden}' +
+    '.sm2-kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--amber)}' +
+    '.sm2-kpi.g::before{background:var(--green)}.sm2-kpi.b::before{background:var(--blue)}.sm2-kpi.r::before{background:var(--red)}' +
+    '.sm2-kpi .l{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}' +
+    '.sm2-kpi .v{font-size:22px;font-weight:800;font-family:DM Mono,monospace;margin-top:4px}.sm2-kpi .v small{font-size:12px;font-weight:500;color:var(--muted);font-family:Inter,sans-serif}' +
+    '.sm2-kpi .s{font-size:11px;color:var(--muted);margin-top:3px}' +
+    '.sm2-chart{background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:14px 16px;margin-bottom:14px}' +
+    '.sm2-chart .t{font-size:12.5px;font-weight:600}.sm2-chart .st{font-size:10.5px;color:var(--muted);margin-bottom:8px}' +
+    '.sm2-chart .cv{height:220px;position:relative}' +
+    '.sm2-grid2{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:14px}.sm2-grid2>*{min-width:0}@media(max-width:1100px){.sm2-grid2{grid-template-columns:1fr}}' +
+    '.sm2-acc{border:1px solid var(--bor);border-radius:10px;margin-bottom:6px;overflow:hidden;background:var(--sur)}' +
+    '.sm2-acc>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:10px 14px;font-size:12.5px}' +
+    '.sm2-acc>summary::-webkit-details-marker{display:none}' +
+    '.sm2-acc>summary .f{font-weight:700;font-family:DM Mono,monospace}.sm2-acc>summary .m{color:var(--muted);flex:1}' +
+    '.sm2-acc>summary .ch{color:var(--muted);transition:transform .2s ease}.sm2-acc[open]>summary .ch{transform:rotate(90deg)}' +
+    '.sm2-acc .tbl{margin:0}.sm2-acc .tbl tbody tr:nth-child(even){background:rgba(127,127,127,.04)}' +
+    '.sm2-acc .tbl td{padding:7px 12px;font-size:12px}.sm2-acc .tbl th{font-size:10px}' +
+    '.sm2-pill{display:inline-block;font-size:10.5px;padding:2px 8px;border-radius:999px;font-family:DM Mono,monospace}' +
+    '.sm2-pill.ok{background:rgba(63,185,132,.14);color:var(--green)}.sm2-pill.bad{background:rgba(229,83,75,.14);color:var(--red)}.sm2-pill.up{background:rgba(76,154,255,.14);color:var(--blue)}' +
+    '.sm2-del{background:none;border:0;color:var(--muted);cursor:pointer;opacity:.35;transition:opacity .15s}.sm2-acc tr:hover .sm2-del{opacity:1;color:var(--red)}' +
+    '.sm2-list{max-height:62vh;overflow:auto;overscroll-behavior:contain;padding-right:2px}' +
+    '.sm2-vacio{text-align:center;padding:30px;color:var(--muted);font-size:12.5px}' +
+    '@media(prefers-reduced-motion:reduce){.sm2-acc>summary .ch{transition:none}}';
+  document.head.appendChild(css);
+  function esc(x) { return String(x == null ? '' : x).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function f0(n) { return Math.round(Number(n) || 0).toLocaleString('es-BO'); }
+  function fecha(r) { return String(r.date || r.fecha || '').slice(0, 10); }
+  function mesL(ym) { var m = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']; return m[parseInt(ym.slice(5, 7), 10) - 1] + ' ' + ym.slice(2, 4); }
+  function fechaL(d) { if (!d) return '—'; return d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(0, 4); }
+  function host(tab) {
+    var pane = document.getElementById('lotes-tab-' + tab); if (!pane) return null;
+    var h = document.getElementById('sm2-' + tab);
+    if (!h) {
+      var card = pane.querySelector('.card'); if (!card) return null;
+      h = document.createElement('div'); h.id = 'sm2-' + tab;
+      card.parentNode.insertBefore(h, card);
+      card.style.display = 'none'; card.classList.add('sm2-tabla-oculta');
+    }
+    return h;
+  }
+  function grafico(id, cfg) {
+    var cv = document.getElementById(id); if (!cv || typeof Chart === 'undefined') return;
+    if (CH[id]) { try { CH[id].destroy(); } catch (e) {} }
+    cfg.options = cfg.options || {}; cfg.options.responsive = true; cfg.options.maintainAspectRatio = false;
+    cfg.options.plugins = cfg.options.plugins || {}; cfg.options.plugins.legend = cfg.options.plugins.legend || { labels: { color: '#8b949e', boxWidth: 10, font: { size: 10 } } };
+    var sc = cfg.options.scales = cfg.options.scales || {};
+    ['x', 'y'].forEach(function (a) { sc[a] = sc[a] || {}; sc[a].ticks = Object.assign({ color: '#8b949e', font: { size: 10 } }, sc[a].ticks || {}); sc[a].grid = Object.assign({ color: 'rgba(127,127,127,.12)' }, sc[a].grid || {}); });
+    CH[id] = new Chart(cv.getContext('2d'), cfg);
+  }
+  function unoAbierto(root) {
+    Array.prototype.forEach.call(root.querySelectorAll('details.sm2-acc'), function (d) {
+      d.addEventListener('toggle', function () { if (d.open) Array.prototype.forEach.call(root.querySelectorAll('details.sm2-acc[open]'), function (o) { if (o !== d) o.open = false; }); });
+    });
+  }
+  function delBtn(id, tipo) { return '<button class="sm2-del" title="Eliminar" onclick="deleteSubmodule(\'' + esc(String(id)).replace(/'/g, "\\'") + '\',\'' + tipo + '\')">✕</button>'; }
+
+  /* ─────────── CONTEO ─────────── */
+  function renderConteo() {
+    var h = host('conteo'); if (!h) return;
+    var data = (db.conteo || []).slice().filter(function (r) { return r; }).sort(function (a, b) { return fecha(b).localeCompare(fecha(a)); });
+    if (!data.length) { h.innerHTML = '<div class="sm2-vacio">Sin conteos registrados todavía. Registrá el primero con «+ Registrar conteo».</div>'; return; }
+    var porFecha = {}, fechas = [];
+    data.forEach(function (r) { var f = fecha(r); if (!porFecha[f]) { porFecha[f] = []; fechas.push(f); } porFecha[f].push(r); });
+    var ult = porFecha[fechas[0]], ultDiff = ult.reduce(function (s, r) { return s + (Number(r.diff) || 0); }, 0);
+    var faltantes = ult.filter(function (r) { return (Number(r.diff) || 0) < 0; });
+    var hace12 = new Date(); hace12.setFullYear(hace12.getFullYear() - 1); var c12 = fechas.filter(function (f) { return f >= hace12.toISOString().slice(0, 10); }).length;
+    var cab = ult.reduce(function (s, r) { return s + (Number(r.counted) || 0); }, 0), sis = ult.reduce(function (s, r) { return s + (Number(r.ref) || 0); }, 0);
+    var html = '<div class="sm2-kpis">' +
+      '<div class="sm2-kpi"><div class="l">Último conteo</div><div class="v">' + fechaL(fechas[0]) + '</div><div class="s">' + ult.length + ' lote' + (ult.length === 1 ? '' : 's') + ' · ' + f0(cab) + ' cab contadas</div></div>' +
+      '<div class="sm2-kpi ' + (ultDiff === 0 ? 'g' : 'r') + '"><div class="l">Diferencia vs sistema</div><div class="v">' + (ultDiff > 0 ? '+' : '') + f0(ultDiff) + ' <small>cab</small></div><div class="s">sistema: ' + f0(sis) + ' · contado: ' + f0(cab) + '</div></div>' +
+      '<div class="sm2-kpi ' + (faltantes.length ? 'r' : 'g') + '"><div class="l">Lotes con faltante</div><div class="v">' + faltantes.length + '</div><div class="s">' + (faltantes.length ? faltantes.map(function (r) { return r.lot_code + ' (' + r.diff + ')'; }).join(' · ') : 'todo cuadra') + '</div></div>' +
+      '<div class="sm2-kpi b"><div class="l">Conteos en 12 meses</div><div class="v">' + c12 + '</div><div class="s">' + fechas.length + ' en total</div></div></div>';
+    html += '<div class="sm2-grid2"><div class="sm2-chart"><div class="t">Contado vs sistema — último conteo</div><div class="st">' + fechaL(fechas[0]) + ' · por lote · las diferencias se marcan en rojo</div><div class="cv"><canvas id="sm2-conteo-c1"></canvas></div></div>' +
+      '<div class="sm2-chart"><div class="t">Diferencia acumulada por conteo</div><div class="st">suma de diferencias de cada fecha · 0 = cuadra</div><div class="cv"><canvas id="sm2-conteo-c2"></canvas></div></div></div>';
+    html += '<div class="sm2-list">' + fechas.map(function (f, i) {
+      var rs = porFecha[f], d = rs.reduce(function (s, r) { return s + (Number(r.diff) || 0); }, 0), por = {}; rs.forEach(function (r) { if (r.by) por[r.by] = 1; });
+      return '<details class="sm2-acc"' + (i === 0 ? ' open' : '') + '><summary><span class="ch">▸</span><span class="f">' + fechaL(f) + '</span><span class="m">' + rs.length + ' lote' + (rs.length === 1 ? '' : 's') + (Object.keys(por).length ? ' · ' + esc(Object.keys(por).join(', ')) : '') + '</span><span class="sm2-pill ' + (d === 0 ? 'ok' : d > 0 ? 'up' : 'bad') + '">' + (d === 0 ? 'cuadra' : (d > 0 ? '+' : '') + d + ' cab') + '</span></summary>' +
+        '<table class="tbl"><thead><tr><th>Lote</th><th>Contado</th><th>Sistema</th><th>Diferencia</th><th>Observaciones</th><th>Por</th><th></th></tr></thead><tbody>' +
+        rs.map(function (r) { var df = Number(r.diff) || 0; return '<tr><td style="font-weight:600">' + esc(r.lot_code) + '</td><td>' + f0(r.counted) + '</td><td>' + f0(r.ref) + '</td><td><span class="sm2-pill ' + (df === 0 ? 'ok' : df > 0 ? 'up' : 'bad') + '">' + (df > 0 ? '+' : '') + df + '</span></td><td style="color:var(--muted)">' + esc(r.obs || '—') + '</td><td style="color:var(--muted)">' + esc(r.by || '—') + '</td><td>' + delBtn(r.id, 'conteo') + '</td></tr>'; }).join('') +
+        '</tbody></table></details>';
+    }).join('') + '</div>';
+    h.innerHTML = html; unoAbierto(h);
+    var lots = ult.map(function (r) { return r.lot_code; });
+    grafico('sm2-conteo-c1', { type: 'bar', data: { labels: lots, datasets: [
+      { label: 'Sistema', data: ult.map(function (r) { return Number(r.ref) || 0; }), backgroundColor: 'rgba(76,154,255,.55)', borderRadius: 4 },
+      { label: 'Contado', data: ult.map(function (r) { return Number(r.counted) || 0; }), backgroundColor: ult.map(function (r) { return (Number(r.diff) || 0) < 0 ? '#E5534B' : '#3FB984'; }), borderRadius: 4 }] },
+      options: { scales: { y: { beginAtZero: true } } } });
+    var fs = fechas.slice(0, 12).reverse();
+    grafico('sm2-conteo-c2', { type: 'bar', data: { labels: fs.map(fechaL), datasets: [{ label: 'Diferencia', data: fs.map(function (f) { return porFecha[f].reduce(function (s, r) { return s + (Number(r.diff) || 0); }, 0); }), backgroundColor: fs.map(function (f) { var d = porFecha[f].reduce(function (s, r) { return s + (Number(r.diff) || 0); }, 0); return d === 0 ? '#3FB984' : d > 0 ? '#4C9AFF' : '#E5534B'; }), borderRadius: 4 }] },
+      options: { plugins: { legend: { display: false } } } });
+  }
+
+  /* ─────────── ALIMENTO ─────────── */
+  function renderAlimento() {
+    var h = host('alimento'); if (!h) return;
+    var data = (db.alimento || []).slice().filter(function (r) { return r; }).sort(function (a, b) { return fecha(b).localeCompare(fecha(a)); });
+    if (!data.length) { h.innerHTML = '<div class="sm2-vacio">Sin registros de alimentación todavía. Registrá el primero con «+ Registrar».</div>'; return; }
+    var hoy = new Date().toISOString().slice(0, 7), d6 = new Date(); d6.setMonth(d6.getMonth() - 5); var ym6 = d6.toISOString().slice(0, 7);
+    var kgMes = 0, kg6 = 0, porMes = {}, porTipo = {}, porLote = {}, meses = [], porYM = {};
+    data.forEach(function (r) {
+      var f = fecha(r), ym = f.slice(0, 7), kg = Number(r.qty) || 0, t = String(r.tipo || 'otro').replace(/_/g, ' ');
+      if (ym === hoy) kgMes += kg;
+      if (ym >= ym6) { kg6 += kg; porTipo[t] = (porTipo[t] || 0) + kg; porLote[r.lot_code || '—'] = (porLote[r.lot_code || '—'] || 0) + kg; porMes[ym] = porMes[ym] || {}; porMes[ym][t] = (porMes[ym][t] || 0) + kg; }
+      if (!porYM[ym]) { porYM[ym] = []; meses.push(ym); } porYM[ym].push(r);
+    });
+    var tipos = Object.keys(porTipo).sort(function (a, b) { return porTipo[b] - porTipo[a]; });
+    var mesesN = Object.keys(porMes).length || 1;
+    var html = '<div class="sm2-kpis">' +
+      '<div class="sm2-kpi"><div class="l">Mes actual</div><div class="v">' + f0(kgMes) + ' <small>kg</small></div><div class="s">' + (porYM[hoy] ? porYM[hoy].length : 0) + ' registros</div></div>' +
+      '<div class="sm2-kpi g"><div class="l">Acumulado 6 meses</div><div class="v">' + f0(kg6) + ' <small>kg</small></div><div class="s">promedio ' + f0(kg6 / mesesN) + ' kg/mes</div></div>' +
+      '<div class="sm2-kpi b"><div class="l">Tipo principal</div><div class="v" style="font-size:16px;font-family:Inter,sans-serif;text-transform:capitalize">' + esc(tipos[0] || '—') + '</div><div class="s">' + (tipos[0] ? Math.round(porTipo[tipos[0]] / (kg6 || 1) * 100) + ' % del total' : '') + '</div></div>' +
+      '<div class="sm2-kpi"><div class="l">Lotes suplementados</div><div class="v">' + Object.keys(porLote).length + '</div><div class="s">en 6 meses</div></div></div>';
+    html += '<div class="sm2-grid2"><div class="sm2-chart"><div class="t">Consumo mensual por tipo</div><div class="st">kg entregados cada mes, apilado por tipo de alimento</div><div class="cv"><canvas id="sm2-ali-c1"></canvas></div></div>' +
+      '<div class="sm2-chart"><div class="t">Por lote (6 meses)</div><div class="st">kg acumulados por lote</div><div class="cv"><canvas id="sm2-ali-c2"></canvas></div></div></div>';
+    html += '<div class="sm2-list">' + meses.map(function (ym, i) {
+      var rs = porYM[ym], kg = rs.reduce(function (s, r) { return s + (Number(r.qty) || 0); }, 0), ts = {}; rs.forEach(function (r) { ts[String(r.tipo || 'otro').replace(/_/g, ' ')] = 1; });
+      return '<details class="sm2-acc"' + (i === 0 ? ' open' : '') + '><summary><span class="ch">▸</span><span class="f">' + mesL(ym) + '</span><span class="m">' + rs.length + ' registro' + (rs.length === 1 ? '' : 's') + ' · ' + esc(Object.keys(ts).join(', ')) + '</span><span class="sm2-pill ok">' + f0(kg) + ' kg</span></summary>' +
+        '<table class="tbl"><thead><tr><th>Fecha</th><th>Lote</th><th>Tipo</th><th>Kg</th><th>Observaciones</th><th>Por</th><th></th></tr></thead><tbody>' +
+        rs.map(function (r) { return '<tr><td>' + fechaL(fecha(r)) + '</td><td style="font-weight:600">' + esc(r.lot_code) + '</td><td style="text-transform:capitalize">' + esc(String(r.tipo || '').replace(/_/g, ' ')) + '</td><td style="font-family:DM Mono,monospace">' + f0(r.qty) + '</td><td style="color:var(--muted)">' + esc(r.obs || '—') + '</td><td style="color:var(--muted)">' + esc(r.by || '—') + '</td><td>' + delBtn(r.id, 'alimento') + '</td></tr>'; }).join('') +
+        '</tbody></table></details>';
+    }).join('') + '</div>';
+    h.innerHTML = html; unoAbierto(h);
+    var ms = Object.keys(porMes).sort();
+    grafico('sm2-ali-c1', { type: 'bar', data: { labels: ms.map(mesL), datasets: tipos.map(function (t, i) { return { label: t, data: ms.map(function (m) { return Math.round(porMes[m][t] || 0); }), backgroundColor: PAL[i % PAL.length], borderRadius: 3, stack: 's' }; }) }, options: { scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } } });
+    var ls = Object.keys(porLote).sort(function (a, b) { return porLote[b] - porLote[a]; }).slice(0, 10);
+    grafico('sm2-ali-c2', { type: 'bar', data: { labels: ls, datasets: [{ label: 'kg', data: ls.map(function (l) { return Math.round(porLote[l]); }), backgroundColor: ls.map(function (_, i) { return PAL[i % PAL.length]; }), borderRadius: 4 }] }, options: { indexAxis: 'y', plugins: { legend: { display: false } } } });
+  }
+
+  var oRS = window.renderSubmodule;
+  if (typeof oRS === 'function' && !oRS.__sm2) {
+    var w = function (type) { var r = oRS.apply(this, arguments); try { if (type === 'conteo') renderConteo(); if (type === 'alimento') renderAlimento(); } catch (e) { console.warn('[sm2]', e); } return r; };
+    w.__sm2 = true; window.renderSubmodule = w;
+  }
+  window.sm2Render = function () { renderConteo(); renderAlimento(); };
+  try { console.log('%c[EP Desktop v1.8.286] Conteo y Alimento con KPIs, gráficos y acordeones · kill: __SUBM2_OFF', 'color:#3fb950'); } catch (e) {}
 })();
 </script>
 
