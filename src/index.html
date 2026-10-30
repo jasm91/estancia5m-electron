@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.283';
+window.E5M_HTML_BUILD = '1.8.284';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -61590,7 +61590,7 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
   var css = document.createElement('style');
   css.textContent =
     '@media (min-width:980px){' +
-    '#page-config.cfg2{display:grid;grid-template-columns:250px minmax(0,1fr);column-gap:24px;align-items:start}' +
+    '#page-config.cfg2.active{display:grid;grid-template-columns:250px minmax(0,1fr);column-gap:24px;align-items:start}' +
     '#page-config.cfg2 > .ph{grid-column:1 / -1}' +
     '#page-config.cfg2 > *:not(.ph):not(#cfg2-nav){grid-column:2}' +
     '#page-config.cfg2 #cfg2-nav{display:block;grid-column:1;grid-row:2 / span 60;position:sticky;top:12px;max-height:calc(100vh - 120px);overflow:auto;border:1px solid var(--bor);border-radius:12px;background:var(--sur,var(--bg2));padding:8px}' +
