@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.273';
+window.E5M_HTML_BUILD = '1.8.274';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -3453,7 +3453,7 @@ function orMarcajeGo(){
     <div style="display:flex;gap:8px">
       <button class="btn btn-primary" onclick="openModalCuenta()">+ Registro</button>
       <button class="btn btn-ghost" onclick="refreshContabilidad()" id="btn-cont-refresh" title="Sincronizar con servidor y refrescar">🔄 Actualizar</button>
-      <button class="btn btn-ghost" onclick="exportCuentas()">⬇ Excel</button>
+      <button class="btn btn-ghost" onclick="exportContabilidadXLSX()" title="Exporta lo que se ve, con los filtros aplicados: detalle, resumen por tipo de gasto / cuenta / subcuenta y por mes">⬇ Excel</button>
       <button class="btn btn-ghost" onclick="exportContabilidadPDF()" title="Generar PDF">⬇ PDF</button>
     </div>
   </div>
@@ -23218,6 +23218,8 @@ function renderContabilidad() {
     if (selSubcuenta && r.subcuenta !== selSubcuenta) return false;
     return true;
   });
+  window._contRegistros = registros; /* v1.8.274: lo que se ve (con filtros) → export Excel */
+  window._contFiltros = { desde: selDesde, hasta: selHasta, tipo: selTipoGasto, cuenta: selCuenta, subcuenta: selSubcuenta };
 
   // Totales por cuenta
   var totales = {};
@@ -55760,6 +55762,130 @@ try {
   console.log('[v1.8.273] 🥩 producción de carne (real · estimado · objetivo, por lote y por raza) en Gráficos BI · kill __PRODCARNE_OFF');
 })();
 </script>
+<script id="contab-excel-v18274">
+/* ═══ v1.8.274 — EXPORTAR CONTABILIDAD A EXCEL (pedido José 29-10) ═══
+   Exporta exactamente lo que muestra la pestaña (mismos filtros de fecha, tipo, cuenta y subcuenta), con
+   todos los orígenes: compras, ventas, diésel, sueldos, bonos, adelantos, mantenimiento, sanidad, compra
+   de ganado y registros manuales. Tres hojas:
+     · Resumen  — Tipo de gasto → Cuenta → Subcuenta, con movimientos y monto, subtotales y resultado.
+     · Detalle  — un movimiento por fila: fecha, tipo, cuenta, subcuenta, descripción, monto, aplicación
+                  (Escritorio, EP Campo, WhatsApp, Sistema), quién lo registró, equipo, origen.
+     · Por mes  — cuenta/subcuenta × mes.
+   Antes el botón bajaba solo los registros manuales (db.cuentas) en CSV. */
+(function () {
+  'use strict';
+  var ORIGEN = { 'venta': ['sales', 'Venta de ganado'], 'compra': ['purchases', 'Compra'], 'trat': ['treatments', 'Sanidad'], 'diesel': ['diesel', 'Diésel'],
+    'sueldo': ['historial_sueldos', 'Sueldo'], 'bono': ['bonos', 'Bono'], 'bajap': ['bajas_personal', 'Liquidación'], 'maint': ['maintenance', 'Mantenimiento'],
+    'adv': ['advances', 'Adelanto'], 'aceite': ['aceite', 'Aceite'], 'cg': ['compras_ganado', 'Compra de ganado'], 'merma': ['diesel', 'Merma de diésel'], 'inv': ['inventory_counts', 'Merma de inventario'] };
+  function fuente(r) {
+    var id = String(r.id || ''), i = id.indexOf('-'); if (i < 0) return { tabla: 'cuentas', nombre: 'Registro manual', rec: (db.cuentas || []).find(function (x) { return String(x.id) === id; }) || r };
+    var pre = id.slice(0, i), rest = id.slice(i + 1), o = ORIGEN[pre];
+    if (/^diesel-merma-/.test(id)) { pre = 'merma'; rest = id.slice(13); o = ORIGEN.merma; }
+    else if (/^merma-inv-/.test(id)) { pre = 'inv'; rest = id.slice(10); o = ORIGEN.inv; }
+    if (!o) return { tabla: 'cuentas', nombre: 'Registro manual', rec: (db.cuentas || []).find(function (x) { return String(x.id) === id; }) || r };
+    var rec = (db[o[0]] || []).find(function (x) { return x && String(x.id) === rest; }) || null;
+    return { tabla: o[0], nombre: o[1], rec: rec };
+  }
+  function aplicacion(rec, r) {
+    if (!rec) return r.origen === 'auto' ? 'Sistema' : '—';
+    var a = rec._author || {}, src = String(rec.source || '').toLowerCase(), by = String(rec.by || '');
+    if (a.via === 'bot' || src === 'whatsapp' || /^whatsapp/i.test(by)) return 'WhatsApp';
+    if (rec.app === 'campo' || src === 'field' || src === 'pwa') return 'EP Campo';
+    if (a.via === 'device') return 'Equipo vinculado';
+    if (rec.app === 'agro') return 'EP Agro';
+    if (a.via === 'desktop' || src === 'desktop') return 'Escritorio';
+    if (/^(server|sistema)$/i.test(by)) return 'Sistema';
+    return 'Escritorio';
+  }
+  /* número de WhatsApp → nombre(s) del personal con ese teléfono */
+  var _tel = null;
+  function telNombre(num) {
+    if (!_tel) { _tel = {}; (db.employees || []).forEach(function (e) { var d = String((e && (e.phone || e.celular || e.telefono || e.whatsapp)) || '').replace(/\D/g, ''); if (d.length >= 7) { var k = d.slice(-8); (_tel[k] = _tel[k] || []).push(e.name); } }); }
+    var k = String(num || '').replace(/\D/g, '').slice(-8); return (_tel[k] || []).join(' / ');
+  }
+  function quien(rec, r) {
+    var a = (rec && rec._author) || {};
+    var by = String((rec && rec.by) || r.by || '').trim();
+    if (a.employee_name) return a.employee_name;
+    var num = /^whatsapp\s*/i.test(by) ? by.replace(/^whatsapp\s*/i, '') : (a.via === 'bot' && a.phone ? String(a.phone) : '');
+    if (num) { var nm = telNombre(num); return nm ? nm + ' (WhatsApp ' + num + ')' : 'WhatsApp ' + num; }
+    return by || a.device_name || '';
+  }
+  function equipo(rec) { var a = (rec && rec._author) || {}; return a.device_name || ''; }
+  function n(v) { var x = parseFloat(v); return isFinite(x) ? Math.round(x * 100) / 100 : 0; }
+  function esIngreso(r) { return String(r.cuenta || '').toUpperCase() === 'INGRESOS'; }
+
+  window.exportContabilidadXLSX = function () {
+    try { if (typeof renderContabilidad === 'function') renderContabilidad(); } catch (e) {}
+    var R = (window._contRegistros || []).slice();
+    if (!R.length) { toast('Sin movimientos en el período seleccionado', 'error'); return; }
+    var F = window._contFiltros || {};
+    var ORD_CTA = { 'INGRESOS': 0, 'COSTOS': 1, 'GASTO ADMINISTRATIVO': 2, 'INVERSIÓN': 3, 'INVERSION': 3 };
+    function tipoDe(r) { return String(r.tipo_gasto || r.tipo || '').toUpperCase() || 'SIN TIPO'; }
+    R.sort(function (a, b) {
+      return tipoDe(a).localeCompare(tipoDe(b)) || ((ORD_CTA[a.cuenta] != null ? ORD_CTA[a.cuenta] : 9) - (ORD_CTA[b.cuenta] != null ? ORD_CTA[b.cuenta] : 9)) ||
+        String(a.cuenta || '').localeCompare(String(b.cuenta || '')) || String(a.subcuenta || '').localeCompare(String(b.subcuenta || '')) || String(a.fecha || '').localeCompare(String(b.fecha || ''));
+    });
+    /* ── Detalle ── */
+    var det = [['Fecha', 'Tipo de gasto', 'Cuenta', 'Subcuenta', 'Descripción', 'Monto Bs', 'Ingreso / Egreso', 'Aplicación', 'Registrado por', 'Equipo', 'Origen', 'ID']];
+    R.forEach(function (r) {
+      var f = fuente(r);
+      det.push([String(r.fecha || '').slice(0, 10), tipoDe(r), r.cuenta || '', r.subcuenta || '', r.detalle || '', n(r.monto), esIngreso(r) ? 'Ingreso' : 'Egreso',
+        aplicacion(f.rec, r), quien(f.rec, r), equipo(f.rec), f.nombre, String(r.id || '')]);
+    });
+    /* ── Resumen: Tipo de gasto → Cuenta → Subcuenta ── */
+    var arbol = {};
+    R.forEach(function (r) {
+      var t = tipoDe(r), c = r.cuenta || '(sin cuenta)', s = r.subcuenta || '(sin subcuenta)';
+      var T = arbol[t] = arbol[t] || { n: 0, m: 0, c: {} }; var C = T.c[c] = T.c[c] || { n: 0, m: 0, s: {} }; var S = C.s[s] = C.s[s] || { n: 0, m: 0 };
+      var v = n(r.monto); T.n++; T.m += v; C.n++; C.m += v; S.n++; S.m += v;
+    });
+    var est = ''; try { est = (JSON.parse(localStorage.getItem('e5m_branding') || '{}') || {}).name || ''; } catch (e) {}
+    if (!est && typeof getParams === 'function') est = getParams().nombre_estancia || '';
+    if (!est) est = 'EstanciaPro';
+    _tel = null;
+    var per = F.desde && F.hasta ? F.desde + ' al ' + F.hasta : F.desde ? 'desde ' + F.desde : F.hasta ? 'hasta ' + F.hasta : 'todo el historial';
+    var filt = [F.tipo && ('tipo ' + F.tipo), F.cuenta && ('cuenta ' + F.cuenta), F.subcuenta && ('subcuenta ' + F.subcuenta)].filter(Boolean).join(' · ');
+    var res = [['Tipo de gasto', 'Cuenta', 'Subcuenta', 'Movimientos', 'Monto Bs']];
+    Object.keys(arbol).sort().forEach(function (t) {
+      var T = arbol[t];
+      Object.keys(T.c).sort(function (a, b) { return ((ORD_CTA[a] != null ? ORD_CTA[a] : 9) - (ORD_CTA[b] != null ? ORD_CTA[b] : 9)) || a.localeCompare(b); }).forEach(function (c) {
+        var C = T.c[c];
+        Object.keys(C.s).sort().forEach(function (s) { res.push([t, c, s, C.s[s].n, n(C.s[s].m)]); });
+        res.push([t, 'Subtotal ' + c, '', C.n, n(C.m)]);
+      });
+      res.push(['Total ' + t, '', '', T.n, n(T.m)]);
+      res.push(['', '', '', '', '']);
+    });
+    var ing = 0, egr = 0; R.forEach(function (r) { if (esIngreso(r)) ing += n(r.monto); else egr += n(r.monto); });
+    res.push(['Ingresos', '', '', '', n(ing)]); res.push(['Egresos (costos + gasto administrativo + inversión)', '', '', '', n(egr)]); res.push(['Resultado', '', '', '', n(ing - egr)]);
+    res.push(['', '', '', '', '']);
+    res.push(['Estancia: ' + est, '', '', '', '']); res.push(['Período: ' + per + (filt ? ' · filtros: ' + filt : ''), '', '', '', '']); res.push(['Exportado: ' + new Date().toLocaleString('es-BO'), '', '', '', '']);
+    /* ── Por mes ── */
+    var meses = {}, filas = {};
+    R.forEach(function (r) { var m = String(r.fecha || '').slice(0, 7); if (!/^\d{4}-\d{2}$/.test(m)) return; meses[m] = 1; var k = (r.cuenta || '') + '|' + (r.subcuenta || ''); var o = filas[k] = filas[k] || {}; o[m] = (o[m] || 0) + n(r.monto); });
+    var ms = Object.keys(meses).sort();
+    var pm = [['Cuenta', 'Subcuenta'].concat(ms).concat(['Total'])];
+    Object.keys(filas).sort(function (a, b) { var ca = a.split('|')[0], cb = b.split('|')[0]; return ((ORD_CTA[ca] != null ? ORD_CTA[ca] : 9) - (ORD_CTA[cb] != null ? ORD_CTA[cb] : 9)) || a.localeCompare(b); }).forEach(function (k) {
+      var p = k.split('|'), o = filas[k], tot = 0; var row = [p[0], p[1]]; ms.forEach(function (m) { row.push(n(o[m] || 0)); tot += o[m] || 0; }); row.push(n(tot)); pm.push(row);
+    });
+    var nombre = 'contabilidad_' + String(est).replace(/[^A-Za-z0-9áéíóúñÁÉÍÓÚÑ]+/g, '_').replace(/^_|_$/g, '') + '_' + (F.desde || 'inicio') + '_' + (F.hasta || (typeof localDate === 'function' ? localDate() : '')) + '.xlsx';
+    if (window.estancia && window.estancia.xlsx && window.estancia.xlsx.saveAs) {
+      window.estancia.xlsx.saveAs({ 'Resumen': res, 'Detalle': det, 'Por mes': pm }, nombre).then(function (r) {
+        if (r && r.success) toast('Excel exportado — ' + (det.length - 1) + ' movimientos', 'success');
+        else if (r && r.error) toast('No se pudo guardar: ' + r.error, 'error');
+      });
+      return;
+    }
+    /* sin el módulo de Excel (versión web): CSV del detalle */
+    var csv = det.map(function (row) { return row.map(function (v) { var x = String(v == null ? '' : v); return /[",;\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x; }).join(','); }).join('\n');
+    var a = document.createElement('a'); a.href = 'data:text/csv;charset=utf-8,﻿' + encodeURIComponent(csv); a.download = nombre.replace(/\.xlsx$/, '.csv'); a.click();
+    toast('Exportado en CSV (esta versión no tiene Excel)', 'success');
+  };
+  console.log('[v1.8.274] ⬇ Contabilidad → Excel (Resumen tipo/cuenta/subcuenta · Detalle con aplicación y autor · Por mes)');
+})();
+</script>
+
 
 <script id="casas-comerciales-v18193">
 /* ═══ v1.8.193 — 🏪 CASAS COMERCIALES (pedido Jose 31-08, sobre 30+ facturas reales).
