@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.284';
+window.E5M_HTML_BUILD = '1.8.285';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -11419,7 +11419,7 @@ function renderVentas() {
       var docBtn = document.createElement('button');
       docBtn.className = 'btn btn-ghost btn-sm'; docBtn.style.marginRight = '4px';
       docBtn.title = s.has_photo ? 'Ver comprobante' : 'Adjuntar comprobante';
-      docBtn.textContent = s.has_photo ? '📷' : '📎';
+      docBtn.textContent = s.has_photo ? ('📎 ' + ((s.adjuntos && s.adjuntos.length) || 1)) : '＋ 📎'; /* v1.8.285: cantidad de respaldos */
       docBtn.onclick = (function(id, has){ return function(){ if(has) viewTransactionImage(id); else _attachSaleDoc(id); }; })(s.id, !!s.has_photo);
       tr.lastElementChild.insertBefore(docBtn, tr.lastElementChild.firstChild);
       saleTbody.appendChild(tr);
@@ -16201,7 +16201,7 @@ function renderComprasGanado() {
       '<td style="font-weight:700;color:var(--green)">Bs. ' + (c.total||0).toLocaleString() + '</td>' +
       '<td>' + (c.lot_code||'') + '</td>' +
       '<td style="font-size:10px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis">' + detalle + '</td>' +
-      '<td><button class="btn btn-ghost btn-sm" onclick="deleteCompraGanado(\'' + c.id + '\')" style="color:var(--red)">🗑</button></td>' +
+      '<td style="white-space:nowrap">' + (typeof cgAdjPill === 'function' ? cgAdjPill(c, 'compras_ganado') + ' ' : '') + '<button class="btn btn-ghost btn-sm" onclick="deleteCompraGanado(\'' + c.id + '\')" style="color:var(--red)">🗑</button></td>' +
       '</tr>';
   }).join('');
 }
@@ -61702,6 +61702,235 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { setTimeout(boot, 900); }); else setTimeout(boot, 900);
   try { console.log('%c[EP Desktop v1.8.281] Configuración en dos columnas · cfg2Aplicar() · kill: __CFG2_OFF', 'color:#3fb950'); } catch (e) {}
+})();
+</script>
+
+
+<script id="adjuntos-compra-venta-v18285">
+/* ═══ v1.8.285 — COMPRA Y VENTA DE GANADO: adjuntar respaldos (pedido José 30-10)
+   Imágenes o PDF (guía de movimiento, factura, recibo, fotos), varios por registro.
+   Usa el sistema de comprobantes existente (/api/transaction-image): el 1º archivo va con el id del
+   registro y los siguientes como id__2, id__3… El registro guarda la lista en `adjuntos` (nombre, tipo, KB).
+   Imágenes se comprimen (máx 1800 px, JPEG); PDF hasta 4 MB. Kill: window.__CGADJ_OFF ═══ */
+(function () {
+  'use strict';
+  if (window.__CGADJ_OFF) return;
+  var PEND = {}; /* pendientes por modal: compras_ganado | sales */
+  var MAX_PDF = 4 * 1024 * 1024;
+  var CFG = {
+    compras_ganado: { lista: function () { return db.compras_ganado || []; }, titulo: 'Respaldos de la compra', quien: function (r) { return r.proveedor || 'Compra'; }, sub: function (r) { return (r.fecha || '') + ' · ' + (r.lot_code || ''); }, render: function () { try { renderComprasGanado(); } catch (e) {} }, tipo: 'compras_ganado_adj' },
+    sales: { lista: function () { return db.sales || []; }, titulo: 'Respaldos de la venta', quien: function (r) { return r.buyer || 'Venta'; }, sub: function (r) { return (r.date || '') + ' · ' + (r.lot_code || '') + (r.invoice ? ' · ' + r.invoice : ''); }, render: function () { try { renderVentas(); } catch (e) {} }, tipo: 'sales' }
+  };
+  function $(id) { return document.getElementById(id); }
+  function esc(x) { return String(x == null ? '' : x).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function tok() { return localStorage.getItem('e5m_api_token') || ''; }
+  function autor() { try { return typeof _desktopAuthor === 'function' ? _desktopAuthor() : 'Desktop'; } catch (e) { return 'Desktop'; } }
+
+  var css = document.createElement('style');
+  css.textContent =
+    '.cg-adj-box{border:1px dashed var(--bor);border-radius:10px;padding:12px 14px;margin:6px 0 4px;transition:border-color .18s ease,background .18s ease}' +
+    '.cg-adj-box.drag{border-color:var(--amber);background:rgba(240,160,48,.06)}' +
+    '.cg-adj-box .t{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}' +
+    '.cg-adj-box .adj-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}' +
+    '.cg-adj-box .ch{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;padding:4px 6px 4px 10px;border-radius:999px;background:var(--sur2);border:1px solid var(--bor);animation:cgAdjIn .18s ease both}' +
+    '.cg-adj-box .ch button{background:none;border:0;color:var(--muted);cursor:pointer;font-size:12px;padding:0 4px}' +
+    '.cg-adj-pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 9px;border-radius:999px;border:1px solid var(--bor);background:var(--sur2);color:var(--text);cursor:pointer;white-space:nowrap}' +
+    '.cg-adj-pill.vacio{color:var(--muted);background:none}' +
+    '#cg-adj-ov{position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:24px;opacity:0;transition:opacity .2s ease}' +
+    '#cg-adj-ov.on{opacity:1}' +
+    '#cg-adj-ov .bx{background:var(--bg2,var(--sur));border:1px solid var(--bor);border-radius:12px;width:min(980px,100%);max-height:90vh;display:flex;flex-direction:column;overflow:hidden}' +
+    '#cg-adj-ov .hd{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--bor)}' +
+    '#cg-adj-ov .bd{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:420px;max-height:calc(90vh - 60px)}' +
+    '#cg-adj-ov .ls{border-right:1px solid var(--bor);overflow:auto;padding:8px}' +
+    '#cg-adj-ov .ls button{display:block;width:100%;text-align:left;background:none;border:0;border-radius:8px;padding:9px 10px;color:inherit;font:inherit;font-size:12.5px;cursor:pointer}' +
+    '#cg-adj-ov .ls button:nth-child(even){background:rgba(127,127,127,.05)}' +
+    '#cg-adj-ov .ls button.on{background:rgba(240,160,48,.12);color:var(--amber2,var(--amber));font-weight:600}' +
+    '#cg-adj-ov .vw{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:14px;gap:10px;overflow:auto}' +
+    '#cg-adj-ov .vw img{max-width:100%;max-height:62vh;border-radius:8px;border:1px solid var(--bor)}' +
+    '#cg-adj-ov .vw iframe{width:100%;height:62vh;border:1px solid var(--bor);border-radius:8px;background:#fff}' +
+    '@keyframes cgAdjIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}' +
+    '@media (prefers-reduced-motion:reduce){#cg-adj-ov,.cg-adj-box .ch{transition:none;animation:none}}';
+  document.head.appendChild(css);
+
+  /* ── leer archivo: imagen comprimida o PDF tal cual ── */
+  function leer(file) {
+    return new Promise(function (ok, ko) {
+      var esPdf = /pdf/i.test(file.type) || /\.pdf$/i.test(file.name);
+      var esImg = /^image\//i.test(file.type);
+      if (!esPdf && !esImg) return ko(new Error('Solo imágenes o PDF: ' + file.name));
+      if (esPdf && file.size > MAX_PDF) return ko(new Error(file.name + ' pesa ' + Math.round(file.size / 1048576 * 10) / 10 + ' MB (máximo 4 MB)'));
+      var r = new FileReader();
+      r.onerror = function () { ko(new Error('No se pudo leer ' + file.name)); };
+      r.onload = function () {
+        var url = String(r.result || '');
+        if (esPdf) return ok({ nombre: file.name, mime: 'application/pdf', url: url });
+        var im = new Image();
+        im.onload = function () {
+          var M = 1800, w = im.width, h = im.height, k = Math.min(1, M / Math.max(w, h));
+          if (k === 1 && file.size < 450 * 1024) return ok({ nombre: file.name, mime: file.type || 'image/jpeg', url: url });
+          var cv = document.createElement('canvas'); cv.width = Math.round(w * k); cv.height = Math.round(h * k);
+          cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height);
+          ok({ nombre: file.name.replace(/\.\w+$/, '') + '.jpg', mime: 'image/jpeg', url: cv.toDataURL('image/jpeg', 0.82) });
+        };
+        im.onerror = function () { ok({ nombre: file.name, mime: file.type || 'image/jpeg', url: url }); };
+        im.src = url;
+      };
+      r.readAsDataURL(file);
+    });
+  }
+  function kb(url) { return Math.round((url.length - url.indexOf(',') - 1) * 0.75 / 1024); }
+  function subir(txId, a, tipo) {
+    return fetch(getApiUrl() + '/transaction-image', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tok() },
+      body: JSON.stringify({ transaction_id: txId, transaction_type: tipo, base64: a.url.replace(/^data:[^;]+;base64,/, ''), mime_type: a.mime, uploaded_by: autor() })
+    }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+  }
+  /* sube una lista a una compra existente (en serie) y guarda la lista en el registro */
+  function adjuntarA(tabla, id, lista) {
+    var T = CFG[tabla]; if (!T) return Promise.resolve(0);
+    var rec = T.lista().find(function (c) { return String(c.id) === String(id); });
+    if (!rec || !lista.length) return Promise.resolve(0);
+    var ya = adjDe(rec), n0 = ya.length, hechos = [];
+    var cadena = Promise.resolve();
+    lista.forEach(function (a, i) {
+      cadena = cadena.then(function () {
+        var k = n0 + i, tx = k === 0 ? String(id) : String(id) + '__' + (k + 1);
+        return subir(tx, a, k === 0 && tabla === 'sales' ? 'sales' : T.tipo).then(function () { hechos.push({ tx: tx, nombre: a.nombre, mime: a.mime, kb: kb(a.url), at: new Date().toISOString(), por: autor() }); });
+      });
+    });
+    return cadena.then(function () { return true; }, function (e) { console.warn('[cg-adj]', e); return false; }).then(function (todo) {
+      if (hechos.length) {
+        rec.adjuntos = ya.concat(hechos); rec.has_photo = true;
+        try { saveDB(); } catch (e) {}
+        try { replaceTableInRailway(tabla, T.lista()); } catch (e) {}
+        try { auditLog('update', tabla, id, 'Adjuntó ' + hechos.length + ' respaldo(s) · ' + T.quien(rec)); } catch (e) {}
+      }
+      if (!todo) toast('No se pudieron subir ' + (lista.length - hechos.length) + ' archivo(s) — revisá la conexión y adjuntalos desde la tabla', 'error');
+      else toast('📎 ' + hechos.length + ' respaldo(s) adjuntado(s)', 'success');
+      T.render();
+      return hechos.length;
+    });
+  }
+  function adjDe(rec) {
+    if (Array.isArray(rec.adjuntos) && rec.adjuntos.length) return rec.adjuntos;
+    if (rec.has_photo) return [{ tx: String(rec.id), nombre: 'Comprobante', mime: '' }]; /* adjunto viejo sin lista */
+    return [];
+  }
+
+  /* ── campo en el modal de registro ── */
+  function pintarPend(k) {
+    var l = $('adj-list-' + k); if (!l) return;
+    l.innerHTML = (PEND[k] || []).map(function (a, i) {
+      return '<span class="ch">' + (a.mime === 'application/pdf' ? '📄' : '🖼️') + ' ' + esc(a.nombre) + ' <span style="color:var(--muted)">' + kb(a.url) + ' KB</span><button type="button" title="Quitar" onclick="cgAdjQuitar(\'' + k + '\',' + i + ')">✕</button></span>';
+    }).join('');
+  }
+  window.cgAdjQuitar = function (k, i) { (PEND[k] || []).splice(i, 1); pintarPend(k); };
+  function agregarArchivos(k, files) {
+    PEND[k] = PEND[k] || [];
+    Array.prototype.reduce.call(files, function (p, f) {
+      return p.then(function () { return leer(f).then(function (a) { PEND[k].push(a); pintarPend(k); }, function (e) { toast(e.message, 'error'); }); });
+    }, Promise.resolve());
+  }
+  /* k = clave del modal; ancla = elemento después del cual va el campo */
+  function inyectarCampo(k, ancla, titulo) {
+    if ($('adj-box-' + k) || !ancla) return;
+    var box = document.createElement('div'); box.id = 'adj-box-' + k; box.className = 'cg-adj-box';
+    box.innerHTML = '<div class="t"><div><div style="font-size:12.5px;font-weight:600">📎 ' + titulo + '</div>' +
+      '<div style="font-size:11.5px;color:var(--muted)">Guía de movimiento, factura, recibo o fotos · imágenes o PDF · podés soltar los archivos acá</div></div>' +
+      '<button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById(\'adj-input-' + k + '\').click()">＋ Adjuntar</button>' +
+      '<input type="file" id="adj-input-' + k + '" accept="image/*,.pdf,application/pdf" multiple style="display:none"></div><div class="adj-list" id="adj-list-' + k + '"></div>';
+    ancla.parentNode.insertBefore(box, ancla.nextSibling);
+    $('adj-input-' + k).addEventListener('change', function () { agregarArchivos(k, this.files); this.value = ''; });
+    ['dragenter', 'dragover'].forEach(function (ev) { box.addEventListener(ev, function (e) { e.preventDefault(); box.classList.add('drag'); }); });
+    ['dragleave', 'drop'].forEach(function (ev) { box.addEventListener(ev, function (e) { e.preventDefault(); box.classList.remove('drag'); }); });
+    box.addEventListener('drop', function (e) { if (e.dataTransfer && e.dataTransfer.files) agregarArchivos(k, e.dataTransfer.files); });
+  }
+  function anclaDe(id) { var e = $(id); return e ? (e.closest('.form-row') || e.closest('.form-group') || e) : null; }
+
+  /* ── ganchos: abrir modal (limpia), guardar (sube) ── */
+  function engancharOpen(fn, k, idAncla, titulo) {
+    var o = window[fn]; if (typeof o !== 'function' || o.__adj) return;
+    var w = function () { var r = o.apply(this, arguments); PEND[k] = []; inyectarCampo(k, anclaDe(idAncla), titulo); pintarPend(k); return r; };
+    w.__adj = true; window[fn] = w;
+  }
+  function engancharSave(fn, tabla, ks) {
+    var o = window[fn]; if (typeof o !== 'function' || o.__adj) return;
+    var w = function () {
+      var T = CFG[tabla], antes = {}; T.lista().forEach(function (c) { antes[String(c.id)] = 1; });
+      var r = o.apply(this, arguments);
+      var nueva = T.lista().filter(function (c) { return !antes[String(c.id)]; })[0];
+      var lista = []; ks.forEach(function (k) { lista = lista.concat(PEND[k] || []); PEND[k] = []; pintarPend(k); });
+      if (nueva && lista.length) adjuntarA(tabla, nueva.id, lista);
+      return r;
+    };
+    w.__adj = true; window[fn] = w;
+  }
+  engancharOpen('openModalCompraGanado', 'cg', 'cg-notas', 'Respaldos de la compra');
+  engancharSave('saveCompraGanado', 'compras_ganado', ['cg']);
+  engancharOpen('openModalSale', 'sale', 'sale-trace', 'Respaldos de la venta');
+  engancharOpen('wvOpen', 'wv', 'wv-trace', 'Respaldos de la venta');
+  engancharSave('saveSale', 'sales', ['sale', 'wv']); /* el asistente (wvFinish) también termina en saveSale */
+
+  /* ── ver / agregar desde la tabla ── */
+  window.cgAdjAgregar = function (id, tabla) {
+    tabla = tabla || 'compras_ganado';
+    var inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*,.pdf,application/pdf'; inp.multiple = true; inp.style.display = 'none';
+    inp.onchange = function () {
+      var out = [];
+      Array.prototype.reduce.call(inp.files, function (p, f) { return p.then(function () { return leer(f).then(function (a) { out.push(a); }, function (e) { toast(e.message, 'error'); }); }); }, Promise.resolve())
+        .then(function () { inp.remove(); if (out.length) { toast('Subiendo ' + out.length + ' archivo(s)…', 'info'); adjuntarA(tabla, id, out).then(function () { if ($('cg-adj-ov')) cgAdjVer(id, tabla); }); } });
+    };
+    document.body.appendChild(inp); inp.click();
+  };
+  var _blobUrl = null;
+  function mostrar(a) {
+    var vw = document.querySelector('#cg-adj-ov .vw'); if (!vw) return;
+    vw.innerHTML = '<div style="color:var(--muted);font-size:13px">Cargando…</div>';
+    fetch(getApiUrl() + '/transaction-image/' + encodeURIComponent(a.tx), { headers: { 'Authorization': 'Bearer ' + tok() } })
+      .then(function (r) { if (!r.ok) throw new Error(r.status === 404 ? 'No se encontró el archivo en el servidor' : 'HTTP ' + r.status); return r.json(); })
+      .then(function (img) {
+        var mime = img.mime_type || a.mime || 'image/jpeg', bin = atob(img.base64), u8 = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+        if (_blobUrl) { try { URL.revokeObjectURL(_blobUrl); } catch (e) {} }
+        _blobUrl = URL.createObjectURL(new Blob([u8], { type: mime }));
+        var nombre = a.nombre && a.nombre !== 'Comprobante' ? a.nombre : ('respaldo' + (/pdf/.test(mime) ? '.pdf' : '.jpg'));
+        vw.innerHTML = (/pdf/.test(mime) ? '<iframe src="' + _blobUrl + '" title="' + esc(nombre) + '"></iframe>' : '<img src="' + _blobUrl + '" alt="' + esc(nombre) + '">') +
+          '<div style="display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted)">' + esc(nombre) + ' · ' + (img.size_kb || a.kb || '?') + ' KB' +
+          '<a class="btn btn-ghost btn-sm" href="' + _blobUrl + '" download="' + esc(nombre) + '">⬇ Descargar</a></div>';
+      })
+      .catch(function (e) { vw.innerHTML = '<div style="color:var(--muted);font-size:13px">' + esc(e.message) + '</div>'; });
+  }
+  window.cgAdjVer = function (id, tabla) {
+    tabla = tabla || 'compras_ganado'; var T = CFG[tabla]; if (!T) return;
+    var rec = T.lista().find(function (c) { return String(c.id) === String(id); }); if (!rec) return;
+    var L = adjDe(rec);
+    var ov = $('cg-adj-ov'); if (ov) ov.remove();
+    ov = document.createElement('div'); ov.id = 'cg-adj-ov';
+    ov.innerHTML = '<div class="bx" role="dialog" aria-modal="true"><div class="hd"><div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">' + T.titulo + '</div>' +
+      '<div style="font-size:16px;font-weight:700">' + esc(T.quien(rec)) + ' <span style="font-weight:400;color:var(--muted);font-size:13px">· ' + esc(T.sub(rec)) + '</span></div></div>' +
+      '<div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="cgAdjAgregar(\'' + esc(rec.id) + '\',\'' + tabla + '\')">＋ Adjuntar</button><button class="btn btn-ghost btn-sm" onclick="cgAdjCerrar()" aria-label="Cerrar">✕</button></div></div>' +
+      '<div class="bd"><div class="ls">' + (L.length ? L.map(function (a, i) { return '<button type="button" data-i="' + i + '">' + (/pdf/.test(a.mime || '') ? '📄 ' : '🖼️ ') + esc(a.nombre || ('Archivo ' + (i + 1))) + (a.kb ? '<div style="font-size:10.5px;color:var(--muted);font-weight:400">' + a.kb + ' KB' + (a.at ? ' · ' + String(a.at).slice(0, 10) : '') + '</div>' : '') + '</button>'; }).join('') : '<div style="font-size:12px;color:var(--muted);padding:10px">Sin respaldos todavía.</div>') + '</div>' +
+      '<div class="vw"><div style="color:var(--muted);font-size:13px">' + (L.length ? 'Elegí un archivo' : 'Adjuntá la guía, factura o fotos con «＋ Adjuntar».') + '</div></div></div></div>';
+    ov.addEventListener('click', function (e) { if (e.target === ov) cgAdjCerrar(); var b = e.target.closest && e.target.closest('.ls button[data-i]'); if (b) { ov.querySelectorAll('.ls button').forEach(function (x) { x.classList.toggle('on', x === b); }); mostrar(L[+b.getAttribute('data-i')]); } });
+    document.body.appendChild(ov); requestAnimationFrame(function () { ov.classList.add('on'); });
+    document.addEventListener('keydown', _esc);
+    if (L.length) { var b0 = ov.querySelector('.ls button'); if (b0) { b0.classList.add('on'); mostrar(L[0]); } }
+  };
+  function _esc(e) { if (e.key === 'Escape') cgAdjCerrar(); }
+  window.cgAdjCerrar = function () { document.removeEventListener('keydown', _esc); var ov = $('cg-adj-ov'); if (!ov) return; ov.classList.remove('on'); setTimeout(function () { ov.remove(); if (_blobUrl) { try { URL.revokeObjectURL(_blobUrl); } catch (e) {} _blobUrl = null; } }, 200); };
+  window.cgAdjPill = function (c, tabla) {
+    tabla = tabla || 'compras_ganado'; var n = adjDe(c).length;
+    return n ? '<button type="button" class="cg-adj-pill" title="Ver respaldos" onclick="cgAdjVer(\'' + esc(c.id) + '\',\'' + tabla + '\')">📎 ' + n + '</button>'
+             : '<button type="button" class="cg-adj-pill vacio" title="Adjuntar guía, factura o fotos" onclick="cgAdjAgregar(\'' + esc(c.id) + '\',\'' + tabla + '\')">＋ 📎</button>';
+  };
+  /* Ventas: el botón 📎/📷 de la tabla (v1.8.85) pasa a abrir el visor con varios archivos */
+  window._attachSaleDoc = function (id) { cgAdjAgregar(String(id), 'sales'); };
+  var oView = window.viewTransactionImage;
+  if (typeof oView === 'function' && !oView.__adj) {
+    var wv = function (txId) { var s = (db.sales || []).find(function (x) { return String(x.id) === String(txId); }); if (s && (s.adjuntos || s.has_photo)) return cgAdjVer(String(txId), 'sales'); return oView.apply(this, arguments); };
+    wv.__adj = true; window.viewTransactionImage = wv;
+  }
+  try { console.log('%c[EP Desktop v1.8.285] compra y venta de ganado: respaldos adjuntos (imagen/PDF) · kill: __CGADJ_OFF', 'color:#3fb950'); } catch (e) {}
 })();
 </script>
 
