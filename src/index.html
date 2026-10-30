@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.278';
+window.E5M_HTML_BUILD = '1.8.279';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -36001,8 +36001,8 @@ function renderReporteCREA() {
   var rp = getRp();
   var ha = rp.hectareas || 0;
   var pesoUA = rp.peso_ua || 400;
-  var gastoAdmin = (rp.gasto_admin || 0) * 12;
-  var gastoEstructura = (rp.gasto_estructura || 0) * 12;
+  /* v1.8.279 (OK José 30-10): admin y estructura se prorratean por los meses reales del período (antes ×12 fijo) */
+  var gastoAdmin = 0, gastoEstructura = 0;
   var precioRef = rp.precio_venta_ref || 25;
 
   if (!ha) {
@@ -36030,7 +36030,13 @@ function renderReporteCREA() {
   }
   var desdeStr = localDate(desde);
   var hastaStr = localDate(hasta);
-  var meses = Math.max(1, Math.round((hasta - desde) / (30.44 * 86400000)));
+  /* v1.8.279: días y meses exactos del período + factor para anualizar los KPI "por año" */
+  var diasPeriodo = Math.max(1, Math.round((hasta - desde) / 86400000));
+  var mesesExactos = diasPeriodo / (365 / 12);
+  var meses = Math.round(mesesExactos * 10) / 10;
+  var fAnual = 365 / diasPeriodo;
+  gastoAdmin = (rp.gasto_admin || 0) * mesesExactos;
+  gastoEstructura = (rp.gasto_estructura || 0) * mesesExactos;
 
   // Sincronizar inputs con el rango calculado (si fue por preset)
   if (periodo !== 'custom') {
@@ -36071,7 +36077,7 @@ function renderReporteCREA() {
     return !st || st === 'activo' || st === 'active' || st === 'marcado_completo' || st === 'cuarentena';
   });
 
-  // Existencia media (promedio simple)
+  // Existencia media: se calcula más abajo como (cabezas al inicio + cabezas hoy) ÷ 2 (v1.8.279)
   var existMedia = totalCab;
 
   // Kg vendidos en periodo
@@ -36157,6 +36163,16 @@ function renderReporteCREA() {
   var salKg = (db.sal || []).filter(function(r) { return (r.fecha || '') >= desdeStr && (r.fecha || '') <= hastaStr; }).reduce(function(s, r) { return s + (parseFloat(r.kg) || 0); }, 0);
   var tratamientosPeriodo = (db.treatments || []).filter(function(t) { return (t.applied_at || '') >= desdeStr && (t.applied_at || '') <= hastaStr; }).length;
   var conteosPeriodo = (db.conteo || []).filter(function(c) { return (c.fecha || '') >= desdeStr && (c.fecha || '') <= hastaStr; }).length;
+  /* v1.8.279 (OK José 30-10): existencia media real = (cabezas al inicio + cabezas hoy) ÷ 2.
+     Cabezas al inicio por balance: hoy + vendidas + bajas − compradas − nacidas en el período.
+     Antes se usaban las cabezas de hoy, que exageraba o achicaba los KPI por cabeza según si el rodeo creció. */
+  var _cabVendGanado = ventasPeriodo.filter(function(v) { return v.type !== 'carne_baja'; }).reduce(function(s, v) { return s + (v.animals || v.animal_count || 0); }, 0);
+  var _cabBajasP = (db.bajas || []).filter(function(b) { return (b.fecha || '') >= desdeStr && (b.fecha || '') <= hastaStr; }).length;
+  var cabInicio = totalCab + _cabVendGanado + _cabBajasP - cabCompradas - partosPeriodo;
+  var _existFallback = false;
+  if (cabInicio < 0) { cabInicio = totalCab; _existFallback = true; }
+  existMedia = Math.round((cabInicio + totalCab) / 2 * 10) / 10;
+  if (!(existMedia > 0)) { existMedia = totalCab; _existFallback = true; }
 
   // Gastos directos en periodo
   // Mapping de subcuenta → categoría CREA (para clasificar coherentemente con Contabilidad)
@@ -36186,7 +36202,7 @@ function renderReporteCREA() {
   var purchByCat = { sanidad:0, combustible:0, personal:0, mantenimiento:0, alimento:0, admin:0, otros:0 };
   var inversionMaquinaria = 0; // v1.8.134: CAPEX (compra de maquinaria/equipos) — NO es costo operativo del kg
   (db.purchases || []).forEach(function(p) {
-    if ((p.date || '') < desdeStr) return;
+    if ((p.date || '') < desdeStr || String(p.date || '').slice(0, 10) > hastaStr) return; /* v1.8.279: corte final */
     // v1.8.134: las compras de CAPITAL/INVERSIÓN (ej. camioneta, tractor) se amortizan en años,
     // no son costo de producir el kilo de este año. Van a un bucket de inversión aparte
     // (igual que la compra de ganado en inversionCompras) → salen del costo operativo del header.
@@ -36280,7 +36296,7 @@ function renderReporteCREA() {
   // (INVERSIÓN se cuenta aparte en inversionCompras; INGRESOS van a ingresoVentas si los usás manualmente).
   var derivadoPrefixes = ['compra-','trat-','diesel-','sueldo-','maint-','adv-','aceite-','cg-','venta-','diesel-merma-'];
   var gastManuales = (db.cuentas || []).filter(function(r) {
-    if (!r || !r.fecha || r.fecha < desdeStr) return false;
+    if (!r || !r.fecha || r.fecha < desdeStr || String(r.fecha).slice(0, 10) > hastaStr) return false; /* v1.8.279: corte final */
     var idStr = String(r.id || '');
     // Excluir derivados (no deberían estar en db.cuentas, pero por si acaso)
     if (derivadoPrefixes.some(function(pre){ return idStr.indexOf(pre) === 0; })) return false;
@@ -36295,7 +36311,7 @@ function renderReporteCREA() {
   var gastTotales = gastDirectos + gastoAdmin + gastoEstructura + inversionCompras + inversionMaquinaria; /* v1.8.134: +CAPEX maquinaria en el total (no en el operativo) */
 
   // INDICADORES PRODUCTIVOS
-  var prodCarne = ha > 0 ? Math.round(produccionCREA / ha * 10) / 10 : 0;
+  var prodCarne = ha > 0 ? Math.round(produccionCREA / ha * fAnual * 10) / 10 : 0; /* v1.8.279: anualizado */
   var cargaAnimal = (ha > 0 && pesoUA > 0) ? Math.round(stockFinalKg / pesoUA / ha * 100) / 100 : 0;
 
   // GDPV global
@@ -36315,8 +36331,8 @@ function renderReporteCREA() {
   // Antes: produccionCREA / cabezas × 100 daba números absurdos (38,616%).
   // Correcto AACREA: kg producidos / kg de stock medio × 100.
   var stockMedioKg = (stockInicialKg + stockFinalKg) / 2;
-  var eficStock = stockMedioKg > 0 ? Math.round(produccionCREA / stockMedioKg * 1000) / 10 : 0;
-  var prodCab = existMedia > 0 ? Math.round(produccionCREA / existMedia * 10) / 10 : 0;
+  var eficStock = stockMedioKg > 0 ? Math.round(produccionCREA / stockMedioKg * fAnual * 1000) / 10 : 0; /* v1.8.279: anualizado */
+  var prodCab = existMedia > 0 ? Math.round(produccionCREA / existMedia * fAnual * 10) / 10 : 0; /* v1.8.279: anualizado */
   var tasaExtraccion = existMedia > 0 ? Math.round(cabVendidas / existMedia * 1000) / 10 : 0;
   var salPorCab = existMedia > 0 ? Math.round(salKg / existMedia * 10) / 10 : 0;
 
@@ -36337,12 +36353,12 @@ function renderReporteCREA() {
   if (!precioRefCREA) { var _uv = (db.sales || []).filter(function(v){ return v.type !== 'carne_baja' && (v.kg || v.total_kg) > 0 && v.total > 0; }).sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); })[0]; if (_uv) precioRefCREA = _uv.total / (_uv.kg || _uv.total_kg); }
   var valorDifStock = Math.round(difStockKgCREA * precioRefCREA);
   var valorProduccion = ingresoVentas + valorDifStock;
-  var margenBruto = ha > 0 ? Math.round((valorProduccion - gastDirectos) / ha * 100) / 100 : 0;
-  var resultOp = ha > 0 ? Math.round((valorProduccion - gastTotales) / ha * 100) / 100 : 0;
-  var gastoCabMes = existMedia > 0 && meses > 0 ? Math.round(gastDirectos / existMedia / meses * 100) / 100 : 0;
+  var margenBruto = ha > 0 ? Math.round((valorProduccion - gastDirectos) / ha * fAnual * 100) / 100 : 0; /* v1.8.279: anualizado */
+  var resultOp = ha > 0 ? Math.round((valorProduccion - gastTotales) / ha * fAnual * 100) / 100 : 0;
+  var gastoCabMes = existMedia > 0 && mesesExactos > 0 ? Math.round(gastDirectos / existMedia / mesesExactos * 100) / 100 : 0;
   var roi = gastTotales > 0 ? Math.round((valorProduccion - gastTotales) / gastTotales * 1000) / 10 : 0;
-  var ingresoHa = ha > 0 ? Math.round(ingresoVentas / ha * 100) / 100 : 0;
-  var costoSanCab = existMedia > 0 ? Math.round(gastSanidad / existMedia * 100) / 100 : 0;
+  var ingresoHa = ha > 0 ? Math.round(ingresoVentas / ha * fAnual * 100) / 100 : 0; /* v1.8.279: anualizado */
+  var costoSanCab = existMedia > 0 ? Math.round(gastSanidad / existMedia * fAnual * 100) / 100 : 0;
 
   // v1.4.91: Cachear KPIs para el resumen del topbar (Idea 11)
   // El topbar muestra Cabezas + Valor rodeo siempre, y Costo/kg desde acá.
@@ -36376,17 +36392,17 @@ function renderReporteCREA() {
   // PRODUCTIVOS
   html += '<div style="font-size:14px;font-weight:700;color:var(--amber2);margin:16px 0 10px;border-bottom:1px solid var(--bor);padding-bottom:6px">🐄 Indicadores Productivos</div>';
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:16px">';
-  html += kpi('Producción de Carne', prodCarne, 'kg / ha / año', 'producción CREA ÷ hectáreas', 'var(--green)');
+  html += kpi('Producción de Carne', prodCarne, 'kg / ha / año', 'producción CREA ÷ hectáreas × 365/días', 'var(--green)');
   html += kpi('Carga Animal', cargaAnimal, 'UA / ha', 'existencia (UA) ÷ hectáreas', 'var(--amber)');
   html += kpi('GDPV', gdpv, 'kg / cab / día', 'ganancia peso ÷ días', 'var(--green)');
-  html += kpi('Eficiencia de Stock', eficStock, '%', 'producción kg ÷ stock medio kg × 100', 'var(--blue)');
-  html += kpi('Producción por Cabeza', prodCab, 'kg / cab / año', 'producción total ÷ exist. media', 'var(--amber)');
-  html += kpi('Tasa de Extracción', tasaExtraccion, '%', 'cab vendidas ÷ exist. media × 100', 'var(--blue)');
+  html += kpi('Eficiencia de Stock', eficStock, '% anual', 'producción kg ÷ stock medio kg × 100 × 365/días', 'var(--blue)');
+  html += kpi('Producción por Cabeza', prodCab, 'kg / cab / año', 'producción ÷ exist. media × 365/días', 'var(--amber)');
+  html += kpi('Tasa de Extracción', tasaExtraccion, '% del período', 'cab vendidas ÷ exist. media × 100', 'var(--blue)');
   // Mortandad (placeholder - se puede calcular cuando se registren muertes)
   var bajasPeriodo = (db.bajas || []).filter(function(b) { return (b.fecha || '') >= desdeStr && (b.fecha || '') <= hastaStr; });
   var cabMuertas = bajasPeriodo.length;
   var mortandad = existMedia > 0 ? Math.round(cabMuertas / existMedia * 1000) / 10 : 0;
-  html += kpi('Mortandad', mortandad + '% (' + cabMuertas + ' cab)', '%', cabMuertas + ' muertes ÷ ' + existMedia + ' exist. media × 100', mortandad > 3 ? 'var(--red)' : mortandad > 0 ? 'var(--amber)' : 'var(--green)');
+  html += kpi('Mortandad', mortandad + '% (' + cabMuertas + ' cab)', '% del período', cabMuertas + ' muertes ÷ ' + existMedia + ' exist. media × 100', mortandad > 3 ? 'var(--red)' : mortandad > 0 ? 'var(--amber)' : 'var(--green)');
   html += '</div>';
 
   // ECONÓMICOS
@@ -36413,8 +36429,8 @@ function renderReporteCREA() {
   html += kpi('Resultado Operativo', 'Bs. ' + resultOp.toLocaleString(), 'Bs / ha / año', '(producción valorizada − gastos totales) ÷ ha', resultOp >= 0 ? 'var(--green)' : 'var(--red)');
   html += kpi('Gasto por Cab/Mes', 'Bs. ' + gastoCabMes, 'Bs / cab / mes', 'gastos directos ÷ exist. media ÷ meses', 'var(--amber)');
   html += kpi('ROI Ganadero', roi + '%', 'de los cuales cobrados: Bs ' + Math.round(ingresoVentas).toLocaleString(), '(producción valorizada − gastos) ÷ gastos × 100', roi >= 0 ? 'var(--green)' : 'var(--red)');
-  html += kpi('Ingreso por Ha', 'Bs. ' + ingresoHa.toLocaleString(), 'Bs / ha / año', 'ingresos ventas ÷ hectáreas', 'var(--blue)');
-  html += kpi('Costo Sanidad / Cab', 'Bs. ' + costoSanCab, 'Bs / cab / año', 'gastos sanidad ÷ exist. media', 'var(--amber)');
+  html += kpi('Ingreso por Ha', 'Bs. ' + ingresoHa.toLocaleString(), 'Bs / ha / año', 'ingresos ventas ÷ hectáreas × 365/días', 'var(--blue)');
+  html += kpi('Costo Sanidad / Cab', 'Bs. ' + costoSanCab, 'Bs / cab / año', 'gastos sanidad ÷ exist. media × 365/días', 'var(--amber)');
   html += '</div>';
 
   // DETALLE POR LOTE
@@ -36583,7 +36599,7 @@ function renderReporteCREA() {
   html += kpi('Partos', partosPeriodo, 'en el período', '', 'var(--green)');
   html += kpi('Lluvia Acumulada', Math.round(lluviaPeriodo), 'mm', '', 'var(--blue)');
   html += kpi('Consumo Diesel', Math.round(dieselLitros).toLocaleString(), 'litros', '', 'var(--amber)');
-  html += kpi('Sal / Cab', salPorCab, 'kg / cab', 'sal total ÷ exist. media', 'var(--amber)');
+  html += kpi('Sal / Cab', salPorCab, 'kg / cab en el período', 'sal total ÷ exist. media', 'var(--amber)');
   html += kpi('Tratamientos', tratamientosPeriodo, 'aplicaciones', '', 'var(--green)');
   html += kpi('Conteos', conteosPeriodo, 'realizados', '', 'var(--blue)');
   html += kpi('Cab. Compradas', cabCompradas, 'cabezas (' + Math.round(kgComprados).toLocaleString() + ' kg)', '', 'var(--amber)');
@@ -36613,7 +36629,7 @@ function renderReporteCREA() {
   html += '</tbody></table></div>';
 
   // NOTA METODOLÓGICA
-  html += '<div style="background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.15);border-radius:8px;padding:12px 16px;font-size:11px;color:var(--blue);margin-top:16px;line-height:1.5"><strong>ℹ️ Nota:</strong> Indicadores calculados según metodología AACREA. UA = ' + pesoUA + ' kg. Existencia media = ' + existMedia + ' cabezas. Gastos admin+estructura anualizados.</div>';
+  html += '<div style="background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.15);border-radius:8px;padding:12px 16px;font-size:11px;color:var(--blue);margin-top:16px;line-height:1.5"><strong>ℹ️ Nota:</strong> Indicadores calculados según metodología AACREA. UA = ' + pesoUA + ' kg. Existencia media = ' + existMedia + ' cabezas = (al inicio ' + cabInicio + ' + hoy ' + totalCab + ') ÷ 2. Admin y estructura prorrateados a ' + (Math.round(mesesExactos * 100) / 100) + ' meses. Los KPI «por año» se anualizan × 365/' + diasPeriodo + ' días.</div>';
 
   /* ═══ v1.8.278: TRAZA DE CÁLCULO — fórmula con los números reales que usó el motor, por KPI ═══
      Se arma con las MISMAS variables del render (no recalcula), para que lo que se ve en el modal y en
@@ -36644,9 +36660,12 @@ function renderReporteCREA() {
     D.lotes = { t: 'Lotes activos (existencia)', c: ['Lote', 'Categoría', 'Cabezas'], r: function() { return activeLots.map(function(l) { return [l.code, l.category || '', l.animal_count || 0]; }); } };
 
     var I = {
-      periodo: ['Período', desdeStr + ' al ' + hastaStr + ' (' + meses + ' meses)', 'Selector de período'],
+      periodo: ['Período', desdeStr + ' al ' + hastaStr + ' (' + diasPeriodo + ' días · ' + meses + ' meses)', 'Selector de período'],
+      fA: ['Factor anual (365 ÷ días)', N(fAnual, 4), 'Para llevar a «por año» los KPI anuales'],
+      cabHoy: ['Cabezas hoy', totalCab, 'Lotes activos'],
+      cabIni: ['Cabezas al inicio', cabInicio, _existFallback ? 'Sin balance válido: se usan las de hoy' : 'hoy ' + totalCab + ' + vendidas ' + _cabVendGanado + ' + bajas ' + _cabBajasP + ' − compradas ' + cabCompradas + ' − nacidas ' + partosPeriodo],
       ha: ['Hectáreas ganaderas', ha, 'Params. Reporte'],
-      exist: ['Existencia media (cab)', existMedia, 'Cabezas de lotes activos hoy'],
+      exist: ['Existencia media (cab)', existMedia, '(cabezas al inicio + cabezas hoy) ÷ 2'],
       kgV: ['Kg vendidos', N(kgVendidos, 0), 'Ventas del período'],
       cabV: ['Cabezas vendidas', cabVendidas, 'Ventas del período'],
       sF: ['Stock final (kg)', N(stockFinalKg, 0), 'Último pesaje de cada animal activo'],
@@ -36658,13 +36677,13 @@ function renderReporteCREA() {
       ing: ['Ingresos por ventas (Bs)', N(ingresoVentas, 0), 'Ventas del período (ganado + carne)'],
       vProd: ['Producción valorizada (Bs)', N(valorProduccion, 0), 'ingresos + valor dif. stock'],
       gDir: ['Gastos directos (Bs)', N(gastDirectos, 0), 'Suma de rubros directos'],
-      gAdm: ['Administración (Bs)', N(gastoAdmin, 0), 'Params. (' + F(_trAdminParam, 0) + ' = mensual × 12) + compras administrativas (' + F(purchByCat.admin, 0) + ')'],
-      gEst: ['Estructura (Bs)', N(gastoEstructura, 0), 'Params. mensual × 12'],
+      gAdm: ['Administración (Bs)', N(gastoAdmin, 0), 'Params. (Bs ' + F(rp.gasto_admin || 0) + '/mes × ' + F(mesesExactos) + ' meses = ' + F(_trAdminParam, 0) + ') + compras administrativas (' + F(purchByCat.admin, 0) + ')'],
+      gEst: ['Estructura (Bs)', N(gastoEstructura, 0), 'Params. Bs ' + F(rp.gasto_estructura || 0) + '/mes × ' + F(mesesExactos) + ' meses'],
       gCG: ['Compra de ganado (Bs)', N(inversionCompras, 0), 'Compras de ganado del período'],
       gMaq: ['Inversión maquinaria (Bs)', N(inversionMaquinaria, 0), 'Compras cuenta INVERSIÓN / CAPITAL'],
       gOp: ['Gastos operativos (Bs)', N(gastosOperativos, 0), 'directos + admin + estructura'],
       gTot: ['Gastos totales (Bs)', N(gastTotales, 0), 'operativos + compra ganado + maquinaria'],
-      meses: ['Meses del período', meses, 'Selector de período'],
+      meses: ['Meses del período', N(mesesExactos, 2), diasPeriodo + ' días ÷ (365/12)'],
       san: ['Gasto sanidad (Bs)', N(gastSanidad, 2), 'Tratamientos + compras subcuenta sanidad (' + F(purchByCat.sanidad, 0) + ')'],
       sal: ['Sal consumida (kg)', N(salKg, 1), 'Registros de sal'],
       muertes: ['Muertes', cabMuertas, 'Bajas del período']
@@ -36686,21 +36705,21 @@ function renderReporteCREA() {
     var detGastos = ['compraInsumos', 'trat', 'sueldos', 'adelantos', 'diesel', 'maint', 'sal'];
     var T = {};
     function k(label, o) { o.label = label; T[label] = o; }
-    k('Producción de Carne', { f: 'Producción CREA (kg) ÷ hectáreas', s: F(produccionCREA, 0) + ' ÷ ' + F(ha) + ' = ' + F(prodCarne, 1) + ' kg/ha', sub: 'Producción CREA = ' + F(kgVendidos, 0) + ' (vendidos) + (' + F(stockFinalKg, 0) + ' − ' + F(stockInicialKg, 0) + ') (dif. stock) = ' + F(produccionCREA, 0) + ' kg', res: prodCarne, u: 'kg/ha', i: ['periodo', 'kgV', 'sF', 'sI', 'prod', 'ha'], d: ['ventas', 'stockFin', 'stockIni'] });
+    k('Producción de Carne', { f: 'Producción CREA (kg) ÷ hectáreas × factor anual', s: F(produccionCREA, 0) + ' ÷ ' + F(ha) + ' × ' + F(fAnual, 4) + ' = ' + F(prodCarne, 1) + ' kg/ha', sub: 'Producción CREA = ' + F(kgVendidos, 0) + ' (vendidos) + (' + F(stockFinalKg, 0) + ' − ' + F(stockInicialKg, 0) + ') (dif. stock) = ' + F(produccionCREA, 0) + ' kg', res: prodCarne, u: 'kg/ha', i: ['periodo', 'kgV', 'sF', 'sI', 'prod', 'ha', 'fA'], d: ['ventas', 'stockFin', 'stockIni'] });
     k('Carga Animal', { f: 'Stock final (kg) ÷ peso UA ÷ hectáreas', s: F(stockFinalKg, 0) + ' ÷ ' + pesoUA + ' ÷ ' + F(ha) + ' = ' + F(cargaAnimal) + ' UA/ha', sub: F(stockFinalKg, 0) + ' kg ÷ ' + pesoUA + ' = ' + F(stockFinalKg / (pesoUA || 1), 1) + ' UA', res: cargaAnimal, u: 'UA/ha', i: ['sF', 'pUA', 'ha'], d: ['stockFin'] });
     k('GDPV', { f: 'Promedio de (último pesaje − primer pesaje) ÷ días, por animal con 2+ pesajes', s: 'Σ GDPV (' + F(allGmds.reduce(function(a, b){ return a + b; }, 0), 3) + ') ÷ ' + allGmds.length + ' animales = ' + F(gdpv, 3) + ' kg/día', res: gdpv, u: 'kg/cab/día', i: [], d: ['gdpv'] });
-    k('Eficiencia de Stock', { f: 'Producción CREA ÷ stock medio (kg) × 100', s: F(produccionCREA, 0) + ' ÷ ' + F(stockMedioKg, 0) + ' × 100 = ' + F(eficStock, 1) + ' %', sub: 'Stock medio = (' + F(stockInicialKg, 0) + ' + ' + F(stockFinalKg, 0) + ') ÷ 2 = ' + F(stockMedioKg, 0) + ' kg', res: eficStock, u: '%', i: ['prod', 'sI', 'sF'], d: ['stockFin', 'stockIni'] });
-    k('Producción por Cabeza', { f: 'Producción CREA ÷ existencia media', s: F(produccionCREA, 0) + ' ÷ ' + existMedia + ' = ' + F(prodCab, 1) + ' kg/cab', res: prodCab, u: 'kg/cab', i: ['prod', 'exist'], d: ['lotes', 'ventas', 'stockFin', 'stockIni'] });
-    k('Tasa de Extracción', { f: 'Cabezas vendidas ÷ existencia media × 100', s: cabVendidas + ' ÷ ' + existMedia + ' × 100 = ' + F(tasaExtraccion, 1) + ' %', res: tasaExtraccion, u: '%', i: ['cabV', 'exist'], d: ['ventas', 'lotes'] });
-    k('Mortandad', { f: 'Muertes ÷ existencia media × 100', s: cabMuertas + ' ÷ ' + existMedia + ' × 100 = ' + F(mortandad, 1) + ' %', res: mortandad, u: '%', i: ['muertes', 'exist'], d: ['bajas', 'lotes'] });
+    k('Eficiencia de Stock', { f: 'Producción CREA ÷ stock medio (kg) × 100 × factor anual', s: F(produccionCREA, 0) + ' ÷ ' + F(stockMedioKg, 0) + ' × 100 × ' + F(fAnual, 4) + ' = ' + F(eficStock, 1) + ' %', sub: 'Stock medio = (' + F(stockInicialKg, 0) + ' + ' + F(stockFinalKg, 0) + ') ÷ 2 = ' + F(stockMedioKg, 0) + ' kg', res: eficStock, u: '% anual', i: ['prod', 'sI', 'sF', 'fA'], d: ['stockFin', 'stockIni'] });
+    k('Producción por Cabeza', { f: 'Producción CREA ÷ existencia media × factor anual', s: F(produccionCREA, 0) + ' ÷ ' + F(existMedia, 1) + ' × ' + F(fAnual, 4) + ' = ' + F(prodCab, 1) + ' kg/cab', res: prodCab, u: 'kg/cab/año', i: ['prod', 'cabIni', 'cabHoy', 'exist', 'fA'], d: ['lotes', 'ventas', 'stockFin', 'stockIni'] });
+    k('Tasa de Extracción', { f: 'Cabezas vendidas ÷ existencia media × 100', s: cabVendidas + ' ÷ ' + F(existMedia, 1) + ' × 100 = ' + F(tasaExtraccion, 1) + ' %', res: tasaExtraccion, u: '%', i: ['cabV', 'cabIni', 'cabHoy', 'exist'], d: ['ventas', 'compras', 'bajas', 'partos', 'lotes'] });
+    k('Mortandad', { f: 'Muertes ÷ existencia media × 100', s: cabMuertas + ' ÷ ' + F(existMedia, 1) + ' × 100 = ' + F(mortandad, 1) + ' %', res: mortandad, u: '%', i: ['muertes', 'cabIni', 'cabHoy', 'exist'], d: ['bajas', 'lotes'] });
     k('Costo por Kg Vivo', { f: 'Operativo = gastos operativos ÷ producción CREA · Total = gastos totales ÷ producción CREA', s: 'Operativo: ' + F(gastosOperativos, 0) + ' ÷ ' + F(produccionCREA, 0) + ' = Bs ' + F(costoOperativoKg) + '/kg   ·   Total: ' + F(gastTotales, 0) + ' ÷ ' + F(produccionCREA, 0) + ' = Bs ' + F(costoKg) + '/kg', sub: 'Gastos operativos = ' + F(gastDirectos, 0) + ' (directos) + ' + F(gastoAdmin, 0) + ' (admin) + ' + F(gastoEstructura, 0) + ' (estructura)', res: costoOperativoKg, u: 'Bs/kg', i: ['gDir', 'gAdm', 'gEst', 'gOp', 'gCG', 'gMaq', 'gTot', 'prod'], rub: true, d: detGastos.concat(['compras']) });
-    k('Margen Bruto', { f: '(Producción valorizada − gastos directos) ÷ hectáreas', s: '(' + F(valorProduccion, 0) + ' − ' + F(gastDirectos, 0) + ') ÷ ' + F(ha) + ' = Bs ' + F(margenBruto) + '/ha', sub: 'Producción valorizada = ' + F(ingresoVentas, 0) + ' (ventas) + ' + F(difStockKgCREA, 0) + ' kg × Bs ' + F(precioRefCREA) + ' = ' + F(valorProduccion, 0), res: margenBruto, u: 'Bs/ha', i: ['ing', 'sF', 'sI', 'pRef', 'vDif', 'vProd', 'gDir', 'ha'], rub: true, d: ['ventas', 'stockFin', 'stockIni'].concat(detGastos) });
-    k('Resultado Operativo', { f: '(Producción valorizada − gastos totales) ÷ hectáreas', s: '(' + F(valorProduccion, 0) + ' − ' + F(gastTotales, 0) + ') ÷ ' + F(ha) + ' = Bs ' + F(resultOp) + '/ha', sub: 'Gastos totales = ' + F(gastDirectos, 0) + ' + ' + F(gastoAdmin, 0) + ' + ' + F(gastoEstructura, 0) + ' + ' + F(inversionCompras, 0) + ' (ganado) + ' + F(inversionMaquinaria, 0) + ' (maquinaria)', res: resultOp, u: 'Bs/ha', i: ['vProd', 'gDir', 'gAdm', 'gEst', 'gCG', 'gMaq', 'gTot', 'ha'], rub: true, d: ['ventas', 'compras'].concat(detGastos) });
-    k('Gasto por Cab/Mes', { f: 'Gastos directos ÷ existencia media ÷ meses', s: F(gastDirectos, 0) + ' ÷ ' + existMedia + ' ÷ ' + meses + ' = Bs ' + F(gastoCabMes), res: gastoCabMes, u: 'Bs/cab/mes', i: ['gDir', 'exist', 'meses'], rub: true, d: detGastos });
+    k('Margen Bruto', { f: '(Producción valorizada − gastos directos) ÷ hectáreas × factor anual', s: '(' + F(valorProduccion, 0) + ' − ' + F(gastDirectos, 0) + ') ÷ ' + F(ha) + ' × ' + F(fAnual, 4) + ' = Bs ' + F(margenBruto) + '/ha', sub: 'Producción valorizada = ' + F(ingresoVentas, 0) + ' (ventas) + ' + F(difStockKgCREA, 0) + ' kg × Bs ' + F(precioRefCREA) + ' = ' + F(valorProduccion, 0), res: margenBruto, u: 'Bs/ha', i: ['ing', 'sF', 'sI', 'pRef', 'vDif', 'vProd', 'gDir', 'ha', 'fA'], rub: true, d: ['ventas', 'stockFin', 'stockIni'].concat(detGastos) });
+    k('Resultado Operativo', { f: '(Producción valorizada − gastos totales) ÷ hectáreas × factor anual', s: '(' + F(valorProduccion, 0) + ' − ' + F(gastTotales, 0) + ') ÷ ' + F(ha) + ' × ' + F(fAnual, 4) + ' = Bs ' + F(resultOp) + '/ha', sub: 'Gastos totales = ' + F(gastDirectos, 0) + ' + ' + F(gastoAdmin, 0) + ' + ' + F(gastoEstructura, 0) + ' + ' + F(inversionCompras, 0) + ' (ganado) + ' + F(inversionMaquinaria, 0) + ' (maquinaria)', res: resultOp, u: 'Bs/ha', i: ['vProd', 'gDir', 'gAdm', 'gEst', 'gCG', 'gMaq', 'gTot', 'ha', 'fA'], rub: true, d: ['ventas', 'compras'].concat(detGastos) });
+    k('Gasto por Cab/Mes', { f: 'Gastos directos ÷ existencia media ÷ meses', s: F(gastDirectos, 0) + ' ÷ ' + F(existMedia, 1) + ' ÷ ' + F(mesesExactos) + ' = Bs ' + F(gastoCabMes), res: gastoCabMes, u: 'Bs/cab/mes', i: ['gDir', 'exist', 'meses'], rub: true, d: detGastos });
     k('ROI Ganadero', { f: '(Producción valorizada − gastos totales) ÷ gastos totales × 100', s: '(' + F(valorProduccion, 0) + ' − ' + F(gastTotales, 0) + ') ÷ ' + F(gastTotales, 0) + ' × 100 = ' + F(roi, 1) + ' %', res: roi, u: '%', i: ['vProd', 'ing', 'vDif', 'gTot'], rub: true, d: ['ventas', 'compras'].concat(detGastos) });
-    k('Ingreso por Ha', { f: 'Ingresos por ventas ÷ hectáreas', s: F(ingresoVentas, 0) + ' ÷ ' + F(ha) + ' = Bs ' + F(ingresoHa) + '/ha', res: ingresoHa, u: 'Bs/ha', i: ['ing', 'ha'], d: ['ventas'] });
-    k('Costo Sanidad / Cab', { f: 'Gasto sanidad ÷ existencia media', s: F(gastSanidad, 0) + ' ÷ ' + existMedia + ' = Bs ' + F(costoSanCab), res: costoSanCab, u: 'Bs/cab', i: ['san', 'exist'], d: ['trat', 'compraInsumos'] });
-    k('Sal / Cab', { f: 'Sal consumida (kg) ÷ existencia media', s: F(salKg, 1) + ' ÷ ' + existMedia + ' = ' + F(salPorCab, 1) + ' kg/cab', res: salPorCab, u: 'kg/cab', i: ['sal', 'exist'], d: ['sal'] });
+    k('Ingreso por Ha', { f: 'Ingresos por ventas ÷ hectáreas × factor anual', s: F(ingresoVentas, 0) + ' ÷ ' + F(ha) + ' × ' + F(fAnual, 4) + ' = Bs ' + F(ingresoHa) + '/ha', res: ingresoHa, u: 'Bs/ha', i: ['ing', 'ha', 'fA'], d: ['ventas'] });
+    k('Costo Sanidad / Cab', { f: 'Gasto sanidad ÷ existencia media × factor anual', s: F(gastSanidad, 0) + ' ÷ ' + F(existMedia, 1) + ' × ' + F(fAnual, 4) + ' = Bs ' + F(costoSanCab), res: costoSanCab, u: 'Bs/cab', i: ['san', 'exist', 'fA'], d: ['trat', 'compraInsumos'] });
+    k('Sal / Cab', { f: 'Sal consumida (kg) ÷ existencia media', s: F(salKg, 1) + ' ÷ ' + F(existMedia, 1) + ' = ' + F(salPorCab, 1) + ' kg/cab', res: salPorCab, u: 'kg/cab', i: ['sal', 'exist'], d: ['sal'] });
     k('Partos', { f: 'Cantidad de partos con fecha en el período', s: partosPeriodo + ' partos', res: partosPeriodo, u: 'partos', i: ['periodo'], d: ['partos'] });
     k('Lluvia Acumulada', { f: 'Suma de mm registrados en el período', s: 'Σ mm = ' + F(lluviaPeriodo, 1) + ' mm', res: N(lluviaPeriodo, 1), u: 'mm', i: ['periodo'], d: ['lluvias'] });
     k('Consumo Diesel', { f: 'Suma de litros de registros de diésel con campo fecha en el período', s: 'Σ litros = ' + F(dieselLitros, 0) + ' L', sub: 'Recargas del período: ' + F(dieselRecargas, 0) + ' L · despachos: ' + F(dieselDespachos, 0) + ' L · merma: ' + F(mermaDiesel, 0) + ' L', res: N(dieselLitros, 0), u: 'L', i: ['periodo'], d: ['dieselKpi', 'diesel'] });
