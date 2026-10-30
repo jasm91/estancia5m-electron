@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.275';
+window.E5M_HTML_BUILD = '1.8.276';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -1027,10 +1027,10 @@ function publishTasksToPWA() {
     </div>
     <div style="background:#111318;border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:28px">
       <div style="font-size:15px;font-weight:700;color:#E4E6F0;margin-bottom:6px">Activar sistema</div>
-      <div style="font-size:12px;color:#545870;margin-bottom:20px">Ingresa el token de activación de tu cuenta EstanciaPro</div>
+      <div style="font-size:12px;color:#545870;margin-bottom:20px">Ingresá el código de 6 dígitos que te mandó el asistente de WhatsApp, o el token de tu cuenta EstanciaPro</div>
       <div style="margin-bottom:14px">
-        <label style="font-size:10px;font-weight:700;color:#545870;letter-spacing:1px;display:block;margin-bottom:6px">TOKEN DE ACCESO</label>
-        <input type="password" id="act-token" placeholder="jisunu-xxxxxxxxxxxxxxxx"
+        <label style="font-size:10px;font-weight:700;color:#545870;letter-spacing:1px;display:block;margin-bottom:6px">CÓDIGO O TOKEN DE ACCESO</label>
+        <input type="password" id="act-token" placeholder="Código de 6 dígitos o token" autocomplete="off"
           style="width:100%;background:#191C24;border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:11px 14px;color:#E4E6F0;font-family:monospace;font-size:13px;outline:none"
           onkeydown="if(event.key==='Enter')validateToken()">
       </div>
@@ -17013,6 +17013,31 @@ function validateToken() {
   var tokenEl = document.getElementById('act-token');
   var token   = tokenEl ? tokenEl.value.trim() : '';
   if (!token) return;
+  /* v1.8.276: código de vinculación de 6 dígitos (lo genera el número maestro por WhatsApp, o un admin en
+     Configuración → Dispositivos). Se canjea por un token PROPIO de este equipo (revocable) y sigue como token. */
+  var _code = token.replace(/\s+/g, '');
+  if (/^\d{6}$/.test(_code)) {
+    document.getElementById('act-loading').style.display = 'block';
+    document.getElementById('act-btn').style.display = 'none';
+    document.getElementById('act-error').style.display = 'none';
+    fetch('https://estancia5m-api-production.up.railway.app/api/devices/claim', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-App-Type': 'desktop' }, body: JSON.stringify({ code: _code, app_type: 'desktop' }) })
+      .then(function (r) { return r.json().then(function (j) { return { status: r.status, j: j }; }); })
+      .then(function (res) {
+        if (res.status === 200 && res.j && res.j.device_token) {
+          try { localStorage.setItem('e5m_device_label', res.j.device_name || ''); } catch (e) {}
+          if (tokenEl) tokenEl.value = res.j.device_token;
+          validateToken();
+          return;
+        }
+        throw new Error(res.status === 404 ? 'Código inexistente o vencido. Pedí uno nuevo al asistente de WhatsApp («código de activación»).' : res.status === 429 ? 'Demasiados intentos, esperá un minuto.' : ((res.j && res.j.error) || 'No se pudo usar el código'));
+      }).catch(function (e) {
+        document.getElementById('act-loading').style.display = 'none';
+        document.getElementById('act-btn').style.display = 'block';
+        document.getElementById('act-error').textContent = e.message || 'No se pudo verificar el código. Verificá tu conexión.';
+        document.getElementById('act-error').style.display = 'block';
+      });
+    return;
+  }
   document.getElementById('act-loading').style.display = 'block';
   document.getElementById('act-btn').style.display = 'none';
   document.getElementById('act-error').style.display = 'none';
