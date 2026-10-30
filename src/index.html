@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.286';
+window.E5M_HTML_BUILD = '1.8.287';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -35020,7 +35020,7 @@ function saveAnimal(){
   // Agregar pesaje al animal existente
   animal.pesajes=animal.pesajes||[];
   var exists=animal.pesajes.find(function(p){return p.fecha===fecha;});
-  if(exists){exists.peso=peso;}else{animal.pesajes.push({fecha:fecha,peso:peso});}
+  if(exists){exists.peso=peso;}else{animal.pesajes.push({fecha:fecha,peso:peso,tipo:'manual',source:'desktop',by:(typeof _desktopAuthor==='function'?_desktopAuthor():'Escritorio')}); /* v1.8.287: origen del pesaje */}
   animal.pesajes.sort(function(a,b){return a.fecha.localeCompare(b.fecha);});
   // Actualizar avg_weight del lote
   var lot=(db.lots||[]).find(function(l){return l.code===lotCode;});
@@ -35144,7 +35144,7 @@ function savePesajeAnimal(){
   if(!animal){toast("Animal no encontrado","error");return;}
   animal.pesajes=animal.pesajes||[];
   var exists=animal.pesajes.find(function(p){return p.fecha===fecha;});
-  if(exists){exists.peso=peso;}else{animal.pesajes.push({fecha:fecha,peso:peso});}
+  if(exists){exists.peso=peso;}else{animal.pesajes.push({fecha:fecha,peso:peso,tipo:'manual',source:'desktop',by:(typeof _desktopAuthor==='function'?_desktopAuthor():'Escritorio')}); /* v1.8.287 */}
   animal.pesajes.sort(function(a,b){return a.fecha.localeCompare(b.fecha);});
   var lot=(db.lots||[]).find(function(l){return l.code===lotCode;});
   if(lot&&animals.length){var ws=animals.map(function(a){return a.pesajes&&a.pesajes.length?a.pesajes[a.pesajes.length-1].peso:0;});lot.avg_weight=Math.round(ws.reduce(function(s,w){return s+w;},0)/ws.length*10)/10;}
@@ -35572,7 +35572,7 @@ function confirmImportPesajes() {
     if (existe) {
       existe.peso = item.peso;
     } else {
-      animal.pesajes.push({ fecha: fecha, peso: item.peso });
+      animal.pesajes.push({ fecha: fecha, peso: item.peso, tipo: 'planilla', source: 'excel', by: (typeof _desktopAuthor === 'function' ? _desktopAuthor() : 'Escritorio') }); /* v1.8.287 */
     }
     animal.pesajes.sort(function(a, b) { return String(a.fecha).localeCompare(b.fecha); });
   });
@@ -62181,6 +62181,366 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
   }
   window.sm2Render = function () { renderConteo(); renderAlimento(); };
   try { console.log('%c[EP Desktop v1.8.286] Conteo y Alimento con KPIs, gráficos y acordeones · kill: __SUBM2_OFF', 'color:#3fb950'); } catch (e) {}
+})();
+</script>
+
+
+<script id="historial-animales-v18287">
+/* ═══ v1.8.287 — HISTORIAL DE ANIMALES: tarjetas con curva de peso y línea de tiempo (pedido José 30-10)
+   Reemplaza la lista plana: KPIs, chips de filtro (GMD baja, sin pesaje reciente, con tratamientos, vendidos),
+   y por animal una tarjeta con la curva de peso (sparkline) + eventos con ícono (pesaje, curación, movimiento,
+   parto, baja, venta). Viewport de ~5 tarjetas con scroll. Kill: window.__HIST2_OFF ═══ */
+(function () {
+  'use strict';
+  if (window.__HIST2_OFF) return;
+  var FILTRO = 'todos';
+  var css = document.createElement('style');
+  css.textContent =
+    '#historial-list.h2{max-height:70vh;overflow:auto;overscroll-behavior:contain}' +
+    '.h2-top{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--bor)}' +
+    '.h2-chip{font-size:11.5px;padding:5px 11px;border-radius:999px;border:1px solid var(--bor);background:var(--sur2);color:var(--muted);cursor:pointer;transition:all .15s ease;display:inline-flex;gap:6px;align-items:center}' +
+    '.h2-chip:hover{color:var(--text)}.h2-chip.on{background:rgba(240,160,48,.14);border-color:var(--amber);color:var(--amber2,var(--amber));font-weight:600}' +
+    '.h2-chip b{font-family:DM Mono,monospace;font-weight:600;font-size:10.5px;opacity:.8}' +
+    '.h2-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}' +
+    '.h2-kpi{background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:10px 14px;position:relative;overflow:hidden}' +
+    '.h2-kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--amber)}.h2-kpi.g::before{background:var(--green)}.h2-kpi.b::before{background:var(--blue)}.h2-kpi.r::before{background:var(--red)}' +
+    '.h2-kpi .l{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}.h2-kpi .v{font-size:20px;font-weight:800;font-family:DM Mono,monospace;margin-top:3px}.h2-kpi .v small{font-size:11px;font-weight:500;color:var(--muted);font-family:Inter,sans-serif}' +
+    '.h2-card{display:grid;grid-template-columns:230px 1fr;gap:0;border-bottom:1px solid var(--bor);transition:background .15s ease}' +
+    '.h2-card:nth-child(even){background:rgba(127,127,127,.03)}.h2-card:hover{background:rgba(240,160,48,.04)}' +
+    '.h2-id{padding:14px 16px;border-right:1px solid var(--bor);display:flex;flex-direction:column;gap:6px}' +
+    '.h2-id .n{font-family:DM Mono,monospace;font-size:15px;font-weight:700;color:var(--amber2,var(--amber))}' +
+    '.h2-id .meta{font-size:11px;color:var(--muted)}' +
+    '.h2-id .peso{font-size:18px;font-weight:800;font-family:DM Mono,monospace}.h2-id .peso small{font-size:11px;color:var(--muted);font-weight:500}' +
+    '.h2-tag{display:inline-block;font-size:10px;padding:2px 7px;border-radius:999px;font-family:DM Mono,monospace}' +
+    '.h2-tag.ok{background:rgba(63,185,132,.14);color:var(--green)}.h2-tag.warn{background:rgba(240,180,41,.14);color:var(--amber2,var(--amber))}.h2-tag.bad{background:rgba(229,83,75,.14);color:var(--red)}.h2-tag.mut{background:rgba(127,127,127,.12);color:var(--muted)}' +
+    '.h2-body{padding:12px 16px;display:grid;grid-template-columns:minmax(220px,1fr) minmax(0,1.4fr);gap:16px;align-items:start}' +
+    '@media(max-width:1100px){.h2-body{grid-template-columns:1fr}}' +
+    '.h2-spark{background:var(--sur2);border:1px solid var(--bor);border-radius:10px;padding:8px 10px}' +
+    '.h2-spark .t{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between}' +
+    '.h2-spark svg{width:100%;height:64px;display:block;margin-top:4px}' +
+    '.h2-ev{display:flex;flex-direction:column;gap:0}' +
+    '.h2-ev .e{display:grid;grid-template-columns:22px 1fr auto;gap:8px;align-items:center;padding:4px 0;font-size:11.5px;border-bottom:1px solid rgba(127,127,127,.08)}' +
+    '.h2-ev .e:last-child{border-bottom:0}.h2-ev .e .ic{font-size:13px;text-align:center}.h2-ev .e .d{color:var(--muted);font-family:DM Mono,monospace;font-size:10.5px}' +
+    '.h2-ev .e .g{color:var(--green);font-size:10.5px;margin-left:6px}.h2-ev .e .g.bad{color:var(--red)}' +
+    '.h2-mas{background:none;border:0;color:var(--muted);font-size:11px;cursor:pointer;padding:4px 0;text-align:left}.h2-mas:hover{color:var(--text)}' +
+    '.h2-vacio{padding:32px;text-align:center;color:var(--muted)}' +
+    '@media(prefers-reduced-motion:reduce){.h2-chip,.h2-card{transition:none}}';
+  document.head.appendChild(css);
+  function esc(x) { return String(x == null ? '' : x).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function f10(d) { return String(d || '').slice(0, 10); }
+  function fL(d) { d = f10(d); return d ? d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(2, 4) : '—'; }
+  function dias(a, b) { var t = (new Date(f10(b)) - new Date(f10(a))) / 86400000; return isFinite(t) ? Math.round(t) : 0; }
+  function spark(ps) {
+    if (!ps || ps.length < 2) return '<div style="font-size:11px;color:var(--muted);padding:18px 0;text-align:center">' + (ps && ps.length === 1 ? 'Un solo pesaje: ' + ps[0].peso + ' kg' : 'Sin pesajes') + '</div>';
+    var W = 300, H = 64, px = 6, py = 8;
+    var xs = ps.map(function (p) { return new Date(f10(p.fecha)).getTime(); }), ys = ps.map(function (p) { return Number(p.peso) || 0; });
+    var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs), y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+    if (x1 === x0) x1 = x0 + 1; if (y1 === y0) { y1 += 10; y0 -= 10; }
+    var pts = ps.map(function (p, i) { return [px + (xs[i] - x0) / (x1 - x0) * (W - 2 * px), H - py - (ys[i] - y0) / (y1 - y0) * (H - 2 * py)]; });
+    var d = pts.map(function (p, i) { return (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1); }).join(' ');
+    var area = d + ' L' + pts[pts.length - 1][0].toFixed(1) + ' ' + (H - 2) + ' L' + pts[0][0].toFixed(1) + ' ' + (H - 2) + ' Z';
+    var sube = ys[ys.length - 1] >= ys[0], col = sube ? '#3FB984' : '#E5534B';
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none"><path d="' + area + '" fill="' + col + '" opacity=".12"/><path d="' + d + '" fill="none" stroke="' + col + '" stroke-width="2" stroke-linejoin="round"/>' +
+      pts.map(function (p, i) { return '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="2.6" fill="' + col + '"><title>' + fL(ps[i].fecha) + ' · ' + ys[i] + ' kg</title></circle>'; }).join('') + '</svg>';
+  }
+  function render() {
+    var el = document.getElementById('historial-list'); if (!el) return;
+    el.classList.add('h2');
+    var lotSel = document.getElementById('historial-lot-filter');
+    if (lotSel && lotSel.options.length <= 1) {
+      var al = (db.lots || []).filter(function (l) { return !l.status || l.status === 'activo' || l.status === 'active'; });
+      lotSel.innerHTML = '<option value="">Todos los lotes...</option>' + al.map(function (l) { return '<option value="' + esc(l.code) + '">' + esc(l.code) + ' - ' + esc(l.category || '') + '</option>'; }).join('');
+    }
+    var lotCode = (lotSel || {}).value || '', q = String((document.getElementById('historial-search') || {}).value || '').toLowerCase().trim();
+    var ADB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
+    var lotMap = {}; (db.lots || []).forEach(function (l) { lotMap[l.code] = l; });
+    var animals = [];
+    Object.keys(ADB).forEach(function (code) { if (lotCode && code !== lotCode) return; (ADB[code] || []).forEach(function (a) { animals.push({ a: a, lot: code }); }); });
+    /* índices de eventos por animal */
+    var tr = {}, mv = {}, pa = {}, bj = {}, sl = {};
+    (db.treatments || []).forEach(function (t) { if (t.animal_id) (tr[String(t.animal_id)] = tr[String(t.animal_id)] || []).push(t); });
+    (db.animal_movements || []).forEach(function (m) { var ids = Array.isArray(m.animal_ids) ? m.animal_ids : (m.animal_id ? [m.animal_id] : []); ids.forEach(function (id) { (mv[String(id)] = mv[String(id)] || []).push(m); }); });
+    (db.partos || []).forEach(function (p) { if (p.madre_id) (pa[String(p.madre_id)] = pa[String(p.madre_id)] || []).push(p); });
+    (db.bajas || []).forEach(function (b) { if (b.animal_id) bj[String(b.animal_id)] = b; });
+    (db.sales || []).forEach(function (s) { (s.animal_ids || []).forEach(function (id) { sl[String(id)] = s; }); });
+    var hoy = new Date().toISOString().slice(0, 10);
+    var items = animals.map(function (x) {
+      var a = x.a, id = String(a.animal_id || a.id || ''), ps = (a.pesajes || []).slice().filter(function (p) { return p && p.peso != null; }).sort(function (p, q2) { return f10(p.fecha).localeCompare(f10(q2.fecha)); });
+      var last = ps.length ? ps[ps.length - 1] : null, gmd = null;
+      if (ps.length >= 2) { var d = dias(ps[0].fecha, last.fecha); if (d > 0) gmd = Math.round((last.peso - ps[0].peso) / d * 1000) / 1000; }
+      var sinPesaje = last ? dias(last.fecha, hoy) : null;
+      var ev = [];
+      ps.forEach(function (p, i) { var g = null; if (i > 0) { var dd = dias(ps[i - 1].fecha, p.fecha); if (dd > 0) g = Math.round((p.peso - ps[i - 1].peso) / dd * 1000) / 1000; } ev.push({ d: f10(p.fecha), ic: '⚖️', t: '<b>' + p.peso + ' kg</b>' + (g != null ? '<span class="g' + (g < 0.3 ? ' bad' : '') + '">GMD ' + g + '</span>' : '') }); });
+      (tr[id] || []).forEach(function (t) { ev.push({ d: f10(t.applied_at || t.created_at), ic: '💉', t: '<span style="color:var(--blue)">Curación</span> ' + esc(t.product_name || t.product || '') + (t.diagnosis ? ' · ' + esc(t.diagnosis) : '') }); });
+      (mv[id] || []).forEach(function (m) { ev.push({ d: f10(m.date || m.fecha || m.created_at), ic: '🔁', t: 'Movido ' + esc(m.from_lot || m.from || '') + ' → <b>' + esc(m.to_lot || m.to || '') + '</b>' + (m.motivo ? ' · ' + esc(m.motivo) : '') }); });
+      (pa[id] || []).forEach(function (p) { ev.push({ d: f10(p.fecha || p.date), ic: '🐣', t: '<span style="color:var(--green)">Parió</span> ' + (p.cria_id ? 'cría <b>' + esc(p.cria_id) + '</b>' : '') + (p.sexo ? ' · ' + esc(p.sexo) : '') }); });
+      if (bj[id]) ev.push({ d: f10(bj[id].fecha || bj[id].date), ic: '🕊️', t: '<span style="color:var(--red)">Baja</span> · ' + esc(bj[id].causa || bj[id].motivo || '') });
+      if (sl[id]) ev.push({ d: f10(sl[id].date), ic: '💰', t: '<span style="color:var(--green)">Vendido</span> a ' + esc(sl[id].buyer || '') + (sl[id].price_per_kg ? ' · Bs ' + sl[id].price_per_kg + '/kg' : '') });
+      ev.sort(function (p, q2) { return q2.d.localeCompare(p.d); });
+      return { a: a, id: id, lot: x.lot, ps: ps, last: last, gmd: gmd, sinPesaje: sinPesaje, ev: ev, curas: (tr[id] || []).length, vendido: !!sl[id], baja: !!bj[id] };
+    });
+    var hayTexto = function (it) { return !q || it.id.toLowerCase().indexOf(q) >= 0 || String(it.a.breed || it.a.raza || '').toLowerCase().indexOf(q) >= 0 || String(it.a.rfid || '').toLowerCase().indexOf(q) >= 0; };
+    var base = items.filter(hayTexto);
+    var F = {
+      todos: function () { return true; },
+      gmd: function (it) { return it.gmd != null && it.gmd < 0.3 && !it.vendido && !it.baja; },
+      sinpesaje: function (it) { return !it.vendido && !it.baja && (it.sinPesaje == null || it.sinPesaje > 60); },
+      curas: function (it) { return it.curas > 0; },
+      vendidos: function (it) { return it.vendido || it.baja; }
+    };
+    var n = {}; Object.keys(F).forEach(function (k) { n[k] = base.filter(F[k]).length; });
+    var lista = base.filter(F[FILTRO] || F.todos);
+    var activos = base.filter(function (it) { return !it.vendido && !it.baja; });
+    var gmds = activos.map(function (it) { return it.gmd; }).filter(function (g) { return g != null; });
+    var gmdProm = gmds.length ? Math.round(gmds.reduce(function (s, g) { return s + g; }, 0) / gmds.length * 1000) / 1000 : null;
+    var sub = document.getElementById('historial-subtitle'); if (sub) sub.textContent = lista.length + ' de ' + base.length + ' animales' + (lotCode ? ' en ' + lotCode : '');
+    var h = '<div class="h2-kpis" style="padding:12px 14px 0">' +
+      '<div class="h2-kpi"><div class="l">Animales</div><div class="v">' + activos.length + ' <small>activos</small></div></div>' +
+      '<div class="h2-kpi g"><div class="l">GMD promedio</div><div class="v">' + (gmdProm != null ? gmdProm + ' <small>kg/d</small>' : '—') + '</div></div>' +
+      '<div class="h2-kpi ' + (n.gmd ? 'r' : 'g') + '"><div class="l">GMD baja (&lt;0,3)</div><div class="v">' + n.gmd + '</div></div>' +
+      '<div class="h2-kpi ' + (n.sinpesaje ? '' : 'g') + '"><div class="l">Sin pesaje &gt;60 d</div><div class="v">' + n.sinpesaje + '</div></div>' +
+      '<div class="h2-kpi b"><div class="l">Con tratamientos</div><div class="v">' + n.curas + '</div></div></div>';
+    h += '<div class="h2-top">' + [['todos', 'Todos'], ['gmd', 'GMD baja'], ['sinpesaje', 'Sin pesaje reciente'], ['curas', 'Con tratamientos'], ['vendidos', 'Vendidos / bajas']].map(function (c) { return '<button type="button" class="h2-chip' + (FILTRO === c[0] ? ' on' : '') + '" data-f="' + c[0] + '">' + c[1] + ' <b>' + n[c[0]] + '</b></button>'; }).join('') + '</div>';
+    if (!lista.length) h += '<div class="h2-vacio">' + (base.length ? 'Ningún animal con ese filtro.' : 'Sin animales individuales. Marcá los animales de un lote para verlos acá.') + '</div>';
+    lista.slice(0, 400).forEach(function (it) {
+      var est = it.vendido ? '<span class="h2-tag ok">VENDIDO</span>' : it.baja ? '<span class="h2-tag bad">BAJA</span>' : '<span class="h2-tag mut">ACTIVO</span>';
+      var gm = it.gmd == null ? '' : '<span class="h2-tag ' + (it.gmd < 0.3 ? 'bad' : it.gmd < 0.5 ? 'warn' : 'ok') + '">GMD ' + it.gmd + '</span>';
+      var sp = it.sinPesaje == null ? '<span class="h2-tag warn">sin pesaje</span>' : it.sinPesaje > 60 ? '<span class="h2-tag warn">' + it.sinPesaje + ' d sin pesar</span>' : '';
+      var lot = lotMap[it.lot] || {};
+      var evs = it.ev, mas = evs.length > 6;
+      h += '<div class="h2-card" data-id="' + esc(it.id) + '"><div class="h2-id"><div class="n">' + esc(it.id) + '</div><div>' + est + ' ' + gm + ' ' + sp + '</div>' +
+        '<div class="meta">' + esc(it.a.breed || it.a.raza || '') + (lot.category ? ' · ' + esc(lot.category) : '') + ' · lote <b>' + esc(it.lot) + '</b>' + (it.a.rfid ? '<br>chip ' + esc(it.a.rfid) : '') + '</div>' +
+        (it.last ? '<div class="peso">' + it.last.peso + ' <small>kg · ' + fL(it.last.fecha) + '</small></div>' : '') + '</div>' +
+        '<div class="h2-body"><div class="h2-spark"><div class="t"><span>Curva de peso · ' + it.ps.length + ' pesaje' + (it.ps.length === 1 ? '' : 's') + '</span>' + (it.ps.length >= 2 ? '<span>' + ps0(it) + '</span>' : '') + '</div>' + spark(it.ps) + '</div>' +
+        '<div class="h2-ev">' + (evs.length ? evs.slice(0, 6).map(evHtml).join('') + (mas ? '<div class="h2-oculto" style="display:none">' + evs.slice(6).map(evHtml).join('') + '</div><button type="button" class="h2-mas">▸ ' + (evs.length - 6) + ' eventos más</button>' : '') : '<div style="font-size:11px;color:var(--muted)">Sin eventos registrados</div>') + '</div></div></div>';
+    });
+    if (lista.length > 400) h += '<div class="h2-vacio">Se muestran 400 de ' + lista.length + '. Afiná la búsqueda.</div>';
+    el.innerHTML = h;
+    function ps0(it) { return '+' + (it.ps[it.ps.length - 1].peso - it.ps[0].peso) + ' kg en ' + dias(it.ps[0].fecha, it.ps[it.ps.length - 1].fecha) + ' d'; }
+    function evHtml(e) { return '<div class="e"><span class="ic">' + e.ic + '</span><span>' + e.t + '</span><span class="d">' + fL(e.d) + '</span></div>'; }
+  }
+  document.addEventListener('click', function (ev) {
+    var c = ev.target.closest && ev.target.closest('#historial-list .h2-chip'); if (c) { FILTRO = c.getAttribute('data-f'); render(); return; }
+    var m = ev.target.closest && ev.target.closest('#historial-list .h2-mas'); if (m) { var o = m.previousElementSibling; if (o) { var ab = o.style.display !== 'none'; o.style.display = ab ? 'none' : ''; m.textContent = ab ? m.textContent.replace('▾', '▸') : m.textContent.replace('▸', '▾'); } }
+  });
+  window.renderHistorialAnimales = render;
+  try { console.log('%c[EP Desktop v1.8.287] Historial de animales: curva de peso + línea de tiempo · kill: __HIST2_OFF', 'color:#3fb950'); } catch (e) {}
+})();
+</script>
+
+
+<script id="animales-buscador-v18287">
+/* ═══ v1.8.287 — ANIMALES: buscador moderno (pedido José 30-10)
+   · Se busca sin elegir lote: con 2+ caracteres en «Buscar» se consulta en TODOS los lotes activos (ID, chip, raza).
+   · El vacío inicial deja de ser un aviso: muestra los lotes como tarjetas para elegir con un clic (código, categoría,
+     potrero, cabezas, peso promedio) y una barra de búsqueda grande.
+   La tabla, la selección múltiple y los pesajes son los mismos. Kill: window.__ANI3_OFF ═══ */
+(function () {
+  'use strict';
+  if (window.__ANI3_OFF) return;
+  var css = document.createElement('style');
+  css.textContent =
+    '.an3-wrap{padding:10px 4px 4px}' +
+    '.an3-q{display:flex;align-items:center;gap:10px;background:var(--sur2);border:1px solid var(--bor);border-radius:12px;padding:12px 16px;margin-bottom:14px;transition:border-color .15s ease,box-shadow .15s ease}' +
+    '.an3-q:focus-within{border-color:var(--amber);box-shadow:0 0 0 3px rgba(240,160,48,.12)}' +
+    '.an3-q input{flex:1;background:none;border:0;outline:0;color:inherit;font:inherit;font-size:15px}' +
+    '.an3-q .k{font-size:10.5px;color:var(--muted);font-family:DM Mono,monospace;white-space:nowrap}' +
+    '.an3-sub{font-size:11.5px;color:var(--muted);margin:0 2px 10px}' +
+    '.an3-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}' +
+    '.an3-lot{background:var(--sur);border:1px solid var(--bor);border-left:3px solid var(--amber);border-radius:12px;padding:12px 14px;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease;text-align:left;color:inherit;font:inherit}' +
+    '.an3-lot:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(0,0,0,.25);border-color:var(--amber)}' +
+    '.an3-lot .c{font-family:DM Mono,monospace;font-size:15px;font-weight:700;color:var(--amber2,var(--amber))}' +
+    '.an3-lot .m{font-size:11px;color:var(--muted);margin-top:2px}' +
+    '.an3-lot .n{display:flex;justify-content:space-between;margin-top:8px;font-size:12px}.an3-lot .n b{font-family:DM Mono,monospace;font-size:14px}' +
+    '.an3-lot.cria{border-left-color:var(--green)}.an3-lot.engorde{border-left-color:var(--red)}.an3-lot.recria{border-left-color:var(--blue)}' +
+    '@media(prefers-reduced-motion:reduce){.an3-lot,.an3-q{transition:none}}';
+  document.head.appendChild(css);
+  function esc(x) { return String(x == null ? '' : x).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function act(l) { var a = String(l.actividad || l.activity || '').toLowerCase(); return /cr[ií]a/.test(a) && !/recr/.test(a) ? 'cria' : /recr/.test(a) ? 'recria' : /engord/.test(a) ? 'engorde' : ''; }
+  function vacio() {
+    var el = document.getElementById('animales-list'); if (!el) return;
+    var ADB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
+    var lots = (db.lots || []).filter(function (l) { return !l.status || l.status === 'activo' || l.status === 'active'; });
+    var tot = lots.reduce(function (s, l) { return s + (l.animal_count || 0); }, 0);
+    var q = (document.getElementById('animales-search') || {}).value || '';
+    el.innerHTML = '<div class="an3-wrap"><div class="an3-q"><span style="font-size:18px">🔍</span><input id="an3-q" placeholder="Buscar un animal por ID, chip RFID o raza en toda la estancia…" value="' + esc(q) + '" autocomplete="off"><span class="k">' + tot + ' animales · ' + lots.length + ' lotes</span></div>' +
+      '<div class="an3-sub">O elegí un lote para ver sus animales, pesarlos o moverlos:</div><div class="an3-grid">' +
+      lots.map(function (l) {
+        var an = ADB[l.code] || [], pesos = an.map(function (a) { var p = a.pesajes && a.pesajes.length ? a.pesajes[a.pesajes.length - 1].peso : null; return Number(p) || 0; }).filter(Boolean);
+        var prom = pesos.length ? Math.round(pesos.reduce(function (s, p) { return s + p; }, 0) / pesos.length) : (l.avg_weight ? Math.round(l.avg_weight) : null);
+        return '<button type="button" class="an3-lot ' + act(l) + '" data-lot="' + esc(l.code) + '"><div class="c">' + esc(l.code) + '</div><div class="m">' + esc(l.category || '') + (l.paddock ? ' · ' + esc(l.paddock) : '') + (l.raza ? ' · ' + esc(l.raza) : '') + '</div><div class="n"><span><b>' + (l.animal_count || 0) + '</b> cab</span><span>' + (prom ? '<b>' + prom + '</b> kg prom.' : '<span style="color:var(--muted)">sin pesaje</span>') + '</span></div></button>';
+      }).join('') + '</div></div>';
+    var inp = document.getElementById('an3-q');
+    if (inp) {
+      inp.addEventListener('input', function () { var s = document.getElementById('animales-search'); if (s) { s.value = inp.value; renderAnimalesLote(); } });
+      if (q) inp.focus();
+    }
+  }
+  var o = window.renderAnimalesLote;
+  if (typeof o === 'function' && !o.__an3) {
+    var w = function () {
+      var sel = document.getElementById('animales-lot-filter'), s = document.getElementById('animales-search');
+      var q = s ? String(s.value || '').trim() : '';
+      var sinLote = sel && !sel.value;
+      if (sinLote && q.length >= 2) {
+        /* buscar en todos los lotes sin obligar a elegir uno */
+        sel.value = '__ALL__';
+        var r = o.apply(this, arguments);
+        if (sel.value === '__ALL__') sel.value = '';
+        var sub = document.getElementById('animales-subtitle'); if (sub) sub.textContent = sub.textContent.replace(/en todos los lotes|Todos los lotes/i, 'en toda la estancia');
+        return r;
+      }
+      var r2 = o.apply(this, arguments);
+      if (sinLote) { try { vacio(); } catch (e) { console.warn('[an3]', e); } var inp = document.getElementById('an3-q'); if (inp && document.activeElement !== inp && q) inp.focus(); }
+      return r2;
+    };
+    w.__an3 = true; window.renderAnimalesLote = w;
+  }
+  document.addEventListener('click', function (ev) {
+    var b = ev.target.closest && ev.target.closest('.an3-lot'); if (!b) return;
+    var sel = document.getElementById('animales-lot-filter'); if (!sel) return;
+    sel.value = b.getAttribute('data-lot'); renderAnimalesLote();
+  });
+  /* al escribir en el buscador de arriba sin lote, el vacío se reemplaza por resultados; al borrar vuelve */
+  try { console.log('%c[EP Desktop v1.8.287] Animales: búsqueda sin elegir lote + tarjetas de lotes · kill: __ANI3_OFF', 'color:#3fb950'); } catch (e) {}
+})();
+</script>
+
+
+<script id="pesajes-sesiones-v18287">
+/* ═══ v1.8.287 — PESAJES: KPIs, evolución por lote y sesiones de pesaje (pedido José 30-10)
+   Antes: una tarjeta de promedios por lote. Ahora: KPIs de la estancia, gráfico del peso promedio por lote
+   mes a mes, y «Sesiones»: cada fecha+lote en que se pesó es una fila (animales, promedio, GMD contra la sesión
+   anterior, origen: balanza/planilla/WhatsApp/escritorio/compra/venta/destete, quién) que al abrir muestra los
+   animales de esa sesión con su variación. Kill: window.__PES2_OFF ═══ */
+(function () {
+  'use strict';
+  if (window.__PES2_OFF) return;
+  var PAL = ['#F0B429', '#3FB984', '#4C9AFF', '#E5534B', '#C9A227', '#2F8F66', '#3B7DD8', '#B8433C', '#F6CF6B', '#7FD6A4'];
+  var CH = null, FILTRO = { lote: '', meses: 12 };
+  var css = document.createElement('style');
+  css.textContent =
+    '.ps2-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}' +
+    '.ps2-kpi{background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:12px 14px;position:relative;overflow:hidden}' +
+    '.ps2-kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--amber)}.ps2-kpi.g::before{background:var(--green)}.ps2-kpi.b::before{background:var(--blue)}.ps2-kpi.r::before{background:var(--red)}' +
+    '.ps2-kpi .l{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}.ps2-kpi .v{font-size:22px;font-weight:800;font-family:DM Mono,monospace;margin-top:4px}.ps2-kpi .v small{font-size:12px;font-weight:500;color:var(--muted);font-family:Inter,sans-serif}.ps2-kpi .s{font-size:11px;color:var(--muted);margin-top:3px}' +
+    '.ps2-chart{background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:14px 16px;margin-bottom:14px}.ps2-chart .hd{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.ps2-chart .t{font-size:12.5px;font-weight:600}.ps2-chart .st{font-size:10.5px;color:var(--muted)}.ps2-chart .cv{height:240px;position:relative;margin-top:8px}' +
+    '.ps2-seg{display:inline-flex;gap:2px;padding:3px;border:1px solid var(--bor);border-radius:8px;background:var(--sur2)}.ps2-seg button{background:none;border:0;color:var(--muted);font:inherit;font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer}.ps2-seg button.on{background:var(--sur);color:var(--text);font-weight:600;box-shadow:inset 0 0 0 1px var(--bor)}' +
+    '.ps2-list{background:var(--sur);border:1px solid var(--bor);border-radius:12px;overflow:hidden}' +
+    '.ps2-list .hd{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--bor);flex-wrap:wrap}.ps2-list .hd .t{font-size:12.5px;font-weight:600}' +
+    '.ps2-cols{display:grid;grid-template-columns:110px 90px 1fr 90px 100px 110px 150px 26px;gap:10px;padding:8px 16px;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--bor)}' +
+    '.ps2-vp{max-height:420px;overflow:auto;overscroll-behavior:contain}' +
+    '.ps2-s{border-bottom:1px solid rgba(127,127,127,.1)}.ps2-s:nth-child(even){background:rgba(127,127,127,.03)}' +
+    '.ps2-s>summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:110px 90px 1fr 90px 100px 110px 150px 26px;gap:10px;align-items:center;padding:10px 16px;font-size:12.5px;transition:background .15s ease}.ps2-s>summary::-webkit-details-marker{display:none}.ps2-s>summary:hover{background:rgba(240,160,48,.05)}' +
+    '.ps2-s .f{font-family:DM Mono,monospace;font-weight:600}.ps2-s .lot{font-family:DM Mono,monospace;font-weight:700;color:var(--amber2,var(--amber))}.ps2-s .mut{color:var(--muted);font-size:11.5px}.ps2-s .n{font-family:DM Mono,monospace}' +
+    '.ps2-s .ch{color:var(--muted);transition:transform .2s ease;text-align:center}.ps2-s[open]>summary .ch{transform:rotate(90deg)}' +
+    '.ps2-pill{display:inline-block;font-size:10.5px;padding:2px 8px;border-radius:999px;font-family:DM Mono,monospace;white-space:nowrap}.ps2-pill.ok{background:rgba(63,185,132,.14);color:var(--green)}.ps2-pill.bad{background:rgba(229,83,75,.14);color:var(--red)}.ps2-pill.warn{background:rgba(240,180,41,.14);color:var(--amber2,var(--amber))}.ps2-pill.mut{background:rgba(127,127,127,.12);color:var(--muted)}.ps2-pill.b{background:rgba(76,154,255,.14);color:var(--blue)}' +
+    '.ps2-det{padding:4px 16px 12px 16px;background:rgba(0,0,0,.12)}.ps2-det table{width:100%;border-collapse:collapse;font-size:12px}.ps2-det th{text-align:left;font-size:10px;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--bor)}.ps2-det td{padding:5px 8px}.ps2-det tbody tr:nth-child(even){background:rgba(127,127,127,.04)}.ps2-det .mono{font-family:DM Mono,monospace}' +
+    '.ps2-det .vp{max-height:260px;overflow:auto}' +
+    '.ps2-vacio{text-align:center;padding:30px;color:var(--muted);font-size:12.5px}' +
+    '@media(max-width:1100px){.ps2-cols{display:none}.ps2-s>summary{grid-template-columns:1fr 1fr 1fr;row-gap:4px}}' +
+    '@media(prefers-reduced-motion:reduce){.ps2-s .ch,.ps2-s>summary{transition:none}}';
+  document.head.appendChild(css);
+  function esc(x) { return String(x == null ? '' : x).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function f10(d) { return String(d || '').slice(0, 10); }
+  function fL(d) { d = f10(d); return d ? d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(2, 4) : '—'; }
+  function mesL(ym) { var m = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']; return m[parseInt(ym.slice(5, 7), 10) - 1] + ' ' + ym.slice(2, 4); }
+  function dias(a, b) { var t = (new Date(f10(b)) - new Date(f10(a))) / 86400000; return isFinite(t) ? Math.round(t) : 0; }
+  function f0(n) { return Math.round(Number(n) || 0).toLocaleString('es-BO'); }
+  var ORIG = { balanza: ['Balanza', 'b'], planilla: ['Planilla Excel', 'b'], manual: ['Manual', 'mut'], compra: ['Compra', 'warn'], alta: ['Alta', 'warn'], venta: ['Venta', 'ok'], destete: ['Destete', 'ok'] };
+  function origen(p) {
+    var s = String(p.source || '').toLowerCase(), t = String(p.tipo || '').toLowerCase();
+    if (/whatsapp|bot/.test(s)) return ['WhatsApp', 'ok'];
+    if (/pwa|campo/.test(s)) return ['EP Campo', 'ok'];
+    if (/tru|balanza|rfid/.test(s)) return ['Balanza', 'b'];
+    if (s === 'excel') return ['Planilla Excel', 'b'];
+    if (s === 'desktop') return ['Escritorio', 'mut'];
+    if (ORIG[t]) return ORIG[t];
+    if (p.nota && /venta/i.test(p.nota)) return ['Venta', 'ok'];
+    return ['—', 'mut'];
+  }
+  function sesiones(ADB, lots) {
+    var S = {};
+    lots.forEach(function (l) {
+      (ADB[l.code] || []).forEach(function (a) {
+        var ps = (a.pesajes || []).filter(function (p) { return p && p.peso != null && f10(p.fecha); }).sort(function (p, q) { return f10(p.fecha).localeCompare(f10(q.fecha)); });
+        ps.forEach(function (p, i) {
+          var k = f10(p.fecha) + '|' + l.code, o = origen(p);
+          var s = S[k] || (S[k] = { fecha: f10(p.fecha), lote: l.code, cat: l.category || '', ani: [], orig: {}, por: {} });
+          var prev = i > 0 ? ps[i - 1] : null, d = prev ? dias(prev.fecha, p.fecha) : 0;
+          s.ani.push({ id: String(a.animal_id || a.id || ''), peso: Number(p.peso) || 0, prev: prev ? Number(prev.peso) || 0 : null, dias: d, gmd: prev && d > 0 ? (Number(p.peso) - Number(prev.peso)) / d : null });
+          s.orig[o[0]] = o; if (p.by) s.por[p.by] = 1;
+        });
+      });
+    });
+    return Object.keys(S).map(function (k) {
+      var s = S[k]; s.n = s.ani.length; s.prom = s.ani.reduce(function (x, a) { return x + a.peso; }, 0) / s.n;
+      var g = s.ani.filter(function (a) { return a.gmd != null; }); s.gmd = g.length ? g.reduce(function (x, a) { return x + a.gmd; }, 0) / g.length : null; s.conPrev = g.length;
+      s.kg = s.ani.reduce(function (x, a) { return x + a.peso; }, 0);
+      return s;
+    }).sort(function (a, b) { return b.fecha.localeCompare(a.fecha) || a.lote.localeCompare(b.lote); });
+  }
+  function render() {
+    var c = document.getElementById('pesajes-from-animals'); if (!c) return;
+    var ADB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
+    var lots = (db.lots || []).filter(function (l) { return !l.status || l.status === 'activo' || l.status === 'active'; });
+    var ses = sesiones(ADB, lots);
+    if (!ses.length) { c.innerHTML = '<div class="ps2-vacio">Sin pesajes todavía. Pesá animales desde Lotes → Animales (pesaje rápido, planilla Excel o balanza) o por WhatsApp.</div>'; return; }
+    var hoy = new Date().toISOString().slice(0, 10), d60 = new Date(); d60.setDate(d60.getDate() - 60); var c60 = d60.toISOString().slice(0, 10);
+    var totA = 0, kgT = 0, sinRec = 0, gm = [];
+    lots.forEach(function (l) { (ADB[l.code] || []).forEach(function (a) { totA++; var ps = (a.pesajes || []).filter(function (p) { return p && p.peso != null; }).sort(function (p, q) { return f10(p.fecha).localeCompare(f10(q.fecha)); }); if (!ps.length) { sinRec++; return; } var u = ps[ps.length - 1]; kgT += Number(u.peso) || 0; if (f10(u.fecha) < c60) sinRec++; if (ps.length >= 2) { var d = dias(ps[0].fecha, u.fecha); if (d > 0) gm.push((u.peso - ps[0].peso) / d); } }); });
+    var gmdP = gm.length ? Math.round(gm.reduce(function (s, g) { return s + g; }, 0) / gm.length * 1000) / 1000 : null;
+    var ult = ses[0];
+    var html = '<div class="ps2-kpis">' +
+      '<div class="ps2-kpi"><div class="l">Stock en pie</div><div class="v">' + (Math.round(kgT / 100) / 10).toLocaleString('es-BO') + ' <small>ton</small></div><div class="s">' + f0(kgT) + ' kg · ' + totA + ' animales · ' + (totA ? f0(kgT / totA) : 0) + ' kg prom.</div></div>' +
+      '<div class="ps2-kpi g"><div class="l">GMD promedio</div><div class="v">' + (gmdP != null ? gmdP + ' <small>kg/d</small>' : '—') + '</div><div class="s">entre primer y último pesaje</div></div>' +
+      '<div class="ps2-kpi ' + (sinRec ? 'r' : 'g') + '"><div class="l">Sin pesar hace +60 d</div><div class="v">' + sinRec + '</div><div class="s">' + (totA ? Math.round(sinRec / totA * 100) : 0) + ' % del rodeo</div></div>' +
+      '<div class="ps2-kpi b"><div class="l">Última sesión</div><div class="v">' + fL(ult.fecha) + '</div><div class="s">' + esc(ult.lote) + ' · ' + ult.n + ' animales · ' + Math.round(ult.prom) + ' kg prom.</div></div>' +
+      '<div class="ps2-kpi"><div class="l">Sesiones</div><div class="v">' + ses.length + '</div><div class="s">' + ses.filter(function (s) { return s.fecha >= c60; }).length + ' en los últimos 60 días</div></div></div>';
+    /* gráfico: peso promedio por lote, mes a mes (promedio de los pesajes del mes) */
+    var dM = new Date(); dM.setMonth(dM.getMonth() - (FILTRO.meses - 1)); var ymMin = dM.toISOString().slice(0, 7);
+    var porLM = {}, mesesSet = {};
+    ses.forEach(function (s) { var ym = s.fecha.slice(0, 7); if (ym < ymMin) return; if (FILTRO.lote && s.lote !== FILTRO.lote) return; mesesSet[ym] = 1; var o = porLM[s.lote] || (porLM[s.lote] = {}); var m = o[ym] || (o[ym] = { kg: 0, n: 0 }); m.kg += s.kg; m.n += s.n; });
+    var meses = Object.keys(mesesSet).sort();
+    html += '<div class="ps2-chart"><div class="hd"><div><div class="t">Evolución del peso promedio por lote</div><div class="st">promedio de los pesajes de cada mes · kg por cabeza</div></div><div style="display:flex;gap:8px;align-items:center">' +
+      '<select class="form-select" id="ps2-lote" style="padding:5px 10px;font-size:12px"><option value="">Todos los lotes</option>' + lots.map(function (l) { return '<option value="' + esc(l.code) + '"' + (FILTRO.lote === l.code ? ' selected' : '') + '>' + esc(l.code) + '</option>'; }).join('') + '</select>' +
+      '<div class="ps2-seg">' + [6, 12, 24].map(function (m) { return '<button type="button" data-m="' + m + '" class="' + (FILTRO.meses === m ? 'on' : '') + '">' + m + 'M</button>'; }).join('') + '</div></div></div><div class="cv"><canvas id="ps2-c1"></canvas></div></div>';
+    /* sesiones */
+    var vis = ses.filter(function (s) { return !FILTRO.lote || s.lote === FILTRO.lote; });
+    html += '<div class="ps2-list"><div class="hd"><div><div class="t">Sesiones de pesaje</div><div class="st">cada fecha en que se pesó un lote · abrí una para ver los animales</div></div><span class="st">' + vis.length + ' sesiones</span></div>' +
+      '<div class="ps2-cols"><span>Fecha</span><span>Lote</span><span>Origen · quién</span><span>Animales</span><span>Promedio</span><span>GMD</span><span>Total</span><span></span></div><div class="ps2-vp">';
+    vis.slice(0, 200).forEach(function (s, i) {
+      var orig = Object.keys(s.orig).map(function (k) { return '<span class="ps2-pill ' + s.orig[k][1] + '">' + esc(k) + '</span>'; }).join(' ');
+      var por = Object.keys(s.por); var gmd = s.gmd != null ? Math.round(s.gmd * 1000) / 1000 : null;
+      html += '<details class="ps2-s" data-i="' + i + '"><summary><span class="f">' + fL(s.fecha) + '</span><span class="lot">' + esc(s.lote) + '</span><span>' + orig + (por.length ? ' <span class="mut">· ' + esc(por.join(', ')) + '</span>' : '') + '</span><span class="n">' + s.n + '</span><span class="n">' + Math.round(s.prom) + ' kg</span><span>' + (gmd != null ? '<span class="ps2-pill ' + (gmd < 0.3 ? 'bad' : gmd < 0.5 ? 'warn' : 'ok') + '">' + (gmd >= 0 ? '+' : '') + gmd + '</span>' : '<span class="ps2-pill mut">1er pesaje</span>') + '</span><span class="n mut">' + f0(s.kg) + ' kg</span><span class="ch">▸</span></summary><div class="ps2-det"></div></details>';
+    });
+    html += '</div></div>';
+    c.innerHTML = html;
+    window.__ps2 = vis;
+    c.querySelector('#ps2-lote').addEventListener('change', function () { FILTRO.lote = this.value; render(); });
+    Array.prototype.forEach.call(c.querySelectorAll('.ps2-seg button'), function (b) { b.addEventListener('click', function () { FILTRO.meses = parseInt(b.getAttribute('data-m'), 10); render(); }); });
+    Array.prototype.forEach.call(c.querySelectorAll('details.ps2-s'), function (d) {
+      d.addEventListener('toggle', function () {
+        if (!d.open) return;
+        Array.prototype.forEach.call(c.querySelectorAll('details.ps2-s[open]'), function (o) { if (o !== d) o.open = false; });
+        var box = d.querySelector('.ps2-det'); if (box.__ok) return; box.__ok = true;
+        var s = vis[parseInt(d.getAttribute('data-i'), 10)]; if (!s) return;
+        var an = s.ani.slice().sort(function (a, b) { return (a.gmd == null ? 9 : a.gmd) - (b.gmd == null ? 9 : b.gmd); });
+        box.innerHTML = '<div class="vp"><table><thead><tr><th>Animal</th><th>Peso</th><th>Anterior</th><th>Variación</th><th>Días</th><th>GMD</th></tr></thead><tbody>' +
+          an.map(function (a) { var v = a.prev != null ? a.peso - a.prev : null, g = a.gmd != null ? Math.round(a.gmd * 1000) / 1000 : null; return '<tr><td class="mono" style="font-weight:600">' + esc(a.id) + '</td><td class="mono">' + a.peso + ' kg</td><td class="mono" style="color:var(--muted)">' + (a.prev != null ? a.prev + ' kg' : '—') + '</td><td class="mono" style="color:' + (v == null ? 'var(--muted)' : v < 0 ? 'var(--red)' : 'var(--green)') + '">' + (v == null ? '—' : (v > 0 ? '+' : '') + v + ' kg') + '</td><td class="mono" style="color:var(--muted)">' + (a.prev != null ? a.dias : '—') + '</td><td>' + (g != null ? '<span class="ps2-pill ' + (g < 0.3 ? 'bad' : g < 0.5 ? 'warn' : 'ok') + '">' + g + '</span>' : '<span class="ps2-pill mut">—</span>') + '</td></tr>'; }).join('') + '</tbody></table></div>';
+      });
+    });
+    if (typeof Chart !== 'undefined') {
+      var cv = document.getElementById('ps2-c1'); if (CH) { try { CH.destroy(); } catch (e) {} }
+      var lk = Object.keys(porLM).sort();
+      CH = new Chart(cv.getContext('2d'), { type: 'line', data: { labels: meses.map(mesL), datasets: lk.map(function (l, i) { return { label: l, data: meses.map(function (m) { var x = porLM[l][m]; return x ? Math.round(x.kg / x.n) : null; }), borderColor: PAL[i % PAL.length], backgroundColor: PAL[i % PAL.length], tension: .3, spanGaps: true, pointRadius: 3 }; }) },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#8b949e', boxWidth: 10, font: { size: 10 } } } }, scales: { x: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: 'rgba(127,127,127,.12)' } }, y: { ticks: { color: '#8b949e', font: { size: 10 }, callback: function (v) { return v + ' kg'; } }, grid: { color: 'rgba(127,127,127,.12)' } } } } });
+    }
+    var t = document.querySelector('#lotes-tab-pesajes > div:first-child > div > div:first-child'); if (t) t.textContent = 'Pesajes';
+    var st = document.querySelector('#lotes-tab-pesajes > div:first-child > div > div:last-child'); if (st) st.textContent = 'Evolución del peso y sesiones de pesaje por lote · se arma desde los pesajes de cada animal';
+  }
+  window.renderPesajesFromAnimales = render;
+  try { console.log('%c[EP Desktop v1.8.287] Pesajes: KPIs, evolución y sesiones · kill: __PES2_OFF', 'color:#3fb950'); } catch (e) {}
 })();
 </script>
 
