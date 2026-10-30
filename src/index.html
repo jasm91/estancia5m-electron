@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.280';
+window.E5M_HTML_BUILD = '1.8.281';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -61567,5 +61567,140 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
   setInterval(chequear, 6 * 3600e3);
 })();
 </script>
+
+<script id="cfg-2col-v18281">
+/* ═══ v1.8.281 — CONFIGURACIÓN EN DOS COLUMNAS (pedido José 30-10)
+   Antes: ~22 tarjetas plegadas una debajo de otra (lista sin fin). Ahora: columna lateral con las
+   secciones agrupadas y, a la derecha, solo la sección elegida, abierta. Las tarjetas NO se mueven
+   del DOM (otros módulos las buscan e inyectan en #page-config): solo se ocultan las no elegidas.
+   Las secciones que otros módulos agregan después aparecen solas en la columna.
+   Ventanas angostas (<980px) vuelven a la lista de siempre. Kill: window.__CFG2_OFF ═══ */
+(function () {
+  'use strict';
+  if (window.__CFG2_OFF) return;
+  var KEY = 'e5m_cfg2_sel';
+  var GRUPOS = [
+    ['Cuenta', /pagar soporte|términos|terminos|identidad|mis estancias/i],
+    ['Apariencia', /apariencia|personaliz|tamaño de letra|tamano de letra/i],
+    ['Conexión', /sincroniz|servidor api|dispositivos|soporte remoto|claude/i],
+    ['La estancia', /módulos|modulos|mapa|ubicaci|siembra|rfid|parcelas/i],
+    ['Datos', /onboarding|backup|mantenimiento de datos|restaur/i],
+    ['Sistema', /informaci/i]
+  ];
+  var css = document.createElement('style');
+  css.textContent =
+    '@media (min-width:980px){' +
+    '#page-config.cfg2{display:grid;grid-template-columns:250px minmax(0,1fr);column-gap:24px;align-items:start}' +
+    '#page-config.cfg2 > .ph{grid-column:1 / -1}' +
+    '#page-config.cfg2 > *:not(.ph):not(#cfg2-nav){grid-column:2}' +
+    '#page-config.cfg2 #cfg2-nav{display:block;grid-column:1;grid-row:2 / span 60;position:sticky;top:12px;max-height:calc(100vh - 120px);overflow:auto;border:1px solid var(--bor);border-radius:12px;background:var(--sur,var(--bg2));padding:8px}' +
+    '#page-config.cfg2 .cfg2-off{display:none !important}' +
+    '#page-config.cfg2 .cfg2-sel{animation:cfg2In .22s ease both}' +
+    '#page-config.cfg2 .card.e5m-clps .card-body{grid-template-rows:1fr;padding:18px}' +
+    '#page-config.cfg2 .card .card-hd{cursor:default !important}' +
+    '#page-config.cfg2 .e5m-clps-ch{display:none}' +
+    '}' +
+    '#cfg2-nav{display:none}' +
+    '#cfg2-nav .g{font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);padding:12px 10px 4px}' +
+    '#cfg2-nav .g:first-child{padding-top:4px}' +
+    '#cfg2-nav button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;border-radius:8px;padding:8px 10px;color:inherit;font:inherit;font-size:13px;cursor:pointer;position:relative;transition:background .15s ease,color .15s ease}' +
+    '#cfg2-nav button:hover{background:rgba(127,127,127,.08)}' +
+    '#cfg2-nav button.on{background:rgba(240,160,48,.12);color:var(--amber2,var(--amber));font-weight:600}' +
+    '#cfg2-nav button.on::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:3px;background:var(--amber)}' +
+    '#cfg2-nav .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+    '#cfg2-nav .p{font-size:10px;padding:1px 7px;border-radius:999px;background:rgba(63,185,80,.12);color:var(--green);white-space:nowrap}' +
+    '@keyframes cfg2In{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}' +
+    '@media (prefers-reduced-motion:reduce){#page-config.cfg2 .cfg2-sel{animation:none}#cfg2-nav button{transition:none}}';
+  (document.head || document.documentElement).appendChild(css);
+
+  function pg() { return document.getElementById('page-config'); }
+  function tituloDe(c) {
+    var t = c.querySelector('.card-hd .card-title') || c.querySelector('h3');
+    return t ? (t.textContent || '').replace(/\s+/g, ' ').trim() : '';
+  }
+  function pillDe(c) {
+    var hd = c.querySelector('.card-hd'); if (!hd) return '';
+    var b = hd.querySelector('#eps-badge, .pill, .badge, [class*="badge"], [class*="pill"]');
+    var tx = b ? (b.textContent || '').replace(/[✅✓]/g, '').trim() : '';
+    return tx.length <= 14 ? tx : '';
+  }
+  function secciones() {
+    var p = pg(); if (!p) return [];
+    var out = [];
+    Array.prototype.forEach.call(p.querySelectorAll('.card, .panel'), function (c) {
+      if (c.id === 'cfg2-nav') return;
+      var par = c.parentElement && c.parentElement.closest('.card, .panel');
+      if (par && p.contains(par)) return;               /* tarjeta anidada: va con su madre */
+      if (c.style.display === 'none') return;           /* oculta por su propio módulo (ej. Términos sin pendiente) */
+      var t = tituloDe(c); if (!t) return;
+      if (!c.dataset.cfg2) c.dataset.cfg2 = 's' + Math.random().toString(36).slice(2, 8);
+      out.push({ el: c, t: t, id: c.dataset.cfg2 });
+    });
+    return out;
+  }
+  function esc(x) { return String(x).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  var _firma = '';
+  function aplicar() {
+    var p = pg(); if (!p || window.__CFG2_OFF) return;
+    var S = secciones(); if (!S.length) return;
+    var nav = document.getElementById('cfg2-nav');
+    if (!nav) { nav = document.createElement('nav'); nav.id = 'cfg2-nav'; nav.setAttribute('aria-label', 'Secciones de configuración'); var ph = p.querySelector('.ph'); p.insertBefore(nav, ph ? ph.nextSibling : p.firstChild); }
+    p.classList.add('cfg2');
+    var sel = null; try { sel = localStorage.getItem(KEY); } catch (e) {}
+    var actual = S.filter(function (x) { return x.t === sel; })[0] || S.filter(function (x) { return /identidad/i.test(x.t); })[0] || S[0];
+    /* columna: solo se repinta si cambió el set de secciones o la elegida (evita tocar el DOM de más) */
+    var firma = S.map(function (x) { return x.t + '|' + pillDe(x.el); }).join('¦') + '#' + actual.t;
+    if (firma !== _firma) {
+      _firma = firma;
+      var porG = {}, orden = [];
+      S.forEach(function (x) {
+        var g = 'Otros'; for (var i = 0; i < GRUPOS.length; i++) if (GRUPOS[i][1].test(x.t)) { g = GRUPOS[i][0]; break; }
+        if (!porG[g]) { porG[g] = []; }
+        porG[g].push(x);
+      });
+      GRUPOS.map(function (g) { return g[0]; }).concat(['Otros']).forEach(function (g) { if (porG[g]) orden.push(g); });
+      nav.innerHTML = orden.map(function (g) {
+        return '<div class="g">' + esc(g) + '</div>' + porG[g].map(function (x) {
+          var pl = pillDe(x.el);
+          return '<button type="button" data-t="' + esc(x.t) + '" class="' + (x === actual ? 'on' : '') + '"><span class="t">' + esc(x.t) + '</span>' + (pl ? '<span class="p">' + esc(pl) + '</span>' : '') + '</button>';
+        }).join('');
+      }).join('');
+    }
+    S.forEach(function (x) {
+      var on = x === actual;
+      x.el.classList.toggle('cfg2-off', !on);
+      if (on && !x.el.classList.contains('cfg2-sel')) { x.el.classList.add('cfg2-sel'); }
+      if (!on) x.el.classList.remove('cfg2-sel');
+      if (on) x.el.classList.remove('e5m-clps');
+    });
+  }
+  function elegir(t) {
+    try { localStorage.setItem(KEY, t); } catch (e) {}
+    var p = pg(); if (p) { var b = p.querySelectorAll('.cfg2-sel'); Array.prototype.forEach.call(b, function (x) { x.classList.remove('cfg2-sel'); }); }
+    aplicar();
+    try { var top = document.querySelector('#page-config .ph'); if (top) top.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) {}
+  }
+  window.cfg2Elegir = elegir;
+  window.cfg2Aplicar = aplicar;
+  document.addEventListener('click', function (ev) {
+    var b = ev.target.closest && ev.target.closest('#cfg2-nav button[data-t]');
+    if (b) { elegir(b.getAttribute('data-t')); return; }
+    var nb = ev.target.closest && ev.target.closest('.nav-btn');
+    if (nb) setTimeout(aplicar, 160);                   /* después del plegado que hace v1.8.123 al entrar */
+  });
+  /* tarjetas que otros módulos agregan o muestran después: observar solo los hijos directos y el style */
+  var _t = null;
+  function prog() { clearTimeout(_t); _t = setTimeout(aplicar, 120); }
+  function boot() {
+    var p = pg(); if (!p) return setTimeout(boot, 800);
+    aplicar();
+    try { new MutationObserver(prog).observe(p, { childList: true }); } catch (e) {}
+    try { new MutationObserver(function (ms) { for (var i = 0; i < ms.length; i++) { if (ms[i].target.parentElement === p) { prog(); return; } } }).observe(p, { attributes: true, attributeFilter: ['style'], subtree: true }); } catch (e) {}
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { setTimeout(boot, 900); }); else setTimeout(boot, 900);
+  try { console.log('%c[EP Desktop v1.8.281] Configuración en dos columnas · cfg2Aplicar() · kill: __CFG2_OFF', 'color:#3fb950'); } catch (e) {}
+})();
+</script>
+
 </body>
 </html>
