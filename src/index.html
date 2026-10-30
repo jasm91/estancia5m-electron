@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.277';
+window.E5M_HTML_BUILD = '1.8.278';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -36094,11 +36094,12 @@ function renderReporteCREA() {
   // Stock actual en kg (desde e5m_animals - último pesaje de cada animal)
   // v1.4.59: solo lotes ACTIVOS hoy (stock final = foto del momento)
   var stockFinalKg = 0;
+  var _trSF = [], _trSI = [], _trGD = [], _trPU = []; /* v1.8.278: traza de cálculo por KPI */
   activeLots.forEach(function(lot) {
     var anims = animalesDB[lot.code] || [];
     anims.forEach(function(a) {
-      if (a.pesajes && a.pesajes.length) stockFinalKg += a.pesajes[a.pesajes.length - 1].peso || 0;
-      else stockFinalKg += lot.avg_weight || 350;
+      if (a.pesajes && a.pesajes.length) { var _ul = a.pesajes[a.pesajes.length - 1]; stockFinalKg += _ul.peso || 0; _trSF.push([lot.code, String(a.id || a.animal_id || ''), _ul.peso || 0, String(_ul.fecha || _ul.date || ''), 'último pesaje']); }
+      else { stockFinalKg += lot.avg_weight || 350; _trSF.push([lot.code, String(a.id || a.animal_id || ''), lot.avg_weight || 350, '', lot.avg_weight ? 'sin pesaje: peso promedio del lote' : 'sin pesaje: 350 kg por defecto']); }
     });
   });
 
@@ -36119,10 +36120,10 @@ function renderReporteCREA() {
       if (compras.length) {
         // Sumar kg comprados como aproximación de stock inicial del lote
         var kgComprasLot = compras.reduce(function(s, c) { return s + (parseFloat(c.total_kg) || 0); }, 0);
-        stockInicialKg += kgComprasLot;
+        stockInicialKg += kgComprasLot; _trSI.push([lot.code, '(lote vendido)', kgComprasLot, '', 'kg de la compra del lote']);
       } else {
         // Fallback: cabezas × avg_weight del lote (o 300 si no hay)
-        stockInicialKg += (lot.animal_count || 0) * (parseFloat(lot.avg_weight) || 300);
+        stockInicialKg += (lot.animal_count || 0) * (parseFloat(lot.avg_weight) || 300); _trSI.push([lot.code, '(lote vendido)', (lot.animal_count || 0) * (parseFloat(lot.avg_weight) || 300), '', (lot.animal_count || 0) + ' cab × ' + (parseFloat(lot.avg_weight) || 300) + ' kg']);
       }
     } else {
       // Lote activo: usar pesaje más cercano a desdeStr para cada animal
@@ -36135,14 +36136,15 @@ function renderReporteCREA() {
             var d = Math.abs(new Date(p.fecha || p.date || desdeStr).getTime() - new Date(desdeStr).getTime());
             if (d < closestDist) { closest = p; closestDist = d; }
           });
-          stockInicialKg += closest.peso || 0;
+          stockInicialKg += closest.peso || 0; _trSI.push([lot.code, String(a.id || a.animal_id || ''), closest.peso || 0, String(closest.fecha || closest.date || ''), 'pesaje más cercano al inicio']);
         } else {
-          stockInicialKg += 300;
+          stockInicialKg += 300; _trSI.push([lot.code, String(a.id || a.animal_id || ''), 300, '', 'sin pesaje: 300 kg por defecto']);
         }
       });
     }
   });
-  if (stockInicialKg === 0) stockInicialKg = stockFinalKg + kgVendidos - kgComprados;
+  var _trSIfallback = false;
+  if (stockInicialKg === 0) { stockInicialKg = stockFinalKg + kgVendidos - kgComprados; _trSIfallback = true; }
 
   // PRODUCCIÓN CREA = kg vendidos + (stock final - stock inicial) - kg comprados
   var produccionCREA = kgVendidos + (stockFinalKg - stockInicialKg);
@@ -36192,18 +36194,19 @@ function renderReporteCREA() {
     var _tg  = String(p.tipo_gasto || '').toUpperCase().trim();
     var _sub = String(p.subcuenta || '').toLowerCase().trim();
     if (p.type === 'maquinaria' || _cta === 'INVERSION' || _cta === 'INVERSIÓN' || _tg === 'CAPITAL' || _sub === 'maquinaria') {
-      inversionMaquinaria += (parseFloat(p.total) || 0);
+      inversionMaquinaria += (parseFloat(p.total) || 0); _trPU.push([p.date || '', p.cuenta || '', p.subcuenta || '', p.description || p.descripcion || p.item || p.product_name || '', parseFloat(p.total) || 0, 'Inversión maquinaria (fuera del operativo)']);
       return;
     }
     /* v1.8.259: las compras del módulo Agricultura (semilla, fertilizante, fumigación, cosecha) tienen su
        propio resultado por campaña. No son costo de producir el kilo de carne → fuera del CREA ganadero. */
-    if (p.agro_insumo_id != null || /agr[ií]col|agro\b/.test(_sub)) return;
+    if (p.agro_insumo_id != null || /agr[ií]col|agro\b/.test(_sub)) { _trPU.push([p.date || '', p.cuenta || '', p.subcuenta || '', p.description || p.descripcion || p.item || p.product_name || '', parseFloat(p.total) || 0, 'Agricultura (excluida del CREA)']); return; }
     var cat = sub2cat[_sub] || 'otros';
-    purchByCat[cat] += (parseFloat(p.total) || 0);
+    purchByCat[cat] += (parseFloat(p.total) || 0); _trPU.push([p.date || '', p.cuenta || '', p.subcuenta || '', p.description || p.descripcion || p.item || p.product_name || '', parseFloat(p.total) || 0, cat]);
   });
   /* v1.8.257: las compras con subcuenta administrativa (luz, impuestos, seguro, contador) se sumaban en
      purchByCat.admin pero nadie las leía → desaparecían del desglose y del costo/kg. Ahora se suman al
      rubro Administración junto con el gasto mensual estimado de parámetros. */
+  var _trAdminParam = gastoAdmin;
   gastoAdmin += purchByCat.admin;
 
   // Sanidad = costo de tratamientos + compras con subcuenta 'Sanidad'
@@ -36303,7 +36306,7 @@ function renderReporteCREA() {
       if (a.pesajes && a.pesajes.length >= 2) {
         var p0 = a.pesajes[0]; var p1 = a.pesajes[a.pesajes.length - 1];
         var dias = Math.round((new Date(p1.fecha) - new Date(p0.fecha)) / 86400000);
-        if (dias > 0) allGmds.push((p1.peso - p0.peso) / dias);
+        if (dias > 0) { allGmds.push((p1.peso - p0.peso) / dias); _trGD.push([lot.code, String(a.id || a.animal_id || ''), String(p0.fecha || ''), p0.peso, String(p1.fecha || ''), p1.peso, dias, Math.round((p1.peso - p0.peso) / dias * 1000) / 1000]); }
       }
     });
   });
@@ -36355,7 +36358,8 @@ function renderReporteCREA() {
   try { if (typeof renderTopbarSummary === 'function') renderTopbarSummary(); } catch(e) {}
 
   function kpi(label, value, unit, formula, color, trend) {
-    return '<div class="card" style="padding:14px 16px;position:relative;border-left:3px solid ' + (color || 'var(--amber)') + '"><div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px">' + label + '</div><div style="font-size:22px;font-weight:800;font-family:DM Mono,monospace">' + value + '</div><div style="font-size:11px;color:var(--muted);margin-top:3px">' + unit + '</div><div style="font-size:9px;color:var(--muted);margin-top:4px;font-family:DM Mono,monospace;opacity:.6">' + formula + '</div>' + (trend ? '<div style="position:absolute;top:14px;right:14px;font-size:11px;font-weight:700;color:' + (trend > 0 ? 'var(--green)' : 'var(--red)') + '">' + (trend > 0 ? '▲' : '▼') + ' ' + Math.abs(trend) + '%</div>' : '') + '</div>';
+    var _trOn = !window.__CREA_TRAZA_OFF;
+    return '<div class="card' + (_trOn ? ' crea-kpi-tr' : '') + '"' + (_trOn ? ' role="button" tabindex="0" title="Ver cómo se calcula" data-k="' + label + '" onclick="creaTrazaAbrir(this.dataset.k)" onkeydown="if(event.key===\'Enter\')creaTrazaAbrir(this.dataset.k)"' : '') + ' style="padding:14px 16px;position:relative;border-left:3px solid ' + (color || 'var(--amber)') + '">' + (_trOn ? '<span class="crea-tr-ico">ƒx</span>' : '') + '<div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px">' + label + '</div><div style="font-size:22px;font-weight:800;font-family:DM Mono,monospace">' + value + '</div><div style="font-size:11px;color:var(--muted);margin-top:3px">' + unit + '</div><div style="font-size:9px;color:var(--muted);margin-top:4px;font-family:DM Mono,monospace;opacity:.6">' + formula + '</div>' + (trend ? '<div style="position:absolute;top:14px;right:14px;font-size:11px;font-weight:700;color:' + (trend > 0 ? 'var(--green)' : 'var(--red)') + '">' + (trend > 0 ? '▲' : '▼') + ' ' + Math.abs(trend) + '%</div>' : '') + '</div>';
   }
 
   var html = '<div style="margin-bottom:10px;font-size:11px;color:var(--muted)">Periodo: <strong>' + desdeStr + '</strong> al <strong>' + hastaStr + '</strong> · ' + ha + ' ha · ' + totalCab + ' cabezas · Stock: ' + Math.round(stockFinalKg/1000) + ' ton</div>';
@@ -36372,7 +36376,7 @@ function renderReporteCREA() {
   // PRODUCTIVOS
   html += '<div style="font-size:14px;font-weight:700;color:var(--amber2);margin:16px 0 10px;border-bottom:1px solid var(--bor);padding-bottom:6px">🐄 Indicadores Productivos</div>';
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:16px">';
-  html += kpi('Producción de Carne', prodCarne, 'kg / ha / año', 'kg vendidos ÷ hectáreas', 'var(--green)');
+  html += kpi('Producción de Carne', prodCarne, 'kg / ha / año', 'producción CREA ÷ hectáreas', 'var(--green)');
   html += kpi('Carga Animal', cargaAnimal, 'UA / ha', 'existencia (UA) ÷ hectáreas', 'var(--amber)');
   html += kpi('GDPV', gdpv, 'kg / cab / día', 'ganancia peso ÷ días', 'var(--green)');
   html += kpi('Eficiencia de Stock', eficStock, '%', 'producción kg ÷ stock medio kg × 100', 'var(--blue)');
@@ -36388,7 +36392,7 @@ function renderReporteCREA() {
   // ECONÓMICOS
   html += '<div style="font-size:14px;font-weight:700;color:var(--amber2);margin:16px 0 10px;border-bottom:1px solid var(--bor);padding-bottom:6px">💰 Indicadores Económicos</div>';
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:16px">';
-  html += '<div class="card" style="padding:16px;grid-column:span 2;border-left:3px solid var(--amber);position:relative">' +
+  html += '<div class="card' + (window.__CREA_TRAZA_OFF ? '' : ' crea-kpi-tr') + '"' + (window.__CREA_TRAZA_OFF ? '' : ' role="button" tabindex="0" title="Ver cómo se calcula" onclick="creaTrazaAbrir(\'Costo por Kg Vivo\')"') + ' style="padding:16px;grid-column:span 2;border-left:3px solid var(--amber);position:relative">' + (window.__CREA_TRAZA_OFF ? '' : '<span class="crea-tr-ico">ƒx</span>') +
     '<div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px">Costo por Kg Vivo (AACREA)</div>' +
     '<div style="display:flex;gap:24px;align-items:flex-end;flex-wrap:wrap">' +
       '<div>' +
@@ -36406,7 +36410,7 @@ function renderReporteCREA() {
   '</div>';
   var _fProd = 'ventas + dif. stock × Bs ' + (Math.round(precioRefCREA * 100) / 100) + '/kg';
   html += kpi('Margen Bruto', 'Bs. ' + margenBruto.toLocaleString(), 'Bs / ha / año', 'producción valorizada − gastos directos · ' + _fProd, 'var(--green)');
-  html += kpi('Resultado Operativo', 'Bs. ' + resultOp.toLocaleString(), 'Bs / ha / año', 'margen bruto − admin − estructura', resultOp >= 0 ? 'var(--green)' : 'var(--red)');
+  html += kpi('Resultado Operativo', 'Bs. ' + resultOp.toLocaleString(), 'Bs / ha / año', '(producción valorizada − gastos totales) ÷ ha', resultOp >= 0 ? 'var(--green)' : 'var(--red)');
   html += kpi('Gasto por Cab/Mes', 'Bs. ' + gastoCabMes, 'Bs / cab / mes', 'gastos directos ÷ exist. media ÷ meses', 'var(--amber)');
   html += kpi('ROI Ganadero', roi + '%', 'de los cuales cobrados: Bs ' + Math.round(ingresoVentas).toLocaleString(), '(producción valorizada − gastos) ÷ gastos × 100', roi >= 0 ? 'var(--green)' : 'var(--red)');
   html += kpi('Ingreso por Ha', 'Bs. ' + ingresoHa.toLocaleString(), 'Bs / ha / año', 'ingresos ventas ÷ hectáreas', 'var(--blue)');
@@ -36611,6 +36615,103 @@ function renderReporteCREA() {
   // NOTA METODOLÓGICA
   html += '<div style="background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.15);border-radius:8px;padding:12px 16px;font-size:11px;color:var(--blue);margin-top:16px;line-height:1.5"><strong>ℹ️ Nota:</strong> Indicadores calculados según metodología AACREA. UA = ' + pesoUA + ' kg. Existencia media = ' + existMedia + ' cabezas. Gastos admin+estructura anualizados.</div>';
 
+  /* ═══ v1.8.278: TRAZA DE CÁLCULO — fórmula con los números reales que usó el motor, por KPI ═══
+     Se arma con las MISMAS variables del render (no recalcula), para que lo que se ve en el modal y en
+     el Excel sea exactamente lo que produjo la tarjeta. Kill switch: window.__CREA_TRAZA_OFF = true */
+  function _creaArmarTraza() {
+    function N(x, d) { var n = Number(x) || 0; var k = Math.pow(10, d == null ? 2 : d); return Math.round(n * k) / k; }
+    function F(x, d) { return N(x, d).toLocaleString('es-BO', { maximumFractionDigits: d == null ? 2 : d }); }
+    function enP(x) { var f = String(x || '').slice(0, 10); return f >= desdeStr && f <= hastaStr; }
+    function lotesDe(v) { return v.lot_code || (Array.isArray(v.lot_codes) ? v.lot_codes.join(', ') : '') || (Array.isArray(v.items) ? v.items.map(function(i){ return i.lot_code; }).filter(Boolean).join(', ') : ''); }
+    var D = {};
+    D.ventas = { t: 'Ventas del período', c: ['Fecha', 'Tipo', 'Lote(s)', 'Cabezas', 'Kg', 'Total Bs', 'Comprador'], r: function() { return ventasPeriodo.map(function(v) { return [v.date || '', v.type || 'ganado', lotesDe(v), v.animals || v.animal_count || 0, v.kg || v.total_kg || 0, v.total || 0, v.buyer || v.comprador || v.cliente || '']; }); } };
+    D.compras = { t: 'Compras de ganado', c: ['Fecha', 'Lote', 'Cabezas', 'Kg', 'Total Bs', 'Proveedor'], r: function() { return comprasGanadoPeriodo.map(function(c) { return [c.fecha || '', c.lot_code || (c.lote_destinos || []).join(', '), c.animal_count || 0, c.total_kg || 0, c.total || 0, c.proveedor || c.vendedor || '']; }); } };
+    D.stockFin = { t: 'Stock final (hoy)', c: ['Lote', 'Animal', 'Kg', 'Fecha pesaje', 'Origen del peso'], r: function() { return _trSF; } };
+    D.stockIni = { t: 'Stock inicial', c: ['Lote', 'Animal', 'Kg', 'Fecha pesaje', 'Origen del peso'], r: function() { return _trSIfallback ? [['—', '—', N(stockInicialKg, 0), '', 'Sin datos: stock final + kg vendidos − kg comprados']] : _trSI; } };
+    D.gdpv = { t: 'GDPV por animal', c: ['Lote', 'Animal', 'Primer pesaje', 'Kg', 'Último pesaje', 'Kg', 'Días', 'GDPV kg/día'], r: function() { return _trGD; } };
+    D.compraInsumos = { t: 'Compras e insumos', c: ['Fecha', 'Cuenta', 'Subcuenta', 'Descripción', 'Total Bs', 'Rubro CREA asignado'], r: function() { return _trPU; } };
+    D.trat = { t: 'Tratamientos sanitarios', c: ['Fecha', 'Lote', 'Producto', 'Costo Bs'], r: function() { return (db.treatments || []).filter(function(t){ return (t.applied_at || '') >= desdeStr && (t.applied_at || '') <= hastaStr; }).map(function(t) { return [String(t.applied_at || '').slice(0, 10), t.lot_code || '', t.product_name || t.product || t.medicamento || t.name || '', t.cost || 0]; }); } };
+    D.sueldos = { t: 'Sueldos pagados', c: ['Fecha pago', 'Empleado', 'Pago neto Bs'], r: function() { return (db.historial_sueldos || []).filter(function(h){ var fp = h.fecha_pago || ''; return fp >= desdeStr && fp <= hastaStr; }).map(function(h) { return [h.fecha_pago || '', h.employee_name || h.nombre || h.empleado || '', parseFloat(h.pago_neto) || 0]; }); } };
+    D.adelantos = { t: 'Adelantos de personal', c: ['Fecha', 'Empleado', 'Monto Bs'], r: function() { return (db.advances || []).filter(function(a){ return (a.date || '') >= desdeStr && (a.date || '') <= hastaStr; }).map(function(a) { return [a.date || '', a.employee_name || a.nombre || '', a.amount || 0]; }); } };
+    D.diesel = { t: 'Diésel (recargas y despachos)', c: ['Fecha', 'Tipo', 'Litros', 'Precio Bs/L', 'Total Bs'], r: function() { return (db.diesel || []).filter(function(d){ var f = String(d.date || d.fecha || d.created_at || '').slice(0, 10); return (d.type === 'recarga' || d.type === 'despacho') && f >= desdeStr && f <= hastaStr; }).map(function(d) { return [String(d.date || d.fecha || d.created_at || '').slice(0, 10), d.type, parseFloat(d.litros) || 0, parseFloat(d.precio) || 0, d.type === 'recarga' ? (d.total || (parseFloat(d.litros) || 0) * (parseFloat(d.precio) || 0)) : 0]; }); } };
+    D.dieselKpi = { t: 'Diésel litros (KPI)', c: ['Fecha', 'Tipo', 'Litros'], r: function() { return (db.diesel || []).filter(function(d){ return (d.fecha || '') >= desdeStr && (d.fecha || '') <= hastaStr; }).map(function(d) { return [d.fecha || '', d.type || '', parseFloat(d.litros) || 0]; }); } };
+    D.maint = { t: 'Mantenimientos', c: ['Fecha', 'Descripción', 'Costo Bs'], r: function() { return (db.maintenance || []).filter(function(m){ return enP(m.date || m.fecha || m.created_at); }).map(function(m) { return [String(m.date || m.fecha || m.created_at || '').slice(0, 10), m.description || m.descripcion || m.tipo || '', m.cost || 0]; }); } };
+    D.sal = { t: 'Consumo de sal', c: ['Fecha', 'Kg', 'Costo Bs'], r: function() { return (db.sal || []).filter(function(r){ return (r.fecha || '') >= desdeStr && (r.fecha || '') <= hastaStr; }).map(function(r) { return [r.fecha || '', parseFloat(r.kg) || 0, r.costo || 0]; }); } };
+    D.bajas = { t: 'Bajas y muertes', c: ['Fecha', 'Lote', 'Animal', 'Causa'], r: function() { return bajasPeriodo.map(function(b) { return [b.fecha || '', b.lot_code || b.lote || '', b.animal_id || b.caravana || '', b.causa || b.motivo || b.reason || '']; }); } };
+    D.partos = { t: 'Partos', c: ['Fecha', 'Lote', 'Madre', 'Cría'], r: function() { return (db.partos || []).filter(function(p){ return (p.fecha || '') >= desdeStr && (p.fecha || '') <= hastaStr; }).map(function(p) { return [p.fecha || '', p.lot_code || p.lote || '', p.madre_id || p.madre || '', p.cria_id || p.sexo || '']; }); } };
+    D.lluvias = { t: 'Lluvias', c: ['Fecha', 'mm', 'Lugar'], r: function() { return (db.lluvias || []).filter(function(l){ return (l.fecha || '') >= desdeStr && (l.fecha || '') <= hastaStr; }).map(function(l) { return [l.fecha || '', parseFloat(l.mm) || 0, l.pluviometro || l.lugar || l.potrero || '']; }); } };
+    D.conteos = { t: 'Conteos', c: ['Fecha', 'Lote', 'Contados'], r: function() { return (db.conteo || []).filter(function(c){ return (c.fecha || '') >= desdeStr && (c.fecha || '') <= hastaStr; }).map(function(c) { return [c.fecha || '', c.lot_code || c.lote || '', c.contados || c.cantidad || c.total || '']; }); } };
+    D.lotes = { t: 'Lotes activos (existencia)', c: ['Lote', 'Categoría', 'Cabezas'], r: function() { return activeLots.map(function(l) { return [l.code, l.category || '', l.animal_count || 0]; }); } };
+
+    var I = {
+      periodo: ['Período', desdeStr + ' al ' + hastaStr + ' (' + meses + ' meses)', 'Selector de período'],
+      ha: ['Hectáreas ganaderas', ha, 'Params. Reporte'],
+      exist: ['Existencia media (cab)', existMedia, 'Cabezas de lotes activos hoy'],
+      kgV: ['Kg vendidos', N(kgVendidos, 0), 'Ventas del período'],
+      cabV: ['Cabezas vendidas', cabVendidas, 'Ventas del período'],
+      sF: ['Stock final (kg)', N(stockFinalKg, 0), 'Último pesaje de cada animal activo'],
+      sI: ['Stock inicial (kg)', N(stockInicialKg, 0), _trSIfallback ? 'Estimado: stock final + vendidos − comprados' : 'Pesaje más cercano al inicio del período'],
+      prod: ['Producción CREA (kg)', N(produccionCREA, 0), 'kg vendidos + (stock final − stock inicial)'],
+      pUA: ['Peso de la UA (kg)', pesoUA, 'Params. Reporte'],
+      pRef: ['Precio de referencia (Bs/kg)', N(precioRefCREA, 2), (kgVendidos > 0 && ingresoVentasGanado > 0) ? 'Precio medio de las ventas del período' : 'Params. Reporte o última venta'],
+      vDif: ['Valor diferencia de stock (Bs)', valorDifStock, '(stock final − inicial) × precio ref.'],
+      ing: ['Ingresos por ventas (Bs)', N(ingresoVentas, 0), 'Ventas del período (ganado + carne)'],
+      vProd: ['Producción valorizada (Bs)', N(valorProduccion, 0), 'ingresos + valor dif. stock'],
+      gDir: ['Gastos directos (Bs)', N(gastDirectos, 0), 'Suma de rubros directos'],
+      gAdm: ['Administración (Bs)', N(gastoAdmin, 0), 'Params. (' + F(_trAdminParam, 0) + ' = mensual × 12) + compras administrativas (' + F(purchByCat.admin, 0) + ')'],
+      gEst: ['Estructura (Bs)', N(gastoEstructura, 0), 'Params. mensual × 12'],
+      gCG: ['Compra de ganado (Bs)', N(inversionCompras, 0), 'Compras de ganado del período'],
+      gMaq: ['Inversión maquinaria (Bs)', N(inversionMaquinaria, 0), 'Compras cuenta INVERSIÓN / CAPITAL'],
+      gOp: ['Gastos operativos (Bs)', N(gastosOperativos, 0), 'directos + admin + estructura'],
+      gTot: ['Gastos totales (Bs)', N(gastTotales, 0), 'operativos + compra ganado + maquinaria'],
+      meses: ['Meses del período', meses, 'Selector de período'],
+      san: ['Gasto sanidad (Bs)', N(gastSanidad, 2), 'Tratamientos + compras subcuenta sanidad (' + F(purchByCat.sanidad, 0) + ')'],
+      sal: ['Sal consumida (kg)', N(salKg, 1), 'Registros de sal'],
+      muertes: ['Muertes', cabMuertas, 'Bajas del período']
+    };
+    var RUB = [
+      ['Sanidad', N(gastSanidad, 2), 'Tratamientos + compras subcuenta sanidad'],
+      ['Personal (sueldos pagados)', N(gastPersonal, 2), 'Sueldos con fecha de pago en el período + compras subcuenta personal'],
+      ['Adelantos personal', N(gastAdelantos, 2), 'Adelantos del período'],
+      ['Diésel', N(gastDiesel, 2), 'Recargas + compras subcuenta combustible'],
+      ['Merma diésel', N(costoMermaDiesel, 2), F(mermaDiesel, 0) + ' L × Bs ' + F(precioPromDiesel, 2)],
+      ['Aceite', N(gastAceite, 2), 'Registros de aceite'],
+      ['Mantenimiento', N(gastMaint, 2), 'Mantenimientos + compras subcuenta mantenimiento'],
+      ['Compras insumos (otros)', N(gastCompras, 2), 'Compras sin rubro CREA'],
+      ['Alimentación', N(gastAlimento, 2), 'Sal + alimento + compras subcuenta sal/alimento'],
+      ['Merma stock veterinario', N(mermaVet, 2), 'Pérdidas × precio unitario'],
+      ['Registros manuales Contabilidad', N(gastManuales, 2), 'Cuentas COSTOS / GASTO ADMINISTRATIVO'],
+      ['= GASTOS DIRECTOS', N(gastDirectos, 2), '']
+    ];
+    var detGastos = ['compraInsumos', 'trat', 'sueldos', 'adelantos', 'diesel', 'maint', 'sal'];
+    var T = {};
+    function k(label, o) { o.label = label; T[label] = o; }
+    k('Producción de Carne', { f: 'Producción CREA (kg) ÷ hectáreas', s: F(produccionCREA, 0) + ' ÷ ' + F(ha) + ' = ' + F(prodCarne, 1) + ' kg/ha', sub: 'Producción CREA = ' + F(kgVendidos, 0) + ' (vendidos) + (' + F(stockFinalKg, 0) + ' − ' + F(stockInicialKg, 0) + ') (dif. stock) = ' + F(produccionCREA, 0) + ' kg', res: prodCarne, u: 'kg/ha', i: ['periodo', 'kgV', 'sF', 'sI', 'prod', 'ha'], d: ['ventas', 'stockFin', 'stockIni'] });
+    k('Carga Animal', { f: 'Stock final (kg) ÷ peso UA ÷ hectáreas', s: F(stockFinalKg, 0) + ' ÷ ' + pesoUA + ' ÷ ' + F(ha) + ' = ' + F(cargaAnimal) + ' UA/ha', sub: F(stockFinalKg, 0) + ' kg ÷ ' + pesoUA + ' = ' + F(stockFinalKg / (pesoUA || 1), 1) + ' UA', res: cargaAnimal, u: 'UA/ha', i: ['sF', 'pUA', 'ha'], d: ['stockFin'] });
+    k('GDPV', { f: 'Promedio de (último pesaje − primer pesaje) ÷ días, por animal con 2+ pesajes', s: 'Σ GDPV (' + F(allGmds.reduce(function(a, b){ return a + b; }, 0), 3) + ') ÷ ' + allGmds.length + ' animales = ' + F(gdpv, 3) + ' kg/día', res: gdpv, u: 'kg/cab/día', i: [], d: ['gdpv'] });
+    k('Eficiencia de Stock', { f: 'Producción CREA ÷ stock medio (kg) × 100', s: F(produccionCREA, 0) + ' ÷ ' + F(stockMedioKg, 0) + ' × 100 = ' + F(eficStock, 1) + ' %', sub: 'Stock medio = (' + F(stockInicialKg, 0) + ' + ' + F(stockFinalKg, 0) + ') ÷ 2 = ' + F(stockMedioKg, 0) + ' kg', res: eficStock, u: '%', i: ['prod', 'sI', 'sF'], d: ['stockFin', 'stockIni'] });
+    k('Producción por Cabeza', { f: 'Producción CREA ÷ existencia media', s: F(produccionCREA, 0) + ' ÷ ' + existMedia + ' = ' + F(prodCab, 1) + ' kg/cab', res: prodCab, u: 'kg/cab', i: ['prod', 'exist'], d: ['lotes', 'ventas', 'stockFin', 'stockIni'] });
+    k('Tasa de Extracción', { f: 'Cabezas vendidas ÷ existencia media × 100', s: cabVendidas + ' ÷ ' + existMedia + ' × 100 = ' + F(tasaExtraccion, 1) + ' %', res: tasaExtraccion, u: '%', i: ['cabV', 'exist'], d: ['ventas', 'lotes'] });
+    k('Mortandad', { f: 'Muertes ÷ existencia media × 100', s: cabMuertas + ' ÷ ' + existMedia + ' × 100 = ' + F(mortandad, 1) + ' %', res: mortandad, u: '%', i: ['muertes', 'exist'], d: ['bajas', 'lotes'] });
+    k('Costo por Kg Vivo', { f: 'Operativo = gastos operativos ÷ producción CREA · Total = gastos totales ÷ producción CREA', s: 'Operativo: ' + F(gastosOperativos, 0) + ' ÷ ' + F(produccionCREA, 0) + ' = Bs ' + F(costoOperativoKg) + '/kg   ·   Total: ' + F(gastTotales, 0) + ' ÷ ' + F(produccionCREA, 0) + ' = Bs ' + F(costoKg) + '/kg', sub: 'Gastos operativos = ' + F(gastDirectos, 0) + ' (directos) + ' + F(gastoAdmin, 0) + ' (admin) + ' + F(gastoEstructura, 0) + ' (estructura)', res: costoOperativoKg, u: 'Bs/kg', i: ['gDir', 'gAdm', 'gEst', 'gOp', 'gCG', 'gMaq', 'gTot', 'prod'], rub: true, d: detGastos.concat(['compras']) });
+    k('Margen Bruto', { f: '(Producción valorizada − gastos directos) ÷ hectáreas', s: '(' + F(valorProduccion, 0) + ' − ' + F(gastDirectos, 0) + ') ÷ ' + F(ha) + ' = Bs ' + F(margenBruto) + '/ha', sub: 'Producción valorizada = ' + F(ingresoVentas, 0) + ' (ventas) + ' + F(difStockKgCREA, 0) + ' kg × Bs ' + F(precioRefCREA) + ' = ' + F(valorProduccion, 0), res: margenBruto, u: 'Bs/ha', i: ['ing', 'sF', 'sI', 'pRef', 'vDif', 'vProd', 'gDir', 'ha'], rub: true, d: ['ventas', 'stockFin', 'stockIni'].concat(detGastos) });
+    k('Resultado Operativo', { f: '(Producción valorizada − gastos totales) ÷ hectáreas', s: '(' + F(valorProduccion, 0) + ' − ' + F(gastTotales, 0) + ') ÷ ' + F(ha) + ' = Bs ' + F(resultOp) + '/ha', sub: 'Gastos totales = ' + F(gastDirectos, 0) + ' + ' + F(gastoAdmin, 0) + ' + ' + F(gastoEstructura, 0) + ' + ' + F(inversionCompras, 0) + ' (ganado) + ' + F(inversionMaquinaria, 0) + ' (maquinaria)', res: resultOp, u: 'Bs/ha', i: ['vProd', 'gDir', 'gAdm', 'gEst', 'gCG', 'gMaq', 'gTot', 'ha'], rub: true, d: ['ventas', 'compras'].concat(detGastos) });
+    k('Gasto por Cab/Mes', { f: 'Gastos directos ÷ existencia media ÷ meses', s: F(gastDirectos, 0) + ' ÷ ' + existMedia + ' ÷ ' + meses + ' = Bs ' + F(gastoCabMes), res: gastoCabMes, u: 'Bs/cab/mes', i: ['gDir', 'exist', 'meses'], rub: true, d: detGastos });
+    k('ROI Ganadero', { f: '(Producción valorizada − gastos totales) ÷ gastos totales × 100', s: '(' + F(valorProduccion, 0) + ' − ' + F(gastTotales, 0) + ') ÷ ' + F(gastTotales, 0) + ' × 100 = ' + F(roi, 1) + ' %', res: roi, u: '%', i: ['vProd', 'ing', 'vDif', 'gTot'], rub: true, d: ['ventas', 'compras'].concat(detGastos) });
+    k('Ingreso por Ha', { f: 'Ingresos por ventas ÷ hectáreas', s: F(ingresoVentas, 0) + ' ÷ ' + F(ha) + ' = Bs ' + F(ingresoHa) + '/ha', res: ingresoHa, u: 'Bs/ha', i: ['ing', 'ha'], d: ['ventas'] });
+    k('Costo Sanidad / Cab', { f: 'Gasto sanidad ÷ existencia media', s: F(gastSanidad, 0) + ' ÷ ' + existMedia + ' = Bs ' + F(costoSanCab), res: costoSanCab, u: 'Bs/cab', i: ['san', 'exist'], d: ['trat', 'compraInsumos'] });
+    k('Sal / Cab', { f: 'Sal consumida (kg) ÷ existencia media', s: F(salKg, 1) + ' ÷ ' + existMedia + ' = ' + F(salPorCab, 1) + ' kg/cab', res: salPorCab, u: 'kg/cab', i: ['sal', 'exist'], d: ['sal'] });
+    k('Partos', { f: 'Cantidad de partos con fecha en el período', s: partosPeriodo + ' partos', res: partosPeriodo, u: 'partos', i: ['periodo'], d: ['partos'] });
+    k('Lluvia Acumulada', { f: 'Suma de mm registrados en el período', s: 'Σ mm = ' + F(lluviaPeriodo, 1) + ' mm', res: N(lluviaPeriodo, 1), u: 'mm', i: ['periodo'], d: ['lluvias'] });
+    k('Consumo Diesel', { f: 'Suma de litros de registros de diésel con campo fecha en el período', s: 'Σ litros = ' + F(dieselLitros, 0) + ' L', sub: 'Recargas del período: ' + F(dieselRecargas, 0) + ' L · despachos: ' + F(dieselDespachos, 0) + ' L · merma: ' + F(mermaDiesel, 0) + ' L', res: N(dieselLitros, 0), u: 'L', i: ['periodo'], d: ['dieselKpi', 'diesel'] });
+    k('Tratamientos', { f: 'Cantidad de tratamientos aplicados en el período', s: tratamientosPeriodo + ' aplicaciones', res: tratamientosPeriodo, u: 'aplicaciones', i: ['periodo'], d: ['trat'] });
+    k('Conteos', { f: 'Cantidad de conteos en el período', s: conteosPeriodo + ' conteos', res: conteosPeriodo, u: 'conteos', i: ['periodo'], d: ['conteos'] });
+    k('Cab. Compradas', { f: 'Suma de cabezas de las compras de ganado del período', s: cabCompradas + ' cab · ' + F(kgComprados, 0) + ' kg · Bs ' + F(inversionCompras, 0), res: cabCompradas, u: 'cab', i: ['periodo'], d: ['compras'] });
+    k('Cab. Vendidas', { f: 'Suma de cabezas de las ventas del período', s: cabVendidas + ' cab · ' + F(kgVendidos, 0) + ' kg · Bs ' + F(ingresoVentas, 0), res: cabVendidas, u: 'cab', i: ['periodo'], d: ['ventas'] });
+    window._creaTraza = { kpis: T, inputs: I, rubros: RUB, det: D, periodo: desdeStr + ' al ' + hastaStr, estancia: (rp.nombre_estancia || (window.E5M_TENANT_NAME) || ''), generado: new Date().toISOString() };
+  }
+
+  try { _creaArmarTraza(); } catch (eTr) { console.warn('[CREA traza]', eTr); window._creaTraza = null; }
   el.innerHTML = html;
 
   // v1.4.67: renderizar los donuts de Composición de Gastos
@@ -36619,6 +36720,132 @@ function renderReporteCREA() {
 
 // v1.4.67: Renderiza los 2 donuts de Composición de Gastos
 // (charts globales _creaChartEgresosTotal y _creaChartOperativos para destruir en re-render)
+/* ═══ v1.8.278: modal "Cómo se calcula" de los KPI del Dashboard CREA + export a Excel ═══ */
+(function() {
+  if (document.getElementById('crea-tr-css')) return;
+  var st = document.createElement('style'); st.id = 'crea-tr-css';
+  st.textContent =
+    '.crea-kpi-tr{cursor:pointer;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}' +
+    '.crea-kpi-tr:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.25)}' +
+    '.crea-kpi-tr:focus-visible{outline:2px solid var(--amber);outline-offset:2px}' +
+    '.crea-tr-ico{position:absolute;right:10px;bottom:8px;font:600 10px DM Mono,monospace;color:var(--muted);opacity:.45;transition:opacity .18s}' +
+    '.crea-kpi-tr:hover .crea-tr-ico{opacity:1;color:var(--amber2)}' +
+    '#crea-tr-ov{position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:24px;opacity:0;transition:opacity .2s ease}' +
+    '#crea-tr-ov.on{opacity:1}' +
+    '#crea-tr-box{background:var(--bg2,#161b22);border:1px solid var(--bor);border-radius:12px;width:min(920px,100%);max-height:88vh;display:flex;flex-direction:column;transform:translateY(12px) scale(.98);transition:transform .22s ease}' +
+    '#crea-tr-ov.on #crea-tr-box{transform:none}' +
+    '#crea-tr-box .trh{padding:16px 20px;border-bottom:1px solid var(--bor);display:flex;justify-content:space-between;gap:12px;align-items:flex-start}' +
+    '#crea-tr-box .trb{padding:16px 20px;overflow:auto}' +
+    '#crea-tr-box .trf{padding:12px 20px;border-top:1px solid var(--bor);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}' +
+    '.crea-tr-form{background:rgba(240,160,48,.07);border:1px solid rgba(240,160,48,.2);border-radius:8px;padding:12px 14px;font:13px DM Mono,monospace;line-height:1.6}' +
+    '.crea-tr-sec{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 6px}' +
+    '.crea-tr-t{width:100%;border-collapse:collapse;font-size:12px}' +
+    '.crea-tr-t th{text-align:left;font-weight:600;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--bor);position:sticky;top:0;background:var(--bg2,#161b22)}' +
+    '.crea-tr-t td{padding:6px 8px}' +
+    '.crea-tr-t tbody tr:nth-child(even){background:rgba(255,255,255,.03)}' +
+    '.crea-tr-t td.n{text-align:right;font-family:DM Mono,monospace}' +
+    '.crea-tr-acc{border:1px solid var(--bor);border-radius:8px;margin-bottom:6px;overflow:hidden}' +
+    '.crea-tr-acc>summary{cursor:pointer;padding:9px 12px;font-size:12px;font-weight:600;list-style:none;display:flex;justify-content:space-between}' +
+    '.crea-tr-acc>summary::-webkit-details-marker{display:none}' +
+    '.crea-tr-acc[open]>summary{border-bottom:1px solid var(--bor)}' +
+    '.crea-tr-acc .sc{max-height:240px;overflow:auto}' +
+    '@media (prefers-reduced-motion:reduce){.crea-kpi-tr,#crea-tr-ov,#crea-tr-box{transition:none}}';
+  document.head.appendChild(st);
+})();
+
+function _crTrEsc(x) { return String(x == null ? '' : x).replace(/[&<>"]/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function _crTrNum(v) { return typeof v === 'number' ? '<td class="n">' + v.toLocaleString('es-BO', { maximumFractionDigits: 3 }) + '</td>' : '<td>' + _crTrEsc(v) + '</td>'; }
+
+function creaTrazaAbrir(label) {
+  var TR = window._creaTraza;
+  if (!TR || !TR.kpis[label]) { toast('No hay detalle de cálculo para este indicador', 'info'); return; }
+  var K = TR.kpis[label];
+  var h = '<div class="crea-tr-sec" style="margin-top:0">Fórmula</div><div class="crea-tr-form"><div style="color:var(--muted)">' + _crTrEsc(K.f) + '</div>' +
+    '<div style="margin-top:6px;font-weight:700;color:var(--text,#e6edf3)">' + _crTrEsc(K.s) + '</div>' + (K.sub ? '<div style="margin-top:4px;color:var(--muted)">' + _crTrEsc(K.sub) + '</div>' : '') + '</div>';
+  if (K.i && K.i.length) {
+    h += '<div class="crea-tr-sec">Datos de entrada</div><table class="crea-tr-t"><thead><tr><th>Dato</th><th style="text-align:right">Valor</th><th>De dónde sale</th></tr></thead><tbody>';
+    K.i.forEach(function(key) { var r = TR.inputs[key]; if (r) h += '<tr><td>' + _crTrEsc(r[0]) + '</td>' + (typeof r[1] === 'number' ? _crTrNum(r[1]) : '<td class="n" style="font-family:inherit">' + _crTrEsc(r[1]) + '</td>') + '<td style="color:var(--muted)">' + _crTrEsc(r[2]) + '</td></tr>'; });
+    h += '</tbody></table>';
+  }
+  if (K.rub) {
+    h += '<div class="crea-tr-sec">Gastos directos por rubro</div><table class="crea-tr-t"><thead><tr><th>Rubro</th><th style="text-align:right">Bs</th><th>Origen</th></tr></thead><tbody>';
+    TR.rubros.forEach(function(r) { h += '<tr' + (r[0].charAt(0) === '=' ? ' style="font-weight:700"' : '') + '><td>' + _crTrEsc(r[0]) + '</td>' + _crTrNum(r[1]) + '<td style="color:var(--muted)">' + _crTrEsc(r[2]) + '</td></tr>'; });
+    h += '</tbody></table>';
+  }
+  if (K.d && K.d.length) {
+    h += '<div class="crea-tr-sec">Registros usados</div>';
+    K.d.forEach(function(dk) {
+      var ds = TR.det[dk]; if (!ds) return; var rows = ds.r() || [];
+      h += '<details class="crea-tr-acc"><summary><span>' + _crTrEsc(ds.t) + '</span><span style="color:var(--muted);font-weight:400">' + rows.length + ' registro' + (rows.length === 1 ? '' : 's') + ' ▾</span></summary>';
+      if (!rows.length) h += '<div style="padding:10px 12px;font-size:12px;color:var(--muted)">Sin registros en el período.</div>';
+      else {
+        h += '<div class="sc"><table class="crea-tr-t"><thead><tr>' + ds.c.map(function(c) { return '<th>' + _crTrEsc(c) + '</th>'; }).join('') + '</tr></thead><tbody>';
+        rows.slice(0, 300).forEach(function(r) { h += '<tr>' + r.map(_crTrNum).join('') + '</tr>'; });
+        h += '</tbody></table></div>' + (rows.length > 300 ? '<div style="padding:6px 12px;font-size:11px;color:var(--muted)">Se muestran 300 de ' + rows.length + '. El Excel trae todos.</div>' : '');
+      }
+      h += '</details>';
+    });
+  }
+  var ov = document.getElementById('crea-tr-ov'); if (ov) ov.remove();
+  ov = document.createElement('div'); ov.id = 'crea-tr-ov';
+  ov.innerHTML = '<div id="crea-tr-box" role="dialog" aria-modal="true"><div class="trh"><div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Cómo se calcula · ' + _crTrEsc(TR.periodo) + '</div>' +
+    '<div style="font-size:18px;font-weight:700;margin-top:2px">' + _crTrEsc(label) + ' <span style="font-family:DM Mono,monospace;color:var(--amber2)">' + _crTrEsc(Number(K.res).toLocaleString('es-BO', { maximumFractionDigits: 3 })) + ' ' + _crTrEsc(K.u) + '</span></div></div>' +
+    '<button class="btn btn-ghost btn-sm" onclick="creaTrazaCerrar()" aria-label="Cerrar">✕</button></div>' +
+    '<div class="trb">' + h + '</div><div class="trf"><button class="btn btn-ghost btn-sm" onclick="creaTrazaExcel()">⬇ Excel de todos los KPI</button><button class="btn btn-primary btn-sm" onclick="creaTrazaExcel(\'' + label.replace(/'/g, "\\'") + '\')">⬇ Exportar este KPI a Excel</button></div></div>';
+  ov.addEventListener('click', function(e) { if (e.target === ov) creaTrazaCerrar(); });
+  document.body.appendChild(ov);
+  requestAnimationFrame(function() { ov.classList.add('on'); });
+  document.addEventListener('keydown', _creaTrazaEsc);
+}
+function _creaTrazaEsc(e) { if (e.key === 'Escape') creaTrazaCerrar(); }
+function creaTrazaCerrar() {
+  document.removeEventListener('keydown', _creaTrazaEsc);
+  var ov = document.getElementById('crea-tr-ov'); if (!ov) return;
+  ov.classList.remove('on'); setTimeout(function() { ov.remove(); }, 220);
+}
+/* Excel: hoja "Cálculo" (fórmula + sustitución + datos + rubros) y una hoja por cada conjunto de registros.
+   Sin label → todos los KPI en una hoja resumen + todos los registros. */
+function creaTrazaExcel(label) {
+  var TR = window._creaTraza; if (!TR) { toast('Abrí el Dashboard primero', 'info'); return; }
+  if (!window.estancia || !window.estancia.xlsx || !window.estancia.xlsx.saveAs) { toast('Función Excel no disponible en esta versión', 'error'); return; }
+  var labels = label ? [label] : Object.keys(TR.kpis);
+  var sh = {}, dks = [], cal = [];
+  cal.push(['Estancia Pro — Traza de cálculo del Dashboard CREA']);
+  cal.push(['Período', TR.periodo]); cal.push(['Generado', new Date().toLocaleString('es-BO')]); cal.push([]);
+  if (!label) {
+    cal.push(['Indicador', 'Resultado', 'Unidad', 'Fórmula', 'Con los números del período']);
+    labels.forEach(function(l) { var K = TR.kpis[l]; cal.push([l, Number(K.res) || 0, K.u, K.f, K.s + (K.sub ? '  |  ' + K.sub : '')]); });
+    cal.push([]);
+  }
+  labels.forEach(function(l) {
+    var K = TR.kpis[l];
+    if (label) { cal.push(['Indicador', l]); cal.push(['Resultado', Number(K.res) || 0, K.u]); cal.push(['Fórmula', K.f]); cal.push(['Con los números', K.s]); if (K.sub) cal.push(['Detalle', K.sub]); cal.push([]); }
+    (K.d || []).forEach(function(d) { if (dks.indexOf(d) < 0) dks.push(d); });
+  });
+  var ins = [];
+  labels.forEach(function(l) { (TR.kpis[l].i || []).forEach(function(k) { if (ins.indexOf(k) < 0) ins.push(k); }); });
+  if (!label) ins = Object.keys(TR.inputs);
+  cal.push(['DATOS DE ENTRADA']); cal.push(['Dato', 'Valor', 'De dónde sale']);
+  ins.forEach(function(k) { var r = TR.inputs[k]; if (r) cal.push([r[0], r[1], r[2]]); });
+  if (!label || labels.some(function(l) { return TR.kpis[l].rub; })) {
+    cal.push([]); cal.push(['GASTOS DIRECTOS POR RUBRO']); cal.push(['Rubro', 'Bs', 'Origen']);
+    TR.rubros.forEach(function(r) { cal.push([r[0], r[1], r[2]]); });
+  }
+  sh['Cálculo'] = cal;
+  if (!label) dks = Object.keys(TR.det);
+  dks.forEach(function(dk) {
+    var ds = TR.det[dk]; if (!ds) return;
+    var nm = ds.t.replace(/[\\\/\?\*\[\]:]/g, ' ').slice(0, 31);
+    while (sh[nm]) nm = nm.slice(0, 29) + '_' + Math.floor(Math.random() * 9);
+    sh[nm] = [ds.c].concat(ds.r() || []);
+  });
+  var fn = 'CREA_' + (label ? label.replace(/[^A-Za-z0-9áéíóúñÁÉÍÓÚÑ]+/g, '_') : 'todos_los_KPI') + '_' + TR.periodo.replace(/ al /, '_a_') + '.xlsx';
+  window.estancia.xlsx.saveAs(sh, fn).then(function(r) {
+    if (r && r.success) toast('✓ Excel guardado', 'success');
+    else if (r && r.error) toast('Error guardando Excel: ' + r.error, 'error');
+  }).catch(function(e) { toast('Error: ' + (e.message || e), 'error'); });
+}
+
 function _creaRenderGastosDonuts() {
   if (typeof Chart === 'undefined') return;  // Chart.js no disponible
   var data = window._creaGastosData;
