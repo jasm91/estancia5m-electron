@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.276';
+window.E5M_HTML_BUILD = '1.8.277';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -19865,6 +19865,42 @@ function _ahCabezasDelLote(lotCode, compras) {
 //   4. Fallback: prorrateo simple por cabezas (último recurso)
 //
 // Retorna { cabs, kg, kgFacturados, ingreso } o null si la venta no toca este lote.
+
+/* ═══ v1.8.277 — ANÁLISIS HISTÓRICO DERIVADO DE LOS ANIMALES (como el Análisis del lote del server 4.122.0)
+   Cabezas vendidas con arete (sale.animal_ids de las ventas DIRECTAS del lote) → inversión = Σ costo de origen
+   de cada una (animal_costos; al partido y nacidos = Bs 0) y sanidad = lo atribuido a cada una (animal_consumos,
+   toda su vida). Solo se usa si cubre ≥90 % de las cabezas vendidas y ≥90 % tienen costo de origen; si no,
+   queda el cálculo por lote de siempre. Mantenimiento, sal por lote e indirectos siguen igual. Kill: __AH_DERIVADO_OFF ═══ */
+function _ahDerivado(lot, ventas) {
+  var r = { ok: false, cab: 0, ids: 0, inversion: 0, sanidad: 0, sal: 0, alimento: 0, partido: 0, nacidos: 0, sin_costo: 0, motivo: '' };
+  try {
+    if (window.__AH_DERIVADO_OFF) { r.motivo = 'apagado'; return r; }
+    var K = JSON.parse(localStorage.getItem('e5m_animal_costos') || 'null') || {};
+    var C = JSON.parse(localStorage.getItem('e5m_animal_consumos') || 'null') || {};
+    if (!Object.keys(K).length) { r.motivo = 'sin costos por animal'; return r; }
+    var cl = _ahClasificarVentas(ventas, lot.code);
+    if (cl.compartidas.length) { r.motivo = 'hay ventas mezcladas con otros lotes'; return r; }
+    var vistos = {};
+    cl.directas.forEach(function (v) {
+      var a = _ahAtribuirVentaALote(v, lot.code); if (a) r.cab += a.cabs || 0;
+      (Array.isArray(v.animal_ids) ? v.animal_ids : []).forEach(function (id) { id = String(id); if (!vistos[id]) { vistos[id] = 1; r.ids++; } });
+    });
+    if (!r.cab || r.ids < r.cab * 0.9) { r.motivo = 'faltan aretes en las ventas (' + r.ids + ' de ' + r.cab + ')'; return r; }
+    Object.keys(vistos).forEach(function (id) {
+      var k = K[id];
+      if (!k) r.sin_costo++; else if (k.partido) r.partido++; else if (k.nacido) r.nacidos++; else r.inversion += parseFloat(k.costo_bs) || 0;
+      var c = C[id];
+      if (c) [['s', 'sal'], ['a', 'alimento'], ['c', 'sanidad']].forEach(function (x) { var g = c[x[0]]; if (g) Object.keys(g).forEach(function (p) { r[x[1]] += (g[p] && g[p][1]) || 0; }); });
+    });
+    if (r.sin_costo > r.ids * 0.1) { r.motivo = r.sin_costo + ' de ' + r.ids + ' cabezas sin costo de origen'; return r; }
+    r.ok = true;
+  } catch (e) { r.motivo = 'error: ' + e.message; }
+  return r;
+}
+function _ahDerivadoNota(d) {
+  return 'derivado de ' + d.ids + ' cabezas vendidas' + (d.partido ? ' · ' + d.partido + ' al partido (Bs 0)' : '') + (d.nacidos ? ' · ' + d.nacidos + ' nacidas acá' : '') + (d.sin_costo ? ' · ' + d.sin_costo + ' sin costo' : '');
+}
+
 function _ahAtribuirVentaALote(venta, lotCode) {
   var v = venta;
 
@@ -20222,6 +20258,9 @@ function _ahRenderPerformance(lot, pesajes, ventas, compras) {
   compras.forEach(function(c) {
     costoCompra += parseFloat(c.total || c.precio_total || 0) || 0;
   });
+  var _dvP = (typeof _ahDerivado === 'function') ? _ahDerivado(lot, ventas) : { ok: false };
+  var _costoCompraLote = costoCompra;
+  if (_dvP.ok) costoCompra = _dvP.inversion;   /* v1.8.277: inversión = Σ costo de origen de las cabezas vendidas */
 
   // GDP del lote — preferimos calcular desde peso de COMPRA → peso de VENTA DIRECTA.
   // Eso da un GDP real del ciclo del lote. Solo fallback a pesajes si no hay compra+venta.
@@ -20314,7 +20353,7 @@ function _ahRenderPerformance(lot, pesajes, ventas, compras) {
   if (costoCompra > 0) {
     var roi = ingresoTotal - costoCompra;
     var roiPct = costoCompra > 0 ? (roi / costoCompra * 100) : 0;
-    html += _ahKpiCell('🏷️ Costo compra', moneda + ' ' + _ahFmtNum(costoCompra), 'var(--muted)', notaTraspaso);
+    html += _ahKpiCell('🏷️ Costo compra', moneda + ' ' + _ahFmtNum(costoCompra), 'var(--muted)', _dvP.ok ? _ahDerivadoNota(_dvP) + (Math.round(_costoCompraLote) !== Math.round(costoCompra) ? ' · por lote: ' + _ahFmtNum(_costoCompraLote) : '') : notaTraspaso);
     html += _ahKpiCell('📈 Resultado bruto', moneda + ' ' + _ahFmtNum(roi), roi >= 0 ? 'var(--green)' : 'var(--red)', _ahFmtNum(roiPct, 1) + '%');
   } else {
     html += _ahKpiCell('🏷️ Costo compra', 'Sin compra registrada', 'var(--muted)');
@@ -20350,6 +20389,7 @@ function _ahRenderPerformance(lot, pesajes, ventas, compras) {
       costoSanidadLote += q * uc;
     }
   });
+  if (_dvP.ok && _dvP.sanidad > 0) costoSanidadLote = _dvP.sanidad;   /* v1.8.277: sanidad de cada cabeza vendida */
   var costoMantLote = 0;
   (db.maintenance || []).filter(function(m){ return m.lot_code === lot.code; }).forEach(function(m){
     if (Array.isArray(m.stock_items)) {
@@ -21135,6 +21175,8 @@ function _ahRenderCostos(lot, treatments, mantenimientos, ventas, compras) {
     }
   });
 
+  var _dvC = (typeof _ahDerivado === 'function') ? _ahDerivado(lot, ventas) : { ok: false };
+  if (_dvC.ok && _dvC.sanidad > 0) costoSanidad = _dvC.sanidad;   /* v1.8.277: sanidad derivada de los animales */
   var costoDirecto = costoSanidad + costoMantenimiento;
 
   // ─── COSTOS INDIRECTOS PRORRATEADOS (Idea 38) ───
@@ -21155,6 +21197,7 @@ function _ahRenderCostos(lot, treatments, mantenimientos, ventas, compras) {
   compras.forEach(function(c) {
     costoCompra += parseFloat(c.total || c.precio_total || 0) || 0;
   });
+  if (_dvC.ok) costoCompra = _dvC.inversion;   /* v1.8.277 */
 
   // ─── MARGEN NETO ───
   var margenNeto = null, margenPct = null;
@@ -21244,7 +21287,9 @@ function _ahRenderCostos(lot, treatments, mantenimientos, ventas, compras) {
   // GRUPO 1: DIRECTOS (subtítulo + KPIs)
   html += '<div style="grid-column:1/-1;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:4px;padding-bottom:4px;border-bottom:1px solid var(--bor)">Directos</div>';
   html += _ahKpiCell('🩹 Sanidad', moneda + ' ' + _ahFmtNum(costoSanidad, 2), null,
-    (treatments || []).length + ' tratamiento(s)');
+    (_dvC.ok && _dvC.sanidad > 0) ? 'lo aplicado a las ' + _dvC.ids + ' cabezas vendidas' : (treatments || []).length + ' tratamiento(s)');
+  if (_dvC.ok) html += '<div style="grid-column:1/-1;font-size:11px;color:var(--muted)">🐂 Inversión y sanidad calculadas desde cada animal vendido (' + _ahDerivadoNota(_dvC) + ').</div>';
+  else if (_dvC.motivo && _dvC.motivo !== 'apagado') html += '<div style="grid-column:1/-1;font-size:11px;color:var(--muted)">Cálculo por lote (no se pudo derivar por animal: ' + _dvC.motivo + ').</div>';
   html += _ahKpiCell('🔧 Mantenimiento', moneda + ' ' + _ahFmtNum(costoMantenimiento, 2), null,
     (mantenimientos || []).length + ' registros');
   html += _ahKpiCell('💸 Subtotal directo', moneda + ' ' + _ahFmtNum(costoDirecto, 2), 'var(--amber)',
