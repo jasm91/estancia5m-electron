@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.288';
+window.E5M_HTML_BUILD = '1.8.289';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -1168,6 +1168,7 @@ function publishTasksToPWA() {
     <!-- <button class="nav-btn" data-label="Kardex" onclick="showPage('kardex',this)"><span class="nav-icon">📒</span><span class="nav-text">Kardex</span></button> -->
     <button class="nav-btn" data-label="Kardex Estancia" onclick="showPage('kardex-estancia',this)"><span class="nav-icon">🐄</span><span class="nav-text">Kardex Estancia</span></button>
     <button class="nav-btn" data-label="Contabilidad" onclick="showPage('contabilidad',this)"><span class="nav-icon">📊</span><span class="nav-text">Contabilidad</span></button>
+    <button class="nav-btn" data-label="CREA" onclick="showPage('crea',this)"><span class="nav-icon">🏆</span><span class="nav-text">CREA</span></button>
     <button class="nav-btn" data-label="Gráficos BI" onclick="showPage('graficosbi',this)"><span class="nav-icon">📈</span><span class="nav-text">Gráficos BI</span></button>
     <button class="nav-btn" data-label="Trazabilidad" onclick="showPage('trazabilidad',this)"><span class="nav-icon">🔖</span><span class="nav-text">Trazabilidad</span></button>
     <button class="nav-btn" data-label="Análisis Lote" onclick="showPage('analisis-lote',this);initAnalisisLote()"><span class="nav-icon">📈</span><span class="nav-text">Análisis Lote</span></button>
@@ -5064,6 +5065,28 @@ function orMarcajeGo(){
   <div id="reporte-preview-container" style="background:white;border-radius:12px;overflow:hidden;border:1px solid var(--bor)">
     <div id="reporte-preview-inner" style="padding:0"></div>
   </div>
+</div>
+
+<!-- v1.8.289: Reportes → CREA (benchmarking CREA Bolivia; módulo crea-reportes-v18289 al final del archivo) -->
+<div id="page-crea" class="page">
+  <div class="ph">
+    <div><div class="pt">🏆 CREA · Benchmarking</div><div class="ps">Cascada económica, indicadores ★ y plan de cuentas con la metodología de los Grupos CREA Bolivia 2025/26</div></div>
+    <button class="btn btn-primary" onclick="crea2Excel()">⬇ Excel</button>
+  </div>
+  <div class="cr2-hd">
+    <label>Desde <input type="date" id="cr2-desde"></label>
+    <label>Hasta <input type="date" id="cr2-hasta"></label>
+    <span style="display:flex;gap:4px">
+      <button class="btn" style="font-size:11px;padding:5px 9px" onclick="crea2Preset('gestion')">Gestión CREA (jul→hoy)</button>
+      <button class="btn" style="font-size:11px;padding:5px 9px" onclick="crea2Preset('year')">12 meses</button>
+      <button class="btn" style="font-size:11px;padding:5px 9px" onclick="crea2Preset('ytd')">Año</button>
+      <button class="btn" style="font-size:11px;padding:5px 9px" onclick="crea2Preset('semestre')">6 meses</button>
+    </span>
+    <label style="margin-left:auto">Comparar con
+      <select id="cr2-bench"><option value="cria_sc">Cría · Santa Cruz 25/26</option><option value="cria_beni">Cría · Beni 25/26</option><option value="recria_sc">Recría · Santa Cruz 25/26</option></select>
+    </label>
+  </div>
+  <div id="cr2-body"></div>
 </div>
 
 <!-- REPORTE CREA -->
@@ -62542,6 +62565,482 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
   }
   window.renderPesajesFromAnimales = render;
   try { console.log('%c[EP Desktop v1.8.287] Pesajes: KPIs, evolución y sesiones · kill: __PES2_OFF', 'color:#3fb950'); } catch (e) {}
+})();
+</script>
+
+
+<script id="crea-reportes-v18289">
+/* ═══ v1.8.289 — REPORTES → CREA (pedido José 30-10-2026)
+   Sección propia con la metodología de los Benchmarking CREA Bolivia 2025/26 (R. Soleto): cascada
+   Ingreso Bruto → Ingreso Neto → Contribución marginal → Margen Bruto, plan de cuentas CREA (1.01…6.01),
+   indicadores ★ y comparación con el promedio y el Top 30 % de Cría SC, Cría Beni y Recría SC.
+   Motor INDEPENDIENTE: lee db y Params. Reporte pero no toca renderReporteCREA ni sus KPI.
+   Pestañas: Contabilidad CREA · Indicadores CREA · Plan de cuentas. Kill: window.__CREA2_OFF ═══ */
+(function () {
+  'use strict';
+  if (window.__CREA2_OFF) return;
+  var KEY_MAP = 'e5m_crea2_map', KEY_UI = 'e5m_crea2_ui';
+
+  /* ─── Plan de cuentas CREA (xlsx de CREA Bolivia) ─── */
+  var PLAN = [
+    ['1.01', 'Alimentación animal', 'var'], ['1.02', 'Sanidad', 'var'], ['1.03', 'Reproducción', 'var'],
+    ['1.04', 'Personal', 'fijo'], ['1.05', 'Mantenimiento de pasturas', 'fijo'], ['1.06', 'Maquinaria', 'fijo'], ['1.07', 'Otros gastos directos', 'fijo'],
+    ['2', 'Gastos de venta', 'venta'], ['3', 'Gastos de compras', 'compra'],
+    ['4', 'Administración', 'admin'], ['5', 'Estructura', 'estr'], ['6', 'Financieros', 'fin'],
+    ['INV', 'Inversiones (fuera del MB)', 'inv'], ['AGRO', 'Agricultura (fuera del CREA ganadero)', 'excl']
+  ];
+  var PLAN_SUB = {
+    '1.01': ['Granos', 'Alimento balanceado', 'Núcleos y concentrados', 'Sales', 'Sal proteinada o energética', 'Rollos', 'Silo'],
+    '1.02': ['Vacunas', 'Aftosa', 'Rabia', 'Clostridiosis', 'Neonatal', 'Antiparasitarios', 'Hormonas de engorde', 'Medicamentos', 'Honorarios veterinarios', 'Otros (laboratorio, guantes, jeringas)'],
+    '1.03': ['Hormonas (protocolo)', 'Semen (compra y mantenimiento)', 'Honorarios', 'Materiales (guantes, fundas, termo)'],
+    '1.04': ['Sueldos y salarios', 'Aguinaldos', 'Indemnización', 'Aportes (Caja y AFP)', 'Alimentación del personal', 'Capacitación', 'Uniformes', 'Bonos', 'Gastos médicos', 'Vivienda del personal', 'Personal eventual', 'Motosierrista'],
+    '1.05': ['Herbicidas', 'Coadyuvantes', 'Insecticida', 'Mano de obra', 'Servicio de aplicación', 'Recuperación de pasturas', 'Fertilización de pasturas', 'Mecánica'],
+    '1.06': ['Combustible y lubricantes', 'Mantenimiento maquinaria', 'Mano de obra tractorista'],
+    '1.07': ['Identificación y registros', 'Otros (monturas, enseres, herramientas)'],
+    '2': ['Flete', 'Otros (guía, moto, comisión)'], '3': ['Flete', 'Otros (guía, moto, comisión)'],
+    '4': ['Contabilidad', 'Legal', 'Vehículo de administración', 'CREA', 'Capacitación', 'Asesoramiento', 'Gastos de oficina', 'Impuesto a la tierra (IPA)', 'Asociación de ganaderos', 'Sueldo gerente general', 'Gastos bancarios', 'Sistemas / software de gestión', 'Otros'],
+    '5': ['Mantenimiento de edificios', 'Vehículos de estructura y envíos', 'Servicios básicos', 'Caminos y pista', 'Equipos (motosierra, motobomba)', 'Material de trabajo', 'Técnicos (electricista, etc.)', 'Sueldos de estructura (cocinera, chofer, limpieza)', 'Cerca eléctrica', 'Alambrada y corrales', 'Bebederos y aguadas', 'Otros'],
+    '6': ['Intereses']
+  };
+  var PLAN_IDX = {}; PLAN.forEach(function (p) { PLAN_IDX[p[0]] = p; });
+
+  /* ─── Benchmarks CREA Bolivia 2025/26 (promedio / Top 30 %) ─── */
+  var BENCH = {
+    cria_sc: { n: 'Cría · Santa Cruz 25/26', info: '17 productores · 36.893 ha · Chiquitanía, Este y Sur', mbHa: [1908, 3149], kgHa: [145.9, 192.6], kgCab: [97.1, 115.3], gdpv: [0.266, 0.316], carga: [1.15, 1.19], efStock: [29.0, 36.0], mort: [2.12, 1.34], costoKg: [9.52, 6.51], gdHa: [1308, 1292], mbGasto: [1.50, 2.94], gdUA: null, prenez: null, destete: null,
+      rubros: { '1.01': [239, 186], '1.02': [94, 110], '1.03': [114, 142], '1.04': [527, 472], '1.05': [231, 308], '1.07': [103, 74] }, rubrosNota: 'Mantenimiento CREA = 1.05 + 1.06',
+      palancas: [['Producción', 'kgHa', 13, 'Bs/ha por cada kg/ha', 'r = 0,78'], ['Eficiencia de stock', 'efStock', 62, 'Bs/ha por cada punto', 'r = 0,52'], ['Mortalidad', 'mort', 237, 'Bs/ha por cada punto menos', 'r = −0,52']] },
+    cria_beni: { n: 'Cría · Beni 25/26', info: '17 productores · 181.093 ha · San Borja, GPA Beni, Moxos, Bajío y Nor Este', mbHa: [823, 1645], kgHa: [44.0, 86.1], kgCab: [73.6, 80.7], gdpv: [0.202, 0.221], carga: [0.39, 0.69], efStock: [25.5, 27.8], mort: [2.71, 2.16], costoKg: [5.62, 4.10], gdHa: [227, 353], mbGasto: [3.33, 4.78], gdUA: [633, 519], prenez: [71.9, 73.0], destete: [56.3, 66.6],
+      rubros: null, rubrosPct: { '1.01': 7, '1.02': 9, '1.03': 6, '1.04': 50, '1.05': 19, '1.07': 9 },
+      palancas: [['Producción', 'kgHa', 18, 'Bs/ha por cada kg/ha', 'r = 0,94'], ['Carga animal', 'carga', 2020, 'Bs/ha por UA/ha (202 por cada 0,1)', 'r = 0,85'], ['Destete', 'destete', 34, 'Bs/ha por cada punto', 'r = 0,59']] },
+    recria_sc: { n: 'Recría · Santa Cruz 25/26', info: '17 productores · 23.577 ha · Chiquitanía, Este y Sur', mbHa: [3883, 6107], kgHa: [263, 334], kgCab: [148, 171], gdpv: [0.405, 0.468], carga: [1.17, 1.23], efStock: [49, 62], mort: [1.54, 1.46], costoKg: [5.79, 5.36], gdHa: [1524, 1780], mbGasto: [2.94, 3.47], gdUA: null, prenez: null, destete: null,
+      rubros: { '1.01': [534, 623], '1.02': [145, 195], '1.04': [437, 494], '1.05': [239, 245], '1.07': [169, 223] }, rubrosNota: 'Mantenimiento CREA = 1.05 + 1.06',
+      palancas: [], cascada: { ib: [14887, 21916], compras: [10274, 13484], difInv: [818, -545], ingNeto: [5408, 7887], gdVar: [702, 818], gdFijo: [822, 962] } }
+  };
+  BENCH.cria_beni.cascada = { ib: [1066, 1066], compras: [480, 366], comerc: [10, null], difInv: [473, 1302], ingNeto: [1049, 1998], gdVar: [52, null], gdFijo: [175, null] };
+  /* indicador → [etiqueta, unidad, decimales, mejorCuando ('alto'|'bajo'), clave bench] */
+  var IND = [
+    ['kgHa', 'Producción de carne', 'kg/ha/año', 1, 'alto', '★'], ['kgCab', 'Producción por cabeza', 'kg/cab/año', 1, 'alto', '★'], ['gdpv', 'GDPV del período', 'kg/cab/día', 3, 'alto', '★'],
+    ['carga', 'Carga animal', 'UA/ha', 2, 'alto', '★'], ['efStock', 'Eficiencia de stock', '%', 1, 'alto', '★'], ['mort', 'Mortalidad', '%', 2, 'bajo', '★'],
+    ['costoKg', 'Costo del kg producido', 'Bs/kg', 2, 'bajo', ''], ['mbHa', 'Margen Bruto', 'Bs/ha/año', 0, 'alto', ''], ['gdHa', 'Gasto directo', 'Bs/ha/año', 0, 'info', ''],
+    ['mbGasto', 'MB por Bs de gasto', 'Bs', 2, 'alto', ''], ['gdUA', 'Gasto directo por UA', 'Bs/UA', 0, 'bajo', ''], ['prenez', 'Tasa de preñez', '%', 1, 'alto', ''], ['destete', 'Tasa de destete', '%', 1, 'alto', '★']
+  ];
+
+  /* ─── CSS ─── */
+  var css = document.createElement('style');
+  css.textContent =
+    '#page-crea .cr2-hd{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px}' +
+    '#page-crea .cr2-hd label{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px}' +
+    '#page-crea .cr2-hd input,#page-crea .cr2-hd select{background:var(--sur2);color:var(--text);border:1px solid var(--bor);border-radius:8px;padding:6px 9px;font:inherit;font-size:12px}' +
+    '#page-crea .cr2-tabs{display:flex;gap:4px;border-bottom:1px solid var(--bor);margin-bottom:16px}' +
+    '#page-crea .cr2-tab{padding:9px 14px;font-family:DM Mono,monospace;font-size:11px;cursor:pointer;color:var(--muted);border:0;background:none;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .16s ease,border-color .16s ease}' +
+    '#page-crea .cr2-tab.on{color:var(--amber2,var(--amber));border-bottom-color:var(--amber)}' +
+    '#page-crea .cr2-pane{display:none;animation:cr2In .2s ease both}#page-crea .cr2-pane.on{display:block}' +
+    '@keyframes cr2In{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}' +
+    '#page-crea .cr2-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}' +
+    '#page-crea .cr2-k{background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:12px 14px;position:relative;overflow:hidden;transition:transform .15s ease,box-shadow .15s ease}' +
+    '#page-crea .cr2-k:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(0,0,0,.22)}' +
+    '#page-crea .cr2-k .l{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;gap:6px}' +
+    '#page-crea .cr2-k .v{font-family:DM Mono,monospace;font-size:24px;font-weight:700;margin-top:4px;line-height:1.1}' +
+    '#page-crea .cr2-k .u{font-size:10.5px;color:var(--muted);margin-left:4px;font-weight:400}' +
+    '#page-crea .cr2-bar{position:relative;height:6px;border-radius:3px;background:rgba(127,127,127,.15);margin:22px 0 18px}' +
+    '#page-crea .cr2-bar .f{position:absolute;left:0;top:0;bottom:0;border-radius:3px;transition:width .4s ease}' +
+    '#page-crea .cr2-bar .m{position:absolute;top:-4px;width:2px;height:14px;background:var(--muted);border-radius:1px}' +
+    '#page-crea .cr2-bar .m span{position:absolute;top:15px;left:50%;transform:translateX(-50%);font-size:9px;color:var(--muted);white-space:nowrap;font-family:DM Mono,monospace}' +
+    '#page-crea .cr2-bar .m.top{background:var(--green)}#page-crea .cr2-bar .m.top span{top:auto;bottom:15px}' +
+    '#page-crea .pill{display:inline-block;font-size:10px;padding:2px 8px;border-radius:999px;font-family:DM Mono,monospace;font-weight:600}' +
+    '#page-crea .pill.g{background:rgba(63,185,80,.14);color:var(--green)}#page-crea .pill.a{background:rgba(212,160,23,.14);color:var(--amber2,var(--amber))}#page-crea .pill.r{background:rgba(248,81,73,.14);color:var(--red)}#page-crea .pill.m{background:rgba(127,127,127,.14);color:var(--muted)}' +
+    '#page-crea .cr2-k .sub{font-size:10.5px;color:var(--muted);margin-top:4px}' +
+    '#page-crea table.cr2-t{width:100%;border-collapse:collapse;font-size:12px}' +
+    '#page-crea table.cr2-t th{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;text-align:right;padding:8px 10px;border-bottom:1px solid var(--bor);font-weight:600}' +
+    '#page-crea table.cr2-t th:first-child,#page-crea table.cr2-t td:first-child{text-align:left}' +
+    '#page-crea table.cr2-t td{padding:8px 10px;text-align:right;font-family:DM Mono,monospace;border-bottom:1px solid rgba(127,127,127,.08);transition:background .15s ease}' +
+    '#page-crea table.cr2-t td:first-child{font-family:inherit}' +
+    '#page-crea table.cr2-t tbody tr:nth-child(even) td{background:rgba(127,127,127,.04)}' +
+    '#page-crea table.cr2-t tbody tr:hover td{background:rgba(212,160,23,.06)}' +
+    '#page-crea table.cr2-t tr.tot td{font-weight:700;border-top:2px solid var(--bor);background:rgba(127,127,127,.06) !important}' +
+    '#page-crea table.cr2-t tr.sec td{color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;padding-top:12px;background:none !important}' +
+    '#page-crea .neg{color:var(--red)}#page-crea .pos{color:var(--green)}' +
+    '#page-crea .cr2-acc{border:1px solid var(--bor);border-radius:10px;margin-bottom:8px;overflow:hidden;background:var(--sur)}' +
+    '#page-crea .cr2-acc > .h{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;user-select:none;transition:background .15s ease}' +
+    '#page-crea .cr2-acc > .h:hover{background:rgba(127,127,127,.06)}' +
+    '#page-crea .cr2-acc > .h .ch{transition:transform .2s ease;color:var(--muted);font-size:11px}#page-crea .cr2-acc.open > .h .ch{transform:rotate(90deg)}' +
+    '#page-crea .cr2-acc > .b{display:grid;grid-template-rows:0fr;transition:grid-template-rows .25s ease}#page-crea .cr2-acc.open > .b{grid-template-rows:1fr}' +
+    '#page-crea .cr2-acc > .b > div{overflow:hidden;min-height:0}' +
+    '#page-crea .cr2-vp{max-height:230px;overflow:auto;overscroll-behavior:contain}' +
+    '#page-crea .cr2-acc .bar{height:4px;border-radius:2px;background:rgba(127,127,127,.15);flex:1;max-width:140px;overflow:hidden}#page-crea .cr2-acc .bar i{display:block;height:100%;background:var(--amber);border-radius:2px}' +
+    '#page-crea .cr2-note{background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.15);border-radius:8px;padding:10px 14px;font-size:11px;color:var(--blue);line-height:1.5;margin-top:14px}' +
+    '#page-crea .cr2-two{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:14px}@media(max-width:1100px){#page-crea .cr2-two{grid-template-columns:1fr}}' +
+    '#page-crea .cr2-map select{background:var(--sur2);color:var(--text);border:1px solid var(--bor);border-radius:6px;padding:4px 6px;font-size:11px;max-width:260px}' +
+    '#page-crea .cr2-map .auto{opacity:.65}' +
+    '@media(prefers-reduced-motion:reduce){#page-crea *{transition:none !important;animation:none !important}}';
+  document.head.appendChild(css);
+
+  /* ─── helpers ─── */
+  function esc(x) { return String(x == null ? '' : x).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function N(v, d) { if (v == null || isNaN(v) || !isFinite(v)) return '—'; return Number(v).toLocaleString('es-BO', { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 }); }
+  function f10(s) { return String(s || '').slice(0, 10); }
+  function ld(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function ui() { try { return JSON.parse(localStorage.getItem(KEY_UI) || '{}'); } catch (e) { return {}; } }
+  function uiSet(k, v) { var u = ui(); u[k] = v; try { localStorage.setItem(KEY_UI, JSON.stringify(u)); } catch (e) {} }
+  function tenant() { return String(window.E5M_TENANT_ID || (window.E5M_TENANT && window.E5M_TENANT.id) || localStorage.getItem('e5m_tenant_id') || '0'); }
+  function mapGet() { try { var m = JSON.parse(localStorage.getItem(KEY_MAP) || '{}'); return m[tenant()] || {}; } catch (e) { return {}; } }
+  function mapSet(k, code) { var all = {}; try { all = JSON.parse(localStorage.getItem(KEY_MAP) || '{}'); } catch (e) {} var m = all[tenant()] || {}; if (code) m[k] = code; else delete m[k]; all[tenant()] = m; try { localStorage.setItem(KEY_MAP, JSON.stringify(all)); } catch (e) {} }
+  function gestionDefault() { var n = new Date(); var y = n.getMonth() >= 6 ? n.getFullYear() : n.getFullYear() - 1; return [y + '-07-01', ld(n)]; }
+
+  /* ─── Clasificador: subcuenta / origen → código del plan CREA ─── */
+  var REGLAS = [
+    [/agr[ií]col|agro\b|soya|ma[ií]z|siembra|cosecha|fertiliz.*(suelo|base)|semilla(?!.*past)/, 'AGRO'],
+    [/maquinaria(?!.*mant)|camioneta|tractor nuevo|inversi[oó]n|capital/, 'INV'],
+    [/semen|hormona|protocolo|inseminac|reprod|pajuela|sincroniz|toro.*alquil|ecograf|tacto/, '1.03'],
+    [/sanidad|vacun|medicam|veterin|aftosa|rabia|antipar|garrapat|clostrid|laborator|jeringa|desparas/, '1.02'],
+    [/\bsal\b|sal mineral|sal proteinada|alimento|alimentaci[oó]n animal|balanceado|n[uú]cleo|rollo|silo|suplement|grano|afrecho|melaza|ur[eé]a/, '1.01'],
+    [/flete.*(compra|ingreso)|gu[ií]a.*compra|comisi[oó]n.*compra/, '3'],
+    [/flete|comercializ|gu[ií]a de movimiento|comisi[oó]n|senasag|transporte de ganado|gastos de venta|limpieza.*venta/, '2'],
+    [/inter[eé]s|pr[eé]stamo|cr[eé]dito|amortiz|financ/, '6'],
+    [/bancari|contabil|contador|honorario(?!.*vet)|legal|abogad|notar|impuesto|ipa\b|asociaci[oó]n|fegasacruz|crea\b|asesor|oficina|software|sistema|gerente|gerencia|administra|servicios?\b(?!.*aplic)|internet|luz|electric|agua potable|tel[eé]fon|celular|seguro|donaci|instituci|movilidad|imprevist|viatic/, '4'],
+    [/edificio|casa|galp[oó]n|vivienda|camino|pista|alambr|cerca|corral|bebedero|aguada|pozo|motobomba|motosierra|herramienta|infraestruct|cocinera|chofer|limpieza|jardin|electricista|t[eé]cnico/, '5'],
+    [/potrero|pastura|past[oo]|herbicida|coadyuv|insecticid|tordon|desmalez|fumigaci[oó]n potrero|recuperaci[oó]n|fertilizaci[oó]n/, '1.05'],
+    [/combustible|di[eé]sel|diesel|gasolina|lubric|aceite|mantenimiento (veh|motor|tractor|maquin|moto)|veh[ií]culo|repuesto|llanta|neum[aá]tic|tractorista|mec[aá]nic/, '1.06'],
+    [/sueldo|salario|personal|aguinaldo|v[ií]veres|viveres|comida personal|beneficio|indemniz|aporte|afp|caja|eventual|jornal|pe[oó]n|vaquero|uniforme|capacitaci/, '1.04'],
+    [/arete|caravana|chip|rfid|identific|registro|montura|enseres|soga|l[aá]tigo/, '1.07']
+  ];
+  function clasif(texto, defecto) {
+    var t = String(texto || '').toLowerCase();
+    for (var i = 0; i < REGLAS.length; i++) if (REGLAS[i][0].test(t)) return REGLAS[i][1];
+    return defecto || '1.07';
+  }
+
+  /* ─── Motor CREA (independiente del Dashboard) ─── */
+  function calc(dStr, hStr) {
+    var rp = (typeof getRp === 'function') ? getRp() : {};
+    var ha = parseFloat(rp.hectareas) || 0, pesoUA = parseFloat(rp.peso_ua) || 400;
+    var dias = Math.max(1, Math.round((new Date(hStr + 'T23:59:59') - new Date(dStr + 'T00:00:00')) / 86400000));
+    var fA = 365 / dias, meses = dias / (365 / 12);
+    var enP = function (f) { f = f10(f); return f >= dStr && f <= hStr; };
+    var over = mapGet();
+    var ADB = (typeof getAnimalesDB === 'function') ? getAnimalesDB() : {};
+    var lots = db.lots || [];
+    var activos = lots.filter(function (l) { return !l.status || l.status === 'activo' || l.status === 'active'; });
+    var cabHoy = activos.reduce(function (s, l) { return s + (l.animal_count || 0); }, 0);
+
+    /* ventas */
+    var ventas = (db.sales || []).filter(function (v) { return enP(v.date); });
+    var ib = 0, kgV = 0, cabV = 0, ibGanado = 0;
+    ventas.forEach(function (v) { ib += v.total || 0; kgV += v.kg || v.total_kg || 0; if (v.type !== 'carne_baja') { cabV += v.animals || v.animal_count || 0; ibGanado += v.total || 0; } });
+    /* compras de ganado */
+    var compras = (db.compras_ganado || []).filter(function (c) { return enP(c.fecha); });
+    var comprasBs = 0, kgC = 0, cabC = 0, lotesComprados = {};
+    compras.forEach(function (c) { comprasBs += c.total || 0; kgC += c.total_kg || 0; cabC += c.animal_count || 0; if (c.lot_code) lotesComprados[c.lot_code] = 1; (c.lote_destinos || []).forEach(function (x) { lotesComprados[x] = 1; }); });
+    /* nacidos y muertes */
+    var partos = (db.partos || []).filter(function (p) { return enP(p.fecha || p.date); });
+    var nacidos = partos.length;
+    var bajas = (db.bajas || []).filter(function (b) { return enP(b.fecha); });
+    var muertes = bajas.length;
+    var cabIni = cabHoy + cabV + muertes - cabC - nacidos; if (cabIni < 0) cabIni = cabHoy;
+    var existMedia = (cabIni + cabHoy) / 2 || cabHoy;
+
+    /* stock kg: final (último pesaje) e inicial (pesaje más cercano al inicio, sin los lotes comprados en el período) */
+    var sF = 0, sI = 0, nSFdef = 0, nSIdef = 0, gmds = [];
+    activos.forEach(function (l) {
+      var an = ADB[l.code] || [], compradoEnP = !!lotesComprados[l.code];
+      an.forEach(function (a) {
+        var ps = (a.pesajes || []).slice().sort(function (x, y) { return f10(x.fecha || x.date).localeCompare(f10(y.fecha || y.date)); });
+        if (ps.length) sF += ps[ps.length - 1].peso || 0; else { sF += l.avg_weight || 350; nSFdef++; }
+        if (!compradoEnP) {
+          var antes = ps.filter(function (p) { return f10(p.fecha || p.date) <= dStr; });
+          if (antes.length) sI += antes[antes.length - 1].peso || 0;
+          else if (ps.length) sI += ps[0].peso || 0;
+          else { sI += l.avg_weight || 300; nSIdef++; }
+        }
+        /* GDPV del período: primer y último pesaje DENTRO del período */
+        var dentro = ps.filter(function (p) { var f = f10(p.fecha || p.date); return f >= dStr && f <= hStr; });
+        if (dentro.length >= 2) { var p0 = dentro[0], p1 = dentro[dentro.length - 1]; var dd = Math.round((new Date(f10(p1.fecha || p1.date)) - new Date(f10(p0.fecha || p0.date))) / 86400000); if (dd > 0) gmds.push(((p1.peso || 0) - (p0.peso || 0)) / dd); }
+      });
+    });
+    /* lotes vendidos durante el período estaban al inicio */
+    lots.forEach(function (l) {
+      var st = String(l.status || '').toLowerCase(); if (st !== 'sold' && st !== 'vendido') return;
+      var fv = l.sold_at ? f10(l.sold_at) : null;
+      if (!fv) { var vs = (db.sales || []).filter(function (s) { return s.lot_code === l.code || (Array.isArray(s.lot_codes) && s.lot_codes.indexOf(l.code) >= 0); }).sort(function (a, b) { return String(b.date || '').localeCompare(String(a.date || '')); }); fv = vs.length ? f10(vs[0].date) : null; }
+      if (!fv || fv < dStr || lotesComprados[l.code]) return;
+      var cc = (db.compras_ganado || []).filter(function (c) { return c.lot_code === l.code || (Array.isArray(c.lote_destinos) && c.lote_destinos.indexOf(l.code) >= 0); });
+      if (cc.length) sI += cc.reduce(function (s, c) { return s + (parseFloat(c.total_kg) || 0); }, 0);
+      else sI += (l.animal_count || 0) * (parseFloat(l.avg_weight) || 300);
+    });
+    var difKg = sF - sI;
+    var prodKg = kgV - kgC + difKg;              /* CREA: kg producidos = vendidos − comprados ± dif. inventario */
+    var stockMedioKg = (sI + sF) / 2;
+    var precioRef = (kgV > 0 && ibGanado > 0) ? ibGanado / kgV : (parseFloat(rp.precio_kg_carne) || parseFloat(rp.precio_venta_ref) || 0);
+    if (!precioRef) { var uv = (db.sales || []).filter(function (v) { return v.type !== 'carne_baja' && (v.kg || v.total_kg) > 0 && v.total > 0; }).sort(function (a, b) { return String(b.date || '').localeCompare(String(a.date || '')); })[0]; if (uv) precioRef = uv.total / (uv.kg || uv.total_kg); }
+    var difInvBs = difKg * precioRef;
+
+    /* ─ líneas de gasto clasificadas al plan CREA ─ */
+    var L = []; /* {code, fecha, desc, monto, origen, key} */
+    function add(code, fecha, desc, monto, origen, key) { monto = parseFloat(monto) || 0; if (!monto) return; var k = key || origen; var c = over[k] || code; L.push({ code: c, auto: code, fecha: f10(fecha), desc: desc || '', monto: monto, origen: origen, key: k }); }
+    (db.purchases || []).forEach(function (p) {
+      if (!enP(p.date)) return;
+      var sub = String(p.subcuenta || '').trim(), cta = String(p.cuenta || '').toUpperCase().trim(), tg = String(p.tipo_gasto || '').toUpperCase();
+      var desc = p.description || p.descripcion || p.item || p.product_name || '';
+      var key = 'compra:' + (sub || cta || 'sin subcuenta').toLowerCase();
+      var code;
+      if (p.agro_insumo_id != null) code = 'AGRO';
+      else if (p.type === 'maquinaria' || cta === 'INVERSION' || cta === 'INVERSIÓN' || tg === 'CAPITAL') code = 'INV';
+      else if (cta === 'GASTO ADMINISTRATIVO' || cta === 'GASTOS') code = clasif(sub + ' ' + desc, '4');
+      else code = clasif(sub + ' ' + desc, '1.07');
+      add(code, p.date, (sub ? sub + ' · ' : '') + desc, p.total, 'Compras / insumos', key);
+    });
+    (db.treatments || []).forEach(function (t) { if (enP(t.applied_at)) add('1.02', t.applied_at, (t.product_name || t.product || 'Tratamiento') + (t.lot_code ? ' · ' + t.lot_code : ''), t.cost, 'Tratamientos sanitarios'); });
+    (db.historial_sueldos || []).forEach(function (h) { if (enP(h.fecha_pago)) add('1.04', h.fecha_pago, 'Sueldo ' + (h.employee_name || h.nombre || h.empleado || ''), h.pago_neto, 'Sueldos pagados'); });
+    (db.advances || []).forEach(function (a) { if (enP(a.date)) add('1.04', a.date, 'Adelanto ' + (a.employee_name || a.nombre || ''), a.amount, 'Adelantos de personal'); });
+    (db.diesel || []).forEach(function (d) { var f = d.date || d.fecha || d.created_at; if (d.type === 'recarga' && enP(f)) add('1.06', f, 'Recarga diésel ' + N(parseFloat(d.litros) || 0) + ' L', d.total || (parseFloat(d.litros) || 0) * (parseFloat(d.precio) || 0), 'Recargas de combustible'); });
+    (db.aceite || []).forEach(function (r) { if (enP(r.fecha || r.date)) add('1.06', r.fecha || r.date, 'Aceite / lubricante', r.total || r.costo, 'Aceite'); });
+    (db.maintenance || []).forEach(function (m) {
+      var f = m.date || m.fecha || m.created_at; if (!enP(f)) return;
+      var cat = String(m.category || '').toLowerCase(), code = { maquinaria: '1.06', vehiculos: '1.06', corrales: '5', alambrado: '5', pozos: '5', infraestructura: '5' }[cat] || clasif(m.desc + ' ' + (m.equipo || ''), '1.07');
+      add(code, f, (m.desc || 'Mantenimiento') + (m.equipo ? ' · ' + m.equipo : ''), m.cost, 'Mantenimiento: ' + (cat || 'otro'), 'mant:' + (cat || 'otro'));
+    });
+    function costoRec(r) { var c = parseFloat(r.costo) || 0; if (!c && r.qty && r.product_id) { var pr = (db.products || []).find(function (p) { return p.id === r.product_id; }); if (pr && pr.unit_price) c = r.qty * pr.unit_price; } return c; }
+    (db.sal || []).forEach(function (r) { if (enP(r.date || r.fecha)) add('1.01', r.date || r.fecha, 'Sal ' + (r.kg ? N(parseFloat(r.kg), 0) + ' kg' : '') + (r.lot_code ? ' · ' + r.lot_code : ''), costoRec(r), 'Consumo de sal'); });
+    (db.alimento || []).forEach(function (r) { if (enP(r.date || r.fecha)) add('1.01', r.date || r.fecha, (r.product_name || r.producto || 'Alimento') + (r.lot_code ? ' · ' + r.lot_code : ''), costoRec(r), 'Consumo de alimento'); });
+    var derivados = ['compra-', 'trat-', 'diesel-', 'sueldo-', 'maint-', 'adv-', 'aceite-', 'cg-', 'venta-', 'diesel-merma-'];
+    (db.cuentas || []).forEach(function (r) {
+      if (!r || !enP(r.fecha)) return; var id = String(r.id || ''); if (derivados.some(function (p) { return id.indexOf(p) === 0; })) return;
+      var cu = String(r.cuenta || '').toUpperCase().trim(); if (cu === 'INVERSIONES') cu = 'INVERSIÓN'; if (cu === 'GASTOS') cu = 'GASTO ADMINISTRATIVO';
+      if (cu === 'INGRESOS') return;
+      var sub = String(r.subcuenta || '').trim(), key = 'cuenta:' + (sub || cu).toLowerCase();
+      var code = cu === 'INVERSIÓN' ? 'INV' : cu === 'GASTO ADMINISTRATIVO' ? clasif(sub + ' ' + (r.detalle || ''), '4') : clasif(sub + ' ' + (r.detalle || ''), '1.07');
+      add(code, r.fecha, (sub ? sub + ' · ' : '') + (r.detalle || ''), r.monto, 'Contabilidad manual (' + cu + ')', key);
+    });
+    /* estimados de Params. Reporte (admin y estructura mensuales) */
+    if (parseFloat(rp.gasto_admin)) add('4', hStr, 'Administración estimada · Bs ' + N(rp.gasto_admin) + '/mes × ' + N(meses, 1) + ' meses', rp.gasto_admin * meses, 'Params. Reporte', 'params:admin');
+    if (parseFloat(rp.gasto_estructura)) add('5', hStr, 'Estructura estimada · Bs ' + N(rp.gasto_estructura) + '/mes × ' + N(meses, 1) + ' meses', rp.gasto_estructura * meses, 'Params. Reporte', 'params:estructura');
+
+    /* totales por código */
+    var porCod = {}; PLAN.forEach(function (p) { porCod[p[0]] = 0; });
+    L.forEach(function (l) { if (!(l.code in porCod)) l.code = '1.07'; porCod[l.code] += l.monto; });
+    var gdVar = porCod['1.01'] + porCod['1.02'] + porCod['1.03'];
+    var gdFijo = porCod['1.04'] + porCod['1.05'] + porCod['1.06'] + porCod['1.07'];
+    var gd = gdVar + gdFijo, comerc = porCod['2'] + porCod['3'];
+    var ingNeto = ib - comprasBs - comerc + difInvBs;
+    var contrib = ingNeto - gdVar, mb = contrib - gdFijo;
+    var resOp = mb - porCod['4'] - porCod['5'], resNeto = resOp - porCod['6'];
+
+    /* reproducción (preñez / destete) */
+    var rs = (db.reproductive_services || []).filter(function (r) { return enP(r.date); });
+    var setE = {}, setP = {}; rs.forEach(function (r) { var k = r.animal_id || ('s' + Math.random()); setE[k] = 1; if (r.result === 'preñada') setP[k] = 1; });
+    var entoradas = Object.keys(setE).length, prenadas = Object.keys(setP).length;
+    var destetados = (db.partos || []).filter(function (p) { return p.destete_fecha && enP(p.destete_fecha) && String(p.estado || '').toLowerCase().indexOf('muert') < 0; }).length;
+
+    var UAmedia = stockMedioKg / pesoUA;
+    var K = {
+      kgHa: ha ? prodKg / ha * fA : null, kgCab: existMedia ? prodKg / existMedia * fA : null,
+      gdpv: gmds.length ? gmds.reduce(function (s, g) { return s + g; }, 0) / gmds.length : null,
+      carga: (ha && pesoUA) ? UAmedia / ha : null, efStock: stockMedioKg ? prodKg / stockMedioKg * 100 * fA : null,
+      mort: existMedia ? muertes / existMedia * 100 * fA : null, costoKg: prodKg > 0 ? gd / prodKg : null,
+      mbHa: ha ? mb / ha * fA : null, gdHa: ha ? gd / ha * fA : null, mbGasto: gd ? mb / gd : null, gdUA: UAmedia ? gd / UAmedia : null,
+      prenez: entoradas ? prenadas / entoradas * 100 : null, destete: entoradas ? destetados / entoradas * 100 : null
+    };
+    return { dStr: dStr, hStr: hStr, dias: dias, fA: fA, meses: meses, ha: ha, pesoUA: pesoUA, rp: rp,
+      cabHoy: cabHoy, cabIni: cabIni, existMedia: existMedia, cabV: cabV, cabC: cabC, nacidos: nacidos, muertes: muertes,
+      ib: ib, kgV: kgV, comprasBs: comprasBs, kgC: kgC, comerc: comerc, sF: sF, sI: sI, nSFdef: nSFdef, nSIdef: nSIdef, difKg: difKg, difInvBs: difInvBs, precioRef: precioRef, prodKg: prodKg, stockMedioKg: stockMedioKg,
+      ingNeto: ingNeto, gdVar: gdVar, gdFijo: gdFijo, gd: gd, contrib: contrib, mb: mb, resOp: resOp, resNeto: resNeto, porCod: porCod, lineas: L,
+      entoradas: entoradas, prenadas: prenadas, destetados: destetados, nGmd: gmds.length, K: K };
+  }
+  window.crea2Calc = calc;
+
+  /* ─── Render ─── */
+  var _R = null;
+  function benchKey() { var u = ui(); if (u.bench && BENCH[u.bench]) return u.bench; var ub = String(((typeof getRp === 'function') ? getRp() : {}).ubicacion || '').toLowerCase(); return /beni/.test(ub) ? 'cria_beni' : 'cria_sc'; }
+  function pos(k, v, b) { /* 'g' top, 'a' entre promedio y top, 'r' debajo del promedio */
+    if (v == null || !b) return 'm'; var ind = IND.filter(function (i) { return i[0] === k; })[0]; var dir = ind ? ind[4] : 'alto';
+    if (dir === 'info') return 'm';
+    var okTop = dir === 'alto' ? v >= b[1] : v <= b[1], okProm = dir === 'alto' ? v >= b[0] : v <= b[0];
+    return okTop ? 'g' : okProm ? 'a' : 'r';
+  }
+  function kpiCard(ind, v, b) {
+    var k = ind[0], lbl = ind[1], u = ind[2], d = ind[3], dir = ind[4], star = ind[5];
+    var p = pos(k, v, b), col = { g: 'var(--green)', a: 'var(--amber)', r: 'var(--red)', m: 'var(--muted)' }[p];
+    var bar = '';
+    if (b && v != null) {
+      var lo = Math.min(0, v, b[0], b[1]), hi = Math.max(v, b[0], b[1]) * 1.15 || 1; var sc = function (x) { return Math.max(0, Math.min(100, (x - lo) / (hi - lo) * 100)); };
+      bar = '<div class="cr2-bar"><div class="f" style="width:' + sc(v).toFixed(1) + '%;background:' + col + '"></div><div class="m" style="left:' + sc(b[0]).toFixed(1) + '%"><span>prom ' + N(b[0], d) + '</span></div><div class="m top" style="left:' + sc(b[1]).toFixed(1) + '%"><span>Top ' + N(b[1], d) + '</span></div></div>';
+    }
+    var dif = (b && v != null && b[0]) ? (dir === 'bajo' ? (b[0] - v) / b[0] : (v - b[0]) / b[0]) * 100 : null;
+    var pill = v == null ? '<span class="pill m">sin datos</span>' : !b ? '<span class="pill m">sin benchmark</span>' : dir === 'info' ? '<span class="pill m">' + (v >= b[0] ? '+' : '') + N((v - b[0]) / b[0] * 100, 0) + '% vs prom</span>' : '<span class="pill ' + p + '">' + (p === 'g' ? 'Top 30 %' : p === 'a' ? 'sobre el promedio' : 'bajo el promedio') + (dif != null ? ' · ' + (dif >= 0 ? '+' : '') + N(dif, 0) + '%' : '') + '</span>';
+    return '<div class="cr2-k"><div class="l"><span>' + esc(lbl) + (star ? ' <span style="color:var(--amber)">★</span>' : '') + '</span></div><div class="v" style="color:' + (v == null ? 'var(--muted)' : col) + '">' + N(v, d) + '<span class="u">' + esc(u) + '</span></div>' + bar + '<div class="sub">' + pill + '</div></div>';
+  }
+  function fila(c, bs, R, cls, bench) {
+    var ha = R.ha, em = R.existMedia, ib = R.ib;
+    var s = function (v) { return v < 0 ? ' class="neg"' : ''; };
+    return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td>' + c + '</td><td' + s(bs) + '>' + N(bs) + '</td><td' + s(bs) + '>' + (ha ? N(bs / ha * R.fA) : '—') + '</td><td' + s(bs) + '>' + (em ? N(bs / em * R.fA) : '—') + '</td><td>' + (ib ? N(bs / ib * 100, 1) + '%' : '—') + '</td><td style="color:var(--muted)">' + (bench ? N(bench[0]) : '') + '</td><td style="color:var(--muted)">' + (bench && bench[1] != null ? N(bench[1]) : '') + '</td></tr>';
+  }
+  function acc(titulo, extra, cuerpoFn, id) {
+    return '<div class="cr2-acc" data-acc="' + esc(id) + '"><div class="h"><span class="ch">▶</span><span style="flex:1;font-weight:600;font-size:12.5px">' + titulo + '</span>' + extra + '</div><div class="b"><div data-lazy="1"></div></div></div>';
+  }
+  var _lazy = {};
+  function renderCascada(R, B) {
+    var bc = B.cascada || {};
+    var html = '<div class="cr2-two"><div class="card" style="padding:0;overflow:hidden"><div class="card-hd"><div class="card-title">Cascada económica · ' + esc(R.dStr) + ' → ' + esc(R.hStr) + ' (' + R.dias + ' días)</div></div><div class="cr2-vp" style="max-height:none"><table class="cr2-t"><thead><tr><th>Concepto</th><th>Bs</th><th>Bs/ha/año</th><th>Bs/cab/año</th><th>% IB</th><th>CREA prom.</th><th>Top 30 %</th></tr></thead><tbody>';
+    html += fila('Ingreso Bruto (ventas de ganado y carne)', R.ib, R, '', bc.ib);
+    html += fila('(−) Compras de ganado', -R.comprasBs, R, '', bc.compras && [-bc.compras[0], bc.compras[1] != null ? -bc.compras[1] : null]);
+    html += fila('(−) Gastos de comercialización (2 + 3)', -R.comerc, R, '', bc.comerc && [-bc.comerc[0], null]);
+    html += fila('(±) Diferencia de inventario · ' + N(R.difKg) + ' kg × Bs ' + N(R.precioRef, 2), R.difInvBs, R, '', bc.difInv);
+    html += fila('= Ingreso Neto', R.ingNeto, R, 'tot', bc.ingNeto);
+    html += fila('(−) Gastos directos variables (1.01–1.03)', -R.gdVar, R, '', bc.gdVar && [-bc.gdVar[0], bc.gdVar[1] != null ? -bc.gdVar[1] : null]);
+    html += fila('= Contribución marginal', R.contrib, R, 'tot');
+    html += fila('(−) Gastos directos fijos (1.04–1.07)', -R.gdFijo, R, '', bc.gdFijo && [-bc.gdFijo[0], bc.gdFijo[1] != null ? -bc.gdFijo[1] : null]);
+    html += fila('= MARGEN BRUTO', R.mb, R, 'tot', B.mbHa);
+    html += '<tr class="sec"><td colspan="7">Debajo del Margen Bruto (no entra en el benchmarking CREA)</td></tr>';
+    html += fila('(−) Administración (4)', -R.porCod['4'], R); html += fila('(−) Estructura (5)', -R.porCod['5'], R);
+    html += fila('= Resultado operativo', R.resOp, R, 'tot'); html += fila('(−) Financieros (6)', -R.porCod['6'], R); html += fila('= Resultado neto', R.resNeto, R, 'tot');
+    if (R.porCod.INV) html += fila('Inversiones (fuera del resultado)', R.porCod.INV, R);
+    if (R.porCod.AGRO) html += fila('Agricultura (centro de costo aparte)', R.porCod.AGRO, R);
+    html += '</tbody></table></div></div>';
+    html += '<div><div class="card" style="margin-bottom:14px"><div class="card-hd"><div class="card-title">Del Ingreso Bruto al Margen Bruto · Bs/ha/año</div></div><div class="card-body" style="padding:8px 10px"><canvas id="cr2-wf" height="190"></canvas></div></div>';
+    var pf = R.gdVar ? R.gdFijo / R.gdVar : null;
+    html += '<div class="cr2-grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">' +
+      '<div class="cr2-k"><div class="l">Gasto fijo vs variable</div><div class="v">' + (pf != null ? N(pf, 1) + '<span class="u">veces</span>' : '—') + '</div><div class="sub">CREA cría SC 1,9× · Beni 3,4×</div></div>' +
+      '<div class="cr2-k"><div class="l">MB sobre Ingreso Neto</div><div class="v">' + (R.ingNeto ? N(R.mb / R.ingNeto * 100, 1) + '<span class="u">%</span>' : '—') + '</div><div class="sub">Top 30 % recría: 77 %</div></div>' +
+      '<div class="cr2-k"><div class="l">Dif. inventario sobre IN</div><div class="v">' + (R.ingNeto ? N(R.difInvBs / R.ingNeto * 100, 0) + '<span class="u">%</span>' : '—') + '</div><div class="sub">' + (R.ingNeto && Math.abs(R.difInvBs / R.ingNeto) >= 0.5 ? '<span class="pill a">≥ 50 %: el resultado depende del stock</span>' : 'CREA: conciliar inventarios antes de concluir') + '</div></div>' +
+      '<div class="cr2-k"><div class="l">Existencia media</div><div class="v">' + N(R.existMedia, 0) + '<span class="u">cab</span></div><div class="sub">inicio ' + N(R.cabIni) + ' · hoy ' + N(R.cabHoy) + ' · ' + N(R.stockMedioKg / R.pesoUA, 0) + ' UA</div></div></div></div></div>';
+    /* rubros GD */
+    html += '<div class="card" style="margin-top:14px"><div class="card-hd"><div class="card-title">Gastos directos por rubro CREA · ' + N(R.gd) + ' Bs' + (R.ha ? ' · ' + N(R.gd / R.ha * R.fA) + ' Bs/ha/año' : '') + '</div></div><div class="card-body" style="padding:10px 14px">';
+    var codes = ['1.01', '1.02', '1.03', '1.04', '1.05', '1.06', '1.07', '2', '3', '4', '5', '6', 'INV', 'AGRO'];
+    codes.forEach(function (c) {
+      var p = PLAN_IDX[c], tot = R.porCod[c] || 0, ls = R.lineas.filter(function (l) { return l.code === c; });
+      if (!tot && !ls.length) return;
+      var pct = R.gd ? tot / R.gd * 100 : 0, bh = B.rubros && B.rubros[c], bp = B.rubrosPct && B.rubrosPct[c];
+      var extra = '<span class="pill ' + ({ var: 'a', fijo: 'm', venta: 'm', compra: 'm', admin: 'm', estr: 'm', fin: 'm', inv: 'm', excl: 'm' }[p[2]]) + '">' + ({ var: 'variable', fijo: 'fijo', venta: 'venta', compra: 'compra', admin: 'indirecto', estr: 'indirecto', fin: 'financiero', inv: 'inversión', excl: 'excluido' }[p[2]]) + '</span>' +
+        (p[2] === 'var' || p[2] === 'fijo' ? '<span class="bar"><i style="width:' + Math.min(100, pct).toFixed(0) + '%"></i></span><span style="font-family:DM Mono,monospace;font-size:11px;color:var(--muted);min-width:42px;text-align:right">' + N(pct, 0) + '%</span>' : '<span style="min-width:190px"></span>') +
+        '<span style="font-family:DM Mono,monospace;font-size:12.5px;font-weight:700;min-width:110px;text-align:right">Bs ' + N(tot) + '</span>' +
+        '<span style="font-family:DM Mono,monospace;font-size:10.5px;color:var(--muted);min-width:150px;text-align:right">' + (R.ha ? N(tot / R.ha * R.fA) + ' Bs/ha' : '') + (bh ? ' · CREA ' + N(bh[0]) + ' / ' + N(bh[1]) : bp ? ' · CREA ' + bp + ' %' : '') + '</span>' +
+        '<span style="font-size:10.5px;color:var(--muted);min-width:60px;text-align:right">' + ls.length + ' línea' + (ls.length === 1 ? '' : 's') + '</span>';
+      _lazy[c] = ls;
+      html += acc(c + ' · ' + esc(p[1]), extra, null, c);
+    });
+    html += '</div></div>';
+    html += '<div class="cr2-note"><strong>Cómo se arma:</strong> Ingreso Bruto = ventas del período · compras de ganado a su valor real · diferencia de inventario = (stock final ' + N(R.sF) + ' kg − stock inicial ' + N(R.sI) + ' kg) × precio de referencia Bs ' + N(R.precioRef, 2) + '/kg' + (R.nSIdef || R.nSFdef ? ' (' + (R.nSIdef + R.nSFdef) + ' animales sin pesaje valuados por defecto)' : '') + ' · los lotes comprados en el período no entran al stock inicial (ya están en Compras). Gastos clasificados al plan de cuentas CREA; si un rubro quedó mal ubicado, corregilo en la pestaña <b>Plan de cuentas</b>. Por ha y por cabeza anualizados × 365/' + R.dias + '. El motor del Dashboard no cambia.</div>';
+    return html;
+  }
+  function renderInd(R, B, bk) {
+    var html = '<div class="cr2-grid">';
+    IND.forEach(function (i) { html += kpiCard(i, R.K[i[0]], B[i[0]]); });
+    html += '</div>';
+    /* resumen de posición */
+    var g = 0, a = 0, r = 0; IND.forEach(function (i) { if (i[4] === 'info' || !B[i[0]] || R.K[i[0]] == null) return; var p = pos(i[0], R.K[i[0]], B[i[0]]); if (p === 'g') g++; else if (p === 'a') a++; else r++; });
+    html += '<div class="cr2-two" style="margin-top:14px"><div class="card"><div class="card-hd"><div class="card-title">Posición frente al grupo · ' + esc(B.n) + '</div></div><div class="card-body" style="padding:12px 14px;font-size:12px;line-height:1.7">' +
+      '<span class="pill g">' + g + ' en nivel Top 30 %</span> &nbsp; <span class="pill a">' + a + ' sobre el promedio</span> &nbsp; <span class="pill r">' + r + ' bajo el promedio</span>' +
+      '<div style="color:var(--muted);font-size:11px;margin-top:8px">' + esc(B.info) + '. Umbral Top 30 % = Z ≥ 0,524 sobre el MB del grupo; acá se compara cada indicador con el promedio y con el promedio del Top.</div>' +
+      '<div style="margin-top:10px;font-size:11px;color:var(--muted)">Producción CREA del período: <b style="color:var(--text)">' + N(R.prodKg) + ' kg</b> = vendidos ' + N(R.kgV) + ' − comprados ' + N(R.kgC) + ' ± dif. inventario ' + N(R.difKg) + ' · GDPV sobre ' + R.nGmd + ' animales con 2+ pesajes en el período · preñez ' + R.prenadas + '/' + R.entoradas + ' entoradas · destetados ' + R.destetados + '.</div></div></div>';
+    html += '<div class="card"><div class="card-hd"><div class="card-title">Palancas (regresiones del grupo CREA)</div></div><div class="card-body" style="padding:6px 14px 12px">';
+    if (!B.palancas.length) html += '<div style="font-size:11.5px;color:var(--muted);padding:8px 0">El informe de recría no publica pendientes; la ventaja del Top se explica por eficiencia de stock (r = 0,80), kg/ha, salidas, kg/cab y GDPV.</div>';
+    B.palancas.forEach(function (p) {
+      var k = p[1], v = R.K[k], b = B[k]; if (!b) return;
+      var dir = IND.filter(function (i) { return i[0] === k; })[0][4];
+      var brecha = v == null ? null : dir === 'bajo' ? v - b[1] : b[1] - v; var gan = brecha != null && brecha > 0 ? brecha * p[2] : 0;
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(127,127,127,.08);font-size:12px"><div><b>' + esc(p[0]) + '</b><div style="font-size:10.5px;color:var(--muted)">+' + N(p[2]) + ' ' + esc(p[3]) + ' · ' + esc(p[4]) + '</div></div><div style="text-align:right;font-family:DM Mono,monospace">' + (v == null ? '<span class="pill m">sin dato</span>' : gan > 0 ? '<span style="color:var(--green);font-weight:700">+' + N(gan) + ' Bs/ha</span><div style="font-size:10px;color:var(--muted)">si llegás al Top (' + N(b[1], k === 'gdpv' ? 3 : k === 'carga' ? 2 : 1) + ')</div>' : '<span class="pill g">ya en nivel Top</span>') + '</div></div>';
+    });
+    html += '<div style="font-size:10px;color:var(--muted);margin-top:8px">Asociaciones estadísticas del grupo (n = 17), no efectos garantizados por empresa.</div></div></div></div>';
+    html += '<div class="cr2-note">Definiciones CREA: producción = kg vendidos − kg comprados ± diferencia de inventario · eficiencia de stock = kg producidos ÷ kg de existencia media · carga = UA de existencia media ÷ ha (UA = ' + R.pesoUA + ' kg) · costo del kg = gastos directos ÷ kg producidos (sin administración ni estructura) · mortalidad = muertes ÷ existencia media · preñez = preñadas ÷ entoradas · destete = destetados ÷ entoradas. Indicadores por año anualizados × 365/' + R.dias + ' días.</div>';
+    return html;
+  }
+  function renderPlan(R) {
+    var over = mapGet(), agg = {};
+    R.lineas.forEach(function (l) { var a = agg[l.key] || (agg[l.key] = { key: l.key, origen: l.origen, auto: l.auto, code: l.code, n: 0, monto: 0, ej: l.desc }); a.n++; a.monto += l.monto; });
+    var rows = Object.keys(agg).map(function (k) { return agg[k]; }).sort(function (a, b) { return b.monto - a.monto; });
+    var opts = PLAN.map(function (p) { return '<option value="' + p[0] + '">' + p[0] + ' · ' + esc(p[1]) + '</option>'; }).join('');
+    var html = '<div class="cr2-two"><div class="card" style="padding:0;overflow:hidden"><div class="card-hd" style="display:flex;justify-content:space-between;align-items:center"><div class="card-title">Orígenes del período → código CREA</div><button class="btn btn-sm" onclick="crea2MapReset()" style="font-size:11px">Restablecer automático</button></div>' +
+      '<div class="cr2-vp" style="max-height:62vh"><table class="cr2-t cr2-map"><thead><tr><th>Origen / subcuenta</th><th>Líneas</th><th>Bs</th><th style="text-align:left">Rubro CREA</th></tr></thead><tbody>';
+    rows.forEach(function (a) {
+      var man = !!over[a.key];
+      html += '<tr><td><div>' + esc(a.key.replace(/^(compra|cuenta|mant|params):/, function (m, g) { return { compra: 'Compras · ', cuenta: 'Contabilidad · ', mant: 'Mantenimiento · ', params: 'Parámetros · ' }[g]; })) + '</div><div style="font-size:10px;color:var(--muted)">' + esc(a.ej).slice(0, 70) + '</div></td><td>' + a.n + '</td><td>' + N(a.monto) + '</td><td style="text-align:left"><select data-key="' + esc(a.key) + '" class="' + (man ? '' : 'auto') + '" onchange="crea2MapSet(this)">' + opts.replace('value="' + a.code + '"', 'value="' + a.code + '" selected') + '</select>' + (man ? ' <span class="pill a">manual</span>' : '') + '</td></tr>';
+    });
+    if (!rows.length) html += '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px">Sin gastos en el período</td></tr>';
+    html += '</tbody></table></div></div>';
+    html += '<div><div class="card"><div class="card-hd"><div class="card-title">Plan de cuentas CREA Bolivia</div></div><div class="card-body" style="padding:10px 14px">';
+    PLAN.forEach(function (p) { if (!PLAN_SUB[p[0]]) return; _lazy['plan' + p[0]] = PLAN_SUB[p[0]]; html += acc(p[0] + ' · ' + esc(p[1]), '<span class="pill m">' + ({ var: 'directo variable', fijo: 'directo fijo', venta: 'venta', compra: 'compra', admin: 'indirecto', estr: 'indirecto', fin: 'financiero' }[p[2]]) + '</span><span style="font-size:10.5px;color:var(--muted)">' + PLAN_SUB[p[0]].length + ' subcuentas</span>', null, 'plan' + p[0]); });
+    html += '</div></div><div class="cr2-note">La asignación automática usa la subcuenta y la descripción; lo que corrijas acá queda guardado en esta computadora para la estancia y se aplica a todas las pestañas. No modifica Contabilidad ni el Dashboard.</div></div></div>';
+    return html;
+  }
+  function llenarAcc(el) {
+    var id = el.getAttribute('data-acc'), host = el.querySelector('[data-lazy]'); if (!host || host.getAttribute('data-lazy') === '0') return;
+    host.setAttribute('data-lazy', '0'); var d = _lazy[id];
+    if (!d) return;
+    if (id.indexOf('plan') === 0) { host.innerHTML = '<div class="cr2-vp" style="padding:4px 14px 10px">' + d.map(function (s, i) { return '<div style="padding:6px 0;border-bottom:1px solid rgba(127,127,127,.08);font-size:12px"><span style="font-family:DM Mono,monospace;color:var(--muted);font-size:10.5px;margin-right:8px">' + id.replace('plan', '') + '.' + String(i + 1).padStart(2, '0') + '</span>' + esc(s) + '</div>'; }).join('') + '</div>'; return; }
+    var ls = d.slice().sort(function (a, b) { return b.fecha.localeCompare(a.fecha); });
+    host.innerHTML = '<div class="cr2-vp"><table class="cr2-t"><thead><tr><th>Fecha</th><th style="text-align:left">Detalle</th><th style="text-align:left">Origen</th><th>Bs</th></tr></thead><tbody>' + ls.map(function (l) { return '<tr><td style="font-family:DM Mono,monospace;font-size:11px">' + esc(l.fecha) + '</td><td style="text-align:left">' + esc(l.desc) + '</td><td style="text-align:left;color:var(--muted);font-size:11px">' + esc(l.origen) + (l.code !== l.auto ? ' <span class="pill a">manual</span>' : '') + '</td><td>' + N(l.monto) + '</td></tr>'; }).join('') + '</tbody></table></div>';
+  }
+  function waterfall(R) {
+    var c = document.getElementById('cr2-wf'); if (!c || typeof Chart === 'undefined' || !R.ha) return;
+    var f = function (v) { return Math.round(v / R.ha * R.fA); };
+    var steps = [['Ingreso Bruto', f(R.ib), 'abs'], ['Compras', -f(R.comprasBs)], ['Comerc.', -f(R.comerc)], ['Dif. inv.', f(R.difInvBs)], ['Ingreso Neto', f(R.ingNeto), 'abs'], ['GD var.', -f(R.gdVar)], ['GD fijos', -f(R.gdFijo)], ['Margen Bruto', f(R.mb), 'abs']];
+    var run = 0, data = [], cols = [];
+    steps.forEach(function (s) { if (s[2] === 'abs') { data.push([0, s[1]]); run = s[1]; cols.push(s[0] === 'Margen Bruto' ? 'rgba(63,185,80,.85)' : 'rgba(88,166,255,.8)'); } else { data.push([run, run + s[1]]); run += s[1]; cols.push(s[1] < 0 ? 'rgba(248,81,73,.75)' : 'rgba(63,185,80,.75)'); } });
+    if (window._cr2Chart) { try { window._cr2Chart.destroy(); } catch (e) {} }
+    var mut = getComputedStyle(document.body).getPropertyValue('--muted') || '#888';
+    window._cr2Chart = new Chart(c.getContext('2d'), { type: 'bar', data: { labels: steps.map(function (s) { return s[0]; }), datasets: [{ data: data, backgroundColor: cols, borderRadius: 4, borderSkipped: false }] },
+      options: { responsive: true, maintainAspectRatio: false, animation: { duration: 400 }, plugins: { legend: { display: false }, tooltip: { callbacks: { label: function (t) { var v = t.raw; return N(v[1] - v[0]) + ' Bs/ha'; } } } }, scales: { x: { grid: { display: false }, ticks: { color: mut, font: { size: 10 } } }, y: { grid: { color: 'rgba(127,127,127,.12)' }, ticks: { color: mut, font: { size: 10 }, callback: function (v) { return N(v); } } } } } });
+  }
+
+  function render() {
+    var pg = document.getElementById('page-crea'); if (!pg) return;
+    var rp = (typeof getRp === 'function') ? getRp() : {};
+    var u = ui(), g = gestionDefault();
+    var dEl = document.getElementById('cr2-desde'), hEl = document.getElementById('cr2-hasta'), bEl = document.getElementById('cr2-bench');
+    if (dEl && !dEl.value) dEl.value = u.desde || g[0]; if (hEl && !hEl.value) hEl.value = u.hasta || g[1];
+    if (bEl) bEl.value = benchKey();
+    var body = document.getElementById('cr2-body'); if (!body) return;
+    if (!parseFloat(rp.hectareas)) { body.innerHTML = '<div style="text-align:center;padding:60px;color:var(--muted)"><div style="font-size:42px;margin-bottom:12px">🏆</div><div style="font-size:14px;font-weight:600;margin-bottom:6px">Configurá las hectáreas ganaderas</div><div style="font-size:12px">Reportes → Params. Reporte → Parámetros Reporte CREA.</div></div>'; return; }
+    var dStr = dEl.value, hStr = hEl.value; if (!dStr || !hStr || dStr > hStr) { body.innerHTML = '<div class="cr2-note">Elegí un período válido.</div>'; return; }
+    uiSet('desde', dStr); uiSet('hasta', hStr);
+    var R; try { R = calc(dStr, hStr); } catch (e) { console.error('[CREA2]', e); body.innerHTML = '<div class="cr2-note">No se pudo calcular: ' + esc(e.message) + '</div>'; return; }
+    _R = R; _lazy = {};
+    var bk = benchKey(), B = BENCH[bk];
+    var tab = u.tab || 'conta';
+    body.innerHTML = '<div class="cr2-tabs">' + [['conta', '📒 Contabilidad CREA'], ['ind', '★ Indicadores CREA'], ['plan', '🗂 Plan de cuentas']].map(function (t) { return '<button class="cr2-tab' + (t[0] === tab ? ' on' : '') + '" data-tab="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>' +
+      '<div class="cr2-pane' + (tab === 'conta' ? ' on' : '') + '" data-pane="conta">' + renderCascada(R, B) + '</div>' +
+      '<div class="cr2-pane' + (tab === 'ind' ? ' on' : '') + '" data-pane="ind">' + renderInd(R, B, bk) + '</div>' +
+      '<div class="cr2-pane' + (tab === 'plan' ? ' on' : '') + '" data-pane="plan">' + renderPlan(R) + '</div>';
+    if (tab === 'conta') setTimeout(function () { waterfall(R); }, 30);
+  }
+  window.renderCrea2 = render;
+  window.crea2MapSet = function (sel) { mapSet(sel.getAttribute('data-key'), sel.value); render(); };
+  window.crea2MapReset = function () { var all = {}; try { all = JSON.parse(localStorage.getItem(KEY_MAP) || '{}'); } catch (e) {} delete all[tenant()]; try { localStorage.setItem(KEY_MAP, JSON.stringify(all)); } catch (e) {} render(); };
+  window.crea2Excel = function () {
+    if (!_R) return; var R = _R, B = BENCH[benchKey()];
+    if (!window.estancia || !window.estancia.xlsx) { if (typeof toast === 'function') toast('Exportación no disponible en esta versión', 'error'); return; }
+    var ha = R.ha, em = R.existMedia, fA = R.fA, r = function (c, v, b) { return [c, Math.round(v), ha ? Math.round(v / ha * fA) : '', em ? Math.round(v / em * fA) : '', R.ib ? Math.round(v / R.ib * 1000) / 10 : '', b ? b[0] : '', b && b[1] != null ? b[1] : '']; };
+    var bc = B.cascada || {};
+    var sheets = {
+      'Cascada CREA': [['Período', R.dStr + ' al ' + R.hStr, R.dias + ' días', 'Hectáreas', ha, 'Existencia media', Math.round(em)], ['Concepto', 'Bs', 'Bs/ha/año', 'Bs/cab/año', '% IB', 'CREA promedio Bs/ha', 'CREA Top 30 % Bs/ha'],
+        r('Ingreso Bruto', R.ib, bc.ib), r('(−) Compras de ganado', -R.comprasBs), r('(−) Comercialización', -R.comerc), r('(±) Diferencia de inventario', R.difInvBs, bc.difInv), r('= Ingreso Neto', R.ingNeto, bc.ingNeto), r('(−) GD variables', -R.gdVar), r('= Contribución marginal', R.contrib), r('(−) GD fijos', -R.gdFijo), r('= Margen Bruto', R.mb, B.mbHa), r('(−) Administración', -R.porCod['4']), r('(−) Estructura', -R.porCod['5']), r('= Resultado operativo', R.resOp), r('(−) Financieros', -R.porCod['6']), r('= Resultado neto', R.resNeto)],
+      'Indicadores': [['Indicador', 'Valor', 'Unidad', 'CREA promedio', 'CREA Top 30 %', 'Grupo']].concat(IND.map(function (i) { var b = B[i[0]]; return [i[1], R.K[i[0]] == null ? '' : Math.round(R.K[i[0]] * 1000) / 1000, i[2], b ? b[0] : '', b ? b[1] : '', B.n]; })),
+      'Rubros': [['Código', 'Rubro', 'Tipo', 'Bs', 'Bs/ha/año', '% de GD']].concat(PLAN.map(function (p) { var t = R.porCod[p[0]] || 0; return [p[0], p[1], p[2], Math.round(t), ha ? Math.round(t / ha * fA) : '', R.gd ? Math.round(t / R.gd * 1000) / 10 : '']; })),
+      'Líneas': [['Fecha', 'Código CREA', 'Rubro', 'Detalle', 'Origen', 'Bs', 'Asignación']].concat(R.lineas.slice().sort(function (a, b) { return a.fecha.localeCompare(b.fecha); }).map(function (l) { return [l.fecha, l.code, PLAN_IDX[l.code][1], l.desc, l.origen, Math.round(l.monto * 100) / 100, l.code === l.auto ? 'automática' : 'manual']; }))
+    };
+    window.estancia.xlsx.saveAs(sheets, 'CREA_' + String(R.rp.nombre_estancia || 'Estancia').replace(/[^\w]+/g, '_') + '_' + R.dStr + '_' + R.hStr + '.xlsx').then(function (res) { if (typeof toast === 'function') toast(res && res.success ? 'Excel CREA guardado' : 'Descarga cancelada', res && res.success ? 'success' : 'info'); }).catch(function (e) { if (typeof toast === 'function') toast('Error: ' + (e.message || e), 'error'); });
+  };
+
+  /* eventos */
+  document.addEventListener('click', function (ev) {
+    var pg = ev.target.closest && ev.target.closest('#page-crea'); if (!pg) return;
+    var tb = ev.target.closest('.cr2-tab');
+    if (tb) { var t = tb.getAttribute('data-tab'); uiSet('tab', t); pg.querySelectorAll('.cr2-tab').forEach(function (b) { b.classList.toggle('on', b === tb); }); pg.querySelectorAll('.cr2-pane').forEach(function (p) { p.classList.toggle('on', p.getAttribute('data-pane') === t); }); if (t === 'conta' && _R) setTimeout(function () { waterfall(_R); }, 30); return; }
+    var h = ev.target.closest('.cr2-acc > .h');
+    if (h) { var a = h.parentNode, abrir = !a.classList.contains('open'); var padre = a.parentNode; Array.prototype.forEach.call(padre.querySelectorAll(':scope > .cr2-acc.open'), function (x) { x.classList.remove('open'); }); if (abrir) { llenarAcc(a); a.classList.add('open'); } }
+  });
+  document.addEventListener('change', function (ev) {
+    var pg = ev.target.closest && ev.target.closest('#page-crea'); if (!pg) return;
+    if (ev.target.id === 'cr2-bench') { uiSet('bench', ev.target.value); render(); }
+    if (ev.target.id === 'cr2-desde' || ev.target.id === 'cr2-hasta') render();
+  });
+  window.crea2Preset = function (p) { var n = new Date(), d = new Date(); var g = gestionDefault();
+    if (p === 'gestion') { d = null; } else if (p === 'year') d.setFullYear(n.getFullYear() - 1); else if (p === 'ytd') d = new Date(n.getFullYear(), 0, 1); else if (p === 'semestre') d.setMonth(n.getMonth() - 6);
+    document.getElementById('cr2-desde').value = d ? ld(d) : g[0]; document.getElementById('cr2-hasta').value = ld(n); render(); };
+  /* enganche a la navegación (renderPage es global) */
+  var oRP = window.renderPage;
+  if (typeof oRP === 'function' && !oRP.__crea2) { var w = function (name) { var r = oRP.apply(this, arguments); if (name === 'crea') { try { render(); } catch (e) { console.error('[CREA2]', e); } } return r; }; w.__crea2 = true; window.renderPage = w; }
+  try { console.log('%c[EP Desktop v1.8.289] Reportes → CREA (cascada, indicadores ★, plan de cuentas) · kill: __CREA2_OFF', 'color:#3fb950'); } catch (e) {}
 })();
 </script>
 
