@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.298';
+window.E5M_HTML_BUILD = '1.8.299';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -8014,6 +8014,7 @@ function pullFromRailwayDesktop(thenPush) {
       try { if (window.e5mMapasDesdePull) window.e5mMapasDesdePull(remote); } catch (eMp) {} /* v1.8.216: mapas del servidor */
       try { if (remote && Array.isArray(remote.menu_hidden) && window.e5mMenuDesdePull) window.e5mMenuDesdePull(remote.menu_hidden); } catch (eMn) {} /* v1.8.291: menú del Escritorio por cliente (superadmin) */
       try { if (remote && typeof remote.puede_anular === 'boolean' && window.e5mPuedeAnularDesdePull) window.e5mPuedeAnularDesdePull(remote.puede_anular); } catch (ePA) {} /* v1.8.293 */
+      try { if (window.e5mTxDesdePull) window.e5mTxDesdePull(remote); } catch (eTx) {} /* v1.8.299: transacciones del server y pagos de crédito */
       try { if (remote && remote.tc_bcb && remote.tc_bcb.valor) { localStorage.setItem('e5m_tc_bcb', JSON.stringify(remote.tc_bcb)); if (typeof window.tcBcbRender === 'function') window.tcBcbRender(); } } catch(eTc){} /* v1.8.151: TC oficial BCB servido por server v4.42 */
       try { if (remote && remote.animal_costos && typeof remote.animal_costos === 'object') { localStorage.setItem('e5m_animal_costos', JSON.stringify(remote.animal_costos)); } } catch(eAC){} /* v1.8.197: costo por cabeza (server v4.58.1) */
       try { if (remote && remote.animal_ficha && typeof remote.animal_ficha === 'object') { localStorage.setItem('e5m_animal_ficha', JSON.stringify(remote.animal_ficha)); } } catch(eAF){} /* v1.8.270: ficha por animal (server v4.120.0) */
@@ -63656,6 +63657,352 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
   var oPull = window.pullFromRailwayDesktop;
   document.addEventListener('visibilitychange', function () { if (!document.hidden && document.getElementById('page-inicio') && document.getElementById('page-inicio').classList.contains('active')) { try { render(); } catch (e) {} } });
   try { console.log('%c[EP Desktop v1.8.297] Inicio: tablero Hoy · Semana · Gestión · kill: __INICIO_OFF', 'color:#3fb950'); } catch (e) {}
+})();
+</script>
+
+
+<script id="transacciones-v18299">
+/* ═══ v1.8.299 — 🧾 TRANSACCIONES (pedido José 31-10-2026; server 4.132.0)
+   Una sola lista con el 100 % de lo registrado — Escritorio, EP Campo, EP Agro y WhatsApp —, con buscador,
+   filtros (tipo, origen, fechas, estado) y Anular en cada fila. Lo que el server hizo en una sola operación
+   (dividir un lote, rotar, mover animales, jornada/cosecha/germinación, servicio/diagnóstico/parto/destete,
+   pago de crédito) aparece como UNA transacción: anularla revierte todo lo que tocó (lotes, animales,
+   kardex, stock, rotaciones) y deja la descripción. Kill switch: __TX_OFF ═══ */
+(function () {
+  'use strict';
+  if (window.__TX_OFF) return;
+  function esc(x) { return String(x == null ? '' : x).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function N(v) { var n = Number(v); return isFinite(n) ? n.toLocaleString('es-BO', { maximumFractionDigits: 2 }) : ''; }
+  function lsJ(k, d) { try { var v = JSON.parse(localStorage.getItem(k) || 'null'); return v == null ? d : v; } catch (e) { return d; } }
+  var SRV = { tx: lsJ('e5m_srv_tx', []), pagos: lsJ('e5m_srv_pagos', []) };
+  window.e5mTxDesdePull = function (remote) {
+    if (!remote) return;
+    if (Array.isArray(remote.transacciones)) { SRV.tx = remote.transacciones; try { localStorage.setItem('e5m_srv_tx', JSON.stringify(SRV.tx)); } catch (e) {} }
+    if (Array.isArray(remote.pagos_compra)) { SRV.pagos = remote.pagos_compra; try { localStorage.setItem('e5m_srv_pagos', JSON.stringify(SRV.pagos)); } catch (e) {} }
+    var pg = document.getElementById('page-transacciones'); if (pg && pg.classList.contains('active')) setTimeout(render, 50);
+  };
+
+  /* ── catálogo: clave local → tabla del server, etiqueta, grupo, cómo se anula ── */
+  var NUEVAS = { rotation_history: 1, animal_movements: 1, agro_jornadas: 1, contrataciones: 1, inventory_counts: 1, pagos_compra: 1, tasks: 1, transacciones: 1, pasture_evals: 1 };
+  var T = [
+    ['sales', 'sales', 'Venta de ganado', 'Ganadería', { fn: 'deleteSale' }, ['ventas', 'Venta Ganado']],
+    ['compras_ganado', 'compras_ganado', 'Compra de ganado', 'Ganadería', { fn: 'deleteCompraGanado' }, ['compra-ganado', 'Compra Ganado']],
+    ['bajas', 'bajas', 'Baja de animal', 'Ganadería', { fn: 'deleteBaja' }, ['lotes', 'Lotes']],
+    ['animal_movements', 'animal_movements', 'Movimiento de animales', 'Ganadería', { srv: 1 }, ['lotes', 'Lotes']],
+    ['rotation_history', 'rotation_history', 'Rotación de potrero', 'Ganadería', { srv: 1 }, ['rotacion', 'Rotación']],
+    ['pesajes', 'pesajes', 'Pesaje', 'Ganadería', { e5m: 1 }, ['lotes', 'Lotes']],
+    ['conteo', 'conteo', 'Conteo de cabezas', 'Ganadería', { e5m: 1 }, ['lotes', 'Lotes']],
+    ['lots', 'lots', 'Lote', 'Ganadería', { fn: 'deleteLot' }, ['lotes', 'Lotes']],
+    ['treatments', 'treatments', 'Curación', 'Sanidad y consumo', { e5m: 1 }, ['sanidad', 'Sanidad']],
+    ['sal', 'sal', 'Consumo de sal', 'Sanidad y consumo', { e5m: 1 }, ['lotes', 'Lotes']],
+    ['alimento', 'alimento', 'Consumo de alimento', 'Sanidad y consumo', { e5m: 1 }, ['lotes', 'Lotes']],
+    ['agua', 'agua', 'Agua', 'Sanidad y consumo', { e5m: 1 }, ['lotes', 'Lotes']],
+    ['pasture_evals', 'pasture_evals', 'Evaluación de pasto', 'Sanidad y consumo', { srv: 1 }, ['evalpasto', 'Eval. Pasto']],
+    ['partos', 'partos', 'Parto', 'Reproducción', { sub: 'partos' }, ['partos', 'Partos']],
+    ['reproductive_services', 'reproductive_services', 'Servicio reproductivo', 'Reproducción', { fn: 'deleteReproServicio', dom: 'repro-srv-id' }, ['repro', 'Servicios']],
+    ['repro_te', 'repro_te', 'Transferencia embrionaria', 'Reproducción', { fn: 'cab2DelTE' }, null],
+    ['repro_semen', 'repro_semen', 'Lote de semen', 'Reproducción', { fn: 'cab2DelSemen' }, null],
+    ['purchases', 'purchases', 'Compra de insumos', 'Compras y plata', { fn: 'deletePurchase' }, ['compras', 'Compras Insumos']],
+    ['pagos_compra', 'pagos_compra', 'Pago de crédito', 'Compras y plata', { srv: 1 }, null],
+    ['cuentas', 'cuentas', 'Asiento contable', 'Compras y plata', { fn: 'deleteCuenta' }, ['contabilidad', 'Contabilidad']],
+    ['kardex', 'kardex', 'Asiento de kardex', 'Compras y plata', { fn: 'deleteKardex' }, ['kardex-estancia', 'Kardex Estancia']],
+    ['advances', 'advances', 'Adelanto', 'Personal', { e5m: 1 }, ['personal', 'Personal']],
+    ['historial_sueldos', 'historial_sueldos', 'Pago de sueldo', 'Personal', { fn: 'deletePagoSueldo' }, ['personal', 'Personal']],
+    ['bonos', 'bonos', 'Bono / aguinaldo', 'Personal', { fn: 'deleteBono' }, ['personal', 'Personal']],
+    ['contrataciones', 'contrataciones', 'Contratación', 'Personal', { srv: 1 }, ['personal', 'Personal']],
+    ['bajas_personal', 'bajas_personal', 'Baja de personal', 'Personal', { fn: 'deleteBajaPersonal' }, ['personal', 'Personal']],
+    ['employees', 'employees', 'Empleado', 'Personal', { fn: 'deleteEmployee' }, ['personal', 'Personal']],
+    ['activities', 'field_activities', 'Actividad de campo', 'Personal', { fn: 'deleteActivity' }, ['actividades', 'Actividades']],
+    ['tasks', 'tasks', 'Tarea', 'Personal', { srv: 1 }, ['tareas', 'Tareas']],
+    ['diesel', 'diesel', 'Combustible', 'Maquinaria y campo', { diesel: 1 }, ['diesel', 'Combustible']],
+    ['aceite', 'aceite', 'Aceite', 'Maquinaria y campo', { e5m: 1 }, ['diesel', 'Combustible']],
+    ['maintenance', 'maintenance', 'Mantenimiento', 'Maquinaria y campo', { e5m: 1 }, ['mantenimiento', 'Mantenimiento']],
+    ['maquinaria', 'maquinaria', 'Equipo / maquinaria', 'Maquinaria y campo', { fn: 'deleteMaq' }, ['maquinaria', 'Maquinaria']],
+    ['lluvias', 'lluvias', 'Lluvia', 'Maquinaria y campo', { e5m: 1 }, ['lluvias', 'Pluviometría']],
+    ['products', 'vet_products', 'Producto de stock', 'Stock', { fn: 'deleteProduct' }, ['stock', 'Stock']],
+    ['inventory_counts', 'inventory_counts', 'Conteo de inventario', 'Stock', { srv: 1 }, ['stock', 'Stock']],
+    ['agro_jornadas', 'agro_jornadas', 'Jornada agrícola', 'Agricultura', { srv: 1 }, null],
+    ['agro_labores', 'agro_labores', 'Labor agrícola', 'Agricultura', { fn: 'agDelLabor' }, null],
+    ['agro_campanas', 'agro_campanas', 'Campaña', 'Agricultura', { fn: 'agDelCampana', dom: 'agc-id' }, null],
+    ['agro_parcelas', 'agro_parcelas', 'Parcela', 'Agricultura', { fn: 'agDelParcela', dom: 'agp-id' }, null],
+    ['agro_insumos', 'agro_insumos', 'Insumo agrícola', 'Agricultura', { fn: 'agDelInsumo' }, null],
+    ['casas_comerciales', 'casas_comerciales', 'Casa comercial', 'Compras y plata', { fn: 'ccDel', dom: 'cc-id' }, null]
+  ];
+  var BYKEY = {}, SRV2KEY = {}; T.forEach(function (d) { BYKEY[d[0]] = d; SRV2KEY[d[1]] = d[0]; });
+  var GRUPOS = []; T.forEach(function (d) { if (GRUPOS.indexOf(d[3]) < 0) GRUPOS.push(d[3]); });
+  var TXG = { lot_split: 'Ganadería', lot_rotation: 'Ganadería', animal_movements: 'Ganadería', 'animal-move': 'Ganadería', 'animal-movements/bulk': 'Ganadería', 'animal-events': 'Ganadería', repro_servicio: 'Reproducción', repro_diagnostico: 'Reproducción', repro_parto: 'Reproducción', repro_destete: 'Reproducción', credito_pago: 'Compras y plata', 'credito/pago': 'Compras y plata', tasks: 'Personal', tasks_complete: 'Personal' };
+
+  function fecha(r) { return String(r.date || r.fecha || r.fecha_pago || r.applied_at || r.entry_date || r.fecha_ingreso || r.due || r.created_at || r.at || '').slice(0, 10); }
+  function origen(r) {
+    var s = String(r.source || r.origen || r.app || '').toLowerCase();
+    if (/whats|bot/.test(s)) return 'WhatsApp';
+    if (/agro/.test(s)) return 'EP Agro';
+    if (/field|campo|pwa|movil|móvil/.test(s)) return 'EP Campo';
+    if (/^api$/.test(s)) return 'Servidor';
+    return 'Escritorio';
+  }
+  function quien(r) { return r.by || r.created_by || r.registrado_por || r.operator || r.user || r.responsable || ''; }
+  function monto(k, r) {
+    var v = r.total != null ? r.total : r.monto != null ? r.monto : r.amount != null ? r.amount : r.pago_neto != null ? r.pago_neto : r.monto_bs != null ? r.monto_bs : r.cost != null ? r.cost : r.costo != null ? r.costo : null;
+    if (k === 'pagos_compra' && v == null && r.monto_usd) return 'USD ' + N(r.monto_usd);
+    if (k === 'lots' || k === 'products' || k === 'employees' || k === 'maquinaria') return '';
+    return (v != null && Number(v)) ? 'Bs ' + N(v) : '';
+  }
+  function desc(k, r) {
+    var lot = r.lot_code || r.lote || r.lot || '';
+    switch (k) {
+      case 'sales': return (r.animals || r.animal_count || '') + ' cab · ' + N(r.kg || r.total_kg || 0) + ' kg' + (r.buyer || r.comprador ? ' · ' + (r.buyer || r.comprador) : '') + (lot ? ' · ' + lot : '');
+      case 'compras_ganado': return (r.animal_count || '') + ' cab → ' + lot + (r.proveedor ? ' · ' + r.proveedor : '') + (r.modalidad === 'partido' ? ' · al partido' : '');
+      case 'bajas': return '#' + (r.animal_id || '') + ' · ' + lot + ' · ' + (r.causa || r.motivo || '');
+      case 'animal_movements': { var ids = Array.isArray(r.animal_ids) ? r.animal_ids : String(r.animal_id || '').split(/\s*,\s*/).filter(Boolean); return (r.count || ids.length || '') + ' animal(es) ' + (r.from_lot || r.from_lot_code || '?') + ' → ' + (r.to_lot || r.to_lot_code || lot || '?') + (ids.length ? ' · ' + ids.slice(0, 8).join(', ') + (ids.length > 8 ? '…' : '') : '') + (r.reason || r.motivo ? ' · ' + (r.reason || r.motivo) : ''); }
+      case 'rotation_history': return lot + ': ' + (r.from_potrero ? r.from_potrero + ' → ' : '') + (r.potrero || '') + (r.exit_date ? ' (salió ' + r.exit_date + ')' : ' (actual)') + (r.cabezas ? ' · ' + r.cabezas + ' cab' : '');
+      case 'pesajes': return (r.animal_id ? '#' + r.animal_id + ' · ' + N(r.peso) + ' kg' : (r.animal_count || '') + ' cab · prom. ' + N(r.avg_weight || r.peso) + ' kg') + (lot ? ' · ' + lot : '') + (r.tipo ? ' · ' + r.tipo : '');
+      case 'conteo': return lot + ' · ' + (r.contados != null ? r.contados : r.count != null ? r.count : r.cabezas || '') + ' contados' + (r.esperados != null ? ' de ' + r.esperados : '');
+      case 'lots': return (r.code || '') + ' · ' + (r.category || '') + ' · ' + (r.animal_count || 0) + ' cab' + (r.paddock ? ' · ' + r.paddock : '');
+      case 'treatments': return (r.product_name || '') + ' · ' + (lot || (r.animal_id ? '#' + r.animal_id : '')) + (r.count ? ' · ' + r.count + ' cab' : '') + (r.dose ? ' · ' + r.dose + ' ' + (r.unit || '') : '');
+      case 'sal': case 'alimento': return (r.product_name || r.producto || '') + ' · ' + N(r.qty || r.kg) + ' ' + (r.unit || 'kg') + (lot ? ' · ' + lot : '');
+      case 'agua': return lot + (r.litros ? ' · ' + N(r.litros) + ' L' : '') + (r.estado ? ' · ' + r.estado : '');
+      case 'pasture_evals': return (r.potrero || r.paddock || '') + (r.altura ? ' · ' + r.altura + ' cm' : '') + (r.estado ? ' · ' + r.estado : '');
+      case 'partos': return lot + ' · madre ' + (r.madre_id || r.mother_id || r.animal_id || '?') + (r.sexo ? ' · ' + r.sexo : '') + (r.cria_id ? ' · cría ' + r.cria_id : '') + (r.destete_fecha ? ' · destete ' + r.destete_fecha : '');
+      case 'reproductive_services': return '#' + (r.animal_id || '') + ' · ' + (r.type || r.tipo || 'servicio') + (r.result ? ' · ' + r.result : '') + (r.toro || r.semen ? ' · ' + (r.toro || r.semen) : '');
+      case 'purchases': return (r.description || r.desc || r.product_name || r.item || '') + (r.supplier || r.proveedor ? ' · ' + (r.supplier || r.proveedor) : '') + (r.subcuenta ? ' · ' + r.subcuenta : '');
+      case 'pagos_compra': { var c = (db.purchases || []).find(function (p) { return p && String(p.id) === String(r.purchase_id); }); return 'a ' + ((c && (c.supplier || c.desc)) || 'proveedor') + (r.tc_dia ? ' · TC ' + r.tc_dia : '') + (r.medio ? ' · ' + r.medio : ''); }
+      case 'cuentas': return (r.cuenta || '') + ' / ' + (r.subcuenta || '') + (r.detalle ? ' · ' + r.detalle : '');
+      case 'kardex': return (r.tipo || '') + ' · ' + (r.lote || lot) + (r.detalle || r.concepto ? ' · ' + (r.detalle || r.concepto) : '');
+      case 'advances': return (r.employee_name || r.employee || r.nombre || '') + (r.reason ? ' · ' + r.reason : '');
+      case 'historial_sueldos': return (r.employee_name || r.nombre || '') + (r.periodo ? ' · ' + r.periodo : '');
+      case 'bonos': case 'bajas_personal': case 'contrataciones': return (r.employee_name || r.nombre || r.name || '') + (r.tipo ? ' · ' + r.tipo : '') + (r.motivo ? ' · ' + r.motivo : '');
+      case 'employees': return (r.name || '') + (r.role ? ' · ' + r.role : '');
+      case 'activities': return (r.employee_name || r.employee || '') + ' · ' + (r.activity || r.actividad || r.tipo || '') + (lot ? ' · ' + lot : '');
+      case 'tasks': return (r.title || r.titulo || '') + (r.assignee ? ' · ' + r.assignee : '') + (r.status ? ' · ' + r.status : '');
+      case 'diesel': return (r.type || '') + ' · ' + N(r.litros) + ' L' + (r.tank_name ? ' · ' + r.tank_name : '') + (r.vehiculo || r.maquina ? ' · ' + (r.vehiculo || r.maquina) : '');
+      case 'aceite': return N(r.litros) + ' L' + (r.equipo || r.maquina ? ' · ' + (r.equipo || r.maquina) : '');
+      case 'maintenance': return (r.desc || r.description || r.category || '') + (r.equipo ? ' · ' + r.equipo : '') + (r.status ? ' · ' + r.status : '');
+      case 'maquinaria': return (r.nombre || '') + (r.tipo ? ' · ' + r.tipo : '');
+      case 'lluvias': return N(r.mm) + ' mm' + (r.pluviometro || r.lugar ? ' · ' + (r.pluviometro || r.lugar) : '');
+      case 'products': return (r.name || '') + ' · ' + N(r.stock_qty) + ' ' + (r.unit || '');
+      case 'inventory_counts': return (r.product_name || r.producto || '') + (r.contado != null ? ' · contado ' + r.contado : '') + (r.diferencia != null ? ' · dif ' + r.diferencia : '');
+      case 'agro_jornadas': return (r.labor_nombre || r.labor || (function () { var l = (db.agro_labores || []).find(function (q) { return q && String(q.id) === String(r.labor_id); }); return l ? (l.nombre || l.tipo) : 'labor ' + (r.labor_id || ''); })()) + ' · ' + N(r.ha) + ' ha' + (r.horas_maq ? ' · ' + N(r.horas_maq) + ' h' : '') + (r.parcela_codigo ? ' · ' + r.parcela_codigo : '');
+      case 'agro_labores': return (r.nombre || r.tipo || '') + (r.estado ? ' · ' + r.estado : '') + (r.parcela_codigo ? ' · ' + r.parcela_codigo : '');
+      case 'agro_campanas': return (r.cultivo || '') + (r.estado ? ' · ' + r.estado : '');
+      case 'agro_parcelas': return (r.code || r.nombre || '') + (r.ha ? ' · ' + N(r.ha) + ' ha' : '');
+      case 'agro_insumos': return (r.nombre || '') + ' · ' + N(r.stock) + ' ' + (r.unidad || '');
+      default: return r.nombre || r.name || r.desc || r.code || ('#' + r.id);
+    }
+  }
+  function tasks() { try { var o = window.getTaskDB && window.getTaskDB.__orig; return (o ? o() : JSON.parse(localStorage.getItem('e5m_tasks') || '[]')) || []; } catch (e) { return []; } }
+  function fuente(k) { if (k === 'pagos_compra') return SRV.pagos || []; if (k === 'tasks') return tasks(); return (typeof db !== 'undefined' && db && Array.isArray(db[k])) ? db[k] : []; }
+
+  /* ── armar filas ── */
+  function filas() {
+    var F = [], deTx = {}, seen = {};
+    (SRV.tx || []).forEach(function (x) {
+      if (!x || !x.cambios) return;
+      Object.keys(x.cambios).forEach(function (t) { var c = x.cambios[t]; (c.nuevos || []).forEach(function (id) { deTx[t + ':' + (id && id.id != null ? id.id : id)] = x.id; }); });
+      var lotes = []; var cl = x.cambios.lots; if (cl) (cl.nuevos || []).forEach(function (id) { var l = (db.lots || []).concat(((db._anulados || {}).lots) || []).find(function (q) { return q && String(q.id) === String(id); }); if (l) lotes.push(l.code); });
+      var an = x.cambios.animals; var nAn = an ? (an.movidos || []).length + (an.nuevos || []).length : 0;
+      F.push({ k: 'transacciones', t: 'transacciones', id: x.id, r: x, f: String(x.fecha || x.at || '').slice(0, 10), at: x.at || '', tipo: x.label || 'Transacción', g: TXG[x.tipo] || (/^agro/.test(x.tipo) ? 'Agricultura' : 'Ganadería'),
+        d: (x.resumen || x.label) + (nAn ? ' · ' + nAn + ' animal(es)' : '') + (lotes.length ? ' · lotes ' + lotes.join(', ') : ''), m: '', q: x.by || '', o: origen(x), an: x.anulado || null, tx: 1 });
+    });
+    T.forEach(function (d) {
+      var k = d[0], arr = fuente(k).concat(((typeof db !== 'undefined' && db && db._anulados) || {})[k] || []);
+      arr.forEach(function (r) {
+        if (!r || r.id == null) return;
+        var key = k + ':' + r.id; if (seen[key]) return; seen[key] = 1;
+        if (deTx[d[1] + ':' + r.id]) return; /* lo muestra su transacción */
+        F.push({ k: k, t: d[1], id: r.id, r: r, f: fecha(r), at: r.created_at || r.server_updated_at || '', tipo: d[2], g: d[3], d: desc(k, r), m: monto(k, r), q: quien(r), o: origen(r), an: r.anulado || null });
+      });
+    });
+    F.sort(function (a, b) { return (b.f || '').localeCompare(a.f || '') || String(b.at).localeCompare(String(a.at)); });
+    return F;
+  }
+
+  /* ── estilos ── */
+  var css = document.createElement('style');
+  css.textContent =
+    '#page-transacciones .tx-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}' +
+    '#page-transacciones .tx-bar input,#page-transacciones .tx-bar select{background:var(--sur2);color:var(--text);border:1px solid var(--bor);border-radius:8px;padding:7px 10px;font:inherit;font-size:12.5px}' +
+    '#page-transacciones .tx-bar .q{flex:1;min-width:240px}' +
+    '#page-transacciones .tx-kp{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}' +
+    '#page-transacciones .pill{display:inline-block;font-size:10.5px;padding:2px 9px;border-radius:999px;font-family:DM Mono,monospace;font-weight:600;white-space:nowrap;background:rgba(127,127,127,.12);color:var(--muted);border:1px solid transparent;cursor:default}' +
+    '#page-transacciones .pill.on{border-color:var(--bor);color:var(--text)}#page-transacciones .pill.r{background:rgba(248,81,73,.13);color:var(--red)}#page-transacciones .pill.g{background:rgba(63,185,80,.13);color:var(--green)}#page-transacciones .pill.b{background:rgba(88,166,255,.13);color:var(--blue,#58a6ff)}#page-transacciones .pill.a{background:rgba(210,153,34,.14);color:var(--amber)}' +
+    '#page-transacciones .tx-h,#page-transacciones .tx-r>.l{display:grid;grid-template-columns:92px 170px minmax(0,1fr) 110px 150px 92px 26px;gap:10px;align-items:center}' +
+    '#page-transacciones .tx-h{font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);padding:6px 12px;border-bottom:1px solid var(--bor)}' +
+    '#page-transacciones .tx-vp{max-height:378px;overflow:auto;overscroll-behavior:contain;border:1px solid var(--bor);border-top:0;border-radius:0 0 10px 10px}' +
+    '#page-transacciones .tx-r{border-left:3px solid transparent}#page-transacciones .tx-r:nth-child(even){background:rgba(127,127,127,.045)}' +
+    '#page-transacciones .tx-r.anu{border-left-color:var(--red)}#page-transacciones .tx-r.anu .l{opacity:.62}#page-transacciones .tx-r.srv{border-left-color:var(--blue,#58a6ff)}' +
+    '#page-transacciones .tx-r>.l{padding:9px 12px;font-size:12.5px;cursor:pointer;min-height:36px}#page-transacciones .tx-r>.l:hover{background:rgba(127,127,127,.08)}' +
+    '#page-transacciones .tx-r .d{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#page-transacciones .tx-r .mn{font-family:DM Mono,monospace;text-align:right;font-size:12px}#page-transacciones .tx-r .w{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+    '#page-transacciones .tx-r .ch{transition:transform .22s ease;color:var(--muted);text-align:center}#page-transacciones .tx-r.open .ch{transform:rotate(90deg)}' +
+    '#page-transacciones .tx-r>.x{display:grid;grid-template-rows:0fr;transition:grid-template-rows .26s ease}#page-transacciones .tx-r.open>.x{grid-template-rows:1fr}#page-transacciones .tx-r>.x>div{overflow:hidden}' +
+    '#page-transacciones .tx-x{padding:4px 14px 14px 105px;font-size:12px;line-height:1.55;color:var(--muted)}#page-transacciones .tx-x b{color:var(--text)}' +
+    '#page-transacciones .tx-x .kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:2px 16px;margin:4px 0 8px}#page-transacciones .tx-x .kv span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+    '#page-transacciones .tx-x .acts{display:flex;gap:8px;margin-top:8px}#page-transacciones .go{font-size:11px;border:1px solid var(--bor);border-radius:999px;padding:2px 10px;cursor:pointer;background:transparent;color:var(--text)}#page-transacciones .go:hover{background:rgba(127,127,127,.1)}' +
+    '#page-transacciones .tx-more{font-size:11.5px;color:var(--muted);padding:8px 12px}#page-transacciones .tx-empty{border:1px dashed var(--bor);border-radius:12px;padding:16px;color:var(--muted);font-size:12.5px}' +
+    '.txa-modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:9999}.txa-modal.on{display:flex}' +
+    '.txa-box{background:var(--sur);border:1px solid var(--bor);border-radius:14px;width:min(580px,92vw);padding:18px 20px;box-shadow:0 20px 60px rgba(0,0,0,.4);animation:txaIn .18s ease both}@keyframes txaIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}' +
+    '.txa-box h3{margin:0 0 6px;font-size:16px}.txa-box .s{font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5}.txa-box textarea{width:100%;min-height:70px;background:var(--sur2);color:var(--text);border:1px solid var(--bor);border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;resize:vertical}' +
+    '.txa-box .ef{margin-top:10px;font-size:12px;line-height:1.55;max-height:220px;overflow:auto}.txa-box .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}' +
+    '@media(prefers-reduced-motion:reduce){#page-transacciones .tx-r>.x,#page-transacciones .tx-r .ch{transition:none}}';
+  document.head.appendChild(css);
+
+  /* ── página + menú ── */
+  function montar() {
+    if (!document.getElementById('page-transacciones')) {
+      var ref = document.getElementById('page-inicio');
+      var pg = document.createElement('div'); pg.id = 'page-transacciones'; pg.className = 'page';
+      pg.innerHTML = '<div class="ph"><div><div class="pt">🧾 Transacciones</div><div class="ps">Todo lo registrado en el Escritorio, EP Campo, EP Agro y WhatsApp — buscá, filtrá y anulá desde acá</div></div><button class="btn" onclick="e5mTxRefrescar()">↻ Actualizar</button></div>' +
+        '<div class="tx-bar"><input class="q" id="tx-q" placeholder="Buscar: lote, animal, producto, proveedor, persona, monto…" oninput="e5mTxFiltrar()">' +
+        '<select id="tx-g" onchange="e5mTxFiltrar()"><option value="">Todos los tipos</option>' + GRUPOS.map(function (g) { return '<optgroup label="' + esc(g) + '"><option value="g:' + esc(g) + '">' + esc(g) + ' (todo)</option>' + T.filter(function (d) { return d[3] === g; }).map(function (d) { return '<option value="k:' + d[0] + '">' + esc(d[2]) + '</option>'; }).join('') + '</optgroup>'; }).join('') + '<option value="k:transacciones">Operaciones del bot / apps</option></select>' +
+        '<select id="tx-o" onchange="e5mTxFiltrar()"><option value="">Todos los orígenes</option><option>Escritorio</option><option>EP Campo</option><option>EP Agro</option><option>WhatsApp</option><option>Servidor</option></select>' +
+        '<input type="date" id="tx-d" onchange="e5mTxFiltrar()" title="Desde"><input type="date" id="tx-h" onchange="e5mTxFiltrar()" title="Hasta">' +
+        '<select id="tx-e" onchange="e5mTxFiltrar()"><option value="v">Vigentes</option><option value="a">Anulados</option><option value="t">Todos</option></select></div>' +
+        '<div class="tx-kp" id="tx-kp"></div><div class="tx-h"><span>Fecha</span><span>Tipo</span><span>Detalle</span><span style="text-align:right">Monto</span><span>Quién · desde</span><span>Estado</span><span></span></div><div id="tx-list"></div>';
+      if (ref && ref.parentNode) ref.parentNode.insertBefore(pg, ref.nextSibling); else document.body.appendChild(pg);
+    }
+    if (!document.querySelector('.nav-btn[data-label="Transacciones"]')) {
+      var ini = document.querySelector('.nav-btn[data-label="Inicio"]');
+      if (ini) { var b = document.createElement('button'); b.className = 'nav-btn'; b.setAttribute('data-label', 'Transacciones'); b.setAttribute('onclick', "showPage('transacciones',this)"); b.innerHTML = '<span class="nav-icon">🧾</span><span class="nav-text">Transacciones</span>'; ini.parentNode.insertBefore(b, ini.nextSibling); }
+    }
+  }
+
+  var CACHE = null, MAXV = 300;
+  function render() { montar(); CACHE = filas(); pintar(); }
+  function pintar() {
+    var host = document.getElementById('tx-list'); if (!host) return;
+    var q = String((document.getElementById('tx-q') || {}).value || '').toLowerCase().trim(), g = (document.getElementById('tx-g') || {}).value || '', o = (document.getElementById('tx-o') || {}).value || '';
+    var dd = (document.getElementById('tx-d') || {}).value || '', hh = (document.getElementById('tx-h') || {}).value || '', es = (document.getElementById('tx-e') || {}).value || 'v';
+    var toks = q ? q.split(/\s+/) : [];
+    var F = (CACHE || []).filter(function (x) {
+      if (es === 'v' && x.an) return false; if (es === 'a' && !x.an) return false;
+      if (g) { if (g.indexOf('g:') === 0) { if (x.g !== g.slice(2)) return false; } else if (x.k !== g.slice(2)) return false; }
+      if (o && x.o !== o) return false;
+      if (dd && x.f && x.f < dd) return false; if (hh && x.f && x.f > hh) return false;
+      if (toks.length) { var hay = (x.f + ' ' + x.tipo + ' ' + x.d + ' ' + x.m + ' ' + x.q + ' ' + x.o + ' #' + x.id + ' ' + (x.an ? 'anulado ' + (x.an.motivo || '') : '')).toLowerCase(); if (!hay.indexOf) return false; for (var i = 0; i < toks.length; i++) if (hay.indexOf(toks[i]) < 0) return false; }
+      return true;
+    });
+    var cnt = {}; F.forEach(function (x) { cnt[x.o] = (cnt[x.o] || 0) + 1; });
+    var nAn = (CACHE || []).filter(function (x) { return x.an; }).length;
+    document.getElementById('tx-kp').innerHTML = '<span class="pill on">' + N(F.length) + ' registro(s)</span>' + ['Escritorio', 'EP Campo', 'EP Agro', 'WhatsApp', 'Servidor'].filter(function (k) { return cnt[k]; }).map(function (k) { return '<span class="pill">' + k + ' · ' + N(cnt[k]) + '</span>'; }).join('') + (nAn ? '<span class="pill r">' + N(nAn) + ' anulado(s) en total</span>' : '');
+    if (!F.length) { host.innerHTML = '<div class="tx-empty">No hay registros con esos filtros.</div>'; return; }
+    var V = F.slice(0, MAXV);
+    host.innerHTML = '<div class="tx-vp">' + V.map(function (x, i) {
+      return '<div class="tx-r' + (x.an ? ' anu' : '') + (x.tx ? ' srv' : '') + '" data-i="' + i + '"><div class="l" onclick="e5mTxAbrir(this.parentNode)"><span class="mn" style="text-align:left">' + esc(x.f || '—') + '</span><span><span class="pill' + (x.tx ? ' b' : '') + '">' + esc(x.tipo) + '</span></span><span class="d" title="' + esc(x.d) + '">' + esc(x.d) + '</span><span class="mn">' + esc(x.m) + '</span><span class="w">' + esc((x.q ? x.q + ' · ' : '') + x.o) + '</span><span>' + (x.an ? '<span class="pill r">anulado</span>' : '<span class="pill g">vigente</span>') + '</span><span class="ch">▶</span></div><div class="x"><div></div></div></div>';
+    }).join('') + '</div>' + (F.length > MAXV ? '<div class="tx-more">Mostrando ' + MAXV + ' de ' + N(F.length) + ' — afiná la búsqueda o el rango de fechas.</div>' : '');
+    host._V = V;
+  }
+  var CAMPOS_FUERA = /^(id|_.*|anulado|pesajes|photo.*|foto.*|server_updated_at|updated_at|.*_base64|cambios)$/;
+  function detalle(x) {
+    var r = x.r, h = '';
+    if (x.tx) {
+      var C = r.cambios || {}, L = [];
+      Object.keys(C).forEach(function (t) { var c = C[t]; if (t === 'animals') { if ((c.movidos || []).length) L.push((c.movidos.length) + ' animal(es) movidos: ' + c.movidos.slice(0, 12).map(function (m) { return m.id + ' ' + m.de + '→' + m.a; }).join(', ') + (c.movidos.length > 12 ? '…' : '')); if ((c.nuevos || []).length) L.push(c.nuevos.length + ' animal(es) nuevos: ' + c.nuevos.slice(0, 12).map(function (m) { return m.id; }).join(', ')); if ((c.modificados || []).length) L.push(c.modificados.length + ' ficha(s) de animal modificadas'); return; } var lb = BYKEY[SRV2KEY[t]] ? BYKEY[SRV2KEY[t]][2] : t; L.push(lb + ': ' + [(c.nuevos || []).length ? c.nuevos.length + ' nuevo(s)' : '', (c.modificados || []).length ? c.modificados.length + ' modificado(s)' : '', (c.quitados || []).length ? c.quitados.length + ' quitado(s)' : '', c.objeto ? 'configuración' : ''].filter(Boolean).join(', ')); });
+      h += '<div><b>' + esc(r.resumen || r.label) + '</b></div><div>Hecho por <b>' + esc(r.by || '') + '</b> desde ' + esc(x.o) + ' el ' + esc(String(r.at || '').slice(0, 16).replace('T', ' ')) + '</div><div style="margin-top:6px">Tocó: ' + L.map(esc).join(' · ') + '</div>';
+    } else {
+      var ks = Object.keys(r).filter(function (k) { var v = r[k]; return !CAMPOS_FUERA.test(k) && v != null && v !== '' && typeof v !== 'object'; }).slice(0, 24);
+      h += '<div class="kv">' + ks.map(function (k) { return '<span title="' + esc(r[k]) + '">' + esc(k) + ': <b>' + esc(r[k]) + '</b></span>'; }).join('') + '</div>';
+    }
+    if (x.an) { var A = x.an, Rv = A.revertido || {}; h += '<div style="margin-top:6px;color:var(--red)">Anulado por <b>' + esc(A.by || '') + '</b> el ' + esc(String(A.at || '').slice(0, 16).replace('T', ' ')) + ' · motivo: ' + esc(A.motivo || '') + '</div>' + (Rv.resumen && Rv.resumen.length ? '<div>Revertido: ' + Rv.resumen.map(esc).join(' · ') + '</div>' : '') + (A.por_tx ? '<div>(anulado junto con su transacción)</div>' : ''); }
+    var d = BYKEY[x.k], acts = '';
+    if (!x.an && puedeAnular(x)) acts += '<button class="btn btn-sm" style="border-color:var(--red);color:var(--red)" onclick="event.stopPropagation();e5mTxAnular(' + x._i + ')">⊘ Anular</button>';
+    if (d && d[5]) acts += '<button class="go" onclick="event.stopPropagation();showPage(\'' + d[5][0] + '\',document.querySelector(\'.nav-btn[data-label=&quot;' + d[5][1] + '&quot;]\'))">ver en ' + esc(d[5][1]) + ' ›</button>';
+    return '<div class="tx-x">' + h + (acts ? '<div class="acts">' + acts + '</div>' : '') + '</div>';
+  }
+  function puedeAnular(x) {
+    try { if (localStorage.getItem('e5m_puede_anular') === '0') return false; } catch (e) {}
+    if (x.tx) return true;
+    var d = BYKEY[x.k]; if (!d) return false; var m = d[4] || {};
+    if (m.fn) return typeof window[m.fn] === 'function';
+    return true;
+  }
+  window.e5mTxAbrir = function (row) {
+    var host = document.getElementById('tx-list'); var V = host && host._V; if (!V) return;
+    var i = +row.getAttribute('data-i'), x = V[i]; if (!x) return;
+    var abierto = row.classList.contains('open');
+    host.querySelectorAll('.tx-r.open').forEach(function (r) { r.classList.remove('open'); });
+    if (abierto) return;
+    x._i = i; row.querySelector('.x > div').innerHTML = detalle(x);
+    requestAnimationFrame(function () { row.classList.add('open'); });
+  };
+  var tmo = null;
+  window.e5mTxFiltrar = function () { clearTimeout(tmo); tmo = setTimeout(pintar, 120); };
+  window.e5mTxRefrescar = function () { try { if (typeof pullFromRailwayDesktop === 'function') { pullFromRailwayDesktop(); setTimeout(render, 2500); } } catch (e) {} render(); };
+  window.renderTransacciones = render;
+
+  /* ── anular ── */
+  function modal() {
+    var m = document.getElementById('txa-modal');
+    if (!m) { m = document.createElement('div'); m.id = 'txa-modal'; m.className = 'txa-modal'; m.innerHTML = '<div class="txa-box"><h3 id="txa-t"></h3><div class="s" id="txa-s"></div><textarea id="txa-motivo" placeholder="Motivo de la anulación (obligatorio)"></textarea><div class="ef" id="txa-ef" style="display:none"></div><div class="acts"><button class="btn" onclick="e5mTxCerrar()">Cerrar</button><button class="btn btn-primary" id="txa-ok" onclick="e5mTxConfirmar()">Anular y revertir</button></div></div>'; document.body.appendChild(m); m.addEventListener('click', function (e) { if (e.target === m) window.e5mTxCerrar(); }); }
+    return m;
+  }
+  var PEND = null;
+  window.e5mTxCerrar = function () { var m = document.getElementById('txa-modal'); if (m) m.classList.remove('on'); PEND = null; };
+  window.e5mTxAnular = function (i) {
+    var host = document.getElementById('tx-list'); var x = host && host._V && host._V[i]; if (!x) return;
+    if (!navigator.onLine) { if (typeof toast === 'function') toast('Anular necesita conexión', 'error'); return; }
+    var d = BYKEY[x.k], m = (d && d[4]) || {};
+    /* tablas que ya tenían su flujo en el Escritorio: se usa ese (revierte local y re-pinta su pantalla) */
+    if (!x.tx && m.e5m && window.e5mAnular) { window.e5mAnular(x.k, x.id); return vigilar(); }
+    if (!x.tx && m.diesel) { if (x.r.type === 'traspaso' && typeof window.deleteDiesel === 'function') window.deleteDiesel(x.id); else if (window.e5mAnular) window.e5mAnular('diesel', x.id); return vigilar(); }
+    if (!x.tx && m.sub && typeof window.deleteSubmodule === 'function') { window.deleteSubmodule(x.id, m.sub); return vigilar(); }
+    if (!x.tx && m.fn) {
+      var f = window[m.fn]; if (typeof f !== 'function') return;
+      if (m.dom) { var el = document.getElementById(m.dom), tmp = null; if (!el) { tmp = document.createElement('input'); tmp.type = 'hidden'; tmp.id = m.dom; document.body.appendChild(tmp); el = tmp; } var prev = el.value; el.value = x.id; try { f(x.id); } finally { setTimeout(function () { if (tmp) tmp.remove(); else el.value = prev; }, 0); } }
+      else f(x.k === 'lots' ? (x.r.code || x.id) : x.id);
+      return vigilar();
+    }
+    /* modo server: transacciones del bot/apps y tablas nuevas */
+    PEND = x; var mo = modal();
+    document.getElementById('txa-t').textContent = 'Anular ' + (x.tx ? 'operación: ' + x.tipo.toLowerCase() : x.tipo.toLowerCase());
+    document.getElementById('txa-s').innerHTML = '<b>' + esc(x.f) + ' · ' + esc(x.d) + '</b><br>' + (x.tx ? 'Se revierte TODO lo que hizo esta operación (lotes, animales, kardex, stock, rotaciones…). Lo que haya cambiado después se respeta y queda listado.' : 'El registro no se borra: queda anulado con tu motivo y la descripción de lo revertido.');
+    var ef = document.getElementById('txa-ef'); ef.style.display = 'none'; ef.innerHTML = '';
+    document.getElementById('txa-motivo').value = ''; var ok = document.getElementById('txa-ok'); ok.disabled = false; ok.style.display = ''; ok.textContent = 'Anular y revertir';
+    mo.classList.add('on'); setTimeout(function () { document.getElementById('txa-motivo').focus(); }, 50);
+  };
+  window.e5mTxConfirmar = function () {
+    var x = PEND; if (!x) return;
+    var motivo = String(document.getElementById('txa-motivo').value || '').trim();
+    if (motivo.length < 4) { if (typeof toast === 'function') toast('Escribí el motivo', 'error'); return; }
+    var ok = document.getElementById('txa-ok'); ok.disabled = true; ok.textContent = 'Anulando…';
+    var api = (typeof getApiUrl === 'function') ? getApiUrl() : (localStorage.getItem('e5m_api_url') || ''), tok = localStorage.getItem('e5m_api_token') || '';
+    fetch(api + '/anular', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tok, 'X-App-Type': 'desktop', 'X-App-Version': (typeof _APP_VERSION !== 'undefined' ? _APP_VERSION : '') }, body: JSON.stringify({ table: x.tx ? 'transacciones' : x.t, id: x.id, motivo: motivo, by: (typeof _desktopAuthor === 'function' ? _desktopAuthor() : 'Escritorio') }) })
+      .then(function (r) { return r.json().then(function (j) { return { st: r.status, j: j }; }); })
+      .then(function (res) {
+        var j = res.j || {};
+        if (res.st !== 200 || !j.ok) { ok.disabled = false; ok.textContent = 'Anular y revertir'; if (res.st === 403) { try { localStorage.setItem('e5m_puede_anular', '0'); } catch (e) {} } if (typeof toast === 'function') toast(j.error || 'No se pudo anular', 'error'); return; }
+        x.r.anulado = j.anulado; x.an = j.anulado;
+        if (j.table === 'transacciones') { var t0 = (SRV.tx || []).find(function (q) { return q && q.id === j.id; }); if (t0) t0.anulado = j.anulado; try { localStorage.setItem('e5m_srv_tx', JSON.stringify(SRV.tx)); } catch (e) {} }
+        if (x.k === 'tasks') { try { var TK = JSON.parse(localStorage.getItem('e5m_tasks') || '[]'); TK.forEach(function (t) { if (t && String(t.id) === String(x.id)) t.anulado = j.anulado; }); localStorage.setItem('e5m_tasks', JSON.stringify(TK)); } catch (e) {} }
+        try { if (window.e5mSepararAnulados) window.e5mSepararAnulados(); localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch (e) {}
+        var R = j.efectos || (j.anulado && j.anulado.revertido) || {};
+        var ef = document.getElementById('txa-ef'); ef.style.display = ''; ef.innerHTML = '<b>✓ Anulado.</b> Revertido:<br>' + (R.resumen || []).map(function (s) { return '• ' + esc(s); }).join('<br>');
+        ok.style.display = 'none';
+        if (typeof toast === 'function') toast('Anulado — ' + ((R.resumen || [])[x.tx ? 1 : 0] || 'queda constancia'), 'success');
+        /* el server cambió varias tablas: bajar todo */
+        try { if (typeof pullFromRailwayDesktop === 'function') pullFromRailwayDesktop(); } catch (e) {}
+        setTimeout(render, 300); setTimeout(render, 3500);
+      })
+      .catch(function () { ok.disabled = false; ok.textContent = 'Anular y revertir'; if (typeof toast === 'function') toast('Error de conexión: no se anuló', 'error'); });
+  };
+  function vigilar() { /* flujos propios de cada pantalla: re-pintar la lista cuando cierran */ var n = 0; var iv = setInterval(function () { n++; var a = document.getElementById('anl-modal'); if ((!a || !a.classList.contains('on')) && n > 2) { clearInterval(iv); render(); } if (n > 120) clearInterval(iv); }, 1000); }
+
+  /* ── anulados fuera de las tablas vivas también para las tablas nuevas; tareas anuladas fuera de la lista ── */
+  var NK = ['rotation_history', 'animal_movements', 'agro_jornadas', 'contrataciones', 'inventory_counts', 'pasture_evals'];
+  var oSep = window.e5mSepararAnulados;
+  window.e5mSepararAnulados = function () {
+    var n = oSep ? oSep() : 0;
+    if (typeof db === 'undefined' || !db) return n;
+    db._anulados = db._anulados || {};
+    NK.forEach(function (k) { var arr = db[k]; if (!Array.isArray(arr)) return; var vivos = []; arr.forEach(function (r) { if (r && r.anulado) { db._anulados[k] = (db._anulados[k] || []).filter(function (q) { return String(q.id) !== String(r.id); }); db._anulados[k].push(r); n++; } else vivos.push(r); }); if (vivos.length !== arr.length) db[k] = vivos; });
+    return n;
+  };
+  if (typeof window.getTaskDB === 'function' && !window.getTaskDB.__orig) { var oT = window.getTaskDB; var wT = function () { var a = oT(); return Array.isArray(a) ? a.filter(function (t) { return !(t && t.anulado); }) : a; }; wT.__orig = oT; window.getTaskDB = wT; try { getTaskDB = wT; } catch (e) {} }
+
+  var oRP = window.renderPage;
+  if (typeof oRP === 'function' && !oRP.__tx) { var wRP = function (name) { if (name === 'transacciones') { try { render(); } catch (e) { console.warn('[transacciones]', e); } return; } return oRP.apply(this, arguments); }; wRP.__tx = true; window.renderPage = wRP; try { renderPage = wRP; } catch (e) {} }
+  function boot() { if (typeof db === 'undefined' || !db || !db.lots) return setTimeout(boot, 700); try { montar(); if (window.e5mSepararAnulados()) localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch (e) {} }
+  boot();
+  try { console.log('%c[EP Desktop v1.8.299] 🧾 Transacciones — 100 % de los registros con buscador y Anular · kill: __TX_OFF', 'color:#3fb950'); } catch (e) {}
 })();
 </script>
 
