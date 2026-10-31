@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.297';
+window.E5M_HTML_BUILD = '1.8.298';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -1039,11 +1039,23 @@ function publishTasksToPWA() {
       <div style="font-size:13px;color:#545870;margin-top:4px">Sistema de Gestión Ganadera</div>
     </div>
     <div style="background:#111318;border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:28px">
-      <div style="font-size:15px;font-weight:700;color:#E4E6F0;margin-bottom:6px">Activar sistema</div>
-      <div style="font-size:12px;color:#545870;margin-bottom:20px">Ingresá el código de 6 dígitos que te mandó el asistente de WhatsApp, o el token de tu cuenta EstanciaPro</div>
+      <div style="font-size:15px;font-weight:700;color:#E4E6F0;margin-bottom:6px">Activar esta computadora</div>
+      <!-- v1.8.298: activación en dos pasos (pedido José 31-10): pedir el código por WhatsApp e ingresarlo. El token queda en «opciones avanzadas». -->
+      <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:14px">
+        <div style="width:22px;height:22px;border-radius:50%;background:rgba(240,160,48,.15);color:#F0A030;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex:none">1</div>
+        <div style="font-size:12px;color:#9AA0B4;line-height:1.5">Desde el <b style="color:#E4E6F0">WhatsApp registrado de tu estancia</b>, escribile al asistente de EstanciaPro <b style="color:#E4E6F0">«código de activación»</b>. Te responde con un código de 6 dígitos (dura 10 minutos).<br><a href="#" id="act-wa-link" onclick="actAbrirWhatsApp();return false" style="display:inline-block;margin-top:8px;padding:7px 12px;border-radius:8px;background:rgba(37,211,102,.12);border:1px solid rgba(37,211,102,.35);color:#25D366;text-decoration:none;font-weight:700;font-size:12px">💬 Abrir WhatsApp del asistente</a></div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:6px">
+        <div style="width:22px;height:22px;border-radius:50%;background:rgba(240,160,48,.15);color:#F0A030;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex:none">2</div>
+        <div style="font-size:12px;color:#9AA0B4;line-height:1.5;flex:1">Ingresá el código acá. La computadora queda vinculada a tu estancia y guarda el acceso sola.</div>
+      </div>
       <div style="margin-bottom:14px">
-        <label style="font-size:10px;font-weight:700;color:#545870;letter-spacing:1px;display:block;margin-bottom:6px">CÓDIGO O TOKEN DE ACCESO</label>
-        <input type="password" id="act-token" placeholder="Código de 6 dígitos o token" autocomplete="off"
+        <input type="text" id="act-token" placeholder="● ● ● ● ● ●" autocomplete="one-time-code" inputmode="numeric" maxlength="64"
+          style="width:100%;background:#191C24;border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:12px 14px;color:#E4E6F0;font-family:monospace;font-size:20px;letter-spacing:6px;text-align:center;outline:none"
+          oninput="actModoInput(this)" onkeydown="if(event.key==='Enter')validateToken()">
+        <div style="margin-top:8px;font-size:11px;color:#545870"><a href="#" onclick="var a=document.getElementById('act-adv');a.style.display=a.style.display==='none'?'':'none';return false" style="color:#545870">Opciones avanzadas</a></div>
+        <div id="act-adv" style="display:none;font-size:11px;color:#545870;margin-top:6px;line-height:1.5">Si tenés el <b>token de la cuenta</b> (lo da SG al administrador), pegalo en el mismo campo: se acepta igual que el código.</div>
+        <input type="hidden" id="act-token-legacy"
           style="width:100%;background:#191C24;border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:11px 14px;color:#E4E6F0;font-family:monospace;font-size:13px;outline:none"
           onkeydown="if(event.key==='Enter')validateToken()">
       </div>
@@ -1058,7 +1070,7 @@ function publishTasksToPWA() {
       <div id="act-error" style="display:none;background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.2);border-radius:8px;padding:10px;margin-bottom:14px;font-size:12px;color:#E74C3C"></div>
       <button id="act-btn" onclick="validateToken()"
         style="width:100%;background:#F0A030;color:#000;border:none;border-radius:8px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
-        Verificar token
+        Activar
       </button>
       <div id="act-verify-ok" style="display:none;margin-top:12px">
         <button onclick="activateSystem()"
@@ -17044,6 +17056,15 @@ if (!localStorage.getItem('apiToken') && _API_TOKEN) localStorage.setItem('apiTo
 // ACTIVACIÓN Y RESTAURACIÓN
 // ══════════════════════════════════════════════════
 
+/* v1.8.298: pantalla de activación en dos pasos */
+function actAbrirWhatsApp() {
+  var base = (typeof getApiUrl === 'function') ? getApiUrl() : 'https://api.estancia-pro.com/api';
+  var abrir = function (n) { if (!n) { alert('No pude obtener el número del asistente. Escribile al WhatsApp de EstanciaPro «código de activación».'); return; } var u = 'https://wa.me/' + String(n).replace(/\D/g, '') + '?text=' + encodeURIComponent('Hola, quiero el código de activación para el Escritorio'); try { if (window.estancia && window.estancia.openExternal) return window.estancia.openExternal(u); } catch (e) {} try { if (window.require) { window.require('electron').shell.openExternal(u); return; } } catch (e) {} window.open(u, '_blank'); };
+  var cache = ''; try { cache = localStorage.getItem('e5m_bot_wa') || ''; } catch (e) {}
+  if (cache) return abrir(cache);
+  fetch(base + '/demo/info').then(function (r) { return r.json(); }).then(function (j) { var v = (j && j.bot_wa) || ''; if (v) try { localStorage.setItem('e5m_bot_wa', v); } catch (e) {} abrir(v); }).catch(function () { abrir(''); });
+}
+function actModoInput(inp) { var v = String(inp.value || '').replace(/\s+/g, ''); var esCodigo = /^\d{0,6}$/.test(v); inp.style.letterSpacing = esCodigo ? '6px' : '0'; inp.style.fontSize = esCodigo ? '20px' : '13px'; inp.type = esCodigo || v.length < 8 ? 'text' : 'password'; }
 function checkActivation() {
   var token = localStorage.getItem('e5m_api_token');
   // Si no hay token
