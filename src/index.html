@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.296';
+window.E5M_HTML_BUILD = '1.8.297';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -1095,6 +1095,7 @@ function publishTasksToPWA() {
     <button class="nav-lbl-btn" onclick="toggleNavSec('inicio')"><span class="nav-lbl">Inicio</span><span class="nav-lbl-chevron">▾</span></button>
     <div class="nav-sec-body">
     <!-- v1.8.290: el Dashboard (Reporte CREA) pasa a la sección CREA como "Reporte CREA"; la página page-dashboard y su motor no cambian -->
+    <button class="nav-btn active" data-label="Inicio" onclick="showPage('inicio',this)"><span class="nav-icon">🏠</span><span class="nav-text">Inicio</span></button>
     <button class="nav-btn" data-label="Stock" onclick="showPage('stock',this)"><span class="nav-icon">📦</span><span class="nav-text">Stock</span></button>
     <button class="nav-btn" data-label="Alertas" onclick="showPage('alertas',this)"><span class="nav-icon">🔔</span><span class="nav-text">Alertas</span><span class="nav-badge nb-red" id="nb-alertas">0</span></button>
     <button class="nav-btn" data-label="Opciones Rápidas" onclick="showPage('opciones-rapidas',this)"><span class="nav-icon">⚡</span><span class="nav-text">Opciones Rápidas</span></button>
@@ -1181,7 +1182,7 @@ function publishTasksToPWA() {
   <div class="nav-sec" data-sec="crea">
     <button class="nav-lbl-btn" onclick="toggleNavSec('crea')"><span class="nav-lbl">CREA</span><span class="nav-lbl-chevron">▾</span></button>
     <div class="nav-sec-body">
-    <button class="nav-btn active" data-label="Reporte CREA" onclick="showPage('dashboard',this)"><span class="nav-icon">🏆</span><span class="nav-text">Reporte CREA</span></button>
+    <button class="nav-btn" data-label="Reporte CREA" onclick="showPage('dashboard',this)"><span class="nav-icon">🏆</span><span class="nav-text">Reporte CREA</span></button>
     <button class="nav-btn" data-label="Contabilidad CREA" onclick="crea2Abrir('conta',this)"><span class="nav-icon">📒</span><span class="nav-text">Contabilidad CREA</span></button>
     <button class="nav-btn" data-label="Indicadores CREA" onclick="crea2Abrir('ind',this)"><span class="nav-icon">★</span><span class="nav-text">Indicadores CREA</span></button>
     <button class="nav-btn" data-label="Plan de cuentas" onclick="crea2Abrir('plan',this)"><span class="nav-icon">🗂</span><span class="nav-text">Plan de cuentas</span></button>
@@ -1207,8 +1208,17 @@ function publishTasksToPWA() {
 <!-- MAIN -->
 <main class="main">
 
+<!-- v1.8.297: Inicio — tablero Hoy · Semana · Gestión (módulo inicio-v18297 al final del archivo) -->
+<div id="page-inicio" class="page active">
+  <div class="ph">
+    <div><div class="pt">🏠 Inicio</div><div class="ps" id="inicio-sub">Lo que hay que atender hoy, cómo va la semana y cómo viene la gestión</div></div>
+    <button class="btn" onclick="renderInicio()">↻ Actualizar</button>
+  </div>
+  <div id="inicio-body"><div style="color:var(--muted);font-size:12px;padding:20px">Armando el tablero…</div></div>
+</div>
+
 <!-- ═══ DASHBOARD ═══ -->
-<div id="page-dashboard" class="page active">
+<div id="page-dashboard" class="page">
   <div class="ph">
     <div><div class="pt">🏆 Reporte CREA</div><div class="ps">Indicadores productivos y económicos · Metodología AACREA</div></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -8563,6 +8573,7 @@ function pullFromRailwayDesktop(thenPush) {
       // Re-render todo (v1.8.204: solo si el server trajo algo distinto al pull anterior)
       if (_sinCambios) { console.log('[Sync] sin cambios desde el último pull → sin re-render'); }
       else {
+      if (typeof renderInicio === 'function') try { renderInicio(); } catch (eIn) {} /* v1.8.297 */
       if (typeof renderLotes === 'function') renderLotes();
       if (typeof renderRotacion === 'function') renderRotacion(); // FIX v1.4.30: el tab Rotación no se re-renderizaba tras pull
       if (typeof renderDashboard === 'function') renderDashboard();
@@ -63017,6 +63028,7 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
       '<div class="cr2-pane' + (tab === 'plan' ? ' on' : '') + '" data-pane="plan">' + renderPlan(R) + '</div>';
     if (tab === 'conta') setTimeout(function () { waterfall(R); }, 30);
   }
+  window.crea2Bench = function () { var k = benchKey(); return { key: k, B: BENCH[k] }; }; /* v1.8.297: para Inicio */
   window.renderCrea2 = render;
   /* v1.8.290: las sub-pestañas viven en el sidebar (sección CREA) */
   window.crea2Abrir = function (tab, btn) { uiSet('tab', tab); if (typeof showPage === 'function') showPage('crea', btn); };
@@ -63449,6 +63461,180 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
   });
   setTimeout(function () { try { if (window.e5mSepararAnulados()) localStorage.setItem(DB_KEY, JSON.stringify(db)); pintarPaginas(); } catch (e) {} }, 1800);
   try { console.log('%c[EP Desktop v1.8.294] Anular en todo el Escritorio (' + C.length + ' puntos de borrado redirigidos) · kill: __ANULAR_OFF', 'color:#3fb950'); } catch (e) {}
+})();
+</script>
+
+
+<script id="inicio-v18297">
+/* ═══ v1.8.297 — INICIO: tablero de 30 segundos (diseño acordado con José 30-10-2026)
+   Tres franjas: HOY (lo que no puede esperar · solo aparece si hay algo) · ESTA SEMANA (la operación, con
+   tendencia vs la semana anterior) · ESTA GESTIÓN (producción, costo del kg, margen, mortalidad y eficiencia
+   de stock desde julio, con la referencia CREA al lado — reutiliza crea2Calc). Todo clickeable hacia la
+   pantalla donde se resuelve. Las tarjetas vacías no se muestran. Kill: window.__INICIO_OFF ═══ */
+(function () {
+  'use strict';
+  if (window.__INICIO_OFF) return;
+  var css = document.createElement('style');
+  css.textContent =
+    '#page-inicio .in-sec{margin-bottom:22px}#page-inicio .in-h{display:flex;align-items:baseline;gap:10px;margin:0 0 10px;font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);font-weight:700}#page-inicio .in-h span{font-weight:400;letter-spacing:0;text-transform:none;font-size:11.5px}' +
+    '#page-inicio .in-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}' +
+    '#page-inicio .in-card{background:var(--sur);border:1px solid var(--bor);border-left:3px solid var(--bor);border-radius:12px;padding:12px 14px;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease;position:relative;min-width:0}' +
+    '#page-inicio .in-card:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(0,0,0,.22)}' +
+    '#page-inicio .in-card.red{border-left-color:var(--red)}#page-inicio .in-card.amb{border-left-color:var(--amber)}#page-inicio .in-card.grn{border-left-color:var(--green)}#page-inicio .in-card.blu{border-left-color:var(--blue)}' +
+    '#page-inicio .in-card .l{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;display:flex;justify-content:space-between;gap:8px}' +
+    '#page-inicio .in-card .v{font-family:DM Mono,monospace;font-size:22px;font-weight:700;margin-top:4px;line-height:1.1}#page-inicio .in-card .v small{font-size:11px;color:var(--muted);font-weight:400;margin-left:4px;font-family:inherit}' +
+    '#page-inicio .in-card .s{font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.45}' +
+    '#page-inicio .pill{display:inline-block;font-size:10px;padding:2px 8px;border-radius:999px;font-family:DM Mono,monospace;font-weight:600;white-space:nowrap}#page-inicio .pill.g{background:rgba(63,185,80,.14);color:var(--green)}#page-inicio .pill.a{background:rgba(212,160,23,.14);color:var(--amber2,var(--amber))}#page-inicio .pill.r{background:rgba(248,81,73,.14);color:var(--red)}#page-inicio .pill.m{background:rgba(127,127,127,.14);color:var(--muted)}' +
+    '#page-inicio .in-list{margin-top:8px;max-height:150px;overflow:auto;overscroll-behavior:contain}#page-inicio .in-list>div{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:4px 0;border-top:1px solid rgba(127,127,127,.08)}#page-inicio .in-list>div:nth-child(even){background:rgba(127,127,127,.04)}#page-inicio .in-list .m{font-family:DM Mono,monospace;color:var(--muted);white-space:nowrap}' +
+    '#page-inicio .in-big{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:12px}#page-inicio .in-big .in-card{padding:14px 16px}#page-inicio .in-big .v{font-size:28px}' +
+    '#page-inicio .in-bar{display:flex;height:10px;border-radius:5px;overflow:hidden;margin:10px 0 6px;background:rgba(127,127,127,.12)}#page-inicio .in-bar i{display:block;height:100%}' +
+    '#page-inicio .in-leg{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:10.5px;color:var(--muted)}#page-inicio .in-leg b{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:middle}' +
+    '#page-inicio .in-ref{display:flex;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--muted);margin-top:6px;font-family:DM Mono,monospace}' +
+    '#page-inicio .in-empty{border:1px dashed var(--bor);border-radius:12px;padding:14px 16px;color:var(--muted);font-size:12px}' +
+    '#page-inicio .in-tr{font-family:DM Mono,monospace;font-size:10.5px}#page-inicio .in-tr.up{color:var(--green)}#page-inicio .in-tr.dn{color:var(--red)}' +
+    '@media(prefers-reduced-motion:reduce){#page-inicio .in-card{transition:none}}';
+  document.head.appendChild(css);
+  function esc(x) { return String(x == null ? '' : x).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function N(v, d) { if (v == null || isNaN(v) || !isFinite(v)) return '—'; return Number(v).toLocaleString('es-BO', { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 }); }
+  function f10(s) { return String(s || '').slice(0, 10); }
+  function ld(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function addD(s, n) { var d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return ld(d); }
+  function diasDesde(s) { if (!s) return null; return Math.floor((Date.now() - new Date(f10(s) + 'T00:00:00').getTime()) / 86400000); }
+  function go(page, label) {
+    var btn = 'document.querySelector(\'.nav-btn[data-label=&quot;' + label + '&quot;]\')';
+    if (page.indexOf('crea:') === 0) return 'onclick="crea2Abrir(\'' + page.slice(5) + '\',' + btn + ')"';
+    if (page === 'repro') return 'onclick="goToRepro(\'partos\',' + btn + ')"';
+    return 'onclick="showPage(\'' + page + '\',' + btn + ')"';
+  }
+  function card(cls, page, label, l, v, u, s, extra) { return '<div class="in-card ' + (cls || '') + '" ' + go(page, label) + '><div class="l"><span>' + l + '</span>' + (extra || '') + '</div><div class="v">' + v + (u ? '<small>' + u + '</small>' : '') + '</div>' + (s ? '<div class="s">' + s + '</div>' : '') + '</div>'; }
+  function tr(cur, prev, inv) { if (prev == null || !isFinite(prev) || prev === 0) return ''; var p = (cur - prev) / Math.abs(prev) * 100; if (Math.abs(p) < 1) return '<span class="in-tr">= sem. ant.</span>'; var bueno = inv ? p < 0 : p > 0; return '<span class="in-tr ' + (bueno ? 'up' : 'dn') + '">' + (p > 0 ? '▲' : '▼') + ' ' + N(Math.abs(p), 0) + '% vs sem. ant.</span>'; }
+  function animalsRaw() { try { return JSON.parse(localStorage.getItem('e5m_animals') || '{}'); } catch (e) { return {}; } }
+
+  function datos() {
+    var hoy = ld(new Date()), d7 = addD(hoy, -7), d14 = addD(hoy, -14), d30 = addD(hoy, -30), d60 = addD(hoy, -60), d2 = addD(hoy, -2);
+    var en = function (f, a, b) { f = f10(f); return f > a && f <= b; };
+    var D = { hoy: hoy };
+    var lots = (db.lots || []).filter(function (l) { return l && (!l.status || l.status === 'activo' || l.status === 'active'); });
+    D.cab = lots.reduce(function (s, l) { return s + (l.animal_count || 0); }, 0);
+    D.porCat = {}; lots.forEach(function (l) { var c = l.category || 'Sin categoría'; D.porCat[c] = (D.porCat[c] || 0) + (l.animal_count || 0); });
+    try { var inv = (typeof window.v197Inversion === 'function') ? window.v197Inversion() : null; D.partido = inv ? inv.partido : 0; } catch (e) { D.partido = 0; }
+    /* HOY */
+    D.alertas = (db.alerts || []).filter(function (a) { return a && !a.resolved; });
+    D.stockBajo = (db.products || []).filter(function (p) { return p && p.active !== false && p.stock_min != null && Number(p.stock_qty) <= Number(p.stock_min); });
+    D.vencidos = (db.products || []).filter(function (p) { if (!p || p.active === false || !p.expiry_date) return false; var dd = diasDesde(p.expiry_date); return dd != null && dd > -30; });
+    try { D.tanques = (getDieselTanks() || []).filter(function (t) { return t && t.capacity > 0 && (Number(t.current_level) || 0) / t.capacity < 0.2; }); } catch (e) { D.tanques = []; }
+    var tasks = []; try { tasks = JSON.parse(localStorage.getItem('e5m_tasks') || '[]'); } catch (e) {}
+    D.tareasVencidas = tasks.filter(function (t) { return t && t.due && f10(t.due) < hoy && t.status !== 'completada' && !t.done; });
+    D.tareasHoy = tasks.filter(function (t) { return t && t.due && f10(t.due) === hoy && t.status !== 'completada' && !t.done; });
+    D.dosisHoy = (db.treatments || []).filter(function (t) { return t && t.next_app && f10(t.next_app) <= hoy && f10(t.next_app) > d14; });
+    D.muertesSem = (db.bajas || []).filter(function (b) { return b && en(b.fecha, d7, hoy); });
+    /* conteos: diferencia y lotes sin conteo 30 días */
+    var ultConteo = {}; (db.conteo || []).forEach(function (c) { if (!c) return; var k = c.lot_code; if (!ultConteo[k] || f10(c.date) > f10(ultConteo[k].date)) ultConteo[k] = c; });
+    D.conteoDif = lots.filter(function (l) { var c = ultConteo[l.code]; return c && en(c.date, d14, hoy) && Number(c.diff) && Number(c.diff) !== 0; }).map(function (l) { return { lote: l.code, diff: Number(ultConteo[l.code].diff), fecha: f10(ultConteo[l.code].date) }; });
+    D.sinConteo = lots.filter(function (l) { var c = ultConteo[l.code]; return l.animal_count > 0 && (!c || f10(c.date) < d30); });
+    /* quién reporta */
+    var porPersona = {};
+    [['treatments', 'applied_at'], ['conteo', 'date'], ['bajas', 'fecha'], ['lluvias', 'fecha'], ['sal', 'date'], ['agua', 'date'], ['pesajes', 'date'], ['maintenance', 'date'], ['diesel', 'date']].forEach(function (td) {
+      (db[td[0]] || []).forEach(function (r) { if (!r) return; var by = String(r.by || r._author || '').trim(); if (!by || /desktop|escritorio/i.test(by)) return; var f = f10(r[td[1]] || r.fecha || r.date || r.created_at); if (!f) return; var P = porPersona[by] || (porPersona[by] = { n48: 0, ult: '' }); if (f >= d2) P.n48++; if (f > P.ult) P.ult = f; });
+    });
+    D.reportan = Object.keys(porPersona).map(function (k) { return { quien: k, n48: porPersona[k].n48, ult: porPersona[k].ult, dias: diasDesde(porPersona[k].ult) }; }).sort(function (a, b) { return b.n48 - a.n48; });
+    D.callados = D.reportan.filter(function (p) { return p.dias != null && p.dias >= 3 && p.dias <= 60; });
+    var an = (db._anulados || {}); D.anuladosSem = 0; Object.keys(an).forEach(function (k) { (an[k] || []).forEach(function (r) { if (r && r.anulado && f10(r.anulado.at) > d7) D.anuladosSem++; }); });
+    /* SEMANA */
+    function cnt(tab, f, a, b, fn) { return (db[tab] || []).filter(function (r) { return r && en(r[f] || r.fecha || r.date, a, b); }).reduce(function (s, r) { return s + (fn ? fn(r) : 1); }, 0); }
+    D.sem = {
+      compras: cnt('compras_ganado', 'fecha', d7, hoy, function (r) { return r.animal_count || 0; }), comprasP: cnt('compras_ganado', 'fecha', d14, d7, function (r) { return r.animal_count || 0; }),
+      ventas: cnt('sales', 'date', d7, hoy, function (r) { return r.animals || r.animal_count || 0; }), ventasBs: cnt('sales', 'date', d7, hoy, function (r) { return r.total || 0; }), ventasP: cnt('sales', 'date', d14, d7, function (r) { return r.animals || r.animal_count || 0; }),
+      nac: cnt('partos', 'fecha', d7, hoy), nacP: cnt('partos', 'fecha', d14, d7), bajas: D.muertesSem.length, bajasP: cnt('bajas', 'fecha', d14, d7),
+      sal: cnt('sal', 'date', d7, hoy, function (r) { return parseFloat(r.kg || r.qty) || 0; }), salP: cnt('sal', 'date', d14, d7, function (r) { return parseFloat(r.kg || r.qty) || 0; }),
+      diesel: (db.diesel || []).filter(function (r) { return r && r.type === 'despacho' && en(r.date || r.fecha || r.created_at, d7, hoy); }).reduce(function (s, r) { return s + (parseFloat(r.litros) || 0); }, 0),
+      dieselP: (db.diesel || []).filter(function (r) { return r && r.type === 'despacho' && en(r.date || r.fecha || r.created_at, d14, d7); }).reduce(function (s, r) { return s + (parseFloat(r.litros) || 0); }, 0),
+      serv: cnt('reproductive_services', 'date', d7, hoy)
+    };
+    var mesIni = hoy.slice(0, 7) + '-01', y = parseInt(hoy.slice(0, 4), 10);
+    D.lluviaMes = cnt('lluvias', 'fecha', addD(mesIni, -1), hoy, function (r) { return parseFloat(r.mm) || 0; });
+    D.lluviaMesAnt = cnt('lluvias', 'fecha', addD((y - 1) + hoy.slice(4, 7) + '-01', -1), (y - 1) + hoy.slice(4), function (r) { return parseFloat(r.mm) || 0; });
+    var ultLluvia = (db.lluvias || []).filter(function (r) { return r && (parseFloat(r.mm) || 0) > 0; }).map(function (r) { return f10(r.fecha); }).sort().pop();
+    D.diasSinLluvia = ultLluvia ? diasDesde(ultLluvia) : null;
+    /* pesajes */
+    var ultPes = {}; (db.pesajes || []).forEach(function (p) { if (!p || !p.lot_code) return; if (!ultPes[p.lot_code] || f10(p.date) > ultPes[p.lot_code]) ultPes[p.lot_code] = f10(p.date); });
+    var A = animalsRaw(); Object.keys(A).forEach(function (lc) { (A[lc] || []).forEach(function (a) { (a.pesajes || []).forEach(function (p) { var f = f10(p.fecha || p.date); if (!ultPes[lc] || f > ultPes[lc]) ultPes[lc] = f; }); }); });
+    D.sinPesar = lots.filter(function (l) { return l.animal_count > 0 && (!ultPes[l.code] || ultPes[l.code] < d60); });
+    var gm = []; Object.keys(A).forEach(function (lc) { (A[lc] || []).forEach(function (a) { var ps = (a.pesajes || []).slice().sort(function (x, y2) { return f10(x.fecha || x.date).localeCompare(f10(y2.fecha || y2.date)); }); if (ps.length < 2) return; var p1 = ps[ps.length - 1], p0 = ps[ps.length - 2]; var dd = Math.round((new Date(f10(p1.fecha || p1.date)) - new Date(f10(p0.fecha || p0.date))) / 86400000); if (dd > 0 && f10(p1.fecha || p1.date) > d60) gm.push(((p1.peso || 0) - (p0.peso || 0)) / dd); }); });
+    D.gdpv = gm.length ? gm.reduce(function (s, g) { return s + g; }, 0) / gm.length : null; D.gdpvN = gm.length;
+    /* repro */
+    try {
+      var servicios = (typeof _reproGetServicios === 'function') ? _reproGetServicios() : (db.reproductive_services || []), partos = (typeof _reproGetPartos === 'function') ? _reproGetPartos() : (db.partos || []);
+      var cons = {}; partos.forEach(function (p) { if (p.servicio_id) cons[p.servicio_id] = 1; });
+      var byVaca = {}; servicios.filter(function (s) { return s.result === 'preñada' && s.animal_id && !cons[s.id]; }).sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); }).forEach(function (s) { if (!byVaca[s.animal_id]) byVaca[s.animal_id] = s; });
+      D.partos15 = Object.keys(byVaca).filter(function (k) { var d = (typeof _reproExpectedPartoDate === 'function') ? _reproExpectedPartoDate(byVaca[k]) : null; if (!d) return false; var dd = Math.round((d.getTime() - Date.now()) / 86400000); return dd <= 15; }).length;
+      D.destetesPend = partos.filter(function (p) { return !p.destete_fecha && String(p.estado || '').toLowerCase().indexOf('muert') < 0 && f10(p.fecha || p.date) && f10(p.fecha || p.date) < addD(hoy, -210); }).length;
+    } catch (e) { D.partos15 = 0; D.destetesPend = 0; }
+    /* GESTIÓN (motor CREA) */
+    try {
+      if (typeof window.crea2Calc === 'function') { var n = new Date(), gy = n.getMonth() >= 6 ? n.getFullYear() : n.getFullYear() - 1; D.R = window.crea2Calc(gy + '-07-01', hoy); D.B = (typeof window.crea2Bench === 'function') ? window.crea2Bench() : null; }
+    } catch (e) { D.R = null; }
+    /* caja del mes */
+    D.ingMes = cnt('sales', 'date', addD(mesIni, -1), hoy, function (r) { return r.total || 0; }) + (db.cuentas || []).filter(function (c) { return c && String(c.cuenta || '').toUpperCase() === 'INGRESOS' && en(c.fecha, addD(mesIni, -1), hoy); }).reduce(function (s, c) { return s + (parseFloat(c.monto) || 0); }, 0);
+    D.gasMes = cnt('purchases', 'date', addD(mesIni, -1), hoy, function (r) { return parseFloat(r.total) || 0; }) + cnt('historial_sueldos', 'fecha_pago', addD(mesIni, -1), hoy, function (r) { return parseFloat(r.pago_neto) || 0; }) + (db.cuentas || []).filter(function (c) { var cu = String(c && c.cuenta || '').toUpperCase(); return c && (cu === 'COSTOS' || cu === 'GASTO ADMINISTRATIVO' || cu === 'GASTOS') && en(c.fecha, addD(mesIni, -1), hoy); }).reduce(function (s, c) { return s + (parseFloat(c.monto) || 0); }, 0);
+    return D;
+  }
+
+  function render() {
+    var el = document.getElementById('inicio-body'); if (!el || typeof db === 'undefined') return;
+    var D; try { D = datos(); } catch (e) { console.error('[inicio]', e); el.innerHTML = '<div class="in-empty">No se pudo armar el tablero: ' + esc(e.message) + '</div>'; return; }
+    var h = '';
+    /* ── HOY ── */
+    var hoyC = [];
+    var crit = D.alertas.filter(function (a) { return a.severity === 'critical'; }).length;
+    if (D.stockBajo.length || D.vencidos.length) hoyC.push(card(crit ? 'red' : 'amb', 'stock', 'Stock', 'Stock veterinario', D.stockBajo.length, (D.stockBajo.length === 1 ? 'producto bajo' : 'productos bajos') + (D.vencidos.length ? ' · ' + D.vencidos.length + ' por vencer' : ''), D.stockBajo.slice(0, 3).map(function (p) { return esc(p.name) + ' ' + N(p.stock_qty) + ' ' + esc(p.unit || ''); }).join(' · ') + (D.vencidos.length ? '<br>' + D.vencidos.slice(0, 2).map(function (p) { return esc(p.name) + ' vence ' + esc(p.expiry_date); }).join(' · ') : '')));
+    if (D.tanques.length) hoyC.push(card('red', 'diesel', 'Combustible', 'Tanque bajo', D.tanques.map(function (t) { return N((Number(t.current_level) || 0) / t.capacity * 100, 0) + '%'; }).join(' · '), '', D.tanques.map(function (t) { return esc(t.name) + ': ' + N(t.current_level) + ' de ' + N(t.capacity) + ' L'; }).join('<br>')));
+    if (D.tareasVencidas.length || D.tareasHoy.length) hoyC.push(card(D.tareasVencidas.length ? 'red' : 'amb', 'tareas', 'Tareas', 'Tareas', (D.tareasVencidas.length || D.tareasHoy.length), D.tareasVencidas.length ? 'vencidas' : 'para hoy', (D.tareasVencidas.length && D.tareasHoy.length ? D.tareasHoy.length + ' más para hoy · ' : '') + (D.tareasVencidas[0] ? esc(D.tareasVencidas[0].title || D.tareasVencidas[0].desc || '') : esc((D.tareasHoy[0] || {}).title || ''))));
+    if (D.dosisHoy.length) hoyC.push(card('amb', 'sanidad', 'Sanidad', 'Dosis pendientes', D.dosisHoy.length, 'aplicaciones', D.dosisHoy.slice(0, 3).map(function (t) { return esc(t.product_name) + ' · ' + esc(t.lot_code || ('#' + t.animal_id)) + ' · ' + esc(f10(t.next_app)); }).join('<br>')));
+    if (D.muertesSem.length) hoyC.push(card('red', 'lotes', 'Lotes', 'Muertes esta semana', D.muertesSem.length, 'cab', D.muertesSem.slice(0, 3).map(function (b) { return esc(f10(b.fecha)) + ' · ' + esc(b.lot_code || b.lote || '') + ' · ' + esc(b.causa || b.motivo || ''); }).join('<br>')));
+    if (D.conteoDif.length) hoyC.push(card('amb', 'lotes', 'Lotes', 'Conteos con diferencia', D.conteoDif.length, 'lotes', D.conteoDif.slice(0, 3).map(function (c) { return esc(c.lote) + ' ' + (c.diff > 0 ? '+' : '') + c.diff + ' cab (' + esc(c.fecha) + ')'; }).join('<br>')));
+    if (D.sinConteo.length) hoyC.push(card('amb', 'lotes', 'Lotes', 'Lotes sin conteo (30 días)', D.sinConteo.length, 'de ' + (db.lots || []).filter(function (l) { return l && l.animal_count > 0 && (!l.status || l.status === 'activo'); }).length, 'CREA: el inventario define el ranking. ' + D.sinConteo.slice(0, 4).map(function (l) { return esc(l.code); }).join(', ')));
+    if (D.callados.length) hoyC.push(card('amb', 'actividades', 'Actividades', 'Sin reportar', D.callados.length, D.callados.length === 1 ? 'persona' : 'personas', D.callados.slice(0, 3).map(function (p) { return esc(p.quien) + ' · ' + p.dias + ' días'; }).join('<br>')));
+    if (D.anuladosSem) hoyC.push(card('blu', 'sanidad', 'Sanidad', 'Anulaciones', D.anuladosSem, 'esta semana', 'Registros anulados con constancia (ver «Anulados» en cada pantalla)'));
+    h += '<div class="in-sec"><div class="in-h">Hoy <span>· ' + (hoyC.length ? 'lo que no puede esperar' : 'nada urgente') + '</span></div>' + (hoyC.length ? '<div class="in-grid">' + hoyC.join('') + '</div>' : '<div class="in-empty">✓ Sin alertas, tareas vencidas, dosis pendientes ni diferencias de conteo. ' + (D.reportan.length ? 'Reportaron en 48 h: ' + D.reportan.filter(function (p) { return p.n48; }).map(function (p) { return esc(p.quien) + ' (' + p.n48 + ')'; }).join(', ') : '') + '</div>') + '</div>';
+    /* ── SEMANA ── */
+    var S = D.sem, sc = [];
+    var catTop = Object.keys(D.porCat).sort(function (a, b) { return D.porCat[b] - D.porCat[a]; }).slice(0, 4).map(function (c) { return esc(c) + ' ' + N(D.porCat[c]); }).join(' · ');
+    sc.push(card('grn', 'lotes', 'Lotes', 'Existencia', N(D.cab), 'cab', catTop + (D.partido ? '<br><span class="pill m">🤝 ' + D.partido + ' al partido</span>' : '')));
+    sc.push(card('', 'ventas', 'Venta Ganado', 'Movimientos de la semana', '+' + N(S.compras + S.nac) + ' <small>/</small> −' + N(S.ventas + S.bajas), '', 'Compras ' + N(S.compras) + ' · nacidos ' + N(S.nac) + ' · ventas ' + N(S.ventas) + (S.ventasBs ? ' (Bs ' + N(S.ventasBs) + ')' : '') + ' · bajas ' + N(S.bajas), tr(S.ventas, S.ventasP)));
+    sc.push(card(D.diasSinLluvia != null && D.diasSinLluvia > 20 ? 'amb' : '', 'lluvias', 'Pluviometría', 'Lluvia del mes', N(D.lluviaMes), 'mm', (D.lluviaMesAnt ? 'Mismo mes del año pasado: ' + N(D.lluviaMesAnt) + ' mm · ' : '') + (D.diasSinLluvia != null ? D.diasSinLluvia + ' días sin lluvia' : 'sin registros')));
+    if (S.sal || S.salP) sc.push(card('', 'lotes', 'Lotes', 'Sal de la semana', N(S.sal), 'kg', (D.cab ? N(S.sal / D.cab * 1000, 0) + ' g/cab' : ''), tr(S.sal, S.salP)));
+    if (S.diesel || S.dieselP) sc.push(card('', 'diesel', 'Combustible', 'Diésel despachado', N(S.diesel), 'L', 'semana', tr(S.diesel, S.dieselP, true)));
+    sc.push(card(D.sinPesar.length ? 'amb' : 'grn', 'lotes', 'Lotes', 'Pesajes', D.gdpv != null ? N(D.gdpv, 3) : '—', D.gdpv != null ? 'kg/día GDPV' : '', (D.gdpv != null ? 'último tramo de ' + D.gdpvN + ' animales · ' : '') + (D.sinPesar.length ? '<span class="pill a">' + D.sinPesar.length + ' lote(s) sin pesar hace 60 días</span>' : '<span class="pill g">todos los lotes pesados</span>')));
+    if (S.serv || D.partos15 || D.destetesPend) sc.push(card(D.partos15 ? 'amb' : '', 'repro', 'Partos', 'Reproducción', N(D.partos15), 'partos en 15 días', 'Servicios esta semana ' + N(S.serv) + (D.destetesPend ? ' · <span class="pill a">' + D.destetesPend + ' destete(s) pendiente(s)</span>' : '')));
+    h += '<div class="in-sec"><div class="in-h">Esta semana <span>· la operación</span></div><div class="in-grid">' + sc.join('') + '</div></div>';
+    /* ── GESTIÓN ── */
+    var R = D.R, B = D.B && D.B.B, bk = D.B && D.B.key;
+    function ref(k, d) { var b = B && B[k]; return b ? '<div class="in-ref"><span>CREA prom. ' + N(b[0], d) + '</span><span>Top 30 % ' + N(b[1], d) + '</span></div>' : ''; }
+    function pos(k, v, bajo) { var b = B && B[k]; if (!b || v == null) return ''; var okT = bajo ? v <= b[1] : v >= b[1], okP = bajo ? v <= b[0] : v >= b[0]; return '<span class="pill ' + (okT ? 'g' : okP ? 'a' : 'r') + '">' + (okT ? 'nivel Top 30 %' : okP ? 'sobre el promedio' : 'bajo el promedio') + '</span>'; }
+    if (R && R.ha) {
+      var K = R.K, gc = [];
+      gc.push(card('', 'crea:ind', 'Indicadores CREA', 'Producción de carne', N(K.kgHa, 1), 'kg/ha/año', N(K.kgCab, 1) + ' kg/cab · ' + N(R.prodKg) + ' kg desde el ' + esc(R.dStr) + ref('kgHa', 1), pos('kgHa', K.kgHa)));
+      var cod = R.porCod, rub = [['1.04', 'Personal', '#F0B429'], ['1.01', 'Nutrición', '#3FB984'], ['1.02', 'Sanidad', '#4C9AFF'], ['1.03', 'Reproducción', '#BC8CFF'], ['1.05', 'Pasturas', '#2F8F66'], ['1.06', 'Maquinaria', '#E5534B'], ['1.07', 'Otros', '#8B949E']];
+      var gd = R.gd || 0, bar = gd ? '<div class="in-bar">' + rub.map(function (r) { var p = (cod[r[0]] || 0) / gd * 100; return p ? '<i style="width:' + p.toFixed(1) + '%;background:' + r[2] + '" title="' + r[1] + ' ' + N(p, 0) + '%"></i>' : ''; }).join('') + '</div><div class="in-leg">' + rub.filter(function (r) { return cod[r[0]]; }).map(function (r) { return '<span><b style="background:' + r[2] + '"></b>' + r[1] + ' ' + N((cod[r[0]] || 0) / gd * 100, 0) + '%</span>'; }).join('') + '</div>' : '<div class="s">Sin gastos directos cargados en la gestión</div>';
+      gc.push(card('', 'crea:conta', 'Contabilidad CREA', 'Costo del kg producido y margen', K.costoKg != null ? 'Bs ' + N(K.costoKg, 2) : '—', K.costoKg != null ? '/kg' : '', 'Margen Bruto ' + (K.mbHa != null ? 'Bs ' + N(K.mbHa) + '/ha/año' : '—') + ' · gasto directo Bs ' + N(gd) + bar + ref('costoKg', 2), pos('costoKg', K.costoKg, true)));
+      gc.push(card('', 'crea:ind', 'Indicadores CREA', 'Mortalidad y eficiencia de stock', N(K.mort, 2) + '<small>%</small> <small>·</small> ' + N(K.efStock, 1), '% ef.', R.muertes + ' muertes sobre ' + N(R.existMedia, 0) + ' cab de existencia media' + ref('mort', 2), pos('mort', K.mort, true)));
+      gc.push(card(D.ingMes >= D.gasMes ? 'grn' : 'amb', 'contabilidad', 'Contabilidad', 'Caja del mes', 'Bs ' + N(D.ingMes - D.gasMes), '', 'Ingresos Bs ' + N(D.ingMes) + ' · gastos Bs ' + N(D.gasMes) + ' (ventas, compras, sueldos y asientos del mes)'));
+      h += '<div class="in-sec"><div class="in-h">Esta gestión <span>· desde el 1 de julio · comparado con ' + esc(B ? B.n : 'CREA') + '</span></div><div class="in-big">' + gc.join('') + '</div></div>';
+    } else {
+      h += '<div class="in-sec"><div class="in-h">Esta gestión</div><div class="in-empty">Para ver producción, costo del kg y margen contra el benchmarking CREA, cargá las hectáreas ganaderas en <a href="#" ' + go('params-reporte', 'Params. Reporte') + ' style="color:var(--amber)">Params. Reporte</a>.</div></div>';
+    }
+    el.innerHTML = h;
+  }
+  window.renderInicio = render;
+  var oRP = window.renderPage;
+  if (typeof oRP === 'function' && !oRP.__inicio) { var w = function (name) { var r = oRP.apply(this, arguments); if (name === 'inicio') { try { render(); } catch (e) { console.error('[inicio]', e); } } return r; }; w.__inicio = true; window.renderPage = w; }
+  function boot() { if (typeof db === 'undefined' || !db || !db.lots) return setTimeout(boot, 600); try { render(); } catch (e) {} try { var nb = document.querySelector('.nav-btn[data-label="Inicio"]'); if (nb && nb.classList.contains('active')) { var sec = nb.closest('.nav-sec'); if (sec) sec.classList.remove('collapsed'); } } catch (e) {} }
+  setTimeout(boot, 1500);
+  /* después de cada pull, refrescar si está abierto */
+  var oPull = window.pullFromRailwayDesktop;
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && document.getElementById('page-inicio') && document.getElementById('page-inicio').classList.contains('active')) { try { render(); } catch (e) {} } });
+  try { console.log('%c[EP Desktop v1.8.297] Inicio: tablero Hoy · Semana · Gestión · kill: __INICIO_OFF', 'color:#3fb950'); } catch (e) {}
 })();
 </script>
 
