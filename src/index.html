@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.292';
+window.E5M_HTML_BUILD = '1.8.293';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -7991,6 +7991,7 @@ function pullFromRailwayDesktop(thenPush) {
       try { if (remote && remote._versions) localStorage.setItem('e5m_table_versions', JSON.stringify(remote._versions)); } catch(eV){} // v1.8.115 SYNC V2
       try { if (window.e5mMapasDesdePull) window.e5mMapasDesdePull(remote); } catch (eMp) {} /* v1.8.216: mapas del servidor */
       try { if (remote && Array.isArray(remote.menu_hidden) && window.e5mMenuDesdePull) window.e5mMenuDesdePull(remote.menu_hidden); } catch (eMn) {} /* v1.8.291: menú del Escritorio por cliente (superadmin) */
+      try { if (remote && typeof remote.puede_anular === 'boolean' && window.e5mPuedeAnularDesdePull) window.e5mPuedeAnularDesdePull(remote.puede_anular); } catch (ePA) {} /* v1.8.293 */
       try { if (remote && remote.tc_bcb && remote.tc_bcb.valor) { localStorage.setItem('e5m_tc_bcb', JSON.stringify(remote.tc_bcb)); if (typeof window.tcBcbRender === 'function') window.tcBcbRender(); } } catch(eTc){} /* v1.8.151: TC oficial BCB servido por server v4.42 */
       try { if (remote && remote.animal_costos && typeof remote.animal_costos === 'object') { localStorage.setItem('e5m_animal_costos', JSON.stringify(remote.animal_costos)); } } catch(eAC){} /* v1.8.197: costo por cabeza (server v4.58.1) */
       try { if (remote && remote.animal_ficha && typeof remote.animal_ficha === 'object') { localStorage.setItem('e5m_animal_ficha', JSON.stringify(remote.animal_ficha)); } } catch(eAF){} /* v1.8.270: ficha por animal (server v4.120.0) */
@@ -8333,6 +8334,7 @@ function pullFromRailwayDesktop(thenPush) {
         if (typeof renderTareas === 'function') renderTareas();
       }
 
+      try { if (window.e5mSepararAnulados) window.e5mSepararAnulados(); } catch (eAn) {} /* v1.8.293: los registros anulados salen de las tablas vivas */
       localStorage.setItem(DB_KEY, JSON.stringify(db));
       if (typeof renderBajasDesktop === 'function') try { renderBajasDesktop(); } catch(e){}
       if (typeof renderActividades === 'function') try { renderActividades(); } catch(e){}
@@ -63102,6 +63104,155 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
   function boot() { if (!document.querySelector('.nav-sec[data-sec]')) return setTimeout(boot, 500); aplicar(); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
   try { console.log('%c[EP Desktop v1.8.291] Menú por cliente desde el superadmin · kill: __MENU_TENANT_OFF', 'color:#3fb950'); } catch (e) {}
+})();
+</script>
+
+
+<script id="anular-v18293">
+/* ═══ v1.8.293 — ANULAR EN VEZ DE BORRAR (decisión José 30-10-2026; server 4.129.0)
+   Curaciones, sal, alimento, combustible, aceite, mantenimiento, lluvias, conteos, agua, pesajes y adelantos
+   ya no se borran: se ANULAN. El server marca el registro (anulado: {at, by, motivo, revertido}), devuelve el
+   stock, recalcula el tanque y quita la atribución por animal; acá el registro sale de las tablas vivas
+   (db._anulados) para que ningún cálculo lo cuente, y queda visible en «Anulados» con todo lo revertido.
+   Permiso: acción «Anular registros» de la matriz (el Escritorio del dueño siempre puede). Kill: __ANULAR_OFF ═══ */
+(function () {
+  'use strict';
+  if (window.__ANULAR_OFF) return;
+  var TABLAS = { treatments: 'Curación', sal: 'Consumo de sal', alimento: 'Consumo de alimento', diesel: 'Movimiento de combustible', aceite: 'Aceite', maintenance: 'Mantenimiento', lluvias: 'Lluvia', conteo: 'Conteo', agua: 'Agua', pesajes: 'Pesaje', advances: 'Adelanto' };
+  var RENDER = { treatments: 'renderSanidad', sal: null, alimento: null, conteo: null, agua: null, diesel: 'renderDieselDesktop', aceite: 'renderAceite', maintenance: 'renderMantenimiento', lluvias: 'renderLluviasDesktop', pesajes: 'renderPesajes', advances: 'renderPersonal' };
+  var css = document.createElement('style');
+  css.textContent =
+    '.anl-modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:9999}.anl-modal.on{display:flex}' +
+    '.anl-box{background:var(--sur);border:1px solid var(--bor);border-radius:14px;width:min(560px,92vw);padding:18px 20px;box-shadow:0 20px 60px rgba(0,0,0,.4);animation:anlIn .18s ease both}' +
+    '@keyframes anlIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}' +
+    '.anl-box h3{margin:0 0 6px;font-size:16px}.anl-box .s{font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5}' +
+    '.anl-box textarea{width:100%;min-height:70px;background:var(--sur2);color:var(--text);border:1px solid var(--bor);border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;resize:vertical}' +
+    '.anl-box .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}' +
+    '.anl-ef{background:rgba(63,185,80,.07);border:1px solid rgba(63,185,80,.25);border-radius:8px;padding:8px 12px;font-size:12px;line-height:1.55;margin-top:10px}' +
+    '.anl-sec{border:1px solid var(--bor);border-radius:12px;margin-top:14px;overflow:hidden;background:var(--sur)}' +
+    '.anl-sec>.h{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;user-select:none;font-size:12.5px;font-weight:600}.anl-sec>.h .ch{color:var(--muted);font-size:11px;transition:transform .2s ease}.anl-sec.open>.h .ch{transform:rotate(90deg)}' +
+    '.anl-sec>.b{display:grid;grid-template-rows:0fr;transition:grid-template-rows .25s ease}.anl-sec.open>.b{grid-template-rows:1fr}.anl-sec>.b>div{overflow:hidden;min-height:0}' +
+    '.anl-vp{max-height:240px;overflow:auto;overscroll-behavior:contain}' +
+    '.anl-row{display:grid;grid-template-columns:90px 1fr auto;gap:12px;padding:8px 14px;font-size:12px;border-top:1px solid rgba(127,127,127,.08);align-items:start}.anl-row:nth-child(even){background:rgba(127,127,127,.04)}' +
+    '.anl-row .r{color:var(--muted);font-size:11px;line-height:1.5}.anl-row .m{font-family:DM Mono,monospace;font-size:11px;color:var(--muted);white-space:nowrap}' +
+    '.anl-pill{display:inline-block;font-size:10px;padding:2px 8px;border-radius:999px;background:rgba(248,81,73,.12);color:var(--red);font-family:DM Mono,monospace;font-weight:600}' +
+    '@media(prefers-reduced-motion:reduce){.anl-box,.anl-sec>.h .ch,.anl-sec>.b{animation:none;transition:none}}';
+  document.head.appendChild(css);
+  function esc(x) { return String(x == null ? '' : x).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function fechaDe(r) { return String(r.applied_at || r.date || r.fecha || r.fecha_pago || r.created_at || '').slice(0, 10); }
+  function descDe(t, r) {
+    if (t === 'treatments') return (r.product_name || '') + ' · ' + (r.dose || '') + ' × ' + (r.count || '') + (r.lot_code ? ' · ' + r.lot_code : r.animal_id ? ' · #' + r.animal_id : '');
+    if (t === 'sal' || t === 'alimento') return (r.product_name || r.tipo || t) + ' · ' + (r.qty || 0) + ' kg' + (r.lot_code ? ' · ' + r.lot_code : '');
+    if (t === 'diesel') return (r.type || '') + ' ' + (r.litros || 0) + ' L' + (r.maquina || r.equipo ? ' · ' + (r.maquina || r.equipo) : '');
+    if (t === 'conteo') return (r.lot_code || '') + ' · contados ' + (r.counted != null ? r.counted : '');
+    if (t === 'lluvias') return (r.mm || 0) + ' mm' + (r.pluviometro || r.lugar ? ' · ' + (r.pluviometro || r.lugar) : '');
+    if (t === 'pesajes') return (r.lot_code || '') + ' · ' + (r.avg_weight || r.peso || '') + ' kg';
+    if (t === 'advances') return (r.employee_name || r.nombre || '') + ' · Bs ' + (r.amount || 0);
+    return r.desc || r.description || r.obs || r.lot_code || '';
+  }
+  /* ── separar anulados de las tablas vivas ── */
+  function separar() {
+    if (typeof db === 'undefined' || !db) return 0;
+    db._anulados = db._anulados || {}; var n = 0;
+    Object.keys(TABLAS).forEach(function (t) {
+      var arr = db[t]; if (!Array.isArray(arr)) return;
+      var vivos = [], idx = {}; (db._anulados[t] || []).forEach(function (r, i) { idx[String(r.id)] = i; });
+      arr.forEach(function (r) {
+        if (r && r.anulado) { var k = String(r.id); if (idx[k] != null) db._anulados[t][idx[k]] = r; else { db._anulados[t] = db._anulados[t] || []; idx[k] = db._anulados[t].length; db._anulados[t].push(r); } n++; }
+        else vivos.push(r);
+      });
+      if (n) db[t] = vivos;
+    });
+    return n;
+  }
+  window.e5mSepararAnulados = separar;
+  function puede() { try { return localStorage.getItem('e5m_puede_anular') !== '0'; } catch (e) { return true; } }
+  window.e5mPuedeAnularDesdePull = function (v) { try { localStorage.setItem('e5m_puede_anular', v === false ? '0' : '1'); } catch (e) {} };
+
+  /* ── modal ── */
+  var pend = null;
+  function modal() {
+    var m = document.getElementById('anl-modal');
+    if (!m) { m = document.createElement('div'); m.id = 'anl-modal'; m.className = 'anl-modal'; m.innerHTML = '<div class="anl-box"><h3 id="anl-t"></h3><div class="s" id="anl-s"></div><textarea id="anl-motivo" placeholder="Motivo de la anulación (obligatorio) — ej.: se aplicó a todo el lote por error, 6 testigos sin aplicar"></textarea><div id="anl-ef" class="anl-ef" style="display:none"></div><div class="acts"><button class="btn" onclick="anlCerrar()">Cancelar</button><button class="btn btn-primary" id="anl-ok" onclick="anlConfirmar()">Anular y revertir</button></div></div>'; document.body.appendChild(m); m.addEventListener('click', function (e) { if (e.target === m) anlCerrar(); }); }
+    return m;
+  }
+  window.anlCerrar = function () { var m = document.getElementById('anl-modal'); if (m) m.classList.remove('on'); pend = null; };
+  window.e5mAnular = function (table, id) {
+    if (!TABLAS[table]) { if (typeof toast === 'function') toast('Esta tabla no se puede anular todavía', 'error'); return; }
+    if (!puede()) { if (typeof toast === 'function') toast('No tenés permiso para anular registros (lo habilita el administrador en Permisos)', 'error'); return; }
+    if (!navigator.onLine) { if (typeof toast === 'function') toast('Anular necesita conexión: el servidor revierte el stock y deja constancia', 'error'); return; }
+    var rec = (db[table] || []).find(function (r) { return r && String(r.id) === String(id); });
+    if (!rec) { if (typeof toast === 'function') toast('Registro no encontrado', 'error'); return; }
+    pend = { table: table, id: id, rec: rec };
+    var m = modal();
+    document.getElementById('anl-t').textContent = 'Anular ' + TABLAS[table].toLowerCase();
+    document.getElementById('anl-s').innerHTML = '<b>' + esc(fechaDe(rec)) + ' · ' + esc(descDe(table, rec)) + '</b><br>El registro no se borra: queda marcado como anulado, con tu motivo y el detalle de todo lo que se revierte (stock devuelto, animales, tanque). ' + (table === 'treatments' || table === 'sal' || table === 'alimento' ? 'El producto vuelve al stock y se quita de la ficha de cada animal.' : table === 'diesel' ? 'Se recalcula el nivel del tanque.' : 'Deja de contarse en reportes.');
+    var ef = document.getElementById('anl-ef'); ef.style.display = 'none'; ef.innerHTML = '';
+    document.getElementById('anl-motivo').value = ''; document.getElementById('anl-ok').disabled = false; document.getElementById('anl-ok').textContent = 'Anular y revertir';
+    m.classList.add('on'); setTimeout(function () { document.getElementById('anl-motivo').focus(); }, 50);
+  };
+  window.anlConfirmar = function () {
+    if (!pend) return;
+    var motivo = String(document.getElementById('anl-motivo').value || '').trim();
+    if (motivo.length < 4) { if (typeof toast === 'function') toast('Escribí el motivo', 'error'); return; }
+    var ok = document.getElementById('anl-ok'); ok.disabled = true; ok.textContent = 'Anulando…';
+    var P = pend, apiUrl = (typeof getApiUrl === 'function') ? getApiUrl() : (localStorage.getItem('e5m_api_url') || ''), token = localStorage.getItem('e5m_api_token') || '';
+    fetch(apiUrl + '/anular', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token, 'X-App-Type': 'desktop', 'X-App-Version': (typeof _APP_VERSION !== 'undefined' ? _APP_VERSION : '') }, body: JSON.stringify({ table: P.table, id: P.id, motivo: motivo, by: (typeof _desktopAuthor === 'function' ? _desktopAuthor() : 'Escritorio') }) })
+      .then(function (r) { return r.json().then(function (j) { return { st: r.status, j: j }; }); })
+      .then(function (res) {
+        var j = res.j || {};
+        if (res.st !== 200 || !j.ok) { ok.disabled = false; ok.textContent = 'Anular y revertir'; if (typeof toast === 'function') toast(j.error || 'No se pudo anular', 'error'); if (res.st === 403) { try { localStorage.setItem('e5m_puede_anular', '0'); } catch (e) {} } return; }
+        var rec = (db[P.table] || []).find(function (r) { return r && String(r.id) === String(P.id); });
+        if (rec) { rec.anulado = j.anulado; rec.updated_at = j.anulado.at; }
+        /* efectos locales: stock del producto como lo dejó el server */
+        var R = j.efectos || {};
+        (R.stock || []).forEach(function (sE) { if (sE.product_id == null) return; var p = (db.products || []).find(function (x) { return x && String(x.id) === String(sE.product_id); }); if (p && sE.despues != null) { p.stock_qty = sE.despues; p.stock_updated_at = j.anulado.at; } });
+        separar();
+        try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch (e) {}
+        try { if (typeof auditLog === 'function') auditLog('anular', P.table, P.id, TABLAS[P.table] + ' anulada: ' + motivo + ' · ' + (R.resumen || []).join(' · ')); } catch (e) {}
+        var ef = document.getElementById('anl-ef'); ef.style.display = ''; ef.innerHTML = '<b>✓ Anulado.</b> Revertido:<br>' + (R.resumen || []).map(function (x) { return '• ' + esc(x); }).join('<br>');
+        ok.style.display = 'none';
+        try { var fn = RENDER[P.table]; if (fn && typeof window[fn] === 'function') window[fn](); else if (typeof renderSubmodule === 'function') renderSubmodule(P.table); } catch (e) {}
+        try { if (P.table === 'treatments' && typeof renderStock === 'function') renderStock(); if (P.table === 'diesel' && typeof recalcTankLevel === 'function') recalcTankLevel(); if ((P.table === 'sal' || P.table === 'alimento') && typeof renderStock === 'function') renderStock(); } catch (e) {}
+        if (typeof toast === 'function') toast(TABLAS[P.table] + ' anulada — ' + ((R.resumen || [])[0] || 'queda constancia'), 'success');
+        setTimeout(function () { anlCerrar(); var okb = document.getElementById('anl-ok'); if (okb) okb.style.display = ''; }, 2600);
+      })
+      .catch(function () { ok.disabled = false; ok.textContent = 'Anular y revertir'; if (typeof toast === 'function') toast('Error de conexión', 'error'); });
+  };
+
+  /* ── borrar → anular (las funciones originales quedan como __borrarOriginal por si hiciera falta) ── */
+  function redirigir(nombre, tabla, idArg) {
+    var o = window[nombre]; if (typeof o !== 'function' || o.__anl) return;
+    var w = function () { var id = arguments[idArg || 0]; var t = typeof tabla === 'function' ? tabla.apply(null, arguments) : tabla; if (!t) return o.apply(this, arguments); return window.e5mAnular(t, id); };
+    w.__anl = true; w.__borrarOriginal = o; window[nombre] = w;
+  }
+  redirigir('deleteTreatment', 'treatments');
+  redirigir('deleteSubmodule', function (id, type) { return TABLAS[type] ? type : null; });
+  redirigir('deleteDiesel', function (id) { var r = (db.diesel || []).find(function (x) { return x && String(x.id) === String(id); }); return (r && r.type === 'traspaso') ? null : 'diesel'; });
+  redirigir('deleteAceite', 'aceite'); redirigir('deleteLluvia', 'lluvias'); redirigir('deleteMaint', 'maintenance'); redirigir('deletePesaje', 'pesajes'); redirigir('deleteAdvance', 'advances');
+
+  /* ── «Anulados» en Sanidad ── */
+  function listaHtml(t) {
+    var arr = ((db._anulados || {})[t] || []).slice().sort(function (a, b) { return String(b.anulado.at).localeCompare(String(a.anulado.at)); });
+    if (!arr.length) return '';
+    return '<div class="anl-sec" id="anl-sec-' + t + '"><div class="h" onclick="this.parentNode.classList.toggle(\'open\')"><span class="ch">▶</span><span style="flex:1">Anulados · ' + arr.length + '</span><span class="anl-pill">no cuentan en stock ni reportes</span></div><div class="b"><div><div class="anl-vp">' +
+      arr.map(function (r) { var A = r.anulado || {}, R = A.revertido || {}; return '<div class="anl-row"><div class="m">' + esc(fechaDe(r)) + '</div><div><div>' + esc(descDe(t, r)) + '</div><div class="r">Anulado por <b>' + esc(A.by || '') + '</b> el ' + esc(String(A.at || '').slice(0, 16).replace('T', ' ')) + ' · motivo: ' + esc(A.motivo || '') + (R.resumen && R.resumen.length ? '<br>Revertido: ' + R.resumen.map(esc).join(' · ') : '') + '</div></div><div class="m">#' + esc(r.id) + '</div></div>'; }).join('') + '</div></div></div></div>';
+  }
+  function pintarSanidad() {
+    var tb = document.getElementById('treatments-tbody'); if (!tb) return;
+    var card = tb.closest('.card') || tb.closest('table').parentNode;
+    var old = document.getElementById('anl-sec-treatments'); var abierto = old && old.classList.contains('open'); if (old) old.remove();
+    var html = listaHtml('treatments'); if (!html) return;
+    var d = document.createElement('div'); d.innerHTML = html; var el = d.firstChild; if (abierto) el.classList.add('open');
+    card.parentNode.insertBefore(el, card.nextSibling);
+  }
+  var oRS = window.renderSanidad;
+  if (typeof oRS === 'function' && !oRS.__anl) { var wRS = function () { try { if (separar()) localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch (e0) {} var r = oRS.apply(this, arguments); try { pintarSanidad(); } catch (e) { console.warn('[anular]', e); } return r; }; wRS.__anl = true; window.renderSanidad = wRS; }
+  window.e5mAnuladosHtml = listaHtml;
+  /* al arrancar: separar lo que ya venga marcado */
+  function boot() { if (typeof db === 'undefined' || !db || !db.lots) return setTimeout(boot, 600); try { if (separar()) localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch (e) {} }
+  setTimeout(boot, 1200);
+  try { console.log('%c[EP Desktop v1.8.293] Anular en vez de borrar (server 4.129) · kill: __ANULAR_OFF', 'color:#3fb950'); } catch (e) {}
 })();
 </script>
 
