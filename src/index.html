@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.299';
+window.E5M_HTML_BUILD = '1.8.300';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -63553,11 +63553,12 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
     /* conteos: diferencia y lotes sin conteo 30 días */
     var ultConteo = {}; (db.conteo || []).forEach(function (c) { if (!c) return; var k = c.lot_code; if (!ultConteo[k] || f10(c.date) > f10(ultConteo[k].date)) ultConteo[k] = c; });
     D.conteoDif = lots.filter(function (l) { var c = ultConteo[l.code]; return c && en(c.date, d14, hoy) && Number(c.diff) && Number(c.diff) !== 0; }).map(function (l) { return { lote: l.code, diff: Number(ultConteo[l.code].diff), fecha: f10(ultConteo[l.code].date) }; });
+    D.lotesConAnimales = lots.filter(function (l) { return l && l.animal_count > 0; }).length;
     D.sinConteo = lots.filter(function (l) { var c = ultConteo[l.code]; return l.animal_count > 0 && (!c || f10(c.date) < d30); });
     /* quién reporta */
     var porPersona = {};
     [['treatments', 'applied_at'], ['conteo', 'date'], ['bajas', 'fecha'], ['lluvias', 'fecha'], ['sal', 'date'], ['agua', 'date'], ['pesajes', 'date'], ['maintenance', 'date'], ['diesel', 'date']].forEach(function (td) {
-      (db[td[0]] || []).forEach(function (r) { if (!r) return; var by = String(r.by || r._author || '').trim(); if (!by || /desktop|escritorio/i.test(by)) return; var f = f10(r[td[1]] || r.fecha || r.date || r.created_at); if (!f) return; var P = porPersona[by] || (porPersona[by] = { n48: 0, ult: '' }); if (f >= d2) P.n48++; if (f > P.ult) P.ult = f; });
+      (db[td[0]] || []).forEach(function (r) { if (!r) return; var _b = r.by || r._author || ''; if (_b && typeof _b === 'object') _b = _b.name || _b.nombre || _b.user || _b.phone || _b.telefono || ''; var by = String(_b).trim(); /* v1.8.300: «by» objeto → [object Object] */ if (!by || /desktop|escritorio/i.test(by)) return; var f = f10(r[td[1]] || r.fecha || r.date || r.created_at); if (!f) return; var P = porPersona[by] || (porPersona[by] = { n48: 0, ult: '' }); if (f >= d2) P.n48++; if (f > P.ult) P.ult = f; });
     });
     D.reportan = Object.keys(porPersona).map(function (k) { return { quien: k, n48: porPersona[k].n48, ult: porPersona[k].ult, dias: diasDesde(porPersona[k].ult) }; }).sort(function (a, b) { return b.n48 - a.n48; });
     D.callados = D.reportan.filter(function (p) { return p.dias != null && p.dias >= 3 && p.dias <= 60; });
@@ -63610,12 +63611,14 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
     var hoyC = [];
     var crit = D.alertas.filter(function (a) { return a.severity === 'critical'; }).length;
     if (D.stockBajo.length || D.vencidos.length) hoyC.push(card(crit ? 'red' : 'amb', 'stock', 'Stock', 'Stock veterinario', D.stockBajo.length, (D.stockBajo.length === 1 ? 'producto bajo' : 'productos bajos') + (D.vencidos.length ? ' · ' + D.vencidos.length + ' por vencer' : ''), D.stockBajo.slice(0, 3).map(function (p) { return esc(p.name) + ' ' + N(p.stock_qty) + ' ' + esc(p.unit || ''); }).join(' · ') + (D.vencidos.length ? '<br>' + D.vencidos.slice(0, 2).map(function (p) { return esc(p.name) + ' vence ' + esc(p.expiry_date); }).join(' · ') : '')));
-    if (D.tanques.length) hoyC.push(card('red', 'diesel', 'Combustible', 'Tanque bajo', D.tanques.map(function (t) { return N((Number(t.current_level) || 0) / t.capacity * 100, 0) + '%'; }).join(' · '), '', D.tanques.map(function (t) { return esc(t.name) + ': ' + N(t.current_level) + ' de ' + N(t.capacity) + ' L'; }).join('<br>')));
+    /* v1.8.300: con muchos tanques la tarjeta se desbordaba (lista de % gigante). Ahora: cuántos, y los 4 más bajos */
+    if (D.tanques.length) { var _tq = D.tanques.slice().sort(function (a, b) { return (Number(a.current_level) || 0) / a.capacity - (Number(b.current_level) || 0) / b.capacity; });
+      hoyC.push(card('red', 'diesel', 'Combustible', 'Tanque bajo', _tq.length === 1 ? N((Number(_tq[0].current_level) || 0) / _tq[0].capacity * 100, 0) + '%' : _tq.length, _tq.length === 1 ? esc(_tq[0].name) : 'tanques bajo 20 %', _tq.slice(0, 4).map(function (t) { return esc(t.name) + ': ' + N(t.current_level) + ' de ' + N(t.capacity) + ' L'; }).join('<br>') + (_tq.length > 4 ? '<br>y ' + (_tq.length - 4) + ' más' : ''))); }
     if (D.tareasVencidas.length || D.tareasHoy.length) hoyC.push(card(D.tareasVencidas.length ? 'red' : 'amb', 'tareas', 'Tareas', 'Tareas', (D.tareasVencidas.length || D.tareasHoy.length), D.tareasVencidas.length ? 'vencidas' : 'para hoy', (D.tareasVencidas.length && D.tareasHoy.length ? D.tareasHoy.length + ' más para hoy · ' : '') + (D.tareasVencidas[0] ? esc(D.tareasVencidas[0].title || D.tareasVencidas[0].desc || '') : esc((D.tareasHoy[0] || {}).title || ''))));
     if (D.dosisHoy.length) hoyC.push(card('amb', 'sanidad', 'Sanidad', 'Dosis pendientes', D.dosisHoy.length, 'aplicaciones', D.dosisHoy.slice(0, 3).map(function (t) { return esc(t.product_name) + ' · ' + esc(t.lot_code || ('#' + t.animal_id)) + ' · ' + esc(f10(t.next_app)); }).join('<br>')));
     if (D.muertesSem.length) hoyC.push(card('red', 'lotes', 'Lotes', 'Muertes esta semana', D.muertesSem.length, 'cab', D.muertesSem.slice(0, 3).map(function (b) { return esc(f10(b.fecha)) + ' · ' + esc(b.lot_code || b.lote || '') + ' · ' + esc(b.causa || b.motivo || ''); }).join('<br>')));
     if (D.conteoDif.length) hoyC.push(card('amb', 'lotes', 'Lotes', 'Conteos con diferencia', D.conteoDif.length, 'lotes', D.conteoDif.slice(0, 3).map(function (c) { return esc(c.lote) + ' ' + (c.diff > 0 ? '+' : '') + c.diff + ' cab (' + esc(c.fecha) + ')'; }).join('<br>')));
-    if (D.sinConteo.length) hoyC.push(card('amb', 'lotes', 'Lotes', 'Lotes sin conteo (30 días)', D.sinConteo.length, 'de ' + (db.lots || []).filter(function (l) { return l && l.animal_count > 0 && (!l.status || l.status === 'activo'); }).length, 'CREA: el inventario define el ranking. ' + D.sinConteo.slice(0, 4).map(function (l) { return esc(l.code); }).join(', ')));
+    if (D.sinConteo.length) hoyC.push(card('amb', 'lotes', 'Lotes', 'Lotes sin conteo (30 días)', D.sinConteo.length, 'de ' + D.lotesConAnimales + ' lotes con animales', /* v1.8.300: el total salía «de 0» */ 'CREA: el inventario define el ranking. ' + D.sinConteo.slice(0, 4).map(function (l) { return esc(l.code); }).join(', ')));
     if (D.callados.length) hoyC.push(card('amb', 'actividades', 'Actividades', 'Sin reportar', D.callados.length, D.callados.length === 1 ? 'persona' : 'personas', D.callados.slice(0, 3).map(function (p) { return esc(p.quien) + ' · ' + p.dias + ' días'; }).join('<br>')));
     if (D.anuladosSem) hoyC.push(card('blu', 'sanidad', 'Sanidad', 'Anulaciones', D.anuladosSem, 'esta semana', 'Registros anulados con constancia (ver «Anulados» en cada pantalla)'));
     h += '<div class="in-sec"><div class="in-h">Hoy <span>· ' + (hoyC.length ? 'lo que no puede esperar' : 'nada urgente') + '</span></div>' + (hoyC.length ? '<div class="in-grid">' + hoyC.join('') + '</div>' : '<div class="in-empty">✓ Sin alertas, tareas vencidas, dosis pendientes ni diferencias de conteo. ' + (D.reportan.length ? 'Reportaron en 48 h: ' + D.reportan.filter(function (p) { return p.n48; }).map(function (p) { return esc(p.quien) + ' (' + p.n48 + ')'; }).join(', ') : '') + '</div>') + '</div>';
