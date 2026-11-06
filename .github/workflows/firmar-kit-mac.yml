@@ -35,14 +35,35 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         run: |
           KC="$RUNNER_TEMP/firma.keychain-db"; KP="$(uuidgen)"
-          echo "$CSC_LINK" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          P12="$RUNNER_TEMP/cert.p12"
+          # CSC_LINK como lo acepta electron-builder: base64 (con o sin prefijo data:/saltos de línea), URL https o ruta
+          python3 - "$P12" <<'PY'
+          import base64, os, re, sys, urllib.request
+          v = os.environ['CSC_LINK'].strip()
+          if v.startswith('http'):
+              data = urllib.request.urlopen(v).read()
+          elif os.path.isfile(os.path.expanduser(v)):
+              data = open(os.path.expanduser(v), 'rb').read()
+          else:
+              v = re.sub(r'^data:[^,]*,', '', v); v = re.sub(r'\s+', '', v)
+              data = base64.b64decode(v + '=' * (-len(v) % 4))
+          open(sys.argv[1], 'wb').write(data); print('p12:', len(data), 'bytes')
+          PY
           security create-keychain -p "$KP" "$KC"
           security set-keychain-settings -lut 3600 "$KC"
           security unlock-keychain -p "$KP" "$KC"
-          security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign
+          if ! security import "$P12" -k "$KC" -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign; then
+            # .p12 con cifrado moderno (OpenSSL 3 / AES): macOS no lo lee → re-exportar en formato legacy
+            echo "Reintentando con .p12 re-exportado en formato legacy"
+            O3=$(brew --prefix openssl@3)/bin/openssl
+            "$O3" pkcs12 -in "$P12" -passin env:CSC_KEY_PASSWORD -nodes -out "$RUNNER_TEMP/c.pem"
+            "$O3" pkcs12 -export -legacy -in "$RUNNER_TEMP/c.pem" -passout env:CSC_KEY_PASSWORD -out "$P12"
+            rm -f "$RUNNER_TEMP/c.pem"
+            security import "$P12" -k "$KC" -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign
+          fi
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KP" "$KC" >/dev/null
           security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
-          rm -f "$RUNNER_TEMP/cert.p12"
+          rm -f "$P12"
           ID=$(security find-identity -v -p codesigning "$KC" | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)"/\1/')
           [ -n "$ID" ] || { echo "No hay Developer ID Application en el certificado"; exit 1; }
           echo "IDENT=$ID" >> "$GITHUB_ENV"; echo "Firmando como: $ID"
