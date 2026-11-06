@@ -1,0 +1,132 @@
+name: Firmar kit Mac (Developer ID + notarización)
+# Envuelve un kit de scripts (zip subido a un release BORRADOR, privado) en una .app con lanzador nativo,
+# la firma con el mismo Developer ID que Estancia Pro, arma un .dmg firmado, lo notariza y lo grapa.
+# El resultado se sube al mismo release borrador. Nada del kit queda en el repo (es público).
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag del release BORRADOR que tiene el .zip del kit'
+        required: true
+      nombre:
+        description: 'Nombre de la app (ej. SL Live Installer)'
+        required: true
+      instalador:
+        description: 'Script del kit a ejecutar, relativo a la carpeta del kit (ej. install_on_mac.sh)'
+        required: true
+        default: install_on_mac.sh
+      bundle_id:
+        description: 'Bundle id'
+        required: true
+        default: com.sgbolivia.kit-installer
+jobs:
+  firmar:
+    runs-on: macos-latest
+    env:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      TAG: ${{ inputs.tag }}
+      NOMBRE: ${{ inputs.nombre }}
+      INSTALADOR: ${{ inputs.instalador }}
+      BUNDLE_ID: ${{ inputs.bundle_id }}
+    steps:
+      - name: Certificado en llavero temporal
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          KC="$RUNNER_TEMP/firma.keychain-db"; KP="$(uuidgen)"
+          echo "$CSC_LINK" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KP" "$KC"
+          security set-keychain-settings -lut 3600 "$KC"
+          security unlock-keychain -p "$KP" "$KC"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KP" "$KC" >/dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/cert.p12"
+          ID=$(security find-identity -v -p codesigning "$KC" | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)"/\1/')
+          [ -n "$ID" ] || { echo "No hay Developer ID Application en el certificado"; exit 1; }
+          echo "IDENT=$ID" >> "$GITHUB_ENV"; echo "Firmando como: $ID"
+      - name: Bajar el kit del release borrador
+        run: |
+          mkdir -p kit-in && cd kit-in
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p '*.zip'
+          ditto -x -k *.zip . && rm -f *.zip && rm -rf __MACOSX
+          KIT=$(find . -maxdepth 2 -name "$INSTALADOR" -type f | head -1)
+          [ -n "$KIT" ] || { echo "No encuentro $INSTALADOR en el zip"; exit 1; }
+          echo "KITDIR=$PWD/$(dirname "$KIT")" >> "$GITHUB_ENV"
+      - name: Armar la .app (lanzador nativo que abre Terminal con el instalador)
+        run: |
+          APP="$RUNNER_TEMP/out/$NOMBRE.app"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          ditto "$KITDIR" "$APP/Contents/Resources/kit"
+          find "$APP/Contents/Resources/kit" -name '._*' -delete; xattr -cr "$APP"
+          cat > "$RUNNER_TEMP/launcher.c" <<'C'
+          #include <mach-o/dyld.h>
+          #include <libgen.h>
+          #include <limits.h>
+          #include <stdio.h>
+          #include <stdlib.h>
+          #include <string.h>
+          #include <unistd.h>
+          int main(void) {
+            char exe[PATH_MAX], real[PATH_MAX], script[PATH_MAX]; uint32_t n = sizeof(exe);
+            if (_NSGetExecutablePath(exe, &n) != 0 || !realpath(exe, real)) return 1;
+            char *mac = dirname(real);                                   /* .../Contents/MacOS */
+            snprintf(script, sizeof(script), "%s/../Resources/kit/%s", mac, INSTALADOR);
+            char *args[] = { "/usr/bin/osascript",
+              "-e", "on run argv",
+              "-e", "set p to item 1 of argv",
+              "-e", "tell application \"Terminal\"",
+              "-e", "activate",
+              "-e", "do script \"bash \" & quoted form of p & \"; echo; read -r -p 'Listo. Presioná Return para cerrar…' _\"",
+              "-e", "end tell",
+              "-e", "end run", script, NULL };
+            execv(args[0], args); return 1;
+          }
+          C
+          clang -O2 -arch arm64 -arch x86_64 -mmacosx-version-min=11.0 -DINSTALADOR="\"$INSTALADOR\"" -o "$APP/Contents/MacOS/launcher" "$RUNNER_TEMP/launcher.c"
+          VER=$(echo "$TAG" | grep -oE '[0-9]+(\.[0-9]+)+' | head -1); VER=${VER:-1.0.0}
+          cat > "$APP/Contents/Info.plist" <<P
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>CFBundleName</key><string>$NOMBRE</string>
+            <key>CFBundleDisplayName</key><string>$NOMBRE</string>
+            <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
+            <key>CFBundleVersion</key><string>$VER</string>
+            <key>CFBundleShortVersionString</key><string>$VER</string>
+            <key>CFBundleExecutable</key><string>launcher</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>LSMinimumSystemVersion</key><string>11.0</string>
+            <key>NSAppleEventsUsageDescription</key><string>Abre Terminal para correr el instalador.</string>
+          </dict></plist>
+          P
+          cat > "$RUNNER_TEMP/ent.plist" <<'E'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict><key>com.apple.security.automation.apple-events</key><true/></dict></plist>
+          E
+          echo "APP=$APP" >> "$GITHUB_ENV"; echo "VER=$VER" >> "$GITHUB_ENV"
+      - name: Firmar .app y .dmg
+        run: |
+          codesign --force --options runtime --timestamp --entitlements "$RUNNER_TEMP/ent.plist" -s "$IDENT" "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          SAFE=$(echo "$NOMBRE" | tr ' ' '-')
+          DMG="$RUNNER_TEMP/$SAFE-$VER.dmg"
+          hdiutil create -volname "$NOMBRE $VER" -srcfolder "$RUNNER_TEMP/out" -ov -format UDZO "$DMG"
+          codesign --force --timestamp -s "$IDENT" "$DMG"
+          echo "DMG=$DMG" >> "$GITHUB_ENV"
+      - name: Notarizar y grapar
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait --timeout 30m | tee nota.txt
+          grep -q "status: Accepted" nota.txt || { SUB=$(grep -m1 "id:" nota.txt | awk '{print $2}'); xcrun notarytool log "$SUB" --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID"; exit 1; }
+          xcrun stapler staple "$DMG" && xcrun stapler validate "$DMG"
+          spctl -a -t open --context context:primary-signature -v "$DMG"
+      - name: Subir al release borrador
+        run: gh release upload "$TAG" "$DMG" -R "$GITHUB_REPOSITORY" --clobber
+      - name: Limpiar llavero
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/firma.keychain-db" || true
