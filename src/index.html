@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.301';
+window.E5M_HTML_BUILD = '1.8.302';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -25464,7 +25464,7 @@ function recalcTankLevel() {
     if (r.tank_id != null && r.tank_id !== '' && !tanks.some(function(t){ return t.id === r.tank_id; })) return;
     var tank = getTankById(tanks, r.tank_id);
     if (type === 'recarga') tank.current_level += litros;
-    else if (type === 'ajuste') tank.current_level = parseFloat(r.nivel_fisico) || tank.current_level;
+    else if (type === 'ajuste') { var _nf = parseFloat(r.nivel_fisico); if (!isNaN(_nf)) tank.current_level = _nf; } /* v1.8.302: un ajuste a 0 L también vale (antes se ignoraba) */
     else if (type === 'traspaso') {
       // direction 'out' resta del tank_id, 'in' suma al tank_id
       if (r.direction === 'in') tank.current_level += litros;
@@ -46142,7 +46142,7 @@ document.addEventListener('click', function(ev){
     var litros = parseFloat((agEl('agw-diesel') || {}).value) || 0;
     if (litros > 0 && AGMW.tank && AGMW.tank !== 'none') {
       var nivel = agmNivelTanque(AGMW.tank);
-      if (litros > nivel) { agToast('El tanque tiene ' + fmtA(nivel, 1) + ' L — no alcanza para ' + fmtA(litros, 1) + ' L', 'error'); return; }
+      if (litros > nivel) agToast('⚠ El tanque tiene ' + fmtA(nivel, 1) + ' L y se despachan ' + fmtA(litros, 1) + ' L: queda en negativo hasta la próxima recarga', 'info'); /* v1.8.302: avisa pero no bloquea (regla: el saldo puede quedar negativo) */
     }
     if (litros > 0 && !AGMW.tank) AGMW.tank = 'none'; /* sin elección explícita = surtidor */
     var d = agGetDB();
@@ -47356,6 +47356,206 @@ document.addEventListener('click', function(ev){
   window.__prov = { catalogo: provCatalogo }; /* para tests */
   try { console.log('%c[proveedores v1.8.156] catálogos autoalimentados + sección 📇 Catálogo en Servicios Externos', 'color:#3fb950'); } catch (e) {}
 /*__PROV_END__*/
+
+  /* ═══════════════ v1.8.302 — VARIAS MÁQUINAS POR LABOR (pedido Chaco Lejos, 23-11-2026) ═══════════════
+     Una labor puede llevar, además de la máquina principal (tractor + implemento), máquinas de apoyo
+     (pala cargadora, tolva, camión…), cada una con horómetro inicio–fin u horas, y su diésel con su tanque.
+     · l.hmaq y l.diesel pasan a ser el TOTAL de la labor → costos y reportes existentes no cambian.
+     · l.maq_principal {hmaq, diesel} guarda lo propio de la principal; l.maquinas_extra el detalle del resto.
+     · cada máquina de apoyo con litros de un tanque genera SU despacho (despacho_id en la fila).
+     · horo_ini / horo_fin (principal y apoyo) actualizan el horómetro del equipo en Maquinaria. */
+  var AGX = { seq: 0 };
+  function agxNum(id) { var e = typeof id === 'string' ? agEl(id) : id; if (!e) return null; var v = parseFloat(e.value); return isNaN(v) ? null : v; }
+  function agxR2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+  function agxMaqPorNombre(n) { n = String(n || '').trim(); return ((typeof db !== 'undefined' && db && db.maquinaria) || []).find(function (m) { return m && String(m.nombre || m.name || '').trim() === n; }) || null; }
+  function agxHoroDe(n) { var m = agxMaqPorNombre(n); var h = m ? parseFloat(m.horometro) : NaN; return isNaN(h) ? null : h; }
+  function agxOptsMaq() {
+    var o = '<option value="">— Máquina —</option>';
+    agmMaquinas().forEach(function (m) { var n = String(m.nombre || m.name).trim(); o += '<option value="' + escA(n) + '">' + escA(n) + '</option>'; });
+    return o + '<option value="__otra">Otra…</option>';
+  }
+  function agxOptsImp() {
+    var o = '<option value="">— Sin implemento —</option>';
+    agmImplementos().forEach(function (m) { var n = String(m.nombre || m.name).trim(); o += '<option value="' + escA(n) + '">' + escA(n) + '</option>'; });
+    return o;
+  }
+  function agxOptsTank() {
+    var o = '<option value="">— Tanque —</option>';
+    agmTanquesDiesel().forEach(function (t) { o += '<option value="' + escA(t.id) + '">⛽ ' + escA(t.name || t.id) + ' (' + fmtA(t.current_level || 0, 0) + ' L)</option>'; });
+    return o + '<option value="none">Surtidor (sin tanque)</option>';
+  }
+  function agxHorasAuto(row) {
+    var hi = agxNum(row.querySelector('.agx-hi')), hf = agxNum(row.querySelector('.agx-hf')), hs = row.querySelector('.agx-hs'), av = row.querySelector('.agx-av');
+    if (av) av.textContent = '';
+    if (hi != null && hf != null) {
+      if (hf >= hi) { if (hs) hs.value = agxR2(hf - hi); }
+      else if (av) av.textContent = '⚠ el horómetro final es menor que el inicial';
+    }
+  }
+  function agxMontar() {
+    var notas = agEl('agw-notas'); if (!notas || agEl('agx-wrap')) return;
+    var cont = notas.parentNode;
+    /* horómetro de la máquina principal */
+    var hm = agEl('agw-hmaq'), fr = hm && hm.closest('.frow');
+    if (fr && !agEl('agx-p-hi')) {
+      var hr = document.createElement('div'); hr.className = 'frow agx-prow'; hr.id = 'agx-p';
+      hr.innerHTML = '<div><label class="form-label">Horómetro inicio</label><input class="form-input agx-hi" id="agx-p-hi" type="number" min="0" step="0.1" placeholder="opcional"></div>' +
+        '<div><label class="form-label">Horómetro fin</label><input class="form-input agx-hf" id="agx-p-hf" type="number" min="0" step="0.1" placeholder="opcional"><div class="agx-av" style="font-size:11.5px;color:var(--red)"></div></div>';
+      fr.parentNode.insertBefore(hr, fr.nextSibling);
+      var auto = function () { var a = agxNum('agx-p-hi'), b = agxNum('agx-p-hf'), av = hr.querySelector('.agx-av'); av.textContent = ''; if (a != null && b != null) { if (b >= a) hm.value = agxR2(b - a); else av.textContent = '⚠ el horómetro final es menor que el inicial'; } };
+      agEl('agx-p-hi').addEventListener('input', auto); agEl('agx-p-hf').addEventListener('input', auto);
+      var ms = agEl('agw-maquina');
+      if (ms) ms.addEventListener('change', function () { var h = agxHoroDe(ms.value); var e = agEl('agx-p-hi'); if (e) { e.value = h != null ? h : ''; auto(); } });
+    }
+    var w = document.createElement('div'); w.id = 'agx-wrap'; w.style.cssText = 'margin:12px 0 10px;padding-top:10px;border-top:1px solid var(--bor)';
+    w.innerHTML = '<label class="form-label">Otras máquinas en este trabajo <span style="font-weight:400;color:var(--muted)">— pala cargadora, tolva, camión… cada una con sus horas y su diésel</span></label>' +
+      '<div id="agx-rows"></div><button type="button" class="btn btn-ghost btn-sm" id="agx-add">➕ Agregar máquina</button>';
+    cont.parentNode.insertBefore(w, cont);
+    agEl('agx-add').addEventListener('click', function () { agxAdd(); });
+    if (!document.getElementById('agx-css')) {
+      var st = document.createElement('style'); st.id = 'agx-css';
+      st.textContent = '.agx-row{border:1px solid var(--bor);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:var(--sur2);overflow:hidden;transition:opacity .22s ease,max-height .28s ease,margin .28s ease,padding .28s ease;max-height:420px}' +
+        '.agx-row.agx-in{opacity:0;max-height:0;padding-top:0;padding-bottom:0;margin-bottom:0}' +
+        '.agx-row .g{display:grid;grid-template-columns:1.4fr 1.2fr;gap:8px;margin-bottom:8px}.agx-row .g2{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;align-items:end}' +
+        '.agx-row label{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:3px}' +
+        '.agx-row .agx-x{float:right;border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:14px;margin:-4px -4px 0 0}.agx-row .agx-t{font-size:12px;font-weight:700;margin-bottom:8px}';
+      document.head.appendChild(st);
+    }
+  }
+  function agxAdd(x) {
+    var host = agEl('agx-rows'); if (!host) return null;
+    x = x || {};
+    var row = document.createElement('div'); row.className = 'agx-row agx-in'; row.setAttribute('data-n', ++AGX.seq);
+    row.innerHTML = '<button type="button" class="agx-x" title="Quitar">✕</button><div class="agx-t">🚜 Máquina de apoyo</div>' +
+      '<div class="g"><div><label>Máquina</label><select class="form-input agx-mq">' + agxOptsMaq() + '</select><input class="form-input agx-mqo" placeholder="Nombre de la máquina" style="display:none;margin-top:6px"></div>' +
+      '<div><label>Implemento</label><select class="form-input agx-im">' + agxOptsImp() + '</select></div></div>' +
+      '<div class="g2"><div><label>Horóm. inicio</label><input class="form-input agx-hi" type="number" min="0" step="0.1"></div>' +
+      '<div><label>Horóm. fin</label><input class="form-input agx-hf" type="number" min="0" step="0.1"></div>' +
+      '<div><label>Horas</label><input class="form-input agx-hs" type="number" min="0" step="0.1"></div>' +
+      '<div><label>Diésel (L)</label><input class="form-input agx-dl" type="number" min="0" step="0.1"></div>' +
+      '<div><label>Sale de</label><select class="form-input agx-tk">' + agxOptsTank() + '</select></div></div><div class="agx-av" style="font-size:11.5px;color:var(--red);margin-top:4px"></div>';
+    host.appendChild(row);
+    var mq = row.querySelector('.agx-mq'), mqo = row.querySelector('.agx-mqo');
+    mq.addEventListener('change', function () { mqo.style.display = mq.value === '__otra' ? 'block' : 'none'; var h = agxHoroDe(mq.value); row.querySelector('.agx-hi').value = h != null ? h : ''; agxHorasAuto(row); });
+    row.querySelector('.agx-hi').addEventListener('input', function () { agxHorasAuto(row); });
+    row.querySelector('.agx-hf').addEventListener('input', function () { agxHorasAuto(row); });
+    row.querySelector('.agx-x').addEventListener('click', function () { row.classList.add('agx-in'); setTimeout(function () { if (row.parentNode) row.parentNode.removeChild(row); }, 300); });
+    if (x.maquina) { mq.value = x.maquina; if (mq.value !== x.maquina) { mq.value = '__otra'; mqo.style.display = 'block'; mqo.value = x.maquina; } }
+    if (x.implemento) row.querySelector('.agx-im').value = x.implemento;
+    if (x.horas) row.querySelector('.agx-hs').value = x.horas;
+    if (x.diesel) row.querySelector('.agx-dl').value = x.diesel;
+    if (x.diesel_tank_id != null) row.querySelector('.agx-tk').value = String(x.diesel_tank_id);
+    requestAnimationFrame(function () { requestAnimationFrame(function () { row.classList.remove('agx-in'); }); });
+    return row;
+  }
+  function agxLeer() {
+    var out = [];
+    document.querySelectorAll('#agx-rows .agx-row:not(.agx-in)').forEach(function (row) {
+      var mq = row.querySelector('.agx-mq').value, nombre = mq === '__otra' ? (row.querySelector('.agx-mqo').value || '').trim() : mq;
+      var hi = agxNum(row.querySelector('.agx-hi')), hf = agxNum(row.querySelector('.agx-hf'));
+      var hs = agxNum(row.querySelector('.agx-hs')) || 0, dl = agxNum(row.querySelector('.agx-dl')) || 0, tk = row.querySelector('.agx-tk').value;
+      if (!nombre && !hs && !dl) return; /* fila vacía */
+      var m = agxMaqPorNombre(nombre), imp = row.querySelector('.agx-im').value || '', im = imp ? agxMaqPorNombre(imp) : null;
+      var x = { maquina: nombre || 'Máquina de apoyo', maquina_id: m ? m.id : null, implemento: imp, implemento_id: im ? im.id : null, horas: agxR2(hs), diesel: agxR2(dl) };
+      if (hi != null) x.horo_ini = hi; if (hf != null) x.horo_fin = hf;
+      if (dl > 0) x.diesel_tank_id = (tk && tk !== 'none') ? tk : null;
+      out.push(x);
+    });
+    return out;
+  }
+  function agxReset() {
+    var host = agEl('agx-rows'); if (host) host.innerHTML = '';
+    ['agx-p-hi', 'agx-p-hf'].forEach(function (i) { var e = agEl(i); if (e) e.value = ''; });
+    var d = agGetDB(), lab = AGW.execId ? agById(d.labores, AGW.execId) : null;
+    if (lab && Array.isArray(lab.maquinas_extra)) lab.maquinas_extra.forEach(function (x) { agxAdd({ maquina: x.maquina, implemento: x.implemento, diesel_tank_id: x.diesel_tank_id }); }); /* del plan: qué máquinas; horas y litros se cargan al ejecutar */
+    if (lab && lab.maquina) { var h = agxHoroDe(lab.maquina), e = agEl('agx-p-hi'); if (e && h != null) e.value = h; }
+  }
+  /* horómetro del equipo = el mayor «fin» registrado (también corrige lo que llega de EP Agro) */
+  function agxSyncHorometros(labs) {
+    if (typeof db === 'undefined' || !db || !Array.isArray(db.maquinaria)) return 0;
+    var n = 0, sube = function (id, nombre, fin) {
+      fin = parseFloat(fin); if (isNaN(fin)) return;
+      var m = id != null ? db.maquinaria.find(function (q) { return q && String(q.id) === String(id); }) : null; if (!m && nombre) m = agxMaqPorNombre(nombre);
+      if (m && fin > (parseFloat(m.horometro) || 0)) { m.horometro = fin; m.updated_at = new Date().toISOString(); n++; }
+    };
+    (labs || []).forEach(function (l) {
+      if (!l || l.anulado || l.estado !== 'ejecutada') return;
+      sube(l.maquina_id != null ? l.maquina_id : l.maq_id, l.maquina, l.horo_fin);
+      (l.maquinas_extra || []).forEach(function (x) { sube(x.maquina_id, x.maquina, x.horo_fin); });
+    });
+    if (n) { try { saveDB(); } catch (e) {} try { if (typeof replaceTableInRailway === 'function') replaceTableInRailway('maquinaria', db.maquinaria); } catch (e) {} }
+    return n;
+  }
+  window.agxSyncHorometros = agxSyncHorometros;
+  function agxTxt(x) { return escA(x.maquina) + (x.implemento ? ' + ⚙️ ' + escA(x.implemento) : '') + (x.horas ? ' · ' + fmtA(x.horas, 1) + ' h' : '') + (x.horo_ini != null && x.horo_fin != null ? ' (horóm. ' + fmtA(x.horo_ini, 1) + ' → ' + fmtA(x.horo_fin, 1) + ')' : '') + (x.diesel ? ' · ⛽ ' + fmtA(x.diesel, 1) + ' L' : ''); }
+  window.agxResumen = function (l) { return (l && Array.isArray(l.maquinas_extra) && l.maquinas_extra.length) ? l.maquinas_extra.map(agxTxt).join(' · ') : ''; };
+
+  var _agxBuild0 = agwBuildLabor;
+  agwBuildLabor = function (r, pid) {
+    var data = _agxBuild0.apply(this, arguments);
+    var hi = agxNum('agx-p-hi'), hf = agxNum('agx-p-hf');
+    if (hi != null) data.horo_ini = hi; if (hf != null) data.horo_fin = hf;
+    data.maquinas_extra = agxLeer();
+    data._agx_pend = 1; /* marca: el post-proceso de agwFinish la toma una sola vez */
+    return data;
+  };
+  var _agxFinish0 = agwFinish;
+  agwFinish = function () {
+    var d = agGetDB(), antes = d.labores.length, execId = AGW.execId;
+    var filas = agxLeer(), malas = filas.filter(function (x) { return x.horo_ini != null && x.horo_fin != null && x.horo_fin < x.horo_ini; });
+    var pi = agxNum('agx-p-hi'), pf = agxNum('agx-p-hf');
+    if (malas.length || (pi != null && pf != null && pf < pi)) { agToast('Revisá el horómetro: el final no puede ser menor que el inicial', 'error'); return; }
+    _agxFinish0.apply(this, arguments);
+    var ls = d.labores.slice(antes);
+    if (execId != null) { var le = agById(d.labores, execId); if (le && ls.indexOf(le) < 0) ls.unshift(le); }
+    ls = ls.filter(function (l) { return l && l._agx_pend; });
+    if (!ls.length) return;
+    var haT = 0; ls.forEach(function (l) { haT += Number(l.ha) || 0; });
+    var nDesp = 0, lDesp = 0;
+    ls.forEach(function (l) {
+      delete l._agx_pend;
+      var ex = Array.isArray(l.maquinas_extra) ? l.maquinas_extra : [];
+      if (!ex.length) { delete l.maquinas_extra; delete l.maq_principal; return; }
+      var fr = ls.length > 1 ? (haT > 0 ? (Number(l.ha) || 0) / haT : 1 / ls.length) : 1; /* varios lotes: se reparte por ha, igual que la principal */
+      var c = agById(d.campanas, l.campana_id), hsX = 0, dlX = 0;
+      l.maquinas_extra = ex.map(function (x) {
+        var y = Object.assign({}, x); y.horas = agxR2((x.horas || 0) * fr); y.diesel = agxR2((x.diesel || 0) * fr);
+        if (l.estado === 'ejecutada' && y.diesel > 0 && y.diesel_tank_id != null) {
+          var rec = agmCrearDespacho({ tank_id: y.diesel_tank_id, litros: y.diesel, fecha: l.fecha, vehiculo: y.maquina, maq_id: y.maquina_id,
+            obs: 'Labor agro: ' + (LABOR_TIPOS[l.tipo] || l.tipo) + (l.parcela_codigo ? ' · ' + l.parcela_codigo : '') + (c ? ' — ' + (c.cultivo || '') + ' ' + (c.anio || '') : '') + ' (máquina de apoyo)' });
+          if (rec) { y.despacho_id = rec.id; nDesp++; lDesp += y.diesel; }
+        }
+        hsX += y.horas; dlX += y.diesel; return y;
+      });
+      l.maq_principal = { hmaq: Number(l.hmaq) || 0, diesel: Number(l.diesel) || 0 };
+      l.hmaq = agxR2(l.maq_principal.hmaq + hsX); l.diesel = agxR2(l.maq_principal.diesel + dlX);
+      if (dlX > 0 && !(Number(l.diesel_bs) > 0)) { var tk = (l.maquinas_extra.find(function (y) { return y.diesel > 0; }) || {}).diesel_tank_id; try { l.diesel_bs = agmUltRecargaBs(tk != null ? tk : null) || 0; } catch (e) {} }
+      l.updated_at = new Date().toISOString();
+    });
+    agxSyncHorometros(ls);
+    agSaveDB(); try { agRenderAll(); } catch (e) {}
+    var nx = 0; ls.forEach(function (l) { nx += (l.maquinas_extra || []).length; });
+    if (nx) agToast('🚜 ' + nx + ' máquina' + (nx === 1 ? '' : 's') + ' de apoyo sumada' + (nx === 1 ? '' : 's') + ' al costo' + (nDesp ? ' · ⛽ ' + fmtA(lDesp, 1) + ' L despachados' : ''), 'info');
+  };
+  var _agxOpen0 = agwOpen;
+  agwOpen = function () {
+    var r = _agxOpen0.apply(this, arguments);
+    try { agxMontar(); agxReset(); } catch (e) { console.warn('[agx] wizard', e); }
+    return r;
+  };
+  var _agxSum0 = agwSummary;
+  agwSummary = function () {
+    var r = _agxSum0.apply(this, arguments);
+    try {
+      var filas = agxLeer(), host = agEl('agw-summary'); if (!filas.length || !host) return r;
+      var bs = parseFloat((agEl('agw-diesel-bs') || {}).value) || 0, dl = 0; filas.forEach(function (x) { dl += x.diesel || 0; });
+      var div = document.createElement('div'); div.style.cssText = 'margin-top:8px;border-top:1px dashed var(--bor);padding-top:8px;font-size:12.5px';
+      div.innerHTML = '<b>Máquinas de apoyo</b><br>' + filas.map(function (x) { return '🚜 ' + agxTxt(x); }).join('<br>') + (dl && bs ? '<br>⛽ Diésel de apoyo: ' + fmtA(dl, 1) + ' L × Bs ' + fmtA(bs, 2) + ' = <b>Bs ' + fmtA(dl * bs) + '</b> (se suma al costo de la labor)' : '');
+      host.appendChild(div);
+    } catch (e) {}
+    return r;
+  };
+  try { setTimeout(function () { try { agxSyncHorometros(agGetDB().labores); } catch (e) {} }, 6000); } catch (e) {}
 
 
 })();
@@ -54626,6 +54826,7 @@ try {
     if (l.tipo === 'maquinaria' && !ins) ins = (l.notas || '');
     var extra = [];
     if (l.maquina) extra.push('🚜 ' + l.maquina + (l.implemento ? ' + ' + l.implemento : ''));
+    if (Array.isArray(l.maquinas_extra) && l.maquinas_extra.length) extra.push('➕ ' + l.maquinas_extra.map(function (x) { return x.maquina + (x.horas ? ' ' + x.horas + ' h' : '') + (x.diesel ? ' ⛽' + x.diesel + ' L' : ''); }).join(', ')); /* v1.8.302 */
     var js179 = v179Jornadas(l.id);
     if (js179.length) extra.push(js179.length + ' jornada' + (js179.length === 1 ? '' : 's') + ' · ' + h.fmtA(v179HaDe(js179), 1) + (l.ha_objetivo ? '/' + h.fmtA(l.ha_objetivo, 1) : '') + ' ha');
     if (l.resp) extra.push(l.resp);
@@ -59757,7 +59958,8 @@ try {
     var labIds = {}; labs.forEach(function (l) { labIds[String(l.id)] = 1; });
     /* diésel: cada labor ejecutada con litros de un tanque dejó un despacho (_despacho_id) */
     var desp = [];
-    labs.forEach(function (l) { if (l && l._despacho_id != null) { var r = (db.diesel || []).find(function (x) { return x && String(x.id) === String(l._despacho_id); }); if (r) desp.push(r); } });
+    labs.forEach(function (l) { if (l && l._despacho_id != null) { var r = (db.diesel || []).find(function (x) { return x && String(x.id) === String(l._despacho_id); }); if (r) desp.push(r); }
+      (l && Array.isArray(l.maquinas_extra) ? l.maquinas_extra : []).forEach(function (mx) { if (mx && mx.despacho_id != null) { var r2x = (db.diesel || []).find(function (x) { return x && String(x.id) === String(mx.despacho_id); }); if (r2x) desp.push(r2x); } }); /* v1.8.302: despachos de las máquinas de apoyo */ });
     var litros = 0; desp.forEach(function (r) { litros += Number(r.litros) || 0; });
     /* insumos: lo que descontaron las labores ejecutadas / en curso (r.total ya está a las ha reales) */
     var ins = {};
