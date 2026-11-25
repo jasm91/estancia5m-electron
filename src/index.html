@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.303';
+window.E5M_HTML_BUILD = '1.8.304';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -52696,7 +52696,7 @@ try {
     var arr = (typeof db !== 'undefined' && db && Array.isArray(db.agro_insumos)) ? db.agro_insumos : [];
     var n = 0;
     arr.forEach(function (i) {
-      if (!i || i.costo_usd == null) return;
+      if (!i || i.costo_usd == null || i.tc_manual) return; /* v1.8.304: TC cargado a mano = compra a ese cambio, no se re-valoriza */
       var bs = Math.round(_n(i.costo_usd) * tc.valor * 100) / 100;
       if (_n(i.costo) !== bs) { i.costo = bs; i.tc_carga = tc.valor; n++; }
     });
@@ -52718,9 +52718,9 @@ try {
           d.insumos.forEach(function (i) {
             var costoTxt;
             if (i.costo_usd != null) {
-              var bs = tc ? Math.round(_n(i.costo_usd) * tc.valor * 100) / 100 : _n(i.costo);
+              var bs = (tc && !i.tc_manual) ? Math.round(_n(i.costo_usd) * tc.valor * 100) / 100 : _n(i.costo);
               costoTxt = '<span style="color:var(--green)">$us ' + _n(i.costo_usd).toLocaleString('es-BO', { minimumFractionDigits: 2 }) + '</span>' +
-                         '<br><span style="color:var(--muted);font-size:11px">Bs ' + bs.toLocaleString('es-BO', { minimumFractionDigits: 2 }) + '</span>';
+                         '<br><span style="color:var(--muted);font-size:11px">Bs ' + bs.toLocaleString('es-BO', { minimumFractionDigits: 2 }) + (i.tc_manual ? ' · TC ' + _n(i.tc_carga).toLocaleString('es-BO', { minimumFractionDigits: 2 }) + ' fijo' : '') + '</span>';
             } else {
               costoTxt = _n(i.costo) ? ('Bs ' + _n(i.costo).toLocaleString('es-BO', { minimumFractionDigits: 2 })) :
                          '<span style="color:var(--amber2)" title="' + String(i.obs || 'sin precio').replace(/"/g, '&quot;') + '">⚠ sin precio</span>';
@@ -52762,11 +52762,54 @@ try {
       var inp = agEl('agi-costo'); if (!inp) return;
       var lab = inp.closest('div') && inp.closest('div').querySelector('.form-label');
       if (lab && !window.__V165_OFF) lab.textContent = 'Costo ($us por unidad) *';
+      tcCampo();
     } catch (e) {}
+  }
+  /* v1.8.304 (pedido Chaco Lejos 25-11): TC EDITABLE al cargar el insumo. Viene con el TC BCB del día; si la compra
+     fue a otro cambio se escribe el real y queda FIJO para ese insumo (no se re-valoriza cada día). */
+  function tcCampo() {
+    if (window.__V165_OFF) return;
+    var inp = agEl('agi-costo'); if (!inp || agEl('agi-tc')) { tcPreview(); return; }
+    var cell = inp.closest('div'); if (!cell) return;
+    var box = document.createElement('div'); box.id = 'agi-tc-box';
+    box.innerHTML = '<label class="form-label">TC (Bs por $us)</label><input class="form-input" id="agi-tc" type="number" min="0" step="0.0001" placeholder="TC">' +
+      '<div id="agi-tc-hint" style="font-size:11px;color:var(--muted);margin-top:3px"></div>';
+    cell.insertAdjacentElement('afterend', box);
+    inp.addEventListener('input', tcPreview); agEl('agi-tc').addEventListener('input', tcPreview);
+    tcReset();
+  }
+  /* la tabla del catálogo la pinta el módulo agro (no se puede envolver desde acá): se corrige fila por fila */
+  function marcarTabla() {
+    try {
+      var tb = agEl('agi-tbody'); if (!tb) return;
+      var arr = (typeof db !== 'undefined' && db && Array.isArray(db.agro_insumos)) ? db.agro_insumos : [];
+      var por = {}; arr.forEach(function (i) { if (i && i.nombre) por[String(i.nombre).trim().toLowerCase()] = i; });
+      Array.prototype.forEach.call(tb.querySelectorAll('tr'), function (tr) {
+        var td = tr.querySelectorAll('td'); if (td.length < 4) return;
+        var i = por[String(td[0].textContent || '').replace(/📦 Stock/, '').trim().toLowerCase()]; if (!i || i.costo_usd == null) return;
+        td[2].innerHTML = 'Bs ' + _n(i.costo).toLocaleString('es-BO', { minimumFractionDigits: 2 }) +
+          '<div style="font-size:10.5px;color:var(--muted)">$us ' + _n(i.costo_usd).toLocaleString('es-BO', { minimumFractionDigits: 2 }) +
+          (i.tc_manual ? ' · TC ' + _n(i.tc_carga).toLocaleString('es-BO', { minimumFractionDigits: 2 }) + ' fijo' : '') + '</div>';
+      });
+    } catch (e) {}
+  }
+  window.agMarcarInsumosTC = marcarTabla;
+  function tcReset(valor) {
+    var e = agEl('agi-tc'); if (!e) return;
+    var tc = agTC(); e.value = valor != null ? valor : (tc ? tc.valor : '');
+    tcPreview();
+  }
+  function tcPreview() {
+    var h = agEl('agi-tc-hint'); if (!h) return;
+    var tc = agTC(), v = _n((agEl('agi-tc') || {}).value), usd = _n((agEl('agi-costo') || {}).value);
+    var manual = v > 0 && (!tc || Math.abs(v - tc.valor) > 0.00001);
+    var t = tc ? ('BCB ' + (tc.fecha ? 'del ' + tc.fecha + ': ' : '') + tc.valor.toLocaleString('es-BO', { minimumFractionDigits: 2 })) : 'Sin TC BCB todavía';
+    h.innerHTML = (manual ? '<span style="color:var(--amber2,#e3b341)">TC propio — queda fijo para este insumo</span> · ' + t : t + ' · cambialo si la compra fue a otro cambio') +
+      (usd > 0 && v > 0 ? '<br>= <b>Bs ' + (Math.round(usd * v * 100) / 100).toLocaleString('es-BO', { minimumFractionDigits: 2 }) + '</b> por unidad' : '');
   }
   if (typeof agOpenInsumos === 'function' && !agOpenInsumos.__v165) {
     agOpenInsumos = (function (base) {
-      function w() { var r = base.apply(this, arguments); labelCosto(); return r; }
+      function w() { var r = base.apply(this, arguments); labelCosto(); marcarTabla(); return r; }
       w.__v165 = true; return w;
     })(agOpenInsumos);
     window.agOpenInsumos = agOpenInsumos;
@@ -52780,12 +52823,17 @@ try {
           var d = agGetDB(), i = agById(d.insumos, id);
           /* si el insumo es en USD, el input edita el USD (base puso el Bs) */
           if (i && i.costo_usd != null) agEl('agi-costo').value = i.costo_usd;
+          tcCampo(); tcReset(i && i.costo_usd != null && i.tc_manual ? i.tc_carga : null); /* v1.8.304 */
         } catch (e) {}
         return r;
       }
       w.__v165 = true; return w;
     })(agEditInsumo);
     window.agEditInsumo = agEditInsumo;
+  }
+  if (typeof agInsumoFormReset === 'function' && !agInsumoFormReset.__v304) { /* v1.8.304: «Nuevo insumo» vuelve al TC BCB */
+    agInsumoFormReset = (function (base) { function w() { var r = base.apply(this, arguments); try { tcReset(); } catch (e) {} return r; } w.__v304 = true; return w; })(agInsumoFormReset);
+    window.agInsumoFormReset = agInsumoFormReset;
   }
   if (typeof agSaveInsumo === 'function' && !agSaveInsumo.__v165) {
     agSaveInsumo = (function (base) {
@@ -52797,19 +52845,29 @@ try {
           var tc = agTC();
           var i = id ? agById(d.insumos, id) : null;
           var esUsd = (i && i.costo_usd != null) || !i;   /* nuevos nacen en USD; viejos-Bs siguen en Bs */
+          /* v1.8.304: TC del campo (BCB precargado o el que escribió el usuario) */
+          var tcIn = _n((agEl('agi-tc') || {}).value);
+          if (tcIn > 0) tc = { valor: tcIn, manual: !tc || Math.abs(tcIn - tc.valor) > 0.00001 };
+          if (esUsd && !isNaN(val) && val >= 0 && !tc) { agToast('Escribí el TC (no llegó el TC BCB del día)', 'error'); return; }
           if (esUsd && !isNaN(val) && val >= 0 && tc) {
+            var nomIn = String((agEl('agi-nombre') || {}).value || '').trim().toLowerCase();
             /* dejar que el base valide y guarde, pero con el Bs ya convertido…
                truco simple: guardamos nosotros el par usd/bs DESPUÉS del base */
             var r0 = base.apply(this, arguments);
             var nombre = null;
-            try { nombre = (id ? agById(d.insumos, id) : d.insumos[d.insumos.length - 1]); } catch (e) {}
+            try { nombre = id ? agById(d.insumos, id) : null; } catch (e) {}
+            try { if (!nombre) nombre = (db.agro_insumos || []).filter(function (x) { return x && String(x.nombre || '').trim().toLowerCase() === nomIn; }).pop() || null; } catch (e) {}
             if (nombre) {
               nombre.costo_usd = val;
               nombre.tc_carga = tc.valor;
+              if (tc.manual) nombre.tc_manual = true; else delete nombre.tc_manual;
+              nombre.updated_at = new Date().toISOString();
               nombre.costo = Math.round(val * tc.valor * 100) / 100;
               try { if (typeof agSaveDB === 'function') agSaveDB(); } catch (e) {}
               try { agRenderInsumos(); } catch (e) {}
             }
+            try { if (!String((agEl('agi-id') || {}).value || '')) tcReset(); } catch (e) {} /* v1.8.304: el próximo vuelve al TC BCB */
+            marcarTabla();
             return r0;
           }
         } catch (e) { console.warn('[v165 save]', e); }
