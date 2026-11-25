@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.304';
+window.E5M_HTML_BUILD = '1.8.305';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -64288,6 +64288,172 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
   function boot() { if (typeof db === 'undefined' || !db || !db.lots) return setTimeout(boot, 700); try { montar(); if (window.e5mSepararAnulados()) localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch (e) {} }
   boot();
   try { console.log('%c[EP Desktop v1.8.299] 🧾 Transacciones — 100 % de los registros con buscador y Anular · kill: __TX_OFF', 'color:#3fb950'); } catch (e) {}
+})();
+</script>
+
+<script id="ingreso-agro-v18305">
+/* ═══ v1.8.305 — COMPRA / INGRESO DE INSUMO AGRO CON FECHA Y TC PROPIOS + COSTO PROMEDIO PONDERADO
+   Pedido Chaco Lejos (Sebastián, 25-11-2026): cargar compras anteriores, cada una con su fecha y el TC al que se
+   pagó; el costo del insumo se va ajustando (promedio ponderado por cantidad) a medida que entran compras.
+   · Stock Agro → «🛒 Registrar compra» (y ➕ en cada fila del catálogo).
+   · Suma la cantidad al stock y recalcula: costo Bs = (stock·costo + cant·precio Bs) / (stock + cant); igual en $us.
+     Si el stock era 0 o negativo, el costo pasa a ser el de esta compra.
+   · El insumo queda con TC fijo (tc_carga = costo Bs / costo $us efectivo): no se re-valoriza con el BCB diario.
+   · Cada compra queda en insumo.ingresos[] (fecha, cantidad, $us, TC, Bs, proveedor, antes/después).
+   · No genera asiento contable ni deuda (eso sigue en Crédito / Compras).  Kill: __ING305_OFF ═══ */
+(function () {
+  'use strict';
+  if (window.__ING305_OFF) return;
+  function E(id) { return document.getElementById(id); }
+  function n(v) { var x = parseFloat(v); return isFinite(x) ? x : 0; }
+  function r2(x) { return Math.round((Number(x) || 0) * 100) / 100; }
+  function r4(x) { return Math.round((Number(x) || 0) * 10000) / 10000; }
+  function f2(x) { return (Number(x) || 0).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function esc(x) { return String(x == null ? '' : x).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function hoy() { var d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+  function tcBcb() { try { var t = JSON.parse(localStorage.getItem('e5m_tc_bcb') || 'null'); return (t && n(t.valor) > 0) ? { valor: n(t.valor), fecha: t.fecha || '' } : null; } catch (e) { return null; } }
+  function toast(m, k) { try { (window.agToast || window.toast || console.log)(m, k); } catch (e) {} }
+  function lista() { return (typeof db !== 'undefined' && db && Array.isArray(db.agro_insumos)) ? db.agro_insumos.filter(function (i) { return i && !i.anulado; }) : []; }
+  function porId(id) { return lista().find(function (i) { return String(i.id) === String(id); }) || null; }
+  var MON = 'usd', SEL = null;
+
+  function css() {
+    if (E('ing305-css')) return;
+    var st = document.createElement('style'); st.id = 'ing305-css';
+    st.textContent =
+      '#ing305-ov{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:420;display:flex;align-items:center;justify-content:center;padding:16px;animation:agxFade .15s ease}' +
+      '#ing305-ov .bx{background:linear-gradient(var(--sur),var(--sur)),var(--bg,#0d1117);border:1px solid var(--bor);border-radius:14px;width:520px;max-width:95vw;max-height:92vh;overflow:auto;padding:20px 22px 16px;box-shadow:0 24px 60px rgba(0,0,0,.45)}' +
+      '#ing305-ov h3{font-size:16px;margin:0 0 4px}#ing305-ov .sub{font-size:12.5px;color:var(--muted);margin-bottom:12px;line-height:1.4}' +
+      '#ing305-ov .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}#ing305-ov .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}' +
+      '#ing305-ov .mon{display:inline-flex;gap:4px;margin-left:6px;vertical-align:middle}#ing305-ov .mon button{border:1px solid var(--bor);background:var(--sur2);color:var(--muted);border-radius:9px;padding:0 9px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit}' +
+      '#ing305-ov .mon button.sel{border-color:var(--green);color:var(--green)}' +
+      '#ing305-ov .prev{margin:12px 0 4px;padding:10px 12px;border:1px solid var(--bor);border-radius:10px;background:var(--sur2);font-size:12.8px;line-height:1.75}' +
+      '#ing305-ov .hist{margin-top:10px;font-size:12px;color:var(--muted)}#ing305-ov .hist .it{display:flex;gap:8px;padding:4px 0;border-top:1px solid var(--bor)}#ing305-ov .hist .it:nth-child(even){background:rgba(255,255,255,.02)}' +
+      '#ing305-ov .ft{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}#ing305-ov .hint{font-size:11px;color:var(--muted);margin-top:3px}';
+    document.head.appendChild(st);
+  }
+  function cerrar() { var o = E('ing305-ov'); if (o) o.remove(); }
+  window.ing305Cerrar = cerrar;
+
+  window.agIngresoOpen = function (id) {
+    css(); cerrar(); MON = 'usd';
+    var ins = lista().slice().sort(function (a, b) { return String(a.nombre || '').localeCompare(String(b.nombre || '')); });
+    if (!ins.length) { toast('Primero creá el insumo en el catálogo', 'error'); return; }
+    var t = tcBcb();
+    var ov = document.createElement('div'); ov.id = 'ing305-ov';
+    ov.innerHTML = '<div class="bx agx">' +
+      '<h3>🛒 Registrar compra de insumo</h3>' +
+      '<div class="sub">Suma al stock y ajusta el costo con el <b>promedio ponderado</b>. Podés cargar compras de fechas anteriores, cada una con el TC al que se pagó.</div>' +
+      '<label class="form-label">Insumo *</label><select class="form-input" id="ing-ins">' + ins.map(function (i) { return '<option value="' + esc(i.id) + '">' + esc(i.nombre) + ' (' + esc(i.unidad || '') + ')</option>'; }).join('') + '</select>' +
+      '<div class="g2" style="margin-top:10px"><div><label class="form-label">Fecha de la compra *</label><input class="form-input" type="date" id="ing-fecha" value="' + hoy() + '" max="' + hoy() + '"></div>' +
+      '<div><label class="form-label">Cantidad * <span id="ing-uni" style="color:var(--muted)"></span></label><input class="form-input" type="number" min="0" step="any" id="ing-qty" placeholder="0"></div></div>' +
+      '<div class="g2" style="margin-top:10px"><div><label class="form-label">Precio por unidad <span class="mon"><button type="button" id="ing-m-usd" class="sel" onclick="ing305Mon(\'usd\')">$us</button><button type="button" id="ing-m-bs" onclick="ing305Mon(\'bs\')">Bs</button></span></label><input class="form-input" type="number" min="0" step="any" id="ing-precio" placeholder="0,00"></div>' +
+      '<div id="ing-tc-box"><label class="form-label">TC (Bs por $us) *</label><input class="form-input" type="number" min="0" step="0.0001" id="ing-tc" value="' + (t ? t.valor : '') + '"><div class="hint" id="ing-tc-hint"></div></div></div>' +
+      '<div style="margin-top:10px"><label class="form-label">Proveedor / nota</label><input class="form-input" id="ing-prov" placeholder="Opcional — ej. Agropartners, factura 1234"></div>' +
+      '<div class="prev" id="ing-prev"></div>' +
+      '<div class="hist" id="ing-hist"></div>' +
+      '<div class="ft"><button class="btn btn-ghost" onclick="ing305Cerrar()">Cancelar</button><button class="btn btn-primary" onclick="ing305Guardar()">💾 Registrar compra</button></div></div>';
+    ov.onclick = function (e) { if (e.target === ov) cerrar(); };
+    document.body.appendChild(ov);
+    if (id != null && porId(id)) E('ing-ins').value = String(id);
+    ['ing-ins', 'ing-qty', 'ing-precio', 'ing-tc', 'ing-fecha'].forEach(function (k) { var e = E(k); if (e) { e.addEventListener('input', calc); e.addEventListener('change', calc); } });
+    calc();
+    setTimeout(function () { try { E('ing-qty').focus(); } catch (e) {} }, 40);
+  };
+  window.ing305Mon = function (m) {
+    MON = m;
+    E('ing-m-usd').classList.toggle('sel', m === 'usd'); E('ing-m-bs').classList.toggle('sel', m === 'bs');
+    E('ing-tc-box').style.visibility = m === 'usd' ? 'visible' : 'hidden';
+    calc();
+  };
+  /* el núcleo: qué queda en el insumo si entra esta compra */
+  function simular(i, qty, bsU, usdU) {
+    var st0 = n(i.stock), c0 = n(i.costo), u0 = i.costo_usd != null ? n(i.costo_usd) : (n(i.tc_carga) > 0 ? c0 / n(i.tc_carga) : null);
+    var base = st0 > 0 ? st0 : 0;
+    var c1 = base > 0 ? (base * c0 + qty * bsU) / (base + qty) : bsU;
+    var u1 = null;
+    if (usdU != null && (base === 0 || u0 != null)) u1 = base > 0 ? (base * u0 + qty * usdU) / (base + qty) : usdU;
+    return { st0: st0, st1: r2(st0 + qty), c0: c0, c1: r4(c1), u0: u0, u1: u1 == null ? null : r4(u1) };
+  }
+  function leer() {
+    var i = porId((E('ing-ins') || {}).value), qty = n((E('ing-qty') || {}).value), p = n((E('ing-precio') || {}).value), tc = n((E('ing-tc') || {}).value);
+    var bsU = MON === 'usd' ? r4(p * tc) : p, usdU = MON === 'usd' ? p : (tc > 0 && i && i.costo_usd != null ? r4(p / tc) : null);
+    return { i: i, qty: qty, p: p, tc: tc, bsU: bsU, usdU: usdU, fecha: (E('ing-fecha') || {}).value || hoy(), prov: String((E('ing-prov') || {}).value || '').trim() };
+  }
+  function calc() {
+    var x = leer(), pv = E('ing-prev'), u = E('ing-uni'), h = E('ing-tc-hint'), hs = E('ing-hist');
+    if (u) u.textContent = x.i ? '(' + (x.i.unidad || 'u') + ')' : '';
+    var t = tcBcb();
+    if (h) h.innerHTML = t ? ((x.tc > 0 && Math.abs(x.tc - t.valor) > 0.00001) ? '<span style="color:var(--amber2,#e3b341)">TC propio</span> · BCB hoy ' + f2(t.valor) : 'BCB ' + (t.fecha || 'hoy') + ' · cambialo al de esa compra') : 'Sin TC BCB — escribí el de la compra';
+    if (!x.i) { if (pv) pv.innerHTML = ''; return; }
+    var un = esc(x.i.unidad || 'u');
+    if (hs) {
+      var H = (x.i.ingresos || []).slice(-5).reverse();
+      hs.innerHTML = H.length ? '<div style="margin-bottom:4px;font-weight:700">Últimas compras cargadas</div>' + H.map(function (g) {
+        return '<div class="it"><span>' + esc(String(g.fecha || '').split('-').reverse().join('/')) + '</span><span>' + f2(g.qty) + ' ' + un + '</span><span>' + (g.usd != null ? '$us ' + f2(g.usd) + ' · TC ' + f2(g.tc) : '') + '</span><span style="margin-left:auto">Bs ' + f2(g.bs) + '/' + un + '</span></div>';
+      }).join('') : '';
+    }
+    if (!(x.qty > 0) || !(x.p > 0) || (MON === 'usd' && !(x.tc > 0))) {
+      if (pv) pv.innerHTML = 'Stock actual: <b>' + f2(x.i.stock) + ' ' + un + '</b> · costo <b>Bs ' + f2(x.i.costo) + '/' + un + '</b>' + (x.i.costo_usd != null ? ' ($us ' + f2(x.i.costo_usd) + ')' : '') + '<br><span style="color:var(--muted)">Completá cantidad y precio para ver cómo queda.</span>';
+      return;
+    }
+    var s = simular(x.i, x.qty, x.bsU, x.usdU);
+    pv.innerHTML = 'Esta compra: <b>' + f2(x.qty) + ' ' + un + '</b> a <b>Bs ' + f2(x.bsU) + '/' + un + '</b>' + (MON === 'usd' ? ' ($us ' + f2(x.p) + ' × TC ' + f2(x.tc) + ')' : '') + ' = Bs ' + f2(x.qty * x.bsU) +
+      '<br>Stock: ' + f2(s.st0) + ' → <b>' + f2(s.st1) + ' ' + un + '</b>' +
+      '<br>Costo promedio: Bs ' + f2(s.c0) + ' → <b>Bs ' + f2(s.c1) + '/' + un + '</b>' + (s.u1 != null ? ' · $us ' + (s.u0 != null ? f2(s.u0) + ' → ' : '') + '<b>' + f2(s.u1) + '</b>' : '') +
+      (s.st0 < 0 ? '<br><span style="color:var(--amber2,#e3b341)">El stock estaba en negativo: el costo pasa a ser el de esta compra.</span>' : '');
+  }
+  window.ing305Guardar = function () {
+    var x = leer();
+    if (!x.i) { toast('Elegí el insumo', 'error'); return; }
+    if (!(x.qty > 0)) { toast('Cargá la cantidad', 'error'); return; }
+    if (!(x.p > 0)) { toast('Cargá el precio', 'error'); return; }
+    if (MON === 'usd' && !(x.tc > 0)) { toast('Cargá el TC de esa compra', 'error'); return; }
+    if (x.fecha > hoy()) { toast('La fecha no puede ser futura', 'error'); return; }
+    var s = simular(x.i, x.qty, x.bsU, x.usdU), now = new Date().toISOString();
+    var g = { id: 'ing-' + Date.now() + '-' + Math.floor(Math.random() * 999), fecha: x.fecha, qty: r2(x.qty), bs: r4(x.bsU), usd: x.usdU == null ? null : r4(x.usdU), tc: MON === 'usd' ? x.tc : (x.usdU != null ? x.tc : null),
+      moneda: MON, proveedor: x.prov, stock_antes: s.st0, costo_antes: s.c0, costo_despues: s.c1, by: (typeof getOperator === 'function' ? getOperator() : '') || 'Escritorio', at: now };
+    var i = x.i;
+    if (!Array.isArray(i.ingresos)) i.ingresos = [];
+    i.ingresos.push(g);
+    i.stock = s.st1; i.costo = s.c1;
+    if (s.u1 != null) { i.costo_usd = s.u1; i.tc_carga = s.u1 > 0 ? r4(s.c1 / s.u1) : (x.tc || i.tc_carga); }
+    i.tc_manual = true; /* el costo sale de compras reales: no se re-valoriza con el BCB del día */
+    i.ultima_compra = x.fecha; if (x.prov) i.proveedor = i.proveedor || x.prov;
+    i.updated_at = now; i.server_updated_at = now;
+    try { if (typeof window.agSaveDB === 'function') window.agSaveDB(); else if (typeof saveDB === 'function') saveDB(); } catch (e) {}
+    try { if (typeof replaceTableInRailway === 'function') replaceTableInRailway('agro_insumos', db.agro_insumos); } catch (e) {}
+    cerrar();
+    toast('🛒 ' + i.nombre + ': +' + f2(x.qty) + ' ' + (i.unidad || '') + ' · costo Bs ' + f2(s.c0) + ' → ' + f2(s.c1), 'success');
+    try { if (window.agRenderAll) window.agRenderAll(); } catch (e) {}
+    try { if (E('agi-tbody') && typeof window.agOpenInsumos === 'function' && E('agi-tbody').offsetParent) window.agOpenInsumos(); } catch (e) {}
+  };
+
+  /* botones: en Stock Agro (barra) y ➕ por fila del catálogo */
+  function botones() {
+    try {
+      var tb = document.querySelector('#ag-view-stockagro .toolbar');
+      if (tb && !E('ing305-btn')) { var b = document.createElement('button'); b.id = 'ing305-btn'; b.className = 'btn btn-ghost'; b.textContent = '🛒 Registrar compra'; b.onclick = function () { window.agIngresoOpen(); }; tb.appendChild(b); }
+      var t2 = E('agi-tbody');
+      if (t2) Array.prototype.forEach.call(t2.querySelectorAll('tr'), function (tr) {
+        if (tr.querySelector('.ing305-row')) return;
+        var ed = tr.querySelector('button[onclick^="agEditInsumo"]'); if (!ed) return;
+        var m = /agEditInsumo\((?:&quot;|")?([^"&)]*)/.exec(ed.getAttribute('onclick') || ''); if (!m || /^S/.test(m[1])) return;
+        var b2 = document.createElement('button'); b2.className = 'btn btn-ghost btn-sm ing305-row'; b2.title = 'Registrar compra'; b2.textContent = '🛒';
+        b2.onclick = function () { window.agIngresoOpen(m[1]); };
+        ed.parentNode.insertBefore(b2, ed);
+      });
+    } catch (e) {}
+  }
+  window.ing305Botones = botones;
+  if (typeof window.agOpenInsumos === 'function') {
+    var o = window.agOpenInsumos;
+    window.agOpenInsumos = function () { var r = o.apply(this, arguments); botones(); return r; };
+  }
+  var _pend = false;
+  try { new MutationObserver(function () { if (_pend) return; _pend = true; requestAnimationFrame(function () { _pend = false; botones(); }); }).observe(document.body, { childList: true, subtree: true }); } catch (e) {}
+  setTimeout(botones, 1500);
+  try { console.log('%c[EP Desktop v1.8.305] 🛒 compra de insumo agro con fecha/TC propios + costo promedio ponderado · kill: __ING305_OFF', 'color:#3fb950'); } catch (e) {}
 })();
 </script>
 
