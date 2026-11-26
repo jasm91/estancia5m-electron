@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.306';
+window.E5M_HTML_BUILD = '1.8.307';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -44483,12 +44483,30 @@ function renderReproInteligencia() {
 </div>
 
 <div class="modal-overlay agx" id="ag-modal-insumos">
+  <style>/* v1.8.307: catálogo ancho — lista a la izquierda, formulario a la derecha, sin scroll de página */
+    #ag-modal-insumos .ag-modal{width:min(1220px,96vw)!important;max-width:96vw;max-height:92vh;display:flex;flex-direction:column}
+    #ag-modal-insumos .m-body{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(380px,1fr);gap:18px;flex:1;min-height:0;overflow:hidden!important;max-height:none!important}
+    #ag-modal-insumos #agi-left{min-height:0;overflow:auto;border:1px solid var(--bor);border-radius:12px}
+    #ag-modal-insumos #agi-left .tbl{margin:0}
+    #ag-modal-insumos #agi-left thead th{position:sticky;top:0;z-index:1;background:var(--sur2)}
+    #ag-modal-insumos #agi-left tbody tr:nth-child(even){background:rgba(255,255,255,.022)}
+    #ag-modal-insumos #agi-left tbody tr:hover{background:rgba(255,255,255,.05)}
+    #ag-modal-insumos #agi-left tbody td{padding-top:9px;padding-bottom:9px;vertical-align:middle}
+    #ag-modal-insumos #agi-right{min-height:0;overflow:auto;background:var(--sur2);border:1px solid var(--bor);border-radius:12px;padding:14px 16px}
+    #ag-modal-insumos #agi-right .frow{gap:10px;margin-bottom:2px}
+    #ag-modal-insumos #agi-right .form-label{font-size:10.5px;margin-bottom:3px}
+    #ag-modal-insumos #agi-right .form-input{padding-top:7px;padding-bottom:7px}
+    #ag-modal-insumos #agi-form-title{font-size:13.5px!important;margin-bottom:10px!important}
+    #ag-modal-insumos .agi-btns{display:flex;gap:8px;margin-top:12px;position:sticky;bottom:-14px;background:var(--sur2);padding:10px 0 2px}
+    #ag-modal-insumos .agi-btns .btn-primary{flex:1}
+    @media (max-width:980px){#ag-modal-insumos .m-body{grid-template-columns:1fr;overflow:auto!important}}
+  </style>
   <div class="ag-modal" style="width:640px">
     <h2>🧪 Insumos agrícolas</h2>
     <div class="m-sub">Catálogo propio del módulo agro (semillas, agroquímicos, fertilizantes). Las labores descuentan este stock. Lo ganadero/veterinario vive en <a href="#" onclick="agCloseModal('ag-modal-insumos');showPage('compras',null);return false" style="color:var(--blue)">🛒 Compras Insumos</a>.</div>
     <div class="m-body">
-      <table class="tbl"><thead><tr><th>Insumo</th><th>Unidad</th><th class="num">Costo Bs/u</th><th class="num">Stock</th><th></th></tr></thead><tbody id="agi-tbody"></tbody></table>
-      <div style="border-top:1px solid var(--bor);margin-top:12px;padding-top:12px">
+      <div id="agi-left"><table class="tbl"><thead><tr><th>Insumo</th><th>Unidad</th><th class="num">Costo / u</th><th class="num">Stock</th><th></th></tr></thead><tbody id="agi-tbody"></tbody></table></div>
+      <div id="agi-right">
         <div style="font-size:12px;font-weight:700;margin-bottom:8px" id="agi-form-title">➕ Nuevo insumo</div>
         <input type="hidden" id="agi-id">
         <div class="frow">
@@ -44497,10 +44515,14 @@ function renderReproInteligencia() {
         </div>
         <div class="frow">
           <div><label class="form-label">Costo (Bs por unidad) *</label><input class="form-input" id="agi-costo" type="number" min="0" step="0.01"></div>
-          <div><label class="form-label">Stock actual</label><input class="form-input" id="agi-stock" type="number" step="0.01" value="0"></div>
         </div>
-        <button class="btn btn-primary btn-sm" onclick="agSaveInsumo()">Guardar insumo</button>
-        <button class="btn btn-ghost btn-sm" onclick="agInsumoFormReset()">Limpiar</button>
+        <div class="frow"><!-- v1.8.307: pedido Chaco Lejos -->
+          <div><label class="form-label">Stock actual</label><input class="form-input" id="agi-stock" type="number" step="0.01" value="0"></div>
+          <div><label class="form-label">Fecha aprox. de compra</label><input class="form-input" id="agi-fcompra" type="date"></div>
+        </div>
+        <div><label class="form-label">Comentario</label><textarea class="form-input" id="agi-coment" maxlength="300" rows="2" style="resize:vertical;min-height:54px;font-family:inherit" placeholder="Opcional — proveedor, factura, lote…"></textarea></div>
+        <div class="agi-btns"><button class="btn btn-primary btn-sm" onclick="agSaveInsumo()">💾 Guardar insumo</button>
+        <button class="btn btn-ghost btn-sm" onclick="agInsumoFormReset()">Limpiar</button></div>
       </div>
     </div>
     <div class="m-foot"><button class="btn btn-ghost" onclick="agCloseModal('ag-modal-insumos')">Cerrar</button></div>
@@ -52786,7 +52808,10 @@ try {
       var por = {}; arr.forEach(function (i) { if (i && i.nombre) por[String(i.nombre).trim().toLowerCase()] = i; });
       Array.prototype.forEach.call(tb.querySelectorAll('tr'), function (tr) {
         var td = tr.querySelectorAll('td'); if (td.length < 4) return;
-        var i = por[String(td[0].textContent || '').replace(/📦 Stock/, '').trim().toLowerCase()]; if (!i || i.costo_usd == null) return;
+        if (!tr.__v307 && window.stk307Ver) { tr.__v307 = 1; tr.style.cursor = 'pointer'; tr.title = 'Ver detalle'; tr.addEventListener('click', function (ev) { if (ev.target.closest('button')) return; var b = tr.querySelector('button[onclick^="agEditInsumo"]'); var m = b && /agEditInsumo\((?:&quot;|")?([^"&)]*)/.exec(b.getAttribute('onclick') || ''); if (m) window.stk307Ver(m[1]); }); }
+        var i = por[String(td[0].textContent || '').replace(/📦 Stock/, '').trim().toLowerCase()]; if (!i) return;
+        if ((i.fecha_compra || i.comentario) && !td[0].querySelector('.agi-nota')) { var nt = document.createElement('div'); nt.className = 'agi-nota'; nt.style.cssText = 'font-size:10.5px;color:var(--muted);margin-top:2px;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'; nt.title = i.comentario || ''; nt.textContent = (i.fecha_compra ? '🗓 ' + i.fecha_compra.split('-').reverse().join('/') : '') + (i.fecha_compra && i.comentario ? ' · ' : '') + (i.comentario ? '💬 ' + i.comentario : ''); td[0].appendChild(nt); }
+        if (i.costo_usd == null) return;
         td[2].innerHTML = 'Bs ' + _n(i.costo).toLocaleString('es-BO', { minimumFractionDigits: 2 }) +
           '<div style="font-size:10.5px;color:var(--muted)">$us ' + _n(i.costo_usd).toLocaleString('es-BO', { minimumFractionDigits: 2 }) +
           (i.tc_manual ? ' · TC ' + _n(i.tc_carga).toLocaleString('es-BO', { minimumFractionDigits: 2 }) + ' fijo' : '') + '</div>';
@@ -52803,7 +52828,7 @@ try {
     var h = agEl('agi-tc-hint'); if (!h) return;
     var tc = agTC(), v = _n((agEl('agi-tc') || {}).value), usd = _n((agEl('agi-costo') || {}).value);
     var manual = v > 0 && (!tc || Math.abs(v - tc.valor) > 0.00001);
-    var t = tc ? ('BCB ' + (tc.fecha ? 'del ' + tc.fecha + ': ' : '') + tc.valor.toLocaleString('es-BO', { minimumFractionDigits: 2 })) : 'Sin TC BCB todavía';
+    var t = tc ? ('BCB ' + (tc.fecha ? 'del ' + String(tc.fecha).split('-').reverse().join('/') + ': ' : '') + tc.valor.toLocaleString('es-BO', { minimumFractionDigits: 2 })) : 'Sin TC BCB todavía';
     h.innerHTML = (manual ? '<span style="color:var(--amber2,#e3b341)">TC propio — queda fijo para este insumo</span> · ' + t : t + ' · cambialo si la compra fue a otro cambio') +
       (usd > 0 && v > 0 ? '<br>= <b>Bs ' + (Math.round(usd * v * 100) / 100).toLocaleString('es-BO', { minimumFractionDigits: 2 }) + '</b> por unidad' : '');
   }
@@ -52825,6 +52850,7 @@ try {
           if (i && i.costo_usd != null) agEl('agi-costo').value = i.costo_usd;
           else if (i && !/^S/.test(String(id || '')) && _n(i.costo) > 0) { var _t0 = _n(i.tc_carga) || ((agTC() || {}).valor || 0); if (_t0 > 0) agEl('agi-costo').value = Math.round(_n(i.costo) / _t0 * 10000) / 10000; } /* v1.8.306: insumo viejo en Bs → se muestra su equivalente en $us */
           tcCampo(); tcReset(i && i.costo_usd != null && i.tc_manual ? i.tc_carga : null); /* v1.8.304 */
+          if (agEl('agi-fcompra')) agEl('agi-fcompra').value = (i && i.fecha_compra) || ''; if (agEl('agi-coment')) agEl('agi-coment').value = (i && i.comentario) || ''; /* v1.8.307 */
         } catch (e) {}
         return r;
       }
@@ -52833,7 +52859,7 @@ try {
     window.agEditInsumo = agEditInsumo;
   }
   if (typeof agInsumoFormReset === 'function' && !agInsumoFormReset.__v304) { /* v1.8.304: «Nuevo insumo» vuelve al TC BCB */
-    agInsumoFormReset = (function (base) { function w() { var r = base.apply(this, arguments); try { tcReset(); } catch (e) {} return r; } w.__v304 = true; return w; })(agInsumoFormReset);
+    agInsumoFormReset = (function (base) { function w() { var r = base.apply(this, arguments); try { tcReset(); ['agi-fcompra', 'agi-coment'].forEach(function (k) { var e = agEl(k); if (e) e.value = ''; }); } catch (e) {} return r; } w.__v304 = true; return w; })(agInsumoFormReset);
     window.agInsumoFormReset = agInsumoFormReset;
   }
   if (typeof agSaveInsumo === 'function' && !agSaveInsumo.__v165) {
@@ -52866,10 +52892,14 @@ try {
               if (tc.manual) nombre.tc_manual = true; else delete nombre.tc_manual;
               nombre.updated_at = new Date().toISOString();
               nombre.costo = Math.round(val * tc.valor * 100) / 100;
+              /* v1.8.307: fecha aproximada de compra + comentario del ítem */
+              var _fc = String((agEl('agi-fcompra') || {}).value || ''), _cm = String((agEl('agi-coment') || {}).value || '').trim().slice(0, 300);
+              if (_fc) nombre.fecha_compra = _fc; else delete nombre.fecha_compra;
+              if (_cm) nombre.comentario = _cm; else delete nombre.comentario;
               try { if (typeof agSaveDB === 'function') agSaveDB(); } catch (e) {}
               try { agRenderInsumos(); } catch (e) {}
             }
-            try { if (!String((agEl('agi-id') || {}).value || '')) tcReset(); } catch (e) {} /* v1.8.304: el próximo vuelve al TC BCB */
+            try { if (!String((agEl('agi-id') || {}).value || '')) { tcReset(); ['agi-fcompra', 'agi-coment'].forEach(function (k) { var e = agEl(k); if (e) e.value = ''; }); } } catch (e) {} /* v1.8.304: el próximo vuelve al TC BCB */
             marcarTabla();
             return r0;
           }
@@ -59636,8 +59666,8 @@ try {
       '#stk222 .s-bd.open{opacity:1}' +
       '#stk222 .s-sc{overflow-y:auto;overscroll-behavior:contain}' +
       '#stk222 .s-sc::-webkit-scrollbar{width:7px}#stk222 .s-sc::-webkit-scrollbar-thumb{background:var(--bor);border-radius:4px}' +
-      '#stk222 .s-r{display:grid;grid-template-columns:minmax(0,1fr) 54px 108px 88px 96px 44px;align-items:center;gap:10px;' +
-      'padding:4px 12px;border-top:1px solid rgba(255,255,255,.05);min-height:36px;font-size:12.5px}' +
+      '#stk222 .s-r{display:grid;grid-template-columns:minmax(0,1fr) 64px 130px 110px 120px 78px;align-items:center;gap:12px;' +
+      'padding:6px 14px;border-top:1px solid rgba(255,255,255,.05);min-height:44px;font-size:12.8px}' +
       '#stk222 .s-r:nth-child(even){background:rgba(255,255,255,.022)}' +
       '#stk222 .s-r:hover{background:rgba(255,255,255,.055)}' +
       '#stk222 .s-r .nm{min-width:0;line-height:1.2}' +
@@ -59649,6 +59679,38 @@ try {
       '#stk222 .s-cero{color:var(--red,#f85149);font-weight:700}' +
       '#stk222 .s-sp{color:var(--amber2,#e3b341)}' +
       '#stk222 .s-vacio{padding:14px 12px;color:var(--muted);font-size:12.5px}' +
+      /* v1.8.307: encabezados de columna, fila clickeable y detalle */
+      '#stk222 .s-r.hd{min-height:30px;background:var(--sur2)!important;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:default;position:sticky;top:0;z-index:1;border-top:1px solid var(--bor)}' +
+      '#stk222 .s-r.hd .num{font-weight:700}' +
+      '#stk222 .s-r.it{cursor:pointer}' +
+      '#stk222 .s-r .num small{display:block;font-size:10px;color:var(--muted);font-weight:400;margin-top:1px}' +
+      '#stk222 .s-r .nm .nt{font-size:10.5px;color:var(--muted);opacity:.9}' +
+      '#stk222 .s-r .un{color:var(--muted);font-size:11px;margin-left:3px}' +
+      '#stk222 .s-r .ac{display:flex;gap:4px;justify-content:flex-end}' +
+      '#stk222 .pill-tc{display:inline-block;font-size:9.5px;padding:0 6px;border-radius:9px;margin-left:4px;border:1px solid rgba(227,179,65,.35);color:var(--amber2,#e3b341);background:rgba(227,179,65,.08);vertical-align:1px}' +
+      '#ins307-ov{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:410;display:flex;align-items:center;justify-content:center;padding:18px;opacity:0;transition:opacity .18s ease}' +
+      '#ins307-ov.on{opacity:1}#ins307-ov .bx{background:var(--sur);border:1px solid var(--bor);border-radius:16px;width:min(1180px,96vw);max-width:96vw;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 28px 70px rgba(0,0,0,.5);transform:translateY(10px) scale(.985);transition:transform .22s cubic-bezier(.2,.8,.2,1)}' +
+      '#ins307-ov.on .bx{transform:none}' +
+      '#ins307-ov .hd{padding:20px 22px 14px;border-bottom:1px solid var(--bor);display:flex;gap:14px;align-items:flex-start}' +
+      '#ins307-ov .hd h3{margin:0;font-size:19px;line-height:1.2}#ins307-ov .hd .pa{font-size:12.5px;color:var(--muted);margin-top:3px}' +
+      '#ins307-ov .hd .x{margin-left:auto;border:0;background:transparent;color:var(--muted);font-size:18px;cursor:pointer;line-height:1;padding:2px 4px}' +
+      '#ins307-ov .pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}#ins307-ov .pill{font-size:10.5px;padding:2px 9px;border-radius:10px;border:1px solid var(--bor);color:var(--muted);background:var(--sur2)}' +
+      '#ins307-ov .pill.g{border-color:rgba(63,185,80,.35);color:var(--green);background:rgba(63,185,80,.08)}#ins307-ov .pill.a{border-color:rgba(227,179,65,.35);color:var(--amber2,#e3b341);background:rgba(227,179,65,.08)}#ins307-ov .pill.r{border-color:rgba(248,81,73,.35);color:var(--red,#f85149);background:rgba(248,81,73,.08)}' +
+      '#ins307-ov .body{padding:16px 22px;overflow:auto}' +
+      '#ins307-ov .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}' +
+      '#ins307-ov .kpi{background:var(--sur2);border:1px solid var(--bor);border-radius:12px;padding:10px 12px;position:relative;overflow:hidden}' +
+      '#ins307-ov .kpi:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--bor)}#ins307-ov .kpi.g:before{background:var(--green)}#ins307-ov .kpi.r:before{background:var(--red,#f85149)}' +
+      '#ins307-ov .kpi .l{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}#ins307-ov .kpi .v{font-size:18px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums}#ins307-ov .kpi .s{font-size:11px;color:var(--muted);margin-top:2px}' +
+      '#ins307-ov .info{display:grid;grid-template-columns:118px 1fr;gap:9px 12px;font-size:12.8px;background:var(--sur2);border:1px solid var(--bor);border-radius:12px;padding:12px 14px;align-content:start}#ins307-ov .info .k{color:var(--muted);font-size:11.5px}#ins307-ov .info .cm{white-space:pre-wrap;word-break:break-word}' +
+      '#ins307-ov .cols{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start}#ins307-ov .cols h4:first-child{margin-top:0}' +
+      '#ins307-ov h4{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:16px 0 6px;display:flex;align-items:center;gap:8px}#ins307-ov h4 span{font-weight:400;letter-spacing:0;text-transform:none}' +
+      '#ins307-ov .tb{border:1px solid var(--bor);border-radius:10px;overflow:hidden}#ins307-ov .tb .sc{max-height:min(150px,18vh);overflow-y:auto}' +
+      '#ins307-ov .tr{display:grid;gap:10px;padding:7px 12px;font-size:12.3px;border-top:1px solid rgba(255,255,255,.05);align-items:center}#ins307-ov .tr:nth-child(even){background:rgba(255,255,255,.022)}' +
+      '#ins307-ov .tr.h{background:var(--sur2);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border-top:0}' +
+      '#ins307-ov .tr .n{text-align:right;font-variant-numeric:tabular-nums}#ins307-ov .tr .m{color:var(--muted);font-size:11px}' +
+      '#ins307-ov .vac{padding:12px;font-size:12.3px;color:var(--muted)}' +
+      '#ins307-ov .ft{padding:12px 22px;border-top:1px solid var(--bor);display:flex;gap:8px;justify-content:flex-end}' +
+      '@media (prefers-reduced-motion:reduce){#ins307-ov,#ins307-ov .bx{transition:none}}' +
       '@media (prefers-reduced-motion:reduce){#stk222 .s-bd,#stk222 .s-gh .car{transition:none}}';
     document.head.appendChild(s);
   }
@@ -59690,23 +59752,27 @@ try {
   function fila(i, tc) {
     var esc = H.escA, f = H.fmtA;
     var stock = n(i.stock), costo = n(i.costo), val = stock * costo;
-    var cero = stock <= 0, sinP = !(costo > 0);
-    return '<div class="s-r">' +
-      '<div class="nm"><b>' + esc(i.nombre || '') + '</b>' + (i.principio_activo ? '<span>' + esc(i.principio_activo) + '</span>' : '') + '</div>' +
+    var cero = stock <= 0, sinP = !(costo > 0), stk = /^S/.test(String(i.id));
+    var nota = [i.fecha_compra ? '🗓 ' + String(i.fecha_compra).split('-').reverse().join('/') : '', i.comentario ? '💬 ' + i.comentario : ''].filter(Boolean).join(' · ');
+    var sub = [i.principio_activo || '', nota].filter(Boolean).join(' · ');
+    return '<div class="s-r it" onclick="stk307Ver(' + H.agIdq(i.id) + ')" title="Ver detalle">' +
+      '<div class="nm"><b>' + esc(i.nombre || '') + (stk ? ' <span class="pill-tc" style="border-color:var(--bor);color:var(--muted);background:transparent">Stock general</span>' : '') + '</b>' + (sub ? '<span>' + esc(sub) + '</span>' : '') + '</div>' +
       '<div class="num" style="color:var(--muted)">' + esc(i.unidad || '') + '</div>' +
-      '<div class="num">' + (sinP ? '<span class="s-sp">⚠ sin precio</span>' : f(costo, 2)) + '</div>' +
-      '<div class="num' + (cero ? ' s-cero' : '') + '">' + f(stock, 1) + '</div>' +
-      '<div class="num" style="color:var(--muted)">' + (val ? f(val) : '—') + '</div>' +
-      '<div class="ac"><button class="btn btn-ghost btn-sm" onclick="agOpenInsumos();agEditInsumo(' + H.agIdq(i.id) + ')">✏️</button></div>' +
+      '<div class="num">' + (sinP ? '<span class="s-sp">⚠ sin precio</span>' : 'Bs ' + f(costo, 2) + (i.costo_usd != null ? '<small>$us ' + f(n(i.costo_usd), 2) + (i.tc_manual ? '<span class="pill-tc">TC ' + f(n(i.tc_carga), 2) + '</span>' : '') + '</small>' : '')) + '</div>' +
+      '<div class="num' + (cero ? ' s-cero' : '') + '">' + f(stock, 1) + '<span class="un">' + esc(i.unidad || '') + '</span></div>' +
+      '<div class="num" style="color:var(--muted)">' + (val ? 'Bs ' + f(val) : '—') + '</div>' +
+      '<div class="ac" onclick="event.stopPropagation()">' + (!stk && H.agIngresoOpen ? '<button class="btn btn-ghost btn-sm" title="Registrar compra" onclick="agIngresoOpen(' + H.agIdq(i.id) + ')">🛒</button>' : '') +
+        '<button class="btn btn-ghost btn-sm" title="Editar" onclick="agOpenInsumos();agEditInsumo(' + H.agIdq(i.id) + ')">✏️</button></div>' +
       '</div>';
   }
+  var HDR = '<div class="s-r hd"><div>Insumo</div><div class="num">Unidad</div><div class="num">Costo / u</div><div class="num">Stock</div><div class="num">Valor</div><div></div></div>';
 
   function grupoHtml(g, tc) {
     var f = H.fmtA, esc = H.escA;
     var ab = ST[g.k] === undefined ? !!g.def : !!ST[g.k];
     var val = 0, cero = 0;
     g.items.forEach(function (i) { val += n(i.stock) * n(i.costo); if (n(i.stock) <= 0) cero++; });
-    var alto = g.items.length > 6;
+    var alto = g.items.length > 7;
     return '<div class="s-g">' +
       '<div class="s-gh' + (ab ? ' on' : '') + '" onclick="stk222Tog(\'' + g.k + '\')">' +
         '<span class="car">▸</span><b>' + esc(g.t) + '</b>' +
@@ -59714,7 +59780,7 @@ try {
           (val ? '<span>Bs ' + f(val) + '</span>' : '') +
           '<b style="color:var(--text)">' + g.items.length + '</b></span></div>' +
       '<div class="s-bd' + (ab ? ' open' : '') + '" data-k="' + g.k + '"' + (ab ? ' style="max-height:none"' : '') + '>' +
-        '<div class="' + (alto ? 's-sc' : '') + '"' + (alto ? ' style="max-height:' + (6 * 36 + 4) + 'px"' : '') + '>' +
+        '<div class="' + (alto ? 's-sc' : '') + '"' + (alto ? ' style="max-height:' + (7 * 44 + 34) + 'px"' : '') + '>' + HDR +
         g.items.map(function (i) { return fila(i, tc); }).join('') + '</div></div></div>';
   }
 
@@ -59740,7 +59806,9 @@ try {
     /* ¿el catálogo usa categorías? si no, se agrupa por letra inicial */
     var cats = {}, nCat = 0;
     resto.forEach(function (i) { var c = String(i.categoria || '').trim(); if (c) { if (!cats[c]) nCat++; cats[c] = 1; } });
-    if (nCat >= 2) {
+    if (nCat < 2 && resto.length && resto.length <= 15) { /* v1.8.307: pocos ítems → un solo grupo (no tramos de letras «H – S») */
+      grupos.push({ k: 'todos', t: '🧪 Insumos', items: resto, def: true });
+    } else if (nCat >= 2) {
       var by = {};
       resto.forEach(function (i) { var c = String(i.categoria || '').trim() || 'Sin categoría'; (by[c] = by[c] || []).push(i); });
       var ord = CAT_ORD.filter(function (c) { return by[c]; })
@@ -59779,6 +59847,74 @@ try {
                      : '<div class="s-vacio">' + (Q ? 'Nada con «' + H.escA(Q) + '».' : 'Sin insumos agro. Cargá el primero con “Gestionar catálogo”.') + '</div>');
   }
   H.stk222Pintar = pintar;
+
+  /* ═══ v1.8.307 — DETALLE DEL INSUMO (click en la fila; sin entrar a editar) ═══ */
+  function cerrarDet() { var o = E('ins307-ov'); if (!o) return; o.classList.remove('on'); setTimeout(function () { if (o.parentNode) o.parentNode.removeChild(o); }, 190); document.removeEventListener('keydown', escDet); }
+  function escDet(e) { if (e.key === 'Escape') cerrarDet(); }
+  H.stk307Cerrar = cerrarDet;
+  H.stk307Ver = function (id) {
+    css(); var esc = H.escA, f = H.fmtA;
+    var d = H.agGetDB(), i = (d.insumos || []).find(function (x) { return x && String(x.id) === String(id); }); if (!i) return;
+    var stk = /^S/.test(String(i.id)), un = esc(i.unidad || 'u');
+    var stock = n(i.stock), costo = n(i.costo), val = stock * costo, min = n(i.stock_min);
+    var tcB = null; try { tcB = JSON.parse(localStorage.getItem('e5m_tc_bcb') || 'null'); } catch (e) {}
+    /* salidas: labores ejecutadas / en curso que usaron este insumo */
+    var campL = function (cid) { var c = (d.campanas || []).find(function (x) { return x && String(x.id) === String(cid); }); return c ? [c.cultivo, c.ciclo, c.anio].filter(Boolean).join(' ') : '—'; };
+    var sal = [];
+    (d.labores || []).forEach(function (l) {
+      if (!l || l.anulado || (l.estado !== 'ejecutada' && l.estado !== 'en_curso')) return;
+      (l.insumos || []).forEach(function (r) { if (r && String(r.insumo_id) === String(i.id) && n(r.total) > 0) sal.push({ f: l.fecha || '', lab: l.nombre || l.tipo || '', lote: l.parcela_codigo || '', camp: campL(l.campana_id), q: n(r.total), bs: n(r.costo) }); });
+    });
+    sal.sort(function (a, b) { return String(b.f).localeCompare(String(a.f)); });
+    var qSal = 0; sal.forEach(function (x) { qSal += x.q; });
+    var ing = (Array.isArray(i.ingresos) ? i.ingresos : []).slice().sort(function (a, b) { return String(b.fecha || '').localeCompare(String(a.fecha || '')); });
+    var qIng = 0; ing.forEach(function (x) { qIng += n(x.qty); });
+    var fd = function (x) { return x ? String(x).slice(0, 10).split('-').reverse().join('/') : '—'; };
+    var estado = stock <= 0 ? ['r', 'Sin stock'] : (min > 0 && stock <= min ? ['a', 'Bajo el mínimo'] : ['g', 'Con stock']);
+    var tcTxt = i.costo_usd == null ? 'Cargado en Bs' : (i.tc_manual ? 'TC ' + f(n(i.tc_carga), 2) + ' fijo (compra)' : 'TC BCB del día' + (tcB && tcB.valor ? ' · ' + f(n(tcB.valor), 2) : ''));
+    var colsI = 'grid-template-columns:92px minmax(0,1fr) 90px 150px 120px', colsS = 'grid-template-columns:92px minmax(0,1fr) 80px 90px 110px 90px';
+    var html = '<div class="bx agx" role="dialog" aria-modal="true">' +
+      '<div class="hd"><div style="font-size:30px;line-height:1">' + ((window.AG_CAT_ICO && i.categoria && window.AG_CAT_ICO[i.categoria]) || CAT_ICO[i.categoria] || '🧪') + '</div><div style="min-width:0">' +
+        '<h3>' + esc(i.nombre || '') + '</h3>' + (i.principio_activo ? '<div class="pa">' + esc(i.principio_activo) + '</div>' : '') +
+        '<div class="pills"><span class="pill ' + estado[0] + '">' + estado[1] + '</span>' + (i.categoria ? '<span class="pill">' + esc(i.categoria) + '</span>' : '') +
+        (stk ? '<span class="pill">Stock general</span>' : '') + (i.tc_manual ? '<span class="pill a">TC fijo</span>' : '') + '</div></div>' +
+        '<button class="x" onclick="stk307Cerrar()" title="Cerrar (Esc)">✕</button></div>' +
+      '<div class="body">' +
+        '<div class="kpis">' +
+          '<div class="kpi ' + (stock <= 0 ? 'r' : 'g') + '"><div class="l">Stock</div><div class="v">' + f(stock, 1) + ' <span style="font-size:12px;color:var(--muted)">' + un + '</span></div><div class="s">' + (min > 0 ? 'mínimo ' + f(min, 1) + ' ' + un : 'sin mínimo') + '</div></div>' +
+          '<div class="kpi"><div class="l">Costo / ' + un + '</div><div class="v">Bs ' + f(costo, 2) + '</div><div class="s">' + (i.costo_usd != null ? '$us ' + f(n(i.costo_usd), 2) : '—') + '</div></div>' +
+          '<div class="kpi"><div class="l">Tipo de cambio</div><div class="v">' + (i.costo_usd != null ? f(n(i.tc_carga) || (tcB ? n(tcB.valor) : 0), 2) : '—') + '</div><div class="s">' + esc(tcTxt) + '</div></div>' +
+          '<div class="kpi"><div class="l">Valor en stock</div><div class="v">Bs ' + f(val) + '</div><div class="s">' + (i.costo_usd != null ? '$us ' + f(stock * n(i.costo_usd)) : 'stock × costo') + '</div></div>' +
+        '</div>' +
+        '<div class="cols"><div><h4>📋 Datos</h4><div class="info">' +
+          '<div class="k">Unidad</div><div>' + un + '</div>' +
+          '<div class="k">Fecha aprox. de compra</div><div>' + fd(i.fecha_compra) + '</div>' +
+          (i.proveedor ? '<div class="k">Proveedor</div><div>' + esc(i.proveedor) + '</div>' : '') +
+          (i.subcategoria ? '<div class="k">Cultivo</div><div>' + esc(i.subcategoria) + '</div>' : '') +
+          '<div class="k">Comentario</div><div class="cm">' + (i.comentario ? esc(i.comentario) : '<span style="color:var(--muted)">—</span>') + '</div>' +
+          '<div class="k">Alta</div><div>' + fd(i.created_at) + '</div>' +
+          (i.updated_at ? '<div class="k">Modificado</div><div>' + fd(i.updated_at) + '</div>' : '') +
+        '</div></div><div style="min-width:0">' +
+        '<h4>🛒 Compras registradas <span>' + (ing.length ? ing.length + ' · ' + f(qIng, 1) + ' ' + un : '') + '</span></h4>' +
+        (ing.length ? '<div class="tb"><div class="tr h" style="' + colsI + '"><div>Fecha</div><div>Proveedor / nota</div><div class="n">Cantidad</div><div class="n">Precio / ' + un + '</div><div class="n">Costo después</div></div><div class="sc">' +
+          ing.map(function (g) { return '<div class="tr" style="' + colsI + '"><div>' + fd(g.fecha) + '</div><div class="m">' + esc(g.proveedor || '—') + '</div><div class="n">' + f(n(g.qty), 1) + '</div><div class="n">Bs ' + f(n(g.bs), 2) + (g.usd != null ? '<div class="m">$us ' + f(n(g.usd), 2) + ' · TC ' + f(n(g.tc), 2) + '</div>' : '') + '</div><div class="n">Bs ' + f(n(g.costo_despues), 2) + '</div></div>'; }).join('') + '</div></div>'
+          : '<div class="tb"><div class="vac">Todavía no hay compras registradas. Con 🛒 Registrar compra cada ingreso queda acá y el costo se ajusta por promedio ponderado.</div></div>') +
+        '<h4>🚜 Salidas por labores <span>' + (sal.length ? sal.length + ' · ' + f(qSal, 1) + ' ' + un : '') + '</span></h4>' +
+        (sal.length ? '<div class="tb"><div class="tr h" style="' + colsS + '"><div>Fecha</div><div>Labor · campaña</div><div>Lote</div><div class="n">Cantidad</div><div class="n">Costo</div><div class="n">Bs / ' + un + '</div></div><div class="sc">' +
+          sal.map(function (x) { return '<div class="tr" style="' + colsS + '"><div>' + fd(x.f) + '</div><div>' + esc(x.lab) + '<div class="m">' + esc(x.camp) + '</div></div><div class="m">' + esc(x.lote || '—') + '</div><div class="n">' + f(x.q, 2) + '</div><div class="n">Bs ' + f(x.bs) + '</div><div class="n m">' + (x.q ? f(x.bs / x.q, 2) : '—') + '</div></div>'; }).join('') + '</div></div>'
+          : '<div class="tb"><div class="vac">Sin salidas todavía: las labores ejecutadas que usen este insumo aparecen acá.</div></div>') +
+      '</div></div></div>' +
+      '<div class="ft"><button class="btn btn-ghost" onclick="stk307Cerrar()">Cerrar</button>' +
+        (!stk ? '<button class="btn btn-ghost" onclick="stk307Cerrar();agIngresoOpen(' + H.agIdq(i.id) + ')">🛒 Registrar compra</button>' : '') +
+        '<button class="btn btn-primary" onclick="stk307Cerrar();agOpenInsumos();agEditInsumo(' + H.agIdq(i.id) + ')">✏️ Editar</button></div>' +
+    '</div>';
+    var old = E('ins307-ov'); if (old) old.parentNode.removeChild(old);
+    var ov = document.createElement('div'); ov.id = 'ins307-ov'; ov.innerHTML = html;
+    ov.addEventListener('click', function (e) { if (e.target === ov) cerrarDet(); });
+    document.body.appendChild(ov);
+    requestAnimationFrame(function () { ov.classList.add('on'); });
+    document.addEventListener('keydown', escDet);
+  };
 
   /* engancharse al repintado general de Agricultura */
   if (typeof H.l219Repintar === 'function') {
