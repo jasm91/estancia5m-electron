@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.305';
+window.E5M_HTML_BUILD = '1.8.306';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -52823,6 +52823,7 @@ try {
           var d = agGetDB(), i = agById(d.insumos, id);
           /* si el insumo es en USD, el input edita el USD (base puso el Bs) */
           if (i && i.costo_usd != null) agEl('agi-costo').value = i.costo_usd;
+          else if (i && !/^S/.test(String(id || '')) && _n(i.costo) > 0) { var _t0 = _n(i.tc_carga) || ((agTC() || {}).valor || 0); if (_t0 > 0) agEl('agi-costo').value = Math.round(_n(i.costo) / _t0 * 10000) / 10000; } /* v1.8.306: insumo viejo en Bs → se muestra su equivalente en $us */
           tcCampo(); tcReset(i && i.costo_usd != null && i.tc_manual ? i.tc_carga : null); /* v1.8.304 */
         } catch (e) {}
         return r;
@@ -52844,7 +52845,9 @@ try {
           var val = parseFloat(agEl('agi-costo').value);
           var tc = agTC();
           var i = id ? agById(d.insumos, id) : null;
-          var esUsd = (i && i.costo_usd != null) || !i;   /* nuevos nacen en USD; viejos-Bs siguen en Bs */
+          /* v1.8.306: el campo dice «$us por unidad» SIEMPRE → se guarda siempre como $us (antes un insumo sin costo_usd
+             editado se guardaba en Bs: Chaco Lejos V2 cargó STRONG 7,5 $us y quedó Bs 7,5). Stock general (S…) sigue igual. */
+          var esUsd = !/^S/.test(String(id || ''));
           /* v1.8.304: TC del campo (BCB precargado o el que escribió el usuario) */
           var tcIn = _n((agEl('agi-tc') || {}).value);
           if (tcIn > 0) tc = { valor: tcIn, manual: !tc || Math.abs(tcIn - tc.valor) > 0.00001 };
