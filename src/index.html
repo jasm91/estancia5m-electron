@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.307';
+window.E5M_HTML_BUILD = '1.8.308';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -59671,7 +59671,19 @@ try {
       '#stk222 .s-sc::-webkit-scrollbar{width:7px}#stk222 .s-sc::-webkit-scrollbar-thumb{background:var(--bor);border-radius:4px}' +
       '#stk222 .s-r{display:grid;grid-template-columns:minmax(0,1fr) 64px 130px 110px 120px 78px;align-items:center;gap:12px;' +
       'padding:6px 14px;border-top:1px solid rgba(255,255,255,.05);min-height:44px;font-size:12.8px}' +
-      '#stk222 .s-r:nth-child(even){background:rgba(255,255,255,.022)}' +
+      '#stk222 .s-r.it:nth-child(4n){background:rgba(255,255,255,.022)}' +
+      /* v1.8.308: compras del insumo desplegables en la fila */
+      '#stk222 .s-r .nm span.exb{display:inline-flex;width:auto;max-width:max-content;color:var(--green);font-size:10.5px;overflow:visible}' +
+      '#stk222 .exb{display:inline-flex;align-items:center;gap:5px;margin-top:3px;font-size:10.5px;padding:1px 8px 1px 6px;border-radius:10px;border:1px solid rgba(63,185,80,.3);color:var(--green);background:rgba(63,185,80,.07);cursor:pointer;user-select:none}' +
+      '#stk222 .exb:hover{background:rgba(63,185,80,.14)}#stk222 .exb i{font-style:normal;display:inline-block;transition:transform .22s cubic-bezier(.4,0,.2,1)}#stk222 .exb.on i{transform:rotate(90deg)}' +
+      '#stk222 .s-ex{overflow:hidden;max-height:0;opacity:0;transition:max-height .26s cubic-bezier(.4,0,.2,1),opacity .18s ease;background:rgba(0,0,0,.18)}#stk222 .s-ex.open{opacity:1}' +
+      '#stk222 .s-ex .in{margin:6px 14px 10px 30px;border:1px solid var(--bor);border-radius:10px;overflow:hidden}' +
+      '#stk222 .s-ex .sc5{max-height:190px;overflow-y:auto}' +
+      '#stk222 .s-ex .cr{display:grid;grid-template-columns:96px minmax(0,1fr) 110px 170px 130px 130px;gap:12px;padding:6px 12px;font-size:12px;align-items:center;border-top:1px solid rgba(255,255,255,.05)}' +
+      '#stk222 .s-ex .cr:nth-child(even){background:rgba(255,255,255,.022)}' +
+      '#stk222 .s-ex .cr.h{background:var(--sur2);font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border-top:0}' +
+      '#stk222 .s-ex .cr .n{text-align:right;font-variant-numeric:tabular-nums}#stk222 .s-ex .cr .m{color:var(--muted);font-size:11px}' +
+      '@media (prefers-reduced-motion:reduce){#stk222 .s-ex,#stk222 .exb i{transition:none}}' +
       '#stk222 .s-r:hover{background:rgba(255,255,255,.055)}' +
       '#stk222 .s-r .nm{min-width:0;line-height:1.2}' +
       '#stk222 .s-r .nm b{font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
@@ -59758,16 +59770,35 @@ try {
     var cero = stock <= 0, sinP = !(costo > 0), stk = /^S/.test(String(i.id));
     var nota = [i.fecha_compra ? '🗓 ' + String(i.fecha_compra).split('-').reverse().join('/') : '', i.comentario ? '💬 ' + i.comentario : ''].filter(Boolean).join(' · ');
     var sub = [i.principio_activo || '', nota].filter(Boolean).join(' · ');
+    var ING = Array.isArray(i.ingresos) ? i.ingresos.slice().sort(function (a, b) { return String(b.fecha || '').localeCompare(String(a.fecha || '')) || String(b.at || '').localeCompare(String(a.at || '')); }) : [];
+    var exOn = !!EX[String(i.id)] && ING.length > 0, un = esc(i.unidad || 'u');
+    var fd = function (x) { return x ? String(x).slice(0, 10).split('-').reverse().join('/') : '—'; };
+    var exHtml = '';
+    if (ING.length) {
+      var prim = ING[ING.length - 1], ini = n(prim.stock_antes) > 0 ? '<div class="cr"><div>' + fd(i.fecha_compra) + '</div><div class="m">Carga inicial del insumo</div><div class="n">' + f(n(prim.stock_antes), 1) + ' ' + un + '</div><div class="n">Bs ' + f(n(prim.costo_antes), 2) + '</div><div class="n m">—</div><div class="n m">Bs ' + f(n(prim.costo_antes), 2) + '</div></div>' : '';
+      exHtml = '<div class="in"><div class="cr h"><div>Fecha</div><div>Proveedor / nota</div><div class="n">Cantidad</div><div class="n">Precio / ' + un + '</div><div class="n">Total compra</div><div class="n">Costo promedio</div></div><div class="sc5">' +
+        ING.map(function (g) { return '<div class="cr"><div>' + fd(g.fecha) + '</div><div class="m">' + esc(g.proveedor || '—') + '</div><div class="n">+' + f(n(g.qty), 1) + ' ' + un + '</div><div class="n">Bs ' + f(n(g.bs), 2) + (g.usd != null ? '<div class="m">$us ' + f(n(g.usd), 2) + ' · TC ' + f(n(g.tc), 2) + '</div>' : '') + '</div><div class="n">Bs ' + f(n(g.qty) * n(g.bs)) + '</div><div class="n">Bs ' + f(n(g.costo_despues), 2) + '</div></div>'; }).join('') + ini + '</div></div>';
+    }
+    var exBtn = ING.length ? '<span class="exb' + (exOn ? ' on' : '') + '" onclick="event.stopPropagation();stk307Tog(' + H.agIdq(i.id) + ')" title="Ver las compras registradas"><i>▸</i>🛒 ' + ING.length + (ING.length === 1 ? ' compra' : ' compras') + '</span>' : '';
+    var EXDIV = '<div class="s-ex' + (exOn ? ' open' : '') + '" data-ex="' + esc(String(i.id)) + '"' + (exOn ? ' style="max-height:none"' : '') + '>' + exHtml + '</div>';
     return '<div class="s-r it" onclick="stk307Ver(' + H.agIdq(i.id) + ')" title="Ver detalle">' +
-      '<div class="nm"><b>' + esc(i.nombre || '') + (stk ? ' <span class="pill-tc" style="border-color:var(--bor);color:var(--muted);background:transparent">Stock general</span>' : '') + '</b>' + (sub ? '<span>' + esc(sub) + '</span>' : '') + '</div>' +
+      '<div class="nm"><b>' + esc(i.nombre || '') + (stk ? ' <span class="pill-tc" style="border-color:var(--bor);color:var(--muted);background:transparent">Stock general</span>' : '') + '</b>' + (sub ? '<span>' + esc(sub) + '</span>' : '') + exBtn + '</div>' +
       '<div class="num" style="color:var(--muted)">' + esc(i.unidad || '') + '</div>' +
       '<div class="num">' + (sinP ? '<span class="s-sp">⚠ sin precio</span>' : 'Bs ' + f(costo, 2) + (i.costo_usd != null ? '<small>$us ' + f(n(i.costo_usd), 2) + (i.tc_manual ? '<span class="pill-tc">TC ' + f(n(i.tc_carga), 2) + '</span>' : '') + '</small>' : '')) + '</div>' +
       '<div class="num' + (cero ? ' s-cero' : '') + '">' + f(stock, 1) + '<span class="un">' + esc(i.unidad || '') + '</span></div>' +
       '<div class="num" style="color:var(--muted)">' + (val ? 'Bs ' + f(val) : '—') + '</div>' +
       '<div class="ac" onclick="event.stopPropagation()">' + (!stk && H.agIngresoOpen ? '<button class="btn btn-ghost btn-sm" title="Registrar compra" onclick="agIngresoOpen(' + H.agIdq(i.id) + ')">🛒</button>' : '') +
         '<button class="btn btn-ghost btn-sm" title="Editar" onclick="agOpenInsumos();agEditInsumo(' + H.agIdq(i.id) + ')">✏️</button></div>' +
-      '</div>';
+      '</div>' + EXDIV;
   }
+  var EX = {}; H.stk307Ex = EX;
+  H.stk307Tog = function (id) {
+    var el = null; [].forEach.call(document.querySelectorAll('#stk222 .s-ex'), function (x) { if (x.getAttribute('data-ex') === String(id)) el = x; });
+    if (!el) return;
+    var abrir = !el.classList.contains('open'); EX[String(id)] = abrir;
+    anima(el, abrir);
+    var b = el.previousElementSibling && el.previousElementSibling.querySelector('.exb'); if (b) b.classList.toggle('on', abrir);
+  };
   var HDR = '<div class="s-r hd"><div>Insumo</div><div class="num">Unidad</div><div class="num">Costo / u</div><div class="num">Stock</div><div class="num">Valor</div><div></div></div>';
 
   function grupoHtml(g, tc) {
@@ -64566,6 +64597,7 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
     try { if (typeof window.agSaveDB === 'function') window.agSaveDB(); else if (typeof saveDB === 'function') saveDB(); } catch (e) {}
     try { if (typeof replaceTableInRailway === 'function') replaceTableInRailway('agro_insumos', db.agro_insumos); } catch (e) {}
     cerrar();
+    try { if (window.stk307Ex) window.stk307Ex[String(i.id)] = true; } catch (e) {} /* v1.8.308: la fila queda desplegada mostrando sus compras */
     toast('🛒 ' + i.nombre + ': +' + f2(x.qty) + ' ' + (i.unidad || '') + ' · costo Bs ' + f2(s.c0) + ' → ' + f2(s.c1), 'success');
     try { if (window.agRenderAll) window.agRenderAll(); } catch (e) {}
     try { if (E('agi-tbody') && typeof window.agOpenInsumos === 'function' && E('agi-tbody').offsetParent) window.agOpenInsumos(); } catch (e) {}
