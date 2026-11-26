@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.308';
+window.E5M_HTML_BUILD = '1.8.309';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -59679,7 +59679,8 @@ try {
       '#stk222 .s-ex{overflow:hidden;max-height:0;opacity:0;transition:max-height .26s cubic-bezier(.4,0,.2,1),opacity .18s ease;background:rgba(0,0,0,.18)}#stk222 .s-ex.open{opacity:1}' +
       '#stk222 .s-ex .in{margin:6px 14px 10px 30px;border:1px solid var(--bor);border-radius:10px;overflow:hidden}' +
       '#stk222 .s-ex .sc5{max-height:190px;overflow-y:auto}' +
-      '#stk222 .s-ex .cr{display:grid;grid-template-columns:96px minmax(0,1fr) 110px 170px 130px 130px;gap:12px;padding:6px 12px;font-size:12px;align-items:center;border-top:1px solid rgba(255,255,255,.05)}' +
+      '#stk222 .s-ex .cr.an{opacity:.5}#stk222 .s-ex .cr.an .tx{text-decoration:line-through}#stk222 .s-ex .cr .a2{display:flex;gap:4px;justify-content:flex-end}#stk222 .s-ex .cr .a2 .btn{padding:2px 7px;font-size:10.5px}' +
+      '#stk222 .s-ex .cr{display:grid;grid-template-columns:96px minmax(0,1fr) 110px 170px 120px 125px 76px;gap:12px;padding:6px 12px;font-size:12px;align-items:center;border-top:1px solid rgba(255,255,255,.05)}' +
       '#stk222 .s-ex .cr:nth-child(even){background:rgba(255,255,255,.022)}' +
       '#stk222 .s-ex .cr.h{background:var(--sur2);font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border-top:0}' +
       '#stk222 .s-ex .cr .n{text-align:right;font-variant-numeric:tabular-nums}#stk222 .s-ex .cr .m{color:var(--muted);font-size:11px}' +
@@ -59771,15 +59772,18 @@ try {
     var nota = [i.fecha_compra ? '🗓 ' + String(i.fecha_compra).split('-').reverse().join('/') : '', i.comentario ? '💬 ' + i.comentario : ''].filter(Boolean).join(' · ');
     var sub = [i.principio_activo || '', nota].filter(Boolean).join(' · ');
     var ING = Array.isArray(i.ingresos) ? i.ingresos.slice().sort(function (a, b) { return String(b.fecha || '').localeCompare(String(a.fecha || '')) || String(b.at || '').localeCompare(String(a.at || '')); }) : [];
+    var NACT = ING.filter(function (g) { return g && !g.anulado; }).length;
     var exOn = !!EX[String(i.id)] && ING.length > 0, un = esc(i.unidad || 'u');
     var fd = function (x) { return x ? String(x).slice(0, 10).split('-').reverse().join('/') : '—'; };
     var exHtml = '';
     if (ING.length) {
-      var prim = ING[ING.length - 1], ini = n(prim.stock_antes) > 0 ? '<div class="cr"><div>' + fd(i.fecha_compra) + '</div><div class="m">Carga inicial del insumo</div><div class="n">' + f(n(prim.stock_antes), 1) + ' ' + un + '</div><div class="n">Bs ' + f(n(prim.costo_antes), 2) + '</div><div class="n m">—</div><div class="n m">Bs ' + f(n(prim.costo_antes), 2) + '</div></div>' : '';
-      exHtml = '<div class="in"><div class="cr h"><div>Fecha</div><div>Proveedor / nota</div><div class="n">Cantidad</div><div class="n">Precio / ' + un + '</div><div class="n">Total compra</div><div class="n">Costo promedio</div></div><div class="sc5">' +
-        ING.map(function (g) { return '<div class="cr"><div>' + fd(g.fecha) + '</div><div class="m">' + esc(g.proveedor || '—') + '</div><div class="n">+' + f(n(g.qty), 1) + ' ' + un + '</div><div class="n">Bs ' + f(n(g.bs), 2) + (g.usd != null ? '<div class="m">$us ' + f(n(g.usd), 2) + ' · TC ' + f(n(g.tc), 2) + '</div>' : '') + '</div><div class="n">Bs ' + f(n(g.qty) * n(g.bs)) + '</div><div class="n">Bs ' + f(n(g.costo_despues), 2) + '</div></div>'; }).join('') + ini + '</div></div>';
+      var prim = i.ingresos[0], ini = n(prim.stock_antes) > 0 ? '<div class="cr"><div>' + fd(i.fecha_compra) + '</div><div class="m">Carga inicial del insumo</div><div class="n">' + f(n(prim.stock_antes), 1) + ' ' + un + '</div><div class="n">Bs ' + f(n(prim.costo_antes), 2) + '</div><div class="n m">—</div><div class="n m">Bs ' + f(n(prim.costo_antes), 2) + '</div><div></div></div>' : '';
+      exHtml = '<div class="in"><div class="cr h"><div>Fecha</div><div>Proveedor / nota</div><div class="n">Cantidad</div><div class="n">Precio / ' + un + '</div><div class="n">Total compra</div><div class="n">Costo promedio</div><div></div></div><div class="sc5">' +
+        ING.map(function (g) { var an = !!g.anulado, ids = H.agIdq(i.id) + ',' + H.agIdq(g.id);
+          return '<div class="cr' + (an ? ' an' : '') + '"><div class="tx">' + fd(g.fecha) + '</div><div class="m">' + (an ? '<b>ANULADA</b>' + (g.anulado.motivo ? ' · ' + esc(g.anulado.motivo) : '') + ' · ' : '') + esc(g.proveedor || (an ? '' : '—')) + (g.editado && !an ? ' <span title="Corregida">✎</span>' : '') + '</div><div class="n tx">+' + f(n(g.qty), 1) + ' ' + un + '</div><div class="n tx">Bs ' + f(n(g.bs), 2) + (g.usd != null ? '<div class="m">$us ' + f(n(g.usd), 2) + ' · TC ' + f(n(g.tc), 2) + '</div>' : '') + '</div><div class="n tx">Bs ' + f(n(g.qty) * n(g.bs)) + '</div><div class="n">' + (an ? '—' : 'Bs ' + f(n(g.costo_despues), 2)) + '</div>' +
+            '<div class="a2" onclick="event.stopPropagation()">' + (an ? '<button class="btn btn-ghost btn-sm" title="Restaurar" onclick="agIngresoAnular(' + ids + ',true)">↩</button>' : '<button class="btn btn-ghost btn-sm" title="Corregir" onclick="agIngresoOpen(' + ids + ')">✏️</button><button class="btn btn-ghost btn-sm" title="Anular" onclick="agIngresoAnular(' + ids + ')">🚫</button>') + '</div></div>'; }).join('') + ini + '</div></div>';
     }
-    var exBtn = ING.length ? '<span class="exb' + (exOn ? ' on' : '') + '" onclick="event.stopPropagation();stk307Tog(' + H.agIdq(i.id) + ')" title="Ver las compras registradas"><i>▸</i>🛒 ' + ING.length + (ING.length === 1 ? ' compra' : ' compras') + '</span>' : '';
+    var exBtn = ING.length ? '<span class="exb' + (exOn ? ' on' : '') + '" onclick="event.stopPropagation();stk307Tog(' + H.agIdq(i.id) + ')" title="Ver las compras registradas"><i>▸</i>🛒 ' + NACT + (NACT === 1 ? ' compra' : ' compras') + (ING.length > NACT ? ' · ' + (ING.length - NACT) + ' anulada' + (ING.length - NACT === 1 ? '' : 's') : '') + '</span>' : '';
     var EXDIV = '<div class="s-ex' + (exOn ? ' open' : '') + '" data-ex="' + esc(String(i.id)) + '"' + (exOn ? ' style="max-height:none"' : '') + '>' + exHtml + '</div>';
     return '<div class="s-r it" onclick="stk307Ver(' + H.agIdq(i.id) + ')" title="Ver detalle">' +
       '<div class="nm"><b>' + esc(i.nombre || '') + (stk ? ' <span class="pill-tc" style="border-color:var(--bor);color:var(--muted);background:transparent">Stock general</span>' : '') + '</b>' + (sub ? '<span>' + esc(sub) + '</span>' : '') + exBtn + '</div>' +
@@ -59901,7 +59905,7 @@ try {
     });
     sal.sort(function (a, b) { return String(b.f).localeCompare(String(a.f)); });
     var qSal = 0; sal.forEach(function (x) { qSal += x.q; });
-    var ing = (Array.isArray(i.ingresos) ? i.ingresos : []).slice().sort(function (a, b) { return String(b.fecha || '').localeCompare(String(a.fecha || '')); });
+    var ing = (Array.isArray(i.ingresos) ? i.ingresos : []).filter(function (g) { return g && !g.anulado; }).sort(function (a, b) { return String(b.fecha || '').localeCompare(String(a.fecha || '')); });
     var qIng = 0; ing.forEach(function (x) { qIng += n(x.qty); });
     var fd = function (x) { return x ? String(x).slice(0, 10).split('-').reverse().join('/') : '—'; };
     var estado = stock <= 0 ? ['r', 'Sin stock'] : (min > 0 && stock <= min ? ['a', 'Bajo el mínimo'] : ['g', 'Con stock']);
@@ -64488,7 +64492,7 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
   function toast(m, k) { try { (window.agToast || window.toast || console.log)(m, k); } catch (e) {} }
   function lista() { return (typeof db !== 'undefined' && db && Array.isArray(db.agro_insumos)) ? db.agro_insumos.filter(function (i) { return i && !i.anulado; }) : []; }
   function porId(id) { return lista().find(function (i) { return String(i.id) === String(id); }) || null; }
-  var MON = 'usd', SEL = null;
+  var MON = 'usd', SEL = null, EDIT = null;
 
   function css() {
     if (E('ing305-css')) return;
@@ -64508,8 +64512,8 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
   function cerrar() { var o = E('ing305-ov'); if (o) o.remove(); }
   window.ing305Cerrar = cerrar;
 
-  window.agIngresoOpen = function (id) {
-    css(); cerrar(); MON = 'usd';
+  window.agIngresoOpen = function (id, gid) {
+    css(); cerrar(); MON = 'usd'; EDIT = null;
     var ins = lista().slice().sort(function (a, b) { return String(a.nombre || '').localeCompare(String(b.nombre || '')); });
     if (!ins.length) { toast('Primero creá el insumo en el catálogo', 'error'); return; }
     var t = tcBcb();
@@ -64529,6 +64533,17 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
     ov.onclick = function (e) { if (e.target === ov) cerrar(); };
     document.body.appendChild(ov);
     if (id != null && porId(id)) E('ing-ins').value = String(id);
+    /* v1.8.309: CORREGIR una compra ya registrada (mismo formulario, precargado) */
+    var gE = (gid != null && porId(id)) ? (porId(id).ingresos || []).find(function (g) { return g && String(g.id) === String(gid) && !g.anulado; }) : null;
+    if (gE) {
+      EDIT = String(gid);
+      ov.querySelector('h3').textContent = '✏️ Corregir compra';
+      ov.querySelector('.sub').innerHTML = 'Cambiá lo que estaba mal (fecha, cantidad, precio o TC). El stock y el <b>costo promedio</b> se recalculan con todas las compras del insumo.';
+      E('ing-ins').disabled = true; E('ing-fecha').value = gE.fecha || hoy(); E('ing-qty').value = gE.qty; E('ing-prov').value = gE.proveedor || '';
+      if (gE.usd != null && gE.moneda !== 'bs') { E('ing-precio').value = gE.usd; E('ing-tc').value = gE.tc || E('ing-tc').value; }
+      else { E('ing-precio').value = gE.bs; window.ing305Mon('bs'); }
+      ov.querySelector('.ft .btn-primary').textContent = '💾 Guardar corrección';
+    }
     ['ing-ins', 'ing-qty', 'ing-precio', 'ing-tc', 'ing-fecha'].forEach(function (k) { var e = E(k); if (e) { e.addEventListener('input', calc); e.addEventListener('change', calc); } });
     calc();
     setTimeout(function () { try { E('ing-qty').focus(); } catch (e) {} }, 40);
@@ -64540,6 +64555,71 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
     calc();
   };
   /* el núcleo: qué queda en el insumo si entra esta compra */
+  /* v1.8.309 — re-cálculo completo: recorre las compras del insumo en el orden en que se cargaron y rehace el promedio.
+     `viejo` = como están guardadas hoy; `nuevo` = mismas compras con la corrección / anulación aplicada. */
+  function act(a) { return (a || []).filter(function (g) { return g && !g.anulado; }); }
+  function replay(i, viejo, nuevo) {
+    var sum = function (a) { var t = 0; act(a).forEach(function (g) { t += n(g.qty); }); return t; };
+    var stock = r2(n(i.stock) - sum(viejo) + sum(nuevo));
+    var first = viejo[0] || {}, c = n(first.costo_antes), tcRef = n(i.tc_carga) || ((tcBcb() || {}).valor || 0);
+    var u = first.usd_antes != null ? n(first.usd_antes) : (tcRef > 0 && c > 0 ? c / tcRef : null);
+    var c0 = c, u0 = u, pOld = 0, pNew = 0, filas = [];
+    nuevo.forEach(function (g, k) {
+      var o = viejo[k] || g, sa = r2(n(o.stock_antes) - pOld + pNew), fila = { stock_antes: sa, costo_antes: r4(c), usd_antes: u == null ? null : r4(u) };
+      if (!g.anulado) {
+        var base = sa > 0 ? sa : 0, q = n(g.qty), bs = n(g.bs), usd = g.usd != null ? n(g.usd) : (tcRef > 0 ? bs / tcRef : null);
+        c = base > 0 ? (base * c + q * bs) / (base + q) : bs;
+        if (usd != null) u = (base > 0 && u != null) ? (base * u + q * usd) / (base + q) : usd;
+        fila.costo_despues = r4(c);
+        pNew += q;
+      }
+      if (!o.anulado) pOld += n(o.qty);
+      filas.push(fila);
+    });
+    var hay = act(nuevo).length > 0;
+    return { stock: stock, costo: r4(hay ? c : c0), usd: (hay ? u : u0) == null ? null : r4(hay ? u : u0), filas: filas, hay: hay };
+  }
+  function aplicar(i, nuevo, R) {
+    var now = new Date().toISOString();
+    nuevo.forEach(function (g, k) { var f = R.filas[k]; g.stock_antes = f.stock_antes; g.costo_antes = f.costo_antes; if (f.usd_antes != null) g.usd_antes = f.usd_antes; if (f.costo_despues != null) g.costo_despues = f.costo_despues; });
+    i.ingresos = nuevo; i.stock = R.stock; i.costo = R.costo;
+    if (R.usd != null) { i.costo_usd = R.usd; if (R.usd > 0) i.tc_carga = r4(R.costo / R.usd); }
+    var ult = act(nuevo).map(function (g) { return g.fecha || ''; }).sort().pop(); if (ult) i.ultima_compra = ult; else delete i.ultima_compra;
+    i.updated_at = now; i.server_updated_at = now;
+    try { if (typeof window.agSaveDB === 'function') window.agSaveDB(); else if (typeof saveDB === 'function') saveDB(); } catch (e) {}
+    try { if (typeof replaceTableInRailway === 'function') replaceTableInRailway('agro_insumos', db.agro_insumos); } catch (e) {}
+    try { if (window.stk307Ex) window.stk307Ex[String(i.id)] = true; } catch (e) {}
+    try { if (window.agRenderAll) window.agRenderAll(); } catch (e) {}
+    try { if (window.stk222Pintar) window.stk222Pintar(); } catch (e) {}
+  }
+  function clon(a) { return JSON.parse(JSON.stringify(a || [])); }
+  function conEdicion(x) { /* copia de las compras con la corrección del formulario aplicada */
+    var nv = clon(x.i.ingresos), g = nv.find(function (q) { return String(q.id) === EDIT; }); if (!g) return null;
+    g.fecha = x.fecha; g.qty = r2(x.qty); g.bs = r4(x.bsU); g.usd = x.usdU == null ? null : r4(x.usdU); g.tc = MON === 'usd' ? x.tc : (x.usdU != null ? x.tc : null); g.moneda = MON; g.proveedor = x.prov;
+    return nv;
+  }
+  /* anular una compra (queda en el historial, tachada) — y restaurarla */
+  window.agIngresoAnular = function (insId, gid, restaurar) {
+    css(); cerrar();
+    var i = porId(insId); if (!i) return; var g0 = (i.ingresos || []).find(function (q) { return q && String(q.id) === String(gid); }); if (!g0) return;
+    var nv = clon(i.ingresos), g = nv.find(function (q) { return String(q.id) === String(gid); });
+    if (restaurar) delete g.anulado; else g.anulado = { at: new Date().toISOString(), by: 'Escritorio' };
+    var R = replay(i, i.ingresos, nv), un = esc(i.unidad || 'u');
+    var ov = document.createElement('div'); ov.id = 'ing305-ov';
+    ov.innerHTML = '<div class="bx agx" style="width:480px"><h3>' + (restaurar ? '↩ Restaurar compra' : '🚫 Anular compra') + '</h3>' +
+      '<div class="sub">' + esc(i.nombre) + ' · ' + esc(String(g0.fecha || '').split('-').reverse().join('/')) + ' · ' + f2(g0.qty) + ' ' + un + ' a Bs ' + f2(g0.bs) + (g0.usd != null ? ' ($us ' + f2(g0.usd) + ' · TC ' + f2(g0.tc) + ')' : '') + (g0.proveedor ? ' · ' + esc(g0.proveedor) : '') + '</div>' +
+      '<div class="prev">Stock: ' + f2(i.stock) + ' → <b>' + f2(R.stock) + ' ' + un + '</b><br>Costo promedio: Bs ' + f2(i.costo) + ' → <b>Bs ' + f2(R.costo) + '/' + un + '</b>' + (R.usd != null ? ' · $us <b>' + f2(R.usd) + '</b>' : '') +
+        (R.stock < 0 ? '<br><span style="color:var(--amber2,#e3b341)">El stock queda en negativo: ya se usó parte de esta compra en labores.</span>' : '') + '</div>' +
+      (restaurar ? '' : '<div style="margin-top:10px"><label class="form-label">Motivo</label><input class="form-input" id="ing-motivo" placeholder="Opcional — ej. cargada dos veces"></div><div class="hint">No se borra: queda tachada en el historial y se puede restaurar.</div>') +
+      '<div class="ft"><button class="btn btn-ghost" onclick="ing305Cerrar()">Cancelar</button><button class="btn btn-primary" id="ing-anular-ok">' + (restaurar ? '↩ Restaurar' : '🚫 Anular compra') + '</button></div></div>';
+    ov.onclick = function (e) { if (e.target === ov) cerrar(); };
+    document.body.appendChild(ov);
+    E('ing-anular-ok').onclick = function () {
+      if (!restaurar) { var m = String((E('ing-motivo') || {}).value || '').trim(); if (m) g.anulado.motivo = m.slice(0, 200); }
+      aplicar(i, nv, R); cerrar();
+      toast((restaurar ? '↩ Compra restaurada' : '🚫 Compra anulada') + ' · ' + i.nombre + ': costo Bs ' + f2(R.costo), 'success');
+    };
+  };
   function simular(i, qty, bsU, usdU) {
     var st0 = n(i.stock), c0 = n(i.costo), u0 = i.costo_usd != null ? n(i.costo_usd) : (n(i.tc_carga) > 0 ? c0 / n(i.tc_carga) : null);
     var base = st0 > 0 ? st0 : 0;
@@ -64561,13 +64641,19 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
     if (!x.i) { if (pv) pv.innerHTML = ''; return; }
     var un = esc(x.i.unidad || 'u');
     if (hs) {
-      var H = (x.i.ingresos || []).slice(-5).reverse();
+      var H = act(x.i.ingresos).filter(function (g) { return String(g.id) !== EDIT; }).slice(-5).reverse();
       hs.innerHTML = H.length ? '<div style="margin-bottom:4px;font-weight:700">Últimas compras cargadas</div>' + H.map(function (g) {
         return '<div class="it"><span>' + esc(String(g.fecha || '').split('-').reverse().join('/')) + '</span><span>' + f2(g.qty) + ' ' + un + '</span><span>' + (g.usd != null ? '$us ' + f2(g.usd) + ' · TC ' + f2(g.tc) : '') + '</span><span style="margin-left:auto">Bs ' + f2(g.bs) + '/' + un + '</span></div>';
       }).join('') : '';
     }
     if (!(x.qty > 0) || !(x.p > 0) || (MON === 'usd' && !(x.tc > 0))) {
       if (pv) pv.innerHTML = 'Stock actual: <b>' + f2(x.i.stock) + ' ' + un + '</b> · costo <b>Bs ' + f2(x.i.costo) + '/' + un + '</b>' + (x.i.costo_usd != null ? ' ($us ' + f2(x.i.costo_usd) + ')' : '') + '<br><span style="color:var(--muted)">Completá cantidad y precio para ver cómo queda.</span>';
+      return;
+    }
+    if (EDIT) {
+      var nvE = conEdicion(x), RE = nvE ? replay(x.i, x.i.ingresos, nvE) : null; if (!RE) return;
+      pv.innerHTML = 'Compra corregida: <b>' + f2(x.qty) + ' ' + un + '</b> a <b>Bs ' + f2(x.bsU) + '/' + un + '</b>' + (MON === 'usd' ? ' ($us ' + f2(x.p) + ' × TC ' + f2(x.tc) + ')' : '') + ' = Bs ' + f2(x.qty * x.bsU) +
+        '<br>Stock: ' + f2(x.i.stock) + ' → <b>' + f2(RE.stock) + ' ' + un + '</b><br>Costo promedio: Bs ' + f2(x.i.costo) + ' → <b>Bs ' + f2(RE.costo) + '/' + un + '</b>' + (RE.usd != null ? ' · $us <b>' + f2(RE.usd) + '</b>' : '');
       return;
     }
     var s = simular(x.i, x.qty, x.bsU, x.usdU);
@@ -64583,9 +64669,17 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
     if (!(x.p > 0)) { toast('Cargá el precio', 'error'); return; }
     if (MON === 'usd' && !(x.tc > 0)) { toast('Cargá el TC de esa compra', 'error'); return; }
     if (x.fecha > hoy()) { toast('La fecha no puede ser futura', 'error'); return; }
+    if (EDIT) {
+      var nvG = conEdicion(x); if (!nvG) { cerrar(); return; }
+      var gG = nvG.find(function (q) { return String(q.id) === EDIT; }); gG.editado = { at: new Date().toISOString() };
+      var RG = replay(x.i, x.i.ingresos, nvG), cAnt = x.i.costo; x.i.tc_manual = true;
+      aplicar(x.i, nvG, RG); cerrar();
+      toast('✏️ Compra corregida · ' + x.i.nombre + ': costo Bs ' + f2(cAnt) + ' → ' + f2(RG.costo), 'success');
+      return;
+    }
     var s = simular(x.i, x.qty, x.bsU, x.usdU), now = new Date().toISOString();
     var g = { id: 'ing-' + Date.now() + '-' + Math.floor(Math.random() * 999), fecha: x.fecha, qty: r2(x.qty), bs: r4(x.bsU), usd: x.usdU == null ? null : r4(x.usdU), tc: MON === 'usd' ? x.tc : (x.usdU != null ? x.tc : null),
-      moneda: MON, proveedor: x.prov, stock_antes: s.st0, costo_antes: s.c0, costo_despues: s.c1, by: (typeof getOperator === 'function' ? getOperator() : '') || 'Escritorio', at: now };
+      moneda: MON, proveedor: x.prov, stock_antes: s.st0, costo_antes: s.c0, usd_antes: s.u0 == null ? null : r4(s.u0), costo_despues: s.c1, by: (typeof getOperator === 'function' ? getOperator() : '') || 'Escritorio', at: now };
     var i = x.i;
     if (!Array.isArray(i.ingresos)) i.ingresos = [];
     i.ingresos.push(g);
