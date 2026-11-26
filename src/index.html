@@ -47685,7 +47685,10 @@ document.addEventListener('click', function(ev){
     var extra = [];
     if (x.principio_activo) extra.push(x.principio_activo);
     if (x.codigo) extra.push('cód. ' + x.codigo);
-    return esc(x.nombre) + (extra.length ? ' — ' + esc(extra.join(' · ')) : '') + ' (Bs ' + x.costo + '/' + esc(x.unidad) + ' · stock ' + fmtA(x.stock) + ')';
+    /* v1.8.307: para distinguir dos ítems del mismo producto (compras distintas) */
+    if (x.fecha_compra) extra.push('compra ' + String(x.fecha_compra).split('-').reverse().join('/'));
+    if (x.comentario) extra.push(String(x.comentario).slice(0, 40));
+    return esc(x.nombre) + (extra.length ? ' — ' + esc(extra.join(' · ')) : '') + ' (Bs ' + fmtA(x.costo, 2) + '/' + esc(x.unidad) + ' · stock ' + fmtA(x.stock) + ')';
   }
   agwAddInsumo = function (presetId, presetDosis) {
     var wrap = E('agw-ins-rows'); if (!wrap) return;
