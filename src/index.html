@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.309';
+window.E5M_HTML_BUILD = '1.8.310';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -45594,7 +45594,7 @@ function agwOpen(execId,mode,tipoPreset){
       agEl('agw-maquina').value=l.maquina||'';
       sel.value=l.campana_id; agwCampanaInfo();
       var _lp=laborParcela(d,l); if(_lp){ AGW.lotes=[_lp.id]; AGW.loteLock=true; agwLotesRender(); } /* v1.8.217: el lote ya viene de la labor */
-      (l.insumos||[]).forEach(function(r){ agwAddInsumo(r.insumo_id,r.dosis); });
+      (l.insumos||[]).forEach(function(r){ agwAddInsumo(r.lote_id!=null?(r.insumo_id+'::'+r.lote_id):r.insumo_id,r.dosis); });
       agEl('agw-notas').value=l.notas||'';
     }
   }
@@ -47698,14 +47698,19 @@ document.addEventListener('click', function(ev){
     var opts = '<option value="">— Insumo —</option>';
     /* si viene preseleccionado algo fuera del filtro (labor del plan), igual se muestra */
     if (presetId != null && presetId !== '') {
-      var pre = agById(d.insumos, presetId);
-      var enLista = g.orden.some(function (k) { return g.by[k].items.some(function (x) { return String(x.id) === String(presetId); }); });
+      var pre = agById(d.insumos, String(presetId).split('::')[0]);
+      var enLista = g.orden.some(function (k) { return g.by[k].items.some(function (x) { return String(x.id) === String(presetId).split('::')[0]; }); });
       if (pre && !enLista) opts += '<option value="' + pre.id + '" selected>' + opcionTxt(pre) + '</option>';
     }
     g.orden.forEach(function (k) {
       var gg = g.by[k];
       gg.items.sort(function (a, b) { return String(a.nombre || '').localeCompare(String(b.nombre || '')); });
       opts += '<optgroup label="' + esc(gg.label) + '">' + gg.items.map(function (x) {
+        var LT = window.agInsLotes ? window.agInsLotes(x) : [];
+        if (LT.length) return LT.filter(function (L) { return L.saldo > 0.005 || String(presetId) === x.id + '::' + L.gid; }).map(function (L) {
+          var v = x.id + '::' + L.gid;
+          return '<option value="' + esc(v) + '"' + (String(presetId) === v ? ' selected' : '') + '>' + esc(x.nombre) + ' — ' + esc(L.nota || (L.ini ? 'carga inicial' : 'compra')) + (L.fecha ? ' · ' + String(L.fecha).split('-').reverse().join('/') : '') + ' (Bs ' + fmtA(L.costo, 2) + '/' + esc(x.unidad) + ' · quedan ' + fmtA(L.saldo, 1) + ')</option>';
+        }).join('');
         return '<option value="' + x.id + '"' + (String(presetId) === String(x.id) ? ' selected' : '') + '>' + opcionTxt(x) + '</option>';
       }).join('') + '</optgroup>';
     });
@@ -47740,10 +47745,14 @@ document.addEventListener('click', function(ev){
     var ha = (haFija != null) ? haFija : haTot;
     var fijo = esFijo();
     document.querySelectorAll('#agw-ins-rows .ins-row').forEach(function (row) {
-      var _idRaw = String(row.querySelector('.agw-ins-sel').value || '');
+      var _idRaw = String(row.querySelector('.agw-ins-sel').value || ''), _gid = null;
+      if (_idRaw.indexOf('::') > 0) { _gid = _idRaw.split('::')[1]; _idRaw = _idRaw.split('::')[0]; }
       var id = /^\d+$/.test(_idRaw) ? Number(_idRaw) : _idRaw;
       var v = parseFloat(row.querySelector('.agw-ins-dosis').value);
       var ins = id ? agById(d.insumos, id) : null;
+      /* v1.8.310: fila de una compra puntual → costo y saldo de ESA compra */
+      var L = (_gid && ins && window.agInsLotes) ? window.agInsLotes(ins).filter(function (q) { return q.gid === _gid; })[0] : null;
+      if (L) ins = Object.assign({}, ins, { costo: L.costo, stock: L.saldo });
       var inp = row.querySelector('.agw-ins-dosis');
       var fijoFila = fijo || !!(ins && ins._general);
       if (inp) inp.placeholder = fijoFila ? 'cantidad' : 'dosis/ha';
@@ -47757,6 +47766,7 @@ document.addEventListener('click', function(ev){
         total = v * ha; costo = total * ins.costo;
         out.push({ insumo_id: id, dosis: v, total: r2(total), costo: r2(costo) });
       }
+      if (L) { var _o = out[out.length - 1]; _o.lote_id = L.gid; _o.costo_u = L.costo; _o.lote_nota = L.nota || ''; _o.lote_fecha = L.fecha || ''; if (L.usd != null) { _o.lote_usd = L.usd; _o.lote_tc = L.tc; } }
       row.querySelector('.agw-ins-total').value = fmtA(total, 1) + ' ' + ins.unidad;
       row.querySelector('.agw-ins-costo').value = fmtA(costo);
       if (total > ins.stock) warn.push(ins.nombre + ': necesita ' + fmtA(total, 1) + ' ' + ins.unidad + ' y hay ' + fmtA(ins.stock));
@@ -59680,7 +59690,7 @@ try {
       '#stk222 .s-ex .in{margin:6px 14px 10px 30px;border:1px solid var(--bor);border-radius:10px;overflow:hidden}' +
       '#stk222 .s-ex .sc5{max-height:190px;overflow-y:auto}' +
       '#stk222 .s-ex .cr.an{opacity:.5}#stk222 .s-ex .cr.an .tx{text-decoration:line-through}#stk222 .s-ex .cr .a2{display:flex;gap:4px;justify-content:flex-end}#stk222 .s-ex .cr .a2 .btn{padding:2px 7px;font-size:10.5px}' +
-      '#stk222 .s-ex .cr{display:grid;grid-template-columns:96px minmax(0,1fr) 110px 170px 120px 125px 76px;gap:12px;padding:6px 12px;font-size:12px;align-items:center;border-top:1px solid rgba(255,255,255,.05)}' +
+      '#stk222 .s-ex .cr{display:grid;grid-template-columns:96px minmax(0,1fr) 100px 160px 110px 90px 120px 76px;gap:12px;padding:6px 12px;font-size:12px;align-items:center;border-top:1px solid rgba(255,255,255,.05)}' +
       '#stk222 .s-ex .cr:nth-child(even){background:rgba(255,255,255,.022)}' +
       '#stk222 .s-ex .cr.h{background:var(--sur2);font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border-top:0}' +
       '#stk222 .s-ex .cr .n{text-align:right;font-variant-numeric:tabular-nums}#stk222 .s-ex .cr .m{color:var(--muted);font-size:11px}' +
@@ -59777,10 +59787,12 @@ try {
     var fd = function (x) { return x ? String(x).slice(0, 10).split('-').reverse().join('/') : '—'; };
     var exHtml = '';
     if (ING.length) {
-      var prim = i.ingresos[0], ini = n(prim.stock_antes) > 0 ? '<div class="cr"><div>' + fd(i.fecha_compra) + '</div><div class="m">Carga inicial del insumo</div><div class="n">' + f(n(prim.stock_antes), 1) + ' ' + un + '</div><div class="n">Bs ' + f(n(prim.costo_antes), 2) + '</div><div class="n m">—</div><div class="n m">Bs ' + f(n(prim.costo_antes), 2) + '</div><div></div></div>' : '';
-      exHtml = '<div class="in"><div class="cr h"><div>Fecha</div><div>Proveedor / nota</div><div class="n">Cantidad</div><div class="n">Precio / ' + un + '</div><div class="n">Total compra</div><div class="n">Costo promedio</div><div></div></div><div class="sc5">' +
+      var SLD = {}; try { (window.agInsLotes ? window.agInsLotes(i) : []).forEach(function (L) { SLD[L.gid] = L.saldo; }); } catch (e) {}
+      var qd = function (k) { var v = SLD[k]; return v == null ? '<div class="n m">—</div>' : '<div class="n" style="font-weight:600' + (v <= 0.005 ? ';opacity:.5' : '') + '">' + f(v, 1) + ' ' + un + '</div>'; };
+      var prim = i.ingresos[0], ini = n(prim.stock_antes) > 0 ? '<div class="cr"><div>' + fd(i.fecha_compra) + '</div><div class="m">Carga inicial del insumo</div><div class="n">' + f(n(prim.stock_antes), 1) + ' ' + un + '</div><div class="n">Bs ' + f(n(prim.costo_antes), 2) + '</div><div class="n m">—</div>' + qd('ini') + '<div class="n m">Bs ' + f(n(prim.costo_antes), 2) + '</div><div></div></div>' : '';
+      exHtml = '<div class="in"><div class="cr h"><div>Fecha</div><div>Comentario</div><div class="n">Cantidad</div><div class="n">Precio / ' + un + '</div><div class="n">Total compra</div><div class="n">Queda</div><div class="n">Costo promedio</div><div></div></div><div class="sc5">' +
         ING.map(function (g) { var an = !!g.anulado, ids = H.agIdq(i.id) + ',' + H.agIdq(g.id);
-          return '<div class="cr' + (an ? ' an' : '') + '"><div class="tx">' + fd(g.fecha) + '</div><div class="m">' + (an ? '<b>ANULADA</b>' + (g.anulado.motivo ? ' · ' + esc(g.anulado.motivo) : '') + ' · ' : '') + esc(g.proveedor || (an ? '' : '—')) + (g.editado && !an ? ' <span title="Corregida">✎</span>' : '') + '</div><div class="n tx">+' + f(n(g.qty), 1) + ' ' + un + '</div><div class="n tx">Bs ' + f(n(g.bs), 2) + (g.usd != null ? '<div class="m">$us ' + f(n(g.usd), 2) + ' · TC ' + f(n(g.tc), 2) + '</div>' : '') + '</div><div class="n tx">Bs ' + f(n(g.qty) * n(g.bs)) + '</div><div class="n">' + (an ? '—' : 'Bs ' + f(n(g.costo_despues), 2)) + '</div>' +
+          return '<div class="cr' + (an ? ' an' : '') + '"><div class="tx">' + fd(g.fecha) + '</div><div class="m">' + (an ? '<b>ANULADA</b>' + (g.anulado.motivo ? ' · ' + esc(g.anulado.motivo) : '') + ' · ' : '') + esc(g.proveedor || (an ? '' : '—')) + (g.editado && !an ? ' <span title="Corregida">✎</span>' : '') + '</div><div class="n tx">+' + f(n(g.qty), 1) + ' ' + un + '</div><div class="n tx">Bs ' + f(n(g.bs), 2) + (g.usd != null ? '<div class="m">$us ' + f(n(g.usd), 2) + ' · TC ' + f(n(g.tc), 2) + '</div>' : '') + '</div><div class="n tx">Bs ' + f(n(g.qty) * n(g.bs)) + '</div>' + (an ? '<div class="n m">—</div>' : qd(String(g.id))) + '<div class="n">' + (an ? '—' : 'Bs ' + f(n(g.costo_despues), 2)) + '</div>' +
             '<div class="a2" onclick="event.stopPropagation()">' + (an ? '<button class="btn btn-ghost btn-sm" title="Restaurar" onclick="agIngresoAnular(' + ids + ',true)">↩</button>' : '<button class="btn btn-ghost btn-sm" title="Corregir" onclick="agIngresoOpen(' + ids + ')">✏️</button><button class="btn btn-ghost btn-sm" title="Anular" onclick="agIngresoAnular(' + ids + ')">🚫</button>') + '</div></div>'; }).join('') + ini + '</div></div>';
     }
     var exBtn = ING.length ? '<span class="exb' + (exOn ? ' on' : '') + '" onclick="event.stopPropagation();stk307Tog(' + H.agIdq(i.id) + ')" title="Ver las compras registradas"><i>▸</i>🛒 ' + NACT + (NACT === 1 ? ' compra' : ' compras') + (ING.length > NACT ? ' · ' + (ING.length - NACT) + ' anulada' + (ING.length - NACT === 1 ? '' : 's') : '') + '</span>' : '';
@@ -59901,7 +59913,7 @@ try {
     var sal = [];
     (d.labores || []).forEach(function (l) {
       if (!l || l.anulado || (l.estado !== 'ejecutada' && l.estado !== 'en_curso')) return;
-      (l.insumos || []).forEach(function (r) { if (r && String(r.insumo_id) === String(i.id) && n(r.total) > 0) sal.push({ f: l.fecha || '', lab: l.nombre || l.tipo || '', lote: l.parcela_codigo || '', camp: campL(l.campana_id), q: n(r.total), bs: n(r.costo) }); });
+      (l.insumos || []).forEach(function (r) { if (r && String(r.insumo_id) === String(i.id) && n(r.total) > 0) sal.push({ f: l.fecha || '', lab: l.nombre || l.tipo || '', lote: l.parcela_codigo || '', camp: campL(l.campana_id), q: n(r.total), bs: n(r.costo), lt: r.lote_id != null ? (r.lote_nota || (r.lote_fecha ? 'compra ' + String(r.lote_fecha).split('-').reverse().join('/') : 'carga inicial')) : '' }); });
     });
     sal.sort(function (a, b) { return String(b.f).localeCompare(String(a.f)); });
     var qSal = 0; sal.forEach(function (x) { qSal += x.q; });
@@ -59934,12 +59946,12 @@ try {
           (i.updated_at ? '<div class="k">Modificado</div><div>' + fd(i.updated_at) + '</div>' : '') +
         '</div></div><div style="min-width:0">' +
         '<h4>🛒 Compras registradas <span>' + (ing.length ? ing.length + ' · ' + f(qIng, 1) + ' ' + un : '') + '</span></h4>' +
-        (ing.length ? '<div class="tb"><div class="tr h" style="' + colsI + '"><div>Fecha</div><div>Proveedor / nota</div><div class="n">Cantidad</div><div class="n">Precio / ' + un + '</div><div class="n">Costo después</div></div><div class="sc">' +
+        (ing.length ? '<div class="tb"><div class="tr h" style="' + colsI + '"><div>Fecha</div><div>Comentario</div><div class="n">Cantidad</div><div class="n">Precio / ' + un + '</div><div class="n">Costo después</div></div><div class="sc">' +
           ing.map(function (g) { return '<div class="tr" style="' + colsI + '"><div>' + fd(g.fecha) + '</div><div class="m">' + esc(g.proveedor || '—') + '</div><div class="n">' + f(n(g.qty), 1) + '</div><div class="n">Bs ' + f(n(g.bs), 2) + (g.usd != null ? '<div class="m">$us ' + f(n(g.usd), 2) + ' · TC ' + f(n(g.tc), 2) + '</div>' : '') + '</div><div class="n">Bs ' + f(n(g.costo_despues), 2) + '</div></div>'; }).join('') + '</div></div>'
           : '<div class="tb"><div class="vac">Todavía no hay compras registradas. Con 🛒 Registrar compra cada ingreso queda acá y el costo se ajusta por promedio ponderado.</div></div>') +
         '<h4>🚜 Salidas por labores <span>' + (sal.length ? sal.length + ' · ' + f(qSal, 1) + ' ' + un : '') + '</span></h4>' +
         (sal.length ? '<div class="tb"><div class="tr h" style="' + colsS + '"><div>Fecha</div><div>Labor · campaña</div><div>Lote</div><div class="n">Cantidad</div><div class="n">Costo</div><div class="n">Bs / ' + un + '</div></div><div class="sc">' +
-          sal.map(function (x) { return '<div class="tr" style="' + colsS + '"><div>' + fd(x.f) + '</div><div>' + esc(x.lab) + '<div class="m">' + esc(x.camp) + '</div></div><div class="m">' + esc(x.lote || '—') + '</div><div class="n">' + f(x.q, 2) + '</div><div class="n">Bs ' + f(x.bs) + '</div><div class="n m">' + (x.q ? f(x.bs / x.q, 2) : '—') + '</div></div>'; }).join('') + '</div></div>'
+          sal.map(function (x) { return '<div class="tr" style="' + colsS + '"><div>' + fd(x.f) + '</div><div>' + esc(x.lab) + '<div class="m">' + esc(x.camp) + (x.lt ? ' · 🛒 ' + esc(x.lt) : '') + '</div></div><div class="m">' + esc(x.lote || '—') + '</div><div class="n">' + f(x.q, 2) + '</div><div class="n">Bs ' + f(x.bs) + '</div><div class="n m">' + (x.q ? f(x.bs / x.q, 2) : '—') + '</div></div>'; }).join('') + '</div></div>'
           : '<div class="tb"><div class="vac">Sin salidas todavía: las labores ejecutadas que usen este insumo aparecen acá.</div></div>') +
       '</div></div></div>' +
       '<div class="ft"><button class="btn btn-ghost" onclick="stk307Cerrar()">Cerrar</button>' +
@@ -64526,7 +64538,7 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
       '<div><label class="form-label">Cantidad * <span id="ing-uni" style="color:var(--muted)"></span></label><input class="form-input" type="number" min="0" step="any" id="ing-qty" placeholder="0"></div></div>' +
       '<div class="g2" style="margin-top:10px"><div><label class="form-label">Precio por unidad <span class="mon"><button type="button" id="ing-m-usd" class="sel" onclick="ing305Mon(\'usd\')">$us</button><button type="button" id="ing-m-bs" onclick="ing305Mon(\'bs\')">Bs</button></span></label><input class="form-input" type="number" min="0" step="any" id="ing-precio" placeholder="0,00"></div>' +
       '<div id="ing-tc-box"><label class="form-label">TC (Bs por $us) *</label><input class="form-input" type="number" min="0" step="0.0001" id="ing-tc" value="' + (t ? t.valor : '') + '"><div class="hint" id="ing-tc-hint"></div></div></div>' +
-      '<div style="margin-top:10px"><label class="form-label">Proveedor / nota</label><input class="form-input" id="ing-prov" placeholder="Opcional — ej. Agropartners, factura 1234"></div>' +
+      '<div style="margin-top:10px"><label class="form-label">Comentario de la compra</label><input class="form-input" id="ing-prov" placeholder="Ej. Agropartners F-1234 · galpón 2"><div class="hint">Es lo que ve el operador en EP Agro para elegir de qué compra saca el producto.</div></div>' +
       '<div class="prev" id="ing-prev"></div>' +
       '<div class="hist" id="ing-hist"></div>' +
       '<div class="ft"><button class="btn btn-ghost" onclick="ing305Cerrar()">Cancelar</button><button class="btn btn-primary" onclick="ing305Guardar()">💾 Registrar compra</button></div></div>';
@@ -64593,6 +64605,23 @@ window.__TC_CFG = { app: "desktop", api: function () { return (typeof getApiUrl 
     try { if (window.stk222Pintar) window.stk222Pintar(); } catch (e) {}
   }
   function clon(a) { return JSON.parse(JSON.stringify(a || [])); }
+  /* v1.8.310 — CONSUMO POR COMPRA: cada compra activa es un lote (precio/TC/comentario propios). El saldo se deduce de
+     las labores ejecutadas que la eligieron (fila.lote_id); lo que no es de ninguna compra queda en «carga inicial». */
+  window.agInsLotes = function (i) {
+    if (!i || i._general || !Array.isArray(i.ingresos)) return [];
+    var a = act(i.ingresos); if (!a.length) return [];
+    var cons = {};
+    ((window.db || db).agro_labores || []).forEach(function (l) {
+      if (!l || l.anulado || (l.estado !== 'ejecutada' && l.estado !== 'en_curso')) return;
+      (l.insumos || []).forEach(function (x) { if (x && x.lote_id != null && String(x.insumo_id) === String(i.id)) cons[String(x.lote_id)] = (cons[String(x.lote_id)] || 0) + n(x.total); });
+    });
+    var sum = 0, out = a.map(function (g) { var sd = r2(n(g.qty) - (cons[String(g.id)] || 0)); sum += sd;
+      return { gid: String(g.id), fecha: g.fecha || '', nota: String(g.proveedor || '').trim(), costo: n(g.bs), usd: g.usd != null ? n(g.usd) : null, tc: g.tc, saldo: sd }; });
+    var ini = r2(n(i.stock) - sum), g0 = i.ingresos[0] || {};
+    if (ini > 0.005) out.push({ gid: 'ini', ini: true, fecha: i.fecha_compra || '', nota: String(i.comentario || '').trim(), costo: n(g0.costo_antes) || n(i.costo), usd: g0.usd_antes != null ? n(g0.usd_antes) : null, tc: null, saldo: ini });
+    out.sort(function (x, y) { return String(x.fecha || '').localeCompare(String(y.fecha || '')); });
+    return out;
+  };
   function conEdicion(x) { /* copia de las compras con la corrección del formulario aplicada */
     var nv = clon(x.i.ingresos), g = nv.find(function (q) { return String(q.id) === EDIT; }); if (!g) return null;
     g.fecha = x.fecha; g.qty = r2(x.qty); g.bs = r4(x.bsU); g.usd = x.usdU == null ? null : r4(x.usdU); g.tc = MON === 'usd' ? x.tc : (x.usdU != null ? x.tc : null); g.moneda = MON; g.proveedor = x.prov;
