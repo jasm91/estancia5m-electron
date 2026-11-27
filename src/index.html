@@ -790,7 +790,7 @@ function navIdleReset() {
      · sello de build en la card Informacion, al lado de la version
      · v175Diag() : mide el menu y dice si quedan opciones tapadas
    ═══════════════════════════════════════════════════════════════════════ */
-window.E5M_HTML_BUILD = '1.8.310';
+window.E5M_HTML_BUILD = '1.8.311';
 /* v1.8.210 (pedido José 07-09: "¿dónde está el botón para mostrar el devtools?"): el boton se
    inyectaba buscando en el DOM un nodo cuyo texto fuera exactamente la version — si ese nodo no
    aparecia (html desparejo, re-render de Configuracion) no habia boton ni forma de abrir la consola.
@@ -44511,7 +44511,7 @@ function renderReproInteligencia() {
         <input type="hidden" id="agi-id">
         <div class="frow">
           <div><label class="form-label">Nombre *</label><input class="form-input" id="agi-nombre" placeholder="Semilla soya"></div>
-          <div><label class="form-label">Unidad *</label><select class="form-input" id="agi-unidad"><option value="kg">kg</option><option value="l">l</option><option value="unidad">unidad</option></select></div>
+          <div><label class="form-label">Unidad *</label><select class="form-input" id="agi-unidad"><option value="kg">kg</option><option value="g">g (gramos)</option><option value="t">t (tonelada)</option><option value="l">l</option><option value="ml">ml</option><option value="unidad">unidad</option><option value="bolsa">bolsa</option><option value="dosis">dosis</option></select></div>
         </div>
         <div class="frow">
           <div><label class="form-label">Costo (Bs por unidad) *</label><input class="form-input" id="agi-costo" type="number" min="0" step="0.01"></div>
@@ -44588,7 +44588,7 @@ function renderReproInteligencia() {
             <div class="form-label" style="margin-bottom:8px">🧪 Nuevo insumo (va al catálogo agro)</div>
             <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px">
               <input class="form-input" id="agw-ni-nombre" placeholder="Nombre (ej: Semilla soya)">
-              <select class="form-input" id="agw-ni-unidad"><option value="kg">kg</option><option value="l">l</option><option value="unidad">unidad</option></select>
+              <select class="form-input" id="agw-ni-unidad"><option value="kg">kg</option><option value="g">g (gramos)</option><option value="t">t (tonelada)</option><option value="l">l</option><option value="ml">ml</option><option value="unidad">unidad</option><option value="bolsa">bolsa</option><option value="dosis">dosis</option></select>
               <input class="form-input" id="agw-ni-costo" type="number" placeholder="Bs/unidad">
               <input class="form-input" id="agw-ni-stock" type="number" placeholder="Stock">
             </div>
@@ -45511,7 +45511,7 @@ function agEditInsumo(id){
   }
   var d=agGetDB(), i=agById(d.insumos,id); if(!i)return;
   agEl('agi-form-title').textContent='✏️ Editar: '+i.nombre;
-  agEl('agi-id').value=i.id; agEl('agi-nombre').value=i.nombre; agEl('agi-unidad').value=i.unidad;
+  agEl('agi-id').value=i.id; agEl('agi-nombre').value=i.nombre; (function(){var u=agEl('agi-unidad'),v=String(i.unidad||'kg'); if(![].some.call(u.options,function(o){return o.value===v;})){var o=document.createElement('option');o.value=v;o.textContent=v;u.appendChild(o);} u.value=v;})(); /* v1.8.311: unidades cargadas desde EP Agro (u…) no se pierden al editar */
   agEl('agi-costo').value=i.costo; agEl('agi-stock').value=i.stock;
 }
 function agSaveInsumo(){
